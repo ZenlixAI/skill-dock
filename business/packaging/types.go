@@ -20,6 +20,7 @@ type Metadata struct {
 
 type Options struct {
 	PublishRegistry string `json:"publishRegistry,omitempty"`
+	Strict          bool   `json:"strict,omitempty"`
 }
 
 type PrepareRequest struct {

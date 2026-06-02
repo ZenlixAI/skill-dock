@@ -69,10 +69,19 @@ func (s *Service) Prepare(input PrepareRequest) (PrepareResponse, error) {
 		}
 	}
 
+	warnings := []string{}
+	if input.Source.Type != "platform_authoring" && !input.Options.Strict {
+		normalizationWarnings, err := normalizeImportedWorkspace(workspacePath)
+		if err != nil {
+			return PrepareResponse{}, err
+		}
+		warnings = append(warnings, normalizationWarnings...)
+	}
+
 	if _, err := os.Stat(filepath.Join(workspacePath, "SKILL.md")); err != nil {
 		return PrepareResponse{}, catalog.NewError(422, "missing_skill_md", "Root SKILL.md is required.", nil)
 	}
-	if err := writePackageJSON(workspacePath, input.Target, input.Metadata, input.Options); err != nil {
+	if err := writePackageJSON(workspacePath, input.Target, input.Metadata, input.Options, len(warnings) > 0); err != nil {
 		return PrepareResponse{}, catalog.NewError(500, "internal_error", "Failed to write package.json.", nil)
 	}
 
@@ -80,7 +89,7 @@ func (s *Service) Prepare(input PrepareRequest) (PrepareResponse, error) {
 		WorkspacePath: workspacePath,
 		PackageName:   input.Target.PackageName,
 		Version:       input.Target.Version,
-		Warnings:      []string{},
+		Warnings:      warnings,
 		Errors:        []string{},
 	}, nil
 }
@@ -364,7 +373,35 @@ func writeSkillMarkdown(workspacePath string, displayName string, description st
 	return os.WriteFile(filepath.Join(workspacePath, "SKILL.md"), []byte(content), 0o644)
 }
 
-func writePackageJSON(workspacePath string, target Target, metadata Metadata, options Options) error {
+func normalizeImportedWorkspace(workspacePath string) ([]string, error) {
+	warnings := []string{}
+
+	if _, err := os.Stat(filepath.Join(workspacePath, "package.json")); err != nil {
+		if !os.IsNotExist(err) {
+			return nil, catalog.NewError(500, "internal_error", "Failed to inspect package.json.", nil)
+		}
+		warnings = append(warnings, "normalized_missing_package_json")
+	}
+
+	_, _, hasCapability, err := scanWorkspaceComponents(workspacePath)
+	if err != nil {
+		return nil, err
+	}
+	if !hasCapability {
+		readmePath := filepath.Join(workspacePath, "docs", "README.md")
+		if err := os.MkdirAll(filepath.Dir(readmePath), 0o755); err != nil {
+			return nil, catalog.NewError(500, "internal_error", "Failed to create placeholder capability content.", nil)
+		}
+		if err := os.WriteFile(readmePath, []byte("# Imported skill\n"), 0o644); err != nil {
+			return nil, catalog.NewError(500, "internal_error", "Failed to create placeholder capability content.", nil)
+		}
+		warnings = append(warnings, "normalized_missing_capability_content")
+	}
+
+	return warnings, nil
+}
+
+func writePackageJSON(workspacePath string, target Target, metadata Metadata, options Options, normalizedFromImport bool) error {
 	payload := map[string]any{
 		"name":    target.PackageName,
 		"version": target.Version,
@@ -378,6 +415,9 @@ func writePackageJSON(workspacePath string, target Target, metadata Metadata, op
 	}
 	if strings.TrimSpace(metadata.SourceType) != "" {
 		skillMetadata["sourceType"] = strings.TrimSpace(metadata.SourceType)
+	}
+	if normalizedFromImport {
+		skillMetadata["normalizedFromImport"] = true
 	}
 	if len(skillMetadata) > 0 {
 		payload["skill"] = skillMetadata
