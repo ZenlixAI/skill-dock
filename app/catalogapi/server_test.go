@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -687,6 +688,113 @@ func TestSkillPackagingAllowsAuthoringRole(t *testing.T) {
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestSkillPackagingPrepareNormalizesImportedLocalSkill(t *testing.T) {
+	server := newTestServer()
+	sourceDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(sourceDir, "SKILL.md"), []byte(`---
+name: zoom-out
+description: Broader context
+---
+
+Prompt body.
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
+		"source":{"type":"local","location":"`+sourceDir+`"},
+		"target":{"packageName":"@platform.skill/zoom-out","version":"1.0.0"},
+		"metadata":{"displayName":"Zoom Out","description":"Broader context","sourceType":"imported"}
+	}`)
+	request.Header.Set("X-Role", "publisher")
+	recorder := httptest.NewRecorder()
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected prepare success, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		WorkspacePath string   `json:"workspacePath"`
+		Warnings      []string `json:"warnings"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	wantWarnings := []string{"normalized_missing_package_json", "normalized_missing_capability_content"}
+	if !reflect.DeepEqual(wantWarnings, payload.Warnings) {
+		t.Fatalf("unexpected warnings (-want +got):\nwant: %#v\ngot:  %#v", wantWarnings, payload.Warnings)
+	}
+}
+
+func TestSkillPackagingPrepareStrictModePreservesMissingCapabilityFailure(t *testing.T) {
+	server := newTestServer()
+	sourceDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(sourceDir, "SKILL.md"), []byte(`---
+name: zoom-out
+description: Broader context
+---
+
+Prompt body.
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	prepareRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
+		"source":{"type":"local","location":"`+sourceDir+`"},
+		"target":{"packageName":"@platform.skill/zoom-out","version":"1.0.0"},
+		"metadata":{"displayName":"Zoom Out","description":"Broader context","sourceType":"imported"},
+		"options":{"strict":true}
+	}`)
+	prepareRequest.Header.Set("X-Role", "publisher")
+	prepareRecorder := httptest.NewRecorder()
+	server.Handler().ServeHTTP(prepareRecorder, prepareRequest)
+
+	if prepareRecorder.Code != http.StatusOK {
+		t.Fatalf("expected prepare success, got %d body=%s", prepareRecorder.Code, prepareRecorder.Body.String())
+	}
+
+	var preparePayload struct {
+		WorkspacePath string   `json:"workspacePath"`
+		Warnings      []string `json:"warnings"`
+	}
+	if err := json.Unmarshal(prepareRecorder.Body.Bytes(), &preparePayload); err != nil {
+		t.Fatalf("decode prepare response: %v", err)
+	}
+	if len(preparePayload.Warnings) != 0 {
+		t.Fatalf("expected no normalization warnings in strict mode, got %#v", preparePayload.Warnings)
+	}
+
+	validateRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/validate", `{
+		"workspacePath":"`+preparePayload.WorkspacePath+`",
+		"target":{"packageName":"@platform.skill/zoom-out","version":"1.0.0"}
+	}`)
+	validateRequest.Header.Set("X-Role", "publisher")
+	validateRecorder := httptest.NewRecorder()
+	server.Handler().ServeHTTP(validateRecorder, validateRequest)
+
+	if validateRecorder.Code != http.StatusOK {
+		t.Fatalf("expected validate response, got %d body=%s", validateRecorder.Code, validateRecorder.Body.String())
+	}
+
+	var validatePayload struct {
+		OK     bool     `json:"ok"`
+		Errors []string `json:"errors"`
+	}
+	if err := json.Unmarshal(validateRecorder.Body.Bytes(), &validatePayload); err != nil {
+		t.Fatalf("decode validate response: %v", err)
+	}
+	if validatePayload.OK {
+		t.Fatal("expected validate to fail in strict mode")
+	}
+
+	wantErrors := []string{"missing_capability_content"}
+	if !reflect.DeepEqual(wantErrors, validatePayload.Errors) {
+		t.Fatalf("unexpected validate errors (-want +got):\nwant: %#v\ngot:  %#v", wantErrors, validatePayload.Errors)
 	}
 }
 
