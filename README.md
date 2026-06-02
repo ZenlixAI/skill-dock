@@ -219,8 +219,8 @@ make batch-import-verdaccio-auth MANIFEST=/abs/path/to/import.json
 
 当前导入行为：
 
-- 对于根级存在有效 `SKILL.md` 的外部 `local` / `git` skill，可以直接导入，不需要先手写 `package.json`
-- packaging `prepare` 默认会只在临时 workspace 内补齐缺失 bundle 元数据，不会回写源目录
+- 对于已经满足导入请求所需 target / metadata 条件的外部 `local` / `git` skill，默认路径不再要求源目录预先手写 bundle 用的 `package.json` 或 capability 占位内容
+- packaging `prepare` 默认会只在临时 workspace 内重写面向 bundle 的 `package.json` 以匹配内部 target / metadata，并在需要时合成缺失的 capability 占位内容，不会回写源目录
 - 如果你想拒绝这类还不满足 publishable bundle 契约的源目录，使用批量导入脚本的 `--strict`，或在 Make 入口传 `STRICT=1`
 
 如果想先把 Python 运行环境准备好：

@@ -37,9 +37,9 @@ tools/batch-import/example.json
 
 默认导入行为：
 
-- 只要外部 `local` / `git` skill 的根目录有有效 `SKILL.md`，就可以导入，不要求事先手写 `package.json`
-- `prepare` 默认会在临时 workspace 内补齐缺失的 bundle 元数据，例如缺失的 `package.json` 或 capability 内容
-- 这些补齐只发生在打包会话的临时目录，不会回写原始源目录
+- 在 manifest / 扫描结果已经提供导入所需 target 信息后，默认路径不再要求外部 `local` / `git` 源目录预先手写 bundle 用的 `package.json` 或 capability 占位内容
+- `prepare` 默认会在临时 workspace 内重写面向 bundle 的 `package.json`，使其匹配本次导入的 target / metadata，并在需要时合成缺失的 capability 占位内容
+- 这些重写和合成都只发生在打包会话的临时目录，不会回写原始源目录
 
 如果你不想接受这种规范化，而是要显式拒绝还不满足 publishable bundle 契约的源目录，请传 `--strict`。
 
@@ -132,7 +132,7 @@ uv run python tools/batch-import/batch_import_skills.py \
 - 若没有 `package.json`，脚本会推导
   - `packageName`: `@platform.skill/<目录名slug>`
   - `version`: `--default-version`，默认 `0.1.0`
-- 默认模式下，后续 packaging `prepare` 仍会在临时 workspace 内补齐缺失的 bundle 元数据
+- 默认模式下，后续 packaging `prepare` 仍会在临时 workspace 内重写 bundle 用的 `package.json`，并在需要时合成缺失的 capability 占位内容
 - 若加 `--strict`，则不会接受需要这类规范化的源目录；prepare / validate 会直接暴露缺失项
 
 导入前建议先看计划：
