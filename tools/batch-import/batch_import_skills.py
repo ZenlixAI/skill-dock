@@ -88,6 +88,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Resolve the import plan and print it without calling Catalog or npm publish.",
     )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Disable imported workspace normalization and require the source to already satisfy the publishable bundle contract.",
+    )
     args = parser.parse_args()
 
     if not args.manifest and not args.root_dir:
@@ -374,6 +379,8 @@ def call_prepare(entry: dict[str, Any], args: argparse.Namespace, headers: dict[
     options: dict[str, Any] = {}
     if entry["publishRegistry"]:
         options["publishRegistry"] = entry["publishRegistry"]
+    if args.strict:
+        options["strict"] = True
     return request_json(
         "POST",
         f"{args.catalog_url.rstrip('/')}/api/v1/skill-packaging/prepare",

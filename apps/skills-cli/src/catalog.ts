@@ -45,6 +45,7 @@ export interface PackagingMetadata {
 
 export interface PackagingOptions {
   publishRegistry?: string;
+  strict?: boolean;
 }
 
 export interface PreparePackagingResponse {

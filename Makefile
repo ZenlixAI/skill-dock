@@ -28,6 +28,7 @@ PACKAGE ?= @platform.skill/pdf-skill
 QUERY ?= pdf
 SKILL_PATH ?=
 MANIFEST ?=
+STRICT ?=
 
 .PHONY: help verify test test-go python-sync test-cli typecheck-cli build-cli docker-build compose-production-up compose-production-down compose-local-up compose-local-down registry-reset registry-run registry-run-fresh registry-run-mock verdaccio-run verdaccio-reset registry-run-verdaccio verdaccio-run-auth verdaccio-run-auth-strict verdaccio-login verdaccio-auth-reset registry-run-verdaccio-auth cli-find cli-find-json cli-add cli-publish cli-publish-verdaccio cli-publish-verdaccio-auth batch-import batch-import-verdaccio batch-import-verdaccio-auth clean-dev
 
@@ -71,7 +72,8 @@ help:
 	@printf "Batch import:\n"
 	@printf "  make batch-import MANIFEST=/abs/path/to/import.json            # uses uv-managed Python\n"
 	@printf "  make batch-import-verdaccio MANIFEST=/abs/path/to/import.json  # uses uv-managed Python\n"
-	@printf "  make batch-import-verdaccio-auth MANIFEST=/abs/path/to/import.json\n\n"
+	@printf "  make batch-import-verdaccio-auth MANIFEST=/abs/path/to/import.json\n"
+	@printf "  append STRICT=1 to any batch-import target to disable normalization during prepare\n\n"
 	@printf "Cleanup:\n"
 	@printf "  make clean-dev         Remove temp CLI, Catalog, Verdaccio, uv cache, and .venv state\n"
 
@@ -263,7 +265,7 @@ batch-import:
 		SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
 		SKILLS_REGISTRY_TOKEN=$(PUBLISHER_TOKEN) \
 		UV_CACHE_DIR=$(UV_CACHE_DIR) \
-		uv run python tools/batch-import/batch_import_skills.py --manifest $(MANIFEST) --catalog-url $(REGISTRY_URL)
+		uv run python tools/batch-import/batch_import_skills.py --manifest $(MANIFEST) --catalog-url $(REGISTRY_URL) $(if $(STRICT),--strict)
 
 batch-import-verdaccio:
 	@test -n "$(MANIFEST)" || (echo "MANIFEST is required, e.g. make batch-import-verdaccio MANIFEST=/abs/path/to/import.json" && exit 1)
@@ -271,7 +273,7 @@ batch-import-verdaccio:
 		SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
 		SKILLS_REGISTRY_TOKEN=$(PUBLISHER_TOKEN) \
 		UV_CACHE_DIR=$(UV_CACHE_DIR) \
-		uv run python tools/batch-import/batch_import_skills.py --manifest $(MANIFEST) --catalog-url $(REGISTRY_URL) --npm-registry $(VERDACCIO_URL)
+		uv run python tools/batch-import/batch_import_skills.py --manifest $(MANIFEST) --catalog-url $(REGISTRY_URL) --npm-registry $(VERDACCIO_URL) $(if $(STRICT),--strict)
 
 batch-import-verdaccio-auth:
 	@test -n "$(MANIFEST)" || (echo "MANIFEST is required, e.g. make batch-import-verdaccio-auth MANIFEST=/abs/path/to/import.json" && exit 1)
@@ -280,7 +282,7 @@ batch-import-verdaccio-auth:
 		SKILLS_REGISTRY_TOKEN=$(PUBLISHER_TOKEN) \
 		NPM_CONFIG_USERCONFIG=$(VERDACCIO_AUTH_NPMRC) \
 		UV_CACHE_DIR=$(UV_CACHE_DIR) \
-		uv run python tools/batch-import/batch_import_skills.py --manifest $(MANIFEST) --catalog-url $(REGISTRY_URL) --npm-registry $(VERDACCIO_AUTH_URL)
+		uv run python tools/batch-import/batch_import_skills.py --manifest $(MANIFEST) --catalog-url $(REGISTRY_URL) --npm-registry $(VERDACCIO_AUTH_URL) $(if $(STRICT),--strict)
 
 clean-dev:
 	rm -rf $(CLI_HOME) $(CLI_CACHE) $(UV_CACHE_DIR) .venv /private/tmp/skill-registry.db /private/tmp/skill-registry.db-shm /private/tmp/skill-registry.db-wal $(VERDACCIO_STATE_DIR) $(VERDACCIO_AUTH_STATE_DIR)

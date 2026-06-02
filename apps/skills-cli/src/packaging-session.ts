@@ -11,6 +11,7 @@ import {
 export interface PackagingSessionOptions {
   path?: string;
   registry?: string;
+  strict?: boolean;
 }
 
 export type PackagingSessionKind = 'local' | 'registry';
@@ -25,6 +26,7 @@ export interface RegistryPackagingSessionSuccessResult extends SkillAuthoringIns
   sessionKind: 'registry';
   workspacePath: string;
   idempotencyKey: string;
+  warnings?: string[];
   manifestDigest?: string;
 }
 
@@ -64,7 +66,7 @@ function registrySuccessResult(
   inspection: SkillAuthoringInspection,
   fields: Pick<
     RegistryPackagingSessionSuccessResult,
-    'workspacePath' | 'idempotencyKey' | 'manifestDigest'
+    'workspacePath' | 'idempotencyKey' | 'warnings' | 'manifestDigest'
   >
 ): RegistryPackagingSessionSuccessResult {
   return {
@@ -73,6 +75,7 @@ function registrySuccessResult(
     sessionKind: 'registry',
     workspacePath: fields.workspacePath,
     idempotencyKey: fields.idempotencyKey,
+    warnings: fields.warnings,
     ...(fields.manifestDigest ? { manifestDigest: fields.manifestDigest } : {}),
   };
 }
@@ -259,7 +262,8 @@ export async function runPackagingSession(
         sourceType: inspection.sourceType || 'native',
       },
       options: {
-        publishRegistry: inspection.publishRegistry,
+        ...(inspection.publishRegistry ? { publishRegistry: inspection.publishRegistry } : {}),
+        ...(options.strict ? { strict: true } : {}),
       },
     });
   } catch (error) {
@@ -333,6 +337,7 @@ export async function runPackagingSession(
     {
       workspacePath: validated.workspacePath,
       idempotencyKey,
+      warnings: prepared.warnings,
       manifestDigest: validated.manifestDigest,
     }
   );

@@ -13,6 +13,7 @@ import { runPackagingSession } from './packaging-session.ts';
 export interface PublishWorkflowOptions {
   path?: string;
   registry?: string;
+  strict?: boolean;
 }
 
 export interface PublishWorkflowSuccessResult {
@@ -78,6 +79,7 @@ export async function runPublishWorkflow(
   const session = await runPackagingSession({
     path: options.path,
     registry,
+    strict: options.strict,
   });
 
   if (!session.ok || session.sessionKind !== 'registry' || !session.packageName || !session.version) {

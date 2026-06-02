@@ -110,6 +110,57 @@ description: A valid skill
     });
   });
 
+  it('preserves prepare warnings returned by the catalog packaging flow', async () => {
+    writeFileSync(
+      join(testDir, 'SKILL.md'),
+      `---
+name: zoom-out
+description: Broader context
+---
+`
+    );
+    writeFileSync(
+      join(testDir, 'package.json'),
+      JSON.stringify({ name: '@platform.skill/zoom-out', version: '1.0.0' }, null, 2)
+    );
+    mkdirSync(join(testDir, 'docs'), { recursive: true });
+
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            workspacePath: '/tmp/workspace',
+            packageName: '@platform.skill/zoom-out',
+            version: '1.0.0',
+            warnings: ['normalized_missing_capability_content'],
+            errors: [],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            ok: true,
+            workspacePath: '/tmp/workspace',
+            packageName: '@platform.skill/zoom-out',
+            version: '1.0.0',
+            manifestDigest: 'sha256:test',
+            components: ['docs'],
+            warnings: [],
+            errors: [],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      );
+
+    const result = await runPackagingSession({ path: testDir, registry: 'https://catalog.example.com' });
+    expect(result.ok).toBe(true);
+    if (result.ok && result.sessionKind === 'registry') {
+      expect(result.warnings).toEqual(['normalized_missing_capability_content']);
+    }
+  });
+
   it('returns local inspection errors without calling packaging endpoints', async () => {
     writeFileSync(
       join(testDir, 'SKILL.md'),
@@ -297,6 +348,62 @@ description: A valid skill
       displayName: 'my-skill',
       description: 'A valid skill',
       sourceType: 'platform_created',
+    });
+  });
+
+  it('threads strict packaging options to the prepare request', async () => {
+    writeFileSync(
+      join(testDir, 'SKILL.md'),
+      `---
+name: strict-skill
+description: Strict packaging
+---
+`
+    );
+    writeFileSync(
+      join(testDir, 'package.json'),
+      JSON.stringify({ name: '@platform.skill/strict-skill', version: '1.2.0' }, null, 2)
+    );
+    mkdirSync(join(testDir, 'docs'));
+
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            workspacePath: '/tmp/workspace',
+            packageName: '@platform.skill/strict-skill',
+            version: '1.2.0',
+            warnings: [],
+            errors: [],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            ok: true,
+            workspacePath: '/tmp/workspace',
+            packageName: '@platform.skill/strict-skill',
+            version: '1.2.0',
+            manifestDigest: 'sha256:test',
+            components: ['docs'],
+            warnings: [],
+            errors: [],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      );
+
+    await runPackagingSession({
+      path: testDir,
+      registry: 'https://catalog.example.com',
+      strict: true,
+    });
+
+    const preparePayload = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(preparePayload.options).toEqual({
+      strict: true,
     });
   });
 
