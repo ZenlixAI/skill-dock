@@ -420,6 +420,11 @@ npx skills publish ./my-skill --registry https://catalog.example.com
 - npm token
 - 企业内部 npm 登录态
 
+补充边界：
+
+- 本轮没有为 `skills publish` / `skills inspect` 新增顶层 `--strict` 开关
+- 默认规范化行为主要面向 `source.type=local` / `source.type=git` 的导入链路和批量初始化脚本
+
 ### 5. 批量初始化已有 skill
 
 如果不是单个作者手工执行 `skills publish`，而是要把一批现成 skill 批量灌入生产 Catalog，当做初始数据，可以直接使用仓库内的 Python 脚本：
@@ -441,6 +446,9 @@ uv run python tools/batch-import/batch_import_skills.py --manifest /abs/path/to/
 - `path` 模式使用的是 `source.type=local`，要求 Catalog 服务端能访问相同文件路径
 - 如果 Catalog 和导入机不在同一台机器，改用 manifest 里的 `source.type=git`
 - `--npm-registry` 要和 Catalog 的 `SKILL_REGISTRY_NPM_REGISTRY_URL` 保持一致
+- 对于根级存在有效 `SKILL.md` 的外部 `local` / `git` skill，默认允许直接导入，不要求源目录先手写 `package.json`
+- packaging `prepare` 会只在临时 workspace 内补齐缺失 bundle 元数据，不会回写原始源目录
+- 如果你的初始化要求“源目录必须已经完全可发布”，请对批量导入脚本使用 `--strict`，或在 Make 入口传 `STRICT=1`
 
 详细字段与示例见 [docs/batch-import-skills.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/batch-import-skills.zh-CN.md)。
 

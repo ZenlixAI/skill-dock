@@ -35,6 +35,14 @@ tools/batch-import/example.json
 - 这要求 Catalog 服务器能看到同一份文件系统路径
 - 如果 Catalog 不在同一台机器，改用 manifest 里的 `source.type=git`
 
+默认导入行为：
+
+- 只要外部 `local` / `git` skill 的根目录有有效 `SKILL.md`，就可以导入，不要求事先手写 `package.json`
+- `prepare` 默认会在临时 workspace 内补齐缺失的 bundle 元数据，例如缺失的 `package.json` 或 capability 内容
+- 这些补齐只发生在打包会话的临时目录，不会回写原始源目录
+
+如果你不想接受这种规范化，而是要显式拒绝还不满足 publishable bundle 契约的源目录，请传 `--strict`。
+
 ## 方式一：显式 manifest
 
 ```bash
@@ -60,6 +68,21 @@ uv run python tools/batch-import/batch_import_skills.py \
 
 ```bash
 make batch-import-verdaccio MANIFEST=/abs/path/to/import.json
+```
+
+严格模式示例：
+
+```bash
+uv run python tools/batch-import/batch_import_skills.py \
+  --manifest tools/batch-import/example.json \
+  --npm-registry http://127.0.0.1:4873 \
+  --strict
+```
+
+或：
+
+```bash
+make batch-import-verdaccio MANIFEST=/abs/path/to/import.json STRICT=1
 ```
 
 manifest 最小格式：
@@ -109,6 +132,8 @@ uv run python tools/batch-import/batch_import_skills.py \
 - 若没有 `package.json`，脚本会推导
   - `packageName`: `@platform.skill/<目录名slug>`
   - `version`: `--default-version`，默认 `0.1.0`
+- 默认模式下，后续 packaging `prepare` 仍会在临时 workspace 内补齐缺失的 bundle 元数据
+- 若加 `--strict`，则不会接受需要这类规范化的源目录；prepare / validate 会直接暴露缺失项
 
 导入前建议先看计划：
 
