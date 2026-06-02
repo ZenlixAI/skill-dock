@@ -423,7 +423,7 @@ npx skills publish ./my-skill --registry https://catalog.example.com
 补充边界：
 
 - 本轮没有为 `skills publish` / `skills inspect` 新增顶层 `--strict` 开关
-- registry-backed 的 `skills publish` / `skills inspect` 仍会通过远端 `prepare` 继承默认规范化行为；本轮只是没有暴露顶层 CLI `--strict` 开关
+- 默认规范化行为当前优先通过 packaging API 与批量导入脚本暴露；顶层 `skills publish` / `skills inspect` 本轮仍先保留现有本地 authoring 前置检查，也没有暴露可切换的 `--strict` 开关
 
 ### 5. 批量初始化已有 skill
 

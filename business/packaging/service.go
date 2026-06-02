@@ -392,7 +392,12 @@ func normalizeImportedWorkspace(workspacePath string) ([]string, error) {
 		if err := os.MkdirAll(filepath.Dir(readmePath), 0o755); err != nil {
 			return nil, catalog.NewError(500, "internal_error", "Failed to create placeholder capability content.", nil)
 		}
-		if err := os.WriteFile(readmePath, []byte("# Imported skill\n"), 0o644); err != nil {
+		placeholder := `# Imported Skill Placeholder
+
+This file was generated during packaging normalization because the imported skill
+did not include any capability directories or compatibility manifests.
+`
+		if err := os.WriteFile(readmePath, []byte(placeholder), 0o644); err != nil {
 			return nil, catalog.NewError(500, "internal_error", "Failed to create placeholder capability content.", nil)
 		}
 		warnings = append(warnings, "normalized_missing_capability_content")

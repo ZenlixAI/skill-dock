@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -28,6 +29,13 @@ func TestPrepareNormalizesLocalSkillWithoutPackageJSONOrCapabilities(t *testing.
 	}
 	if _, err := os.Stat(filepath.Join(resp.WorkspacePath, "docs", "README.md")); err != nil {
 		t.Fatalf("expected placeholder docs README: %v", err)
+	}
+	readmeContent, err := os.ReadFile(filepath.Join(resp.WorkspacePath, "docs", "README.md"))
+	if err != nil {
+		t.Fatalf("read placeholder docs README: %v", err)
+	}
+	if !strings.Contains(string(readmeContent), "generated during packaging normalization") {
+		t.Fatalf("expected placeholder docs README to explain normalization, got %q", string(readmeContent))
 	}
 
 	validateResp, err := service.Validate(ValidateRequest{
@@ -66,6 +74,13 @@ func TestPrepareNormalizesGitSkillWithoutPackageJSONOrCapabilities(t *testing.T)
 	}
 	if _, err := os.Stat(filepath.Join(resp.WorkspacePath, "docs", "README.md")); err != nil {
 		t.Fatalf("expected placeholder docs README: %v", err)
+	}
+	readmeContent, err := os.ReadFile(filepath.Join(resp.WorkspacePath, "docs", "README.md"))
+	if err != nil {
+		t.Fatalf("read placeholder docs README: %v", err)
+	}
+	if !strings.Contains(string(readmeContent), "generated during packaging normalization") {
+		t.Fatalf("expected placeholder docs README to explain normalization, got %q", string(readmeContent))
 	}
 
 	validateResp, err := service.Validate(ValidateRequest{
