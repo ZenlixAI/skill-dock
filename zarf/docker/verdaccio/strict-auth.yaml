@@ -1,0 +1,35 @@
+storage: /private/tmp/skill-registry-verdaccio-auth/storage
+
+auth:
+  htpasswd:
+    file: /private/tmp/skill-registry-verdaccio-auth/htpasswd
+    max_users: 1000
+
+uplinks:
+  npmjs:
+    url: https://registry.npmjs.org/
+
+packages:
+  '@platform.skill/*':
+    access: $authenticated
+    publish: $authenticated
+    unpublish: $authenticated
+  '@*/*':
+    access: $authenticated
+    publish: $authenticated
+    unpublish: $authenticated
+    proxy: npmjs
+  '**':
+    access: $authenticated
+    publish: $authenticated
+    unpublish: $authenticated
+    proxy: npmjs
+
+middlewares:
+  audit:
+    enabled: false
+
+log:
+  type: stdout
+  format: pretty
+  level: http

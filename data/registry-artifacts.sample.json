@@ -1,0 +1,149 @@
+[
+  {
+    "skillDisplayName": "Agent Notes",
+    "skillDescription": "Capture agent workflow notes",
+    "skillSourceType": "platform_created",
+    "version": {
+      "packageName": "@platform.skill/agent-notes",
+      "version": "0.1.0",
+      "versionStatus": "published",
+      "installPolicy": "resolvable",
+      "publishedAt": "2026-05-30T10:00:00Z",
+      "registry": {
+        "npmRegistry": "https://npm.internal.example.com",
+        "tarballUrl": "https://npm.internal.example.com/platform.skill/agent-notes/-/agent-notes-0.1.0.tgz",
+        "integrity": "sha512-010",
+        "shasum": "sha1-010",
+        "publishedAt": "2026-05-30T10:00:00Z",
+        "distTags": [
+          "latest"
+        ]
+      },
+      "bundle": {
+        "skillManifestDigest": "sha256:010",
+        "components": [
+          "commands",
+          "scripts"
+        ]
+      }
+    }
+  },
+  {
+    "skillDisplayName": "PDF Skill",
+    "skillDescription": "PDF processing workflow",
+    "skillSourceType": "imported",
+    "version": {
+      "packageName": "@platform.skill/pdf-skill",
+      "version": "1.2.0",
+      "versionStatus": "published",
+      "installPolicy": "resolvable",
+      "publishedAt": "2026-05-28T08:20:00Z",
+      "registry": {
+        "npmRegistry": "https://npm.internal.example.com",
+        "tarballUrl": "https://npm.internal.example.com/platform.skill/pdf-skill/-/pdf-skill-1.2.0.tgz",
+        "integrity": "sha512-120",
+        "shasum": "sha1-120",
+        "publishedAt": "2026-05-28T08:20:00Z",
+        "distTags": [
+          "latest"
+        ]
+      },
+      "bundle": {
+        "skillManifestDigest": "sha256:120",
+        "components": [
+          "commands",
+          "scripts"
+        ]
+      }
+    }
+  },
+  {
+    "skillDisplayName": "PDF Skill",
+    "skillDescription": "PDF processing workflow",
+    "skillSourceType": "imported",
+    "version": {
+      "packageName": "@platform.skill/pdf-skill",
+      "version": "1.1.0",
+      "versionStatus": "deprecated",
+      "installPolicy": "resolvable",
+      "publishedAt": "2026-05-23T08:00:00Z",
+      "registry": {
+        "npmRegistry": "https://npm.internal.example.com",
+        "tarballUrl": "https://npm.internal.example.com/platform.skill/pdf-skill/-/pdf-skill-1.1.0.tgz",
+        "integrity": "sha512-110",
+        "shasum": "sha1-110",
+        "publishedAt": "2026-05-23T08:00:00Z",
+        "distTags": [
+          "latest"
+        ]
+      },
+      "bundle": {
+        "skillManifestDigest": "sha256:conflict",
+        "components": [
+          "commands",
+          "scripts"
+        ]
+      }
+    }
+  },
+  {
+    "skillDisplayName": "Broken Bundle",
+    "skillDescription": "Invalid bundle for testing",
+    "skillSourceType": "imported",
+    "version": {
+      "packageName": "@platform.skill/broken-bundle",
+      "version": "0.1.0",
+      "versionStatus": "published",
+      "installPolicy": "resolvable",
+      "publishedAt": "2026-05-30T11:00:00Z",
+      "registry": {
+        "npmRegistry": "https://npm.internal.example.com",
+        "tarballUrl": "https://npm.internal.example.com/platform.skill/broken-bundle/-/broken-bundle-0.1.0.tgz",
+        "integrity": "sha512-010",
+        "shasum": "sha1-010",
+        "publishedAt": "2026-05-30T11:00:00Z",
+        "distTags": [
+          "latest"
+        ]
+      },
+      "bundle": {
+        "skillManifestDigest": "sha256:010",
+        "components": [
+          "commands",
+          "scripts"
+        ]
+      }
+    },
+    "validationError": "single-skill bundle must contain exactly one root SKILL.md"
+  },
+  {
+    "skillDisplayName": "Registry Down",
+    "skillDescription": "Simulate an upstream outage",
+    "skillSourceType": "imported",
+    "version": {
+      "packageName": "@platform.skill/registry-down",
+      "version": "0.1.0",
+      "versionStatus": "published",
+      "installPolicy": "resolvable",
+      "publishedAt": "2026-05-30T12:00:00Z",
+      "registry": {
+        "npmRegistry": "https://npm.internal.example.com",
+        "tarballUrl": "https://npm.internal.example.com/platform.skill/registry-down/-/registry-down-0.1.0.tgz",
+        "integrity": "sha512-010",
+        "shasum": "sha1-010",
+        "publishedAt": "2026-05-30T12:00:00Z",
+        "distTags": [
+          "latest"
+        ]
+      },
+      "bundle": {
+        "skillManifestDigest": "sha256:010",
+        "components": [
+          "commands",
+          "scripts"
+        ]
+      }
+    },
+    "registryDown": true
+  }
+]

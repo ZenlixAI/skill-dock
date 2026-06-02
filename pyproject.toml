@@ -1,0 +1,9 @@
+[project]
+name = "skill-registry-tools"
+version = "0.1.0"
+description = "Python tooling for skill_registry"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.uv]
+package = false

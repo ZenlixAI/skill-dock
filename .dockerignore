@@ -1,0 +1,11 @@
+.git
+.agents
+dist
+/private
+/tmp
+node_modules
+apps/skills-cli/node_modules
+apps/skills-cli/dist
+*.db
+*.db-shm
+*.db-wal

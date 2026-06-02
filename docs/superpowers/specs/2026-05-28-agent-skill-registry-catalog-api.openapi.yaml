@@ -1,0 +1,1152 @@
+openapi: 3.1.0
+info:
+  title: Agent Skill Registry Catalog API
+  version: 1.0.0-draft
+  summary: OpenAPI draft for the Agent Skill Registry Catalog API.
+  description: |
+    Machine-readable API draft for the Agent Skill Registry Catalog API.
+
+    Scope:
+    - skill discovery
+    - version metadata
+    - install target resolution
+    - release record creation
+    - governance audit and mutations
+
+    Notes:
+    - This draft follows the accompanying design documents under `docs/superpowers/specs/`.
+    - Authorization roles are expressed through `x-required-roles`.
+    - Authentication transport is intentionally left flexible in V1.
+servers:
+  - url: /api/v1
+    description: Default V1 base path
+tags:
+  - name: skills
+    description: Skill listing and detail endpoints
+  - name: versions
+    description: Skill version listing and detail endpoints
+  - name: governance
+    description: Governance audit and mutation endpoints
+  - name: resolution
+    description: Install target resolution endpoints
+  - name: publishing
+    description: Release record endpoints
+paths:
+  /skills:
+    get:
+      tags: [skills]
+      summary: List and search skills
+      description: Unified skill list and search endpoint.
+      x-required-roles: [reader, publisher]
+      parameters:
+        - $ref: '#/components/parameters/Q'
+        - $ref: '#/components/parameters/PackageNameQuery'
+        - $ref: '#/components/parameters/SourceTypeQuery'
+        - $ref: '#/components/parameters/IncludeRetired'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/SkillsSort'
+      responses:
+        '200':
+          description: Skill list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillsListResponse'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /skills/search:
+    get:
+      tags: [skills]
+      summary: Search skills
+      description: Compatibility alias for `GET /skills`; not recommended as the primary interface for new clients.
+      x-required-roles: [reader, publisher]
+      parameters:
+        - $ref: '#/components/parameters/Q'
+        - $ref: '#/components/parameters/PackageNameQuery'
+        - $ref: '#/components/parameters/SourceTypeQuery'
+        - $ref: '#/components/parameters/IncludeRetired'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/SkillsSort'
+      responses:
+        '200':
+          description: Skill list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillsListResponse'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /skills/curated:
+    get:
+      tags: [skills]
+      summary: List curated skills
+      x-required-roles: [reader, publisher]
+      parameters:
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Curated skill list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuratedSkillsListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /skills/{packageName}:
+    get:
+      tags: [skills]
+      summary: Get a skill by package name
+      x-required-roles: [reader, publisher]
+      parameters:
+        - $ref: '#/components/parameters/PackageNamePath'
+      responses:
+        '200':
+          description: Skill detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/SkillNotFound'
+  /skills/{packageName}/versions:
+    get:
+      tags: [versions]
+      summary: List versions for a skill
+      x-required-roles: [reader, publisher]
+      parameters:
+        - $ref: '#/components/parameters/PackageNamePath'
+        - $ref: '#/components/parameters/IncludeDeprecated'
+        - $ref: '#/components/parameters/IncludeYanked'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Version list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillVersionsListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/SkillNotFound'
+  /skills/{packageName}/versions/{version}:
+    get:
+      tags: [versions]
+      summary: Get a specific skill version
+      x-required-roles: [reader, publisher]
+      parameters:
+        - $ref: '#/components/parameters/PackageNamePath'
+        - $ref: '#/components/parameters/VersionPath'
+      responses:
+        '200':
+          description: Version detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillVersionDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Skill or version not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                skill_not_found:
+                  value:
+                    error:
+                      code: skill_not_found
+                      message: Skill not found.
+                      details:
+                        packageName: '@platform.skill/pdf-skill'
+                      requestId: req_01hxskill
+                version_not_found:
+                  value:
+                    error:
+                      code: version_not_found
+                      message: Version not found.
+                      details:
+                        packageName: '@platform.skill/pdf-skill'
+                        version: 1.2.0
+                      requestId: req_01hxversion
+  /governance-changes:
+    get:
+      tags: [governance]
+      summary: List governance audit records
+      x-required-roles: [reader, publisher]
+      parameters:
+        - $ref: '#/components/parameters/PackageNameQuery'
+        - $ref: '#/components/parameters/VersionQuery'
+        - $ref: '#/components/parameters/TargetTypeQuery'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Governance audit list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GovernanceChangesListResponse'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /audit-events:
+    get:
+      tags: [governance]
+      summary: List runtime audit events
+      x-required-roles: [reader, publisher]
+      parameters:
+        - $ref: '#/components/parameters/ActionQuery'
+        - $ref: '#/components/parameters/ActorQuery'
+        - $ref: '#/components/parameters/AuthDecisionQuery'
+        - $ref: '#/components/parameters/PackageNameQuery'
+        - $ref: '#/components/parameters/VersionQuery'
+        - $ref: '#/components/parameters/OutcomeQuery'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Runtime audit event list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEventsListResponse'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /skills/{packageName}/install-target:
+    get:
+      tags: [resolution]
+      summary: Resolve an install target
+      description: Resolve a skill install request into a concrete downloadable target.
+      x-required-roles: [reader, publisher]
+      parameters:
+        - $ref: '#/components/parameters/PackageNamePath'
+        - $ref: '#/components/parameters/VersionQuery'
+      responses:
+        '200':
+          description: Install target resolved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstallResolutionResponse'
+        '404':
+          description: Skill or version not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Resolution blocked by lifecycle or policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                skill_retired:
+                  value:
+                    error:
+                      code: skill_retired
+                      message: Skill is retired.
+                      details:
+                        packageName: '@platform.skill/pdf-skill'
+                      requestId: req_01hxretired
+                version_yanked:
+                  value:
+                    error:
+                      code: version_yanked
+                      message: Version is yanked.
+                      details:
+                        packageName: '@platform.skill/pdf-skill'
+                        version: 1.2.0
+                        replacementRecommendation: 1.2.1
+                      requestId: req_01hxyanked
+                not_resolvable_by_policy:
+                  value:
+                    error:
+                      code: not_resolvable_by_policy
+                      message: Version is not resolvable by policy.
+                      details:
+                        packageName: '@platform.skill/pdf-skill'
+                        version: 1.2.0
+                        replacementRecommendation: 1.2.1
+                      requestId: req_01hxpolicy
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/InvalidRequest'
+  /skills/{packageName}/versions/{version}/release-record:
+    put:
+      tags: [publishing]
+      summary: Create or replay a release record
+      description: |
+        Create a Catalog release record for an artifact that already exists in the
+        configured npm-compatible registry.
+      x-required-roles: [publisher]
+      parameters:
+        - $ref: '#/components/parameters/PackageNamePath'
+        - $ref: '#/components/parameters/VersionPath'
+      responses:
+        '200':
+          description: Idempotent replay succeeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReleaseRecordResponse'
+              examples:
+                idempotent_replay:
+                  value:
+                    packageName: '@platform.skill/pdf-skill'
+                    version: 1.2.0
+                    created: false
+                    idempotentReplay: true
+                    versionStatus: published
+                    installPolicy: resolvable
+        '201':
+          description: Release record created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReleaseRecordResponse'
+              examples:
+                created:
+                  value:
+                    packageName: '@platform.skill/pdf-skill'
+                    version: 1.2.0
+                    created: true
+                    idempotentReplay: false
+                    versionStatus: published
+                    installPolicy: resolvable
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RegistryVersionNotFound'
+        '409':
+          $ref: '#/components/responses/ImmutableReleaseConflict'
+        '422':
+          $ref: '#/components/responses/BundleValidationFailed'
+        '503':
+          $ref: '#/components/responses/RegistryUnavailable'
+  /skills/{packageName}/governance-changes:
+    post:
+      tags: [governance]
+      summary: Apply a skill-level governance change
+      x-required-roles: [publisher]
+      parameters:
+        - $ref: '#/components/parameters/PackageNamePath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SkillGovernanceChangeRequest'
+      responses:
+        '201':
+          description: Governance change recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GovernanceChangeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/SkillNotFound'
+        '409':
+          $ref: '#/components/responses/InvalidStateTransition'
+        '422':
+          $ref: '#/components/responses/InvalidRequest'
+  /skills/{packageName}/versions/{version}/governance-changes:
+    post:
+      tags: [governance]
+      summary: Apply a version-level governance change
+      x-required-roles: [publisher]
+      parameters:
+        - $ref: '#/components/parameters/PackageNamePath'
+        - $ref: '#/components/parameters/VersionPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VersionGovernanceChangeRequest'
+      responses:
+        '201':
+          description: Governance change recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GovernanceChangeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Skill or version not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/InvalidStateTransition'
+        '422':
+          $ref: '#/components/responses/InvalidRequest'
+components:
+  parameters:
+    Q:
+      name: q
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Search query.
+    ActionQuery:
+      name: action
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Exact runtime action filter.
+    ActorQuery:
+      name: actor
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Exact actor filter.
+    AuthDecisionQuery:
+      name: auth_decision
+      in: query
+      required: false
+      schema:
+        $ref: '#/components/schemas/AuthDecision'
+      description: Audit authorization decision filter.
+    PackageNameQuery:
+      name: package_name
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Exact package name filter.
+    PackageNamePath:
+      name: packageName
+      in: path
+      required: true
+      schema:
+        type: string
+      description: URL-encoded scoped package name.
+    VersionPath:
+      name: version
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Exact semver version.
+    VersionQuery:
+      name: version
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Exact semver version.
+    SourceTypeQuery:
+      name: source_type
+      in: query
+      required: false
+      schema:
+        $ref: '#/components/schemas/SourceType'
+      description: Source type filter.
+    IncludeRetired:
+      name: include_retired
+      in: query
+      required: false
+      schema:
+        type: boolean
+        default: false
+      description: Include retired skills.
+    IncludeDeprecated:
+      name: include_deprecated
+      in: query
+      required: false
+      schema:
+        type: boolean
+        default: true
+      description: Include deprecated versions.
+    IncludeYanked:
+      name: include_yanked
+      in: query
+      required: false
+      schema:
+        type: boolean
+        default: false
+      description: Include yanked versions.
+    PageSize:
+      name: pageSize
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      description: Cursor page size.
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Cursor token for pagination.
+    SkillsSort:
+      name: sort
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - relevance
+          - updated_at_desc
+          - package_name_asc
+      description: Skill list sort order.
+    TargetTypeQuery:
+      name: target_type
+      in: query
+      required: false
+      schema:
+        $ref: '#/components/schemas/GovernanceTargetType'
+      description: Governance target type filter.
+    OutcomeQuery:
+      name: outcome
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Exact outcome filter.
+  responses:
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            unauthorized:
+              value:
+                error:
+                  code: unauthorized
+                  message: Authentication required.
+                  requestId: req_01hxauth
+    Forbidden:
+      description: Caller lacks required role
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            forbidden:
+              value:
+                error:
+                  code: forbidden
+                  message: Forbidden.
+                  requestId: req_01hxforbidden
+    InvalidRequest:
+      description: Request validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            invalid_request:
+              value:
+                error:
+                  code: invalid_request
+                  message: Request validation failed.
+                  requestId: req_01hxinvalid
+    SkillNotFound:
+      description: Skill not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            skill_not_found:
+              value:
+                error:
+                  code: skill_not_found
+                  message: Skill not found.
+                  details:
+                    packageName: '@platform.skill/pdf-skill'
+                  requestId: req_01hxskill
+    InvalidStateTransition:
+      description: Governance state transition is invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            invalid_state_transition:
+              value:
+                error:
+                  code: invalid_state_transition
+                  message: Invalid state transition.
+                  requestId: req_01hxstate
+    RegistryVersionNotFound:
+      description: Registry version metadata not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            registry_version_not_found:
+              value:
+                error:
+                  code: registry_version_not_found
+                  message: Registry version not found.
+                  details:
+                    packageName: '@platform.skill/pdf-skill'
+                    version: 1.2.0
+                  requestId: req_01hxreg404
+    ImmutableReleaseConflict:
+      description: Existing immutable release conflicts with provided artifact
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            immutable_release_conflict:
+              value:
+                error:
+                  code: immutable_release_conflict
+                  message: Immutable release conflict.
+                  details:
+                    packageName: '@platform.skill/pdf-skill'
+                    version: 1.2.0
+                  requestId: req_01hxconflict
+    BundleValidationFailed:
+      description: Bundle failed Catalog validation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            bundle_validation_failed:
+              value:
+                error:
+                  code: bundle_validation_failed
+                  message: Bundle validation failed.
+                  requestId: req_01hxbundle
+    RegistryUnavailable:
+      description: Upstream registry unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            registry_unavailable:
+              value:
+                error:
+                  code: registry_unavailable
+                  message: Registry unavailable.
+                  requestId: req_01hxregistrydown
+  schemas:
+    SourceType:
+      type: string
+      enum:
+        - native
+        - imported
+        - platform_created
+    SkillStatus:
+      type: string
+      enum:
+        - active
+        - retired
+    VersionStatus:
+      type: string
+      enum:
+        - published
+        - deprecated
+        - yanked
+    InstallPolicy:
+      type: string
+      enum:
+        - catalog_only
+        - resolvable
+        - blocked
+    GovernanceTargetType:
+      type: string
+      enum:
+        - skill
+        - version
+    GovernanceAction:
+      type: string
+      enum:
+        - retire
+        - deprecate
+        - yank
+    AuthDecision:
+      type: string
+      enum:
+        - allowed
+        - denied
+    ErrorCode:
+      type: string
+      enum:
+        - invalid_request
+        - unauthorized
+        - forbidden
+        - skill_not_found
+        - version_not_found
+        - skill_retired
+        - version_yanked
+        - not_resolvable_by_policy
+        - invalid_state_transition
+        - registry_version_not_found
+        - registry_unavailable
+        - bundle_validation_failed
+        - immutable_release_conflict
+        - internal_error
+    ErrorObject:
+      type: object
+      required:
+        - code
+        - message
+        - requestId
+      properties:
+        code:
+          $ref: '#/components/schemas/ErrorCode'
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+        requestId:
+          type: string
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorObject'
+    PageInfo:
+      type: object
+      required:
+        - nextCursor
+        - hasNextPage
+      properties:
+        nextCursor:
+          type:
+            - string
+            - 'null'
+        hasNextPage:
+          type: boolean
+    SkillSummary:
+      type: object
+      required:
+        - packageName
+        - displayName
+        - description
+        - sourceType
+        - status
+        - latestVersion
+        - latestVersionStatus
+        - updatedAt
+      properties:
+        packageName:
+          type: string
+        displayName:
+          type: string
+        description:
+          type: string
+        sourceType:
+          $ref: '#/components/schemas/SourceType'
+        status:
+          $ref: '#/components/schemas/SkillStatus'
+        latestVersion:
+          type:
+            - string
+            - 'null'
+        latestVersionStatus:
+          oneOf:
+            - $ref: '#/components/schemas/VersionStatus'
+            - type: 'null'
+        updatedAt:
+          type: string
+          format: date-time
+    CuratedSkillSummary:
+      allOf:
+        - $ref: '#/components/schemas/SkillSummary'
+        - type: object
+          required:
+            - curationReason
+          properties:
+            curationReason:
+              type: string
+    SkillDetail:
+      allOf:
+        - $ref: '#/components/schemas/SkillSummary'
+        - type: object
+          required:
+            - createdAt
+          properties:
+            createdAt:
+              type: string
+              format: date-time
+    SkillVersionSummary:
+      type: object
+      required:
+        - packageName
+        - version
+        - versionStatus
+        - installPolicy
+        - publishedAt
+      properties:
+        packageName:
+          type: string
+        version:
+          type: string
+        versionStatus:
+          $ref: '#/components/schemas/VersionStatus'
+        installPolicy:
+          $ref: '#/components/schemas/InstallPolicy'
+        publishedAt:
+          type: string
+          format: date-time
+    RegistryMetadata:
+      type: object
+      required:
+        - npmRegistry
+        - tarballUrl
+        - integrity
+        - shasum
+        - publishedAt
+      properties:
+        npmRegistry:
+          type: string
+          format: uri
+        tarballUrl:
+          type: string
+          format: uri
+        integrity:
+          type: string
+        shasum:
+          type: string
+        publishedAt:
+          type: string
+          format: date-time
+        distTags:
+          type: array
+          items:
+            type: string
+    BundleMetadata:
+      type: object
+      required:
+        - skillManifestDigest
+        - components
+      properties:
+        skillManifestDigest:
+          type: string
+        components:
+          type: array
+          items:
+            type: string
+    SkillVersionDetail:
+      type: object
+      required:
+        - packageName
+        - version
+        - versionStatus
+        - installPolicy
+        - registry
+        - bundle
+      properties:
+        packageName:
+          type: string
+        version:
+          type: string
+        versionStatus:
+          $ref: '#/components/schemas/VersionStatus'
+        installPolicy:
+          $ref: '#/components/schemas/InstallPolicy'
+        registry:
+          $ref: '#/components/schemas/RegistryMetadata'
+        bundle:
+          $ref: '#/components/schemas/BundleMetadata'
+    GovernanceRecord:
+      type: object
+      required:
+        - id
+        - targetType
+        - packageName
+        - action
+        - reason
+        - changedBy
+        - changedAt
+      properties:
+        id:
+          type: string
+        targetType:
+          $ref: '#/components/schemas/GovernanceTargetType'
+        packageName:
+          type: string
+        version:
+          type:
+            - string
+            - 'null'
+        action:
+          $ref: '#/components/schemas/GovernanceAction'
+        reason:
+          type: string
+        replacementRecommendation:
+          type:
+            - string
+            - 'null'
+        changedBy:
+          type: string
+        changedAt:
+          type: string
+          format: date-time
+    AuditEventRecord:
+      type: object
+      required:
+        - id
+        - requestId
+        - traceId
+        - action
+        - actor
+        - role
+        - authMechanism
+        - authDecision
+        - endpoint
+        - method
+        - packageName
+        - outcome
+        - statusCode
+        - details
+        - createdAt
+      properties:
+        id:
+          type: string
+        requestId:
+          type: string
+        traceId:
+          type: string
+        action:
+          type: string
+        actor:
+          type: string
+        role:
+          type: string
+        authMechanism:
+          type: string
+        authDecision:
+          $ref: '#/components/schemas/AuthDecision'
+        endpoint:
+          type: string
+        method:
+          type: string
+        packageName:
+          type: string
+        version:
+          type:
+            - string
+            - 'null'
+        outcome:
+          type: string
+        statusCode:
+          type: integer
+        details:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+    SkillsListResponse:
+      type: object
+      required:
+        - items
+        - pageInfo
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkillSummary'
+        pageInfo:
+          $ref: '#/components/schemas/PageInfo'
+    CuratedSkillsListResponse:
+      type: object
+      required:
+        - items
+        - pageInfo
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CuratedSkillSummary'
+        pageInfo:
+          $ref: '#/components/schemas/PageInfo'
+    SkillVersionsListResponse:
+      type: object
+      required:
+        - items
+        - pageInfo
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkillVersionSummary'
+        pageInfo:
+          $ref: '#/components/schemas/PageInfo'
+    GovernanceChangesListResponse:
+      type: object
+      required:
+        - items
+        - pageInfo
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/GovernanceRecord'
+        pageInfo:
+          $ref: '#/components/schemas/PageInfo'
+    AuditEventsListResponse:
+      type: object
+      required:
+        - items
+        - pageInfo
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEventRecord'
+        pageInfo:
+          $ref: '#/components/schemas/PageInfo'
+    InstallResolutionResponse:
+      type: object
+      required:
+        - packageName
+        - version
+        - npmRegistry
+        - integrity
+        - tarballUrl
+        - skillManifestDigest
+        - versionStatus
+      properties:
+        packageName:
+          type: string
+        version:
+          type: string
+        npmRegistry:
+          type: string
+          format: uri
+        integrity:
+          type: string
+        tarballUrl:
+          type: string
+          format: uri
+        skillManifestDigest:
+          type: string
+        versionStatus:
+          $ref: '#/components/schemas/VersionStatus'
+    ReleaseRecordResponse:
+      type: object
+      required:
+        - packageName
+        - version
+        - created
+        - idempotentReplay
+        - versionStatus
+        - installPolicy
+      properties:
+        packageName:
+          type: string
+        version:
+          type: string
+        created:
+          type: boolean
+        idempotentReplay:
+          type: boolean
+        versionStatus:
+          $ref: '#/components/schemas/VersionStatus'
+        installPolicy:
+          $ref: '#/components/schemas/InstallPolicy'
+    SkillGovernanceChangeRequest:
+      type: object
+      required:
+        - action
+        - reason
+      properties:
+        action:
+          type: string
+          enum:
+            - retire
+        reason:
+          type: string
+      additionalProperties: false
+    VersionGovernanceChangeRequest:
+      type: object
+      required:
+        - action
+        - reason
+      properties:
+        action:
+          type: string
+          enum:
+            - deprecate
+            - yank
+        reason:
+          type: string
+        replacementRecommendation:
+          type: string
+      additionalProperties: false
+    GovernanceChangeResultingState:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/SkillStatus'
+        versionStatus:
+          $ref: '#/components/schemas/VersionStatus'
+    GovernanceChangeResponse:
+      type: object
+      required:
+        - record
+        - resultingState
+      properties:
+        record:
+          $ref: '#/components/schemas/GovernanceRecord'
+        resultingState:
+          $ref: '#/components/schemas/GovernanceChangeResultingState'

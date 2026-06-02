@@ -1,0 +1,49 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: skill_registry
+      POSTGRES_USER: skill_registry
+      POSTGRES_PASSWORD: skill_registry
+    ports:
+      - "5432:5432"
+    volumes:
+      - local_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U skill_registry -d skill_registry"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  verdaccio:
+    image: verdaccio/verdaccio:6
+    ports:
+      - "4873:4873"
+    volumes:
+      - ../docker/verdaccio/config.yaml:/verdaccio/conf/config.yaml:ro
+      - verdaccio_storage:/verdaccio/storage
+
+  catalog:
+    build:
+      context: ../..
+      dockerfile: zarf/docker/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      verdaccio:
+        condition: service_started
+    ports:
+      - "18080:8080"
+    environment:
+      SKILL_REGISTRY_ADDR: :8080
+      SKILL_REGISTRY_DATABASE_URL: postgres://skill_registry:skill_registry@postgres:5432/skill_registry?sslmode=disable
+      SKILL_REGISTRY_READER_TOKEN: reader-secret
+      SKILL_REGISTRY_AUTHORING_TOKEN: authoring-secret
+      SKILL_REGISTRY_PUBLISHER_TOKEN: publisher-secret
+      SKILL_REGISTRY_NPM_REGISTRY_URL: http://verdaccio:4873
+      SKILL_REGISTRY_ENABLE_SAMPLE_DATA: "false"
+      SKILL_REGISTRY_ENABLE_MOCK_REGISTRY: "false"
+
+volumes:
+  local_pg_data:
+  verdaccio_storage:

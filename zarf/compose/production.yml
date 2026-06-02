@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-skill_registry}
+      POSTGRES_USER: ${POSTGRES_USER:-skill_registry}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-skill_registry_change_me}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-skill_registry} -d ${POSTGRES_DB:-skill_registry}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  catalog:
+    build:
+      context: ../..
+      dockerfile: zarf/docker/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${CATALOG_PORT:-8080}:8080"
+    environment:
+      SKILL_REGISTRY_ADDR: :8080
+      SKILL_REGISTRY_DATABASE_URL: postgres://${POSTGRES_USER:-skill_registry}:${POSTGRES_PASSWORD:-skill_registry_change_me}@postgres:5432/${POSTGRES_DB:-skill_registry}?sslmode=disable
+      SKILL_REGISTRY_READER_TOKEN: ${SKILL_REGISTRY_READER_TOKEN:-reader-token-change-me}
+      SKILL_REGISTRY_AUTHORING_TOKEN: ${SKILL_REGISTRY_AUTHORING_TOKEN:-authoring-token-change-me}
+      SKILL_REGISTRY_PUBLISHER_TOKEN: ${SKILL_REGISTRY_PUBLISHER_TOKEN:-publisher-token-change-me}
+      SKILL_REGISTRY_NPM_REGISTRY_URL: ${SKILL_REGISTRY_NPM_REGISTRY_URL:-}
+      SKILL_REGISTRY_AUTH_TOKENS_JSON: ${SKILL_REGISTRY_AUTH_TOKENS_JSON:-}
+      SKILL_REGISTRY_ENABLE_SAMPLE_DATA: "false"
+      SKILL_REGISTRY_ENABLE_MOCK_REGISTRY: "false"
+
+volumes:
+  pg_data:
