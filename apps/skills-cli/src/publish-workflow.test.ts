@@ -143,6 +143,75 @@ describe('publish workflow', () => {
     }
   });
 
+  it('preserves packaging session warnings on successful publish results', async () => {
+    vi.mocked(spawnSync).mockReturnValueOnce({
+      status: 0,
+      stdout: 'published',
+      stderr: '',
+    } as ReturnType<typeof spawnSync>);
+
+    vi.mocked(runPackagingSession).mockResolvedValueOnce({
+      ok: true,
+      sessionKind: 'registry',
+      directory: testDir,
+      skillMdPath: join(testDir, 'SKILL.md'),
+      packageJsonPath: join(testDir, 'package.json'),
+      workspacePath: '/tmp/packaging/workspace',
+      idempotencyKey: 'packaging-session-key',
+      manifestDigest: 'sha256:validate',
+      publishRegistry: 'https://npm.example.com',
+      packageName: '@platform.skill/my-skill',
+      version: '1.2.0',
+      displayName: 'my-skill',
+      description: 'A valid skill',
+      components: [],
+      errors: [],
+      warnings: ['normalized_missing_capability_content'],
+    });
+
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            workspacePath: '/tmp/packaging/workspace',
+            bundlePath: '/tmp/packaging/workspace/platform.skill-my-skill-1.2.0.tgz',
+            packageName: '@platform.skill/my-skill',
+            version: '1.2.0',
+            manifestDigest: 'sha256:packed',
+            components: ['commands'],
+            warnings: [],
+            errors: [],
+            bundleBase64: Buffer.from('tgz-data').toString('base64'),
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      );
+
+    const result = await runPublishWorkflow({
+      path: testDir,
+      registry: 'https://catalog.example.com',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      packageName: '@platform.skill/my-skill',
+      version: '1.2.0',
+      bundlePath: expect.stringContaining('my-skill-1.2.0.tgz'),
+      warnings: ['normalized_missing_capability_content'],
+    });
+
+    if (result.ok) {
+      expect(existsSync(result.bundlePath)).toBe(true);
+      rmSync(dirname(result.bundlePath), { recursive: true, force: true });
+    }
+  });
+
   it('returns packaging session errors without calling pack or publish', async () => {
     vi.mocked(runPackagingSession).mockResolvedValueOnce({
       ok: false,

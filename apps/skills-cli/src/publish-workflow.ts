@@ -21,6 +21,7 @@ export interface PublishWorkflowSuccessResult {
   packageName: string;
   version: string;
   bundlePath: string;
+  warnings?: string[];
 }
 
 export interface PublishWorkflowFailureResult {
@@ -121,6 +122,7 @@ export async function runPublishWorkflow(
         packageName: session.packageName,
         version: session.version,
         bundlePath: bundle.bundlePath,
+        ...(session.warnings ? { warnings: session.warnings } : {}),
       };
     } finally {
       if (!retainBundleUntilExit) {
