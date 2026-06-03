@@ -71,17 +71,22 @@ describe('publish workflow', () => {
         new Response(
           JSON.stringify({
             workspacePath: '/tmp/packaging/workspace',
-            bundlePath: '/tmp/packaging/workspace/platform.skill-my-skill-1.2.0.tgz',
+            bundlePath: '/tmp/packaging/workspace/.dist/platform.skill-my-skill-1.2.0.tgz',
             packageName: '@platform.skill/my-skill',
             version: '1.2.0',
             manifestDigest: 'sha256:packed',
             components: ['commands'],
             warnings: [],
             errors: [],
-            bundleBase64: Buffer.from('tgz-data').toString('base64'),
           }),
           { status: 200, headers: { 'content-type': 'application/json' } }
         )
+      )
+      .mockResolvedValueOnce(
+        new Response(Buffer.from('tgz-data'), {
+          status: 200,
+          headers: { 'content-type': 'application/octet-stream' },
+        })
       )
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ ok: true }), {
@@ -106,11 +111,16 @@ describe('publish workflow', () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
+      'https://catalog.example.com/api/v1/skill-packaging/bundle?workspacePath=%2Ftmp%2Fpackaging%2Fworkspace&packageName=%40platform.skill%2Fmy-skill&version=1.2.0',
+      expect.objectContaining({ method: 'GET' })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
       'https://catalog.example.com/api/v1/skills/%40platform.skill%2Fmy-skill/versions/1.2.0/release-record',
       expect.objectContaining({ method: 'PUT' })
     );
     const packPayload = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
-    const releaseRecordPayload = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
+    const releaseRecordPayload = JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body));
     expect(packPayload).toMatchObject({
       idempotencyKey: 'packaging-session-key',
       workspacePath: '/tmp/packaging/workspace',
@@ -118,7 +128,7 @@ describe('publish workflow', () => {
         packageName: '@platform.skill/my-skill',
         version: '1.2.0',
       },
-      includeBundle: true,
+      includeBundle: false,
     });
     expect(releaseRecordPayload).toEqual({
       publishRegistry: 'https://npm.example.com',
@@ -143,6 +153,83 @@ describe('publish workflow', () => {
       packageName: '@platform.skill/my-skill',
       version: '1.2.0',
       bundlePath: publishCall?.[1]?.[1],
+    });
+    if (result.ok) {
+      expect(existsSync(result.bundlePath)).toBe(true);
+      rmSync(dirname(result.bundlePath), { recursive: true, force: true });
+    }
+  });
+
+  it('downloads the packed bundle when pack returns metadata only', async () => {
+    writeFileSync(join(testDir, '.npmrc'), '//npm.example.com/:_authToken=publish-token\n');
+    vi.mocked(spawnSync).mockReturnValueOnce({
+      status: 0,
+      stdout: 'published',
+      stderr: '',
+    } as ReturnType<typeof spawnSync>);
+
+    vi.mocked(runPackagingSession).mockResolvedValueOnce({
+      ok: true,
+      sessionKind: 'registry',
+      directory: testDir,
+      skillMdPath: join(testDir, 'SKILL.md'),
+      packageJsonPath: join(testDir, 'package.json'),
+      workspacePath: '/tmp/packaging/workspace',
+      idempotencyKey: 'packaging-session-key',
+      manifestDigest: 'sha256:validate',
+      publishRegistry: 'https://npm.example.com',
+      packageName: '@platform.skill/my-skill',
+      version: '1.2.0',
+      displayName: 'my-skill',
+      description: 'A valid skill',
+      components: [],
+      errors: [],
+    });
+
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            workspacePath: '/tmp/packaging/workspace',
+            bundlePath: '/tmp/packaging/workspace/.dist/platform.skill-my-skill-1.2.0.tgz',
+            packageName: '@platform.skill/my-skill',
+            version: '1.2.0',
+            manifestDigest: 'sha256:packed',
+            components: ['commands'],
+            warnings: [],
+            errors: [],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(Buffer.from('tgz-data'), {
+          status: 200,
+          headers: { 'content-type': 'application/octet-stream' },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      );
+
+    const result = await runPublishWorkflow({
+      path: testDir,
+      registry: 'https://catalog.example.com',
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'https://catalog.example.com/api/v1/skill-packaging/bundle?workspacePath=%2Ftmp%2Fpackaging%2Fworkspace&packageName=%40platform.skill%2Fmy-skill&version=1.2.0',
+      expect.objectContaining({ method: 'GET' })
+    );
+    expect(result).toEqual({
+      ok: true,
+      packageName: '@platform.skill/my-skill',
+      version: '1.2.0',
+      bundlePath: expect.stringContaining('my-skill-1.2.0.tgz'),
     });
     if (result.ok) {
       expect(existsSync(result.bundlePath)).toBe(true);

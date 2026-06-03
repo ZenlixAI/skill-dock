@@ -20,6 +20,7 @@ import type {
   ReleaseRecordResult,
   SkillDetail,
   SkillGovernanceChangeInput,
+  SkillsPage,
   SkillSummary,
   SkillVersionDetail,
   SkillVersionSummary,
@@ -287,6 +288,27 @@ function latestVersionSummary(packageName: string): SkillVersionSummary | undefi
   return versions[packageName]?.[0];
 }
 
+function paginateItems<T>(
+  items: T[],
+  options?: {
+    cursor?: string;
+    pageSize?: number;
+  }
+): SkillsPage<T> {
+  const pageSize = options?.pageSize ?? 10;
+  const startIndex = options?.cursor ? Number.parseInt(options.cursor, 10) || 0 : 0;
+  const pagedItems = items.slice(startIndex, startIndex + pageSize);
+  const nextIndex = startIndex + pagedItems.length;
+
+  return {
+    items: pagedItems,
+    pageInfo: {
+      hasNextPage: nextIndex < items.length,
+      nextCursor: nextIndex < items.length ? String(nextIndex) : null,
+    },
+  };
+}
+
 function buildInstallTarget(packageName: string, version?: string): InstallTarget {
   const resolvedVersion = version || latestVersionSummary(packageName)?.version || '1.2.0';
   const foundVersion =
@@ -374,7 +396,12 @@ export const mockClient: RegistryApiClient = {
       const matchesStatus = !filters?.status || skill.status === filters.status;
       return matchesQuery && matchesSource && matchesStatus && matchesRetired;
     });
-    return delay(filtered);
+    return delay(
+      paginateItems(filtered, {
+        cursor: filters?.cursor,
+        pageSize: filters?.pageSize ?? 12,
+      })
+    );
   },
 
   async listCuratedSkills() {
@@ -389,8 +416,13 @@ export const mockClient: RegistryApiClient = {
     });
   },
 
-  async getSkillVersions(packageName: string) {
-    return delay(versions[packageName] || versions['@platform.skill/pdf-skill']);
+  async getSkillVersions(packageName: string, options?: { cursor?: string; pageSize?: number }) {
+    return delay(
+      paginateItems(versions[packageName] || versions['@platform.skill/pdf-skill'], {
+        cursor: options?.cursor,
+        pageSize: options?.pageSize ?? 20,
+      })
+    );
   },
 
   async getInstallTarget(packageName: string, version?: string) {
@@ -414,7 +446,12 @@ export const mockClient: RegistryApiClient = {
       }
       return true;
     });
-    return delay(filtered);
+    return delay(
+      paginateItems(filtered, {
+        cursor: filters?.cursor,
+        pageSize: filters?.pageSize ?? 10,
+      })
+    );
   },
 
   async listAuditEvents(filters?: ListAuditFilters) {
@@ -439,7 +476,12 @@ export const mockClient: RegistryApiClient = {
       }
       return true;
     });
-    return delay(filtered);
+    return delay(
+      paginateItems(filtered, {
+        cursor: filters?.cursor,
+        pageSize: filters?.pageSize ?? 10,
+      })
+    );
   },
 
   async preparePackaging(request: PackagingPrepareRequest) {
@@ -543,6 +585,28 @@ export const mockClient: RegistryApiClient = {
       },
     });
     return delay(response);
+  },
+
+  async cleanupPackagingWorkspace(request) {
+    recordAudit({
+      action: 'packaging.cleanup',
+      actor: 'web-ui',
+      role: 'publisher',
+      authMechanism: 'mock',
+      authDecision: 'allowed',
+      endpoint: '/api/v1/skill-packaging/cleanup',
+      method: 'POST',
+      packageName: '',
+      outcome: 'succeeded',
+      statusCode: 200,
+      details: {
+        workspacePath: request.workspacePath,
+      },
+    });
+    return delay({
+      workspacePath: request.workspacePath,
+      removed: true,
+    });
   },
 
   async createReleaseRecord(packageName: string, version: string, input: ReleaseRecordInput) {

@@ -272,6 +272,9 @@ make build-web
 - 读接口已接 Catalog API
 - 写接口已接 packaging prepare/validate/pack、release-record、skill/version governance
 - `Import & Package` 的 `pack` 结果现在可以直接 handoff 到 `/skills/:packageName/versions/:version` 的 release review 表单
+- `pack` 默认走 metadata-only 响应；CLI publish 会改用 `GET /api/v1/skill-packaging/bundle` 下载 tarball，而不是长期依赖 inline `bundleBase64`
+- 新增 `POST /api/v1/skill-packaging/cleanup`，`Import & Package` 页可以显式丢弃临时 workspace；遗留 `skill-packaging-*` workspace 也会按 TTL 清理
+- Catalog / Governance / Audit 列表页不再静默截断到第一页，前端会保留 `pageInfo` 并显式提供 `Load more`
 - 新增 `/authoring` 作为更上层 platform / authoring 入口页，用来承接 import -> release review -> governance / audit 的作者流
 - UI 设计规格见 [docs/superpowers/specs/2026-06-02-registry-web-ui-design.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/superpowers/specs/2026-06-02-registry-web-ui-design.zh-CN.md)
 - 前端实施计划见 [docs/superpowers/plans/2026-06-02-registry-web-ui-implementation-plan.md](/Users/ultraman/workspace/skill_registry/docs/superpowers/plans/2026-06-02-registry-web-ui-implementation-plan.md)

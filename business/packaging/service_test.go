@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"skill_registry/business/catalog"
 )
@@ -366,6 +367,110 @@ func TestPackReturnsValidationErrorsWithoutCreatingBundle(t *testing.T) {
 	}
 	if packResp.BundleBase64 != "" {
 		t.Fatalf("expected no bundle payload on validation failure, got %q", packResp.BundleBase64)
+	}
+}
+
+func TestPackWritesBundleInsideWorkspace(t *testing.T) {
+	service := NewService(t.TempDir())
+
+	prepareResp, err := service.Prepare(PrepareRequest{
+		Source: Source{
+			Type: "platform_authoring",
+			Files: map[string]string{
+				"docs/README.md": "# Capability\n",
+			},
+		},
+		Target:   Target{PackageName: "@platform.skill/review-helper", Version: "1.2.3"},
+		Metadata: Metadata{DisplayName: "review-helper", Description: "Review helper skill", SourceType: "platform_authoring"},
+	})
+	if err != nil {
+		t.Fatalf("prepare returned error: %v", err)
+	}
+
+	packResp, err := service.Pack(PackRequest{
+		WorkspacePath: prepareResp.WorkspacePath,
+		Target:        Target{PackageName: "@platform.skill/review-helper", Version: "1.2.3"},
+	})
+	if err != nil {
+		t.Fatalf("pack returned error: %v", err)
+	}
+
+	relativeBundlePath, err := filepath.Rel(prepareResp.WorkspacePath, packResp.BundlePath)
+	if err != nil {
+		t.Fatalf("bundle relative path: %v", err)
+	}
+	if strings.HasPrefix(relativeBundlePath, "..") {
+		t.Fatalf("expected bundle path %q to live under workspace %q", packResp.BundlePath, prepareResp.WorkspacePath)
+	}
+}
+
+func TestCleanupRemovesWorkspaceAndBundle(t *testing.T) {
+	service := NewService(t.TempDir())
+
+	prepareResp, err := service.Prepare(PrepareRequest{
+		Source: Source{
+			Type: "platform_authoring",
+			Files: map[string]string{
+				"docs/README.md": "# Capability\n",
+			},
+		},
+		Target:   Target{PackageName: "@platform.skill/review-helper", Version: "1.2.3"},
+		Metadata: Metadata{DisplayName: "review-helper", Description: "Review helper skill", SourceType: "platform_authoring"},
+	})
+	if err != nil {
+		t.Fatalf("prepare returned error: %v", err)
+	}
+
+	packResp, err := service.Pack(PackRequest{
+		WorkspacePath: prepareResp.WorkspacePath,
+		Target:        Target{PackageName: "@platform.skill/review-helper", Version: "1.2.3"},
+	})
+	if err != nil {
+		t.Fatalf("pack returned error: %v", err)
+	}
+
+	if err := service.Cleanup(prepareResp.WorkspacePath); err != nil {
+		t.Fatalf("cleanup returned error: %v", err)
+	}
+
+	if _, err := os.Stat(prepareResp.WorkspacePath); !os.IsNotExist(err) {
+		t.Fatalf("expected workspace to be removed, got err=%v", err)
+	}
+	if _, err := os.Stat(packResp.BundlePath); !os.IsNotExist(err) {
+		t.Fatalf("expected bundle to be removed, got err=%v", err)
+	}
+}
+
+func TestCleanupExpiredWorkspaces(t *testing.T) {
+	tempRoot := t.TempDir()
+	service := NewService(tempRoot)
+
+	expiredWorkspace := filepath.Join(tempRoot, "skill-packaging-expired")
+	freshWorkspace := filepath.Join(tempRoot, "skill-packaging-fresh")
+	otherDirectory := filepath.Join(tempRoot, "other-directory")
+	for _, dir := range []string{expiredWorkspace, freshWorkspace, otherDirectory} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+
+	oldTimestamp := time.Now().Add(-2 * time.Hour)
+	if err := os.Chtimes(expiredWorkspace, oldTimestamp, oldTimestamp); err != nil {
+		t.Fatalf("chtimes expired workspace: %v", err)
+	}
+
+	if err := service.PruneExpiredWorkspaces(1 * time.Hour); err != nil {
+		t.Fatalf("prune expired workspaces: %v", err)
+	}
+
+	if _, err := os.Stat(expiredWorkspace); !os.IsNotExist(err) {
+		t.Fatalf("expected expired workspace to be removed, got err=%v", err)
+	}
+	if _, err := os.Stat(freshWorkspace); err != nil {
+		t.Fatalf("expected fresh workspace to remain, got err=%v", err)
+	}
+	if _, err := os.Stat(otherDirectory); err != nil {
+		t.Fatalf("expected non-packaging directory to remain, got err=%v", err)
 	}
 }
 

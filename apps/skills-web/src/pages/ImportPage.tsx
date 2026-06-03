@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  cleanupPackagingWorkspace,
   packSkill,
   preparePackaging,
   validatePackaging,
@@ -41,7 +42,7 @@ const steps = [
 type ReviewData = PackagingPrepareResponse | PackagingValidateResponse | PackagingPackResponse;
 type ImportLogEntry = {
   id: string;
-  step: 'prepare' | 'validate' | 'pack';
+  step: 'prepare' | 'validate' | 'pack' | 'cleanup';
   outcome: 'succeeded' | 'failed';
   summary: string;
 };
@@ -91,9 +92,9 @@ export function ImportPage() {
   const [metadataSourceType, setMetadataSourceType] = useState('imported');
   const [publishRegistry, setPublishRegistry] = useState('https://npm.internal.example.com');
   const [strictMode, setStrictMode] = useState(false);
-  const [includeBundle, setIncludeBundle] = useState(true);
+  const [includeBundle, setIncludeBundle] = useState(false);
   const [operationState, setOperationState] = useState<{
-    loading: false | 'prepare' | 'validate' | 'pack';
+    loading: false | 'prepare' | 'validate' | 'pack' | 'cleanup';
     error: string | null;
     success: string | null;
   }>({
@@ -138,6 +139,7 @@ export function ImportPage() {
     : null;
   const canValidate = Boolean(prepareResult?.workspacePath) && operationState.loading === false;
   const canPack = Boolean(validateResult?.ok) && operationState.loading === false;
+  const canCleanup = Boolean(prepareResult?.workspacePath) && operationState.loading === false;
 
   function appendLog(step: ImportLogEntry['step'], outcome: ImportLogEntry['outcome'], summary: string) {
     setActivityLog((current) => [
@@ -283,6 +285,44 @@ export function ImportPage() {
       appendLog('pack', 'succeeded', `Packed bundle ${response.bundlePath}.`);
     } catch (error: unknown) {
       appendLog('pack', 'failed', error instanceof Error ? error.message : String(error));
+      setOperationState({
+        loading: false,
+        error: error instanceof Error ? error.message : String(error),
+        success: null,
+      });
+    }
+  }
+
+  async function handleCleanup() {
+    const workspacePath = packResult?.workspacePath || validateResult?.workspacePath || prepareResult?.workspacePath;
+    if (!workspacePath) {
+      setOperationState({
+        loading: false,
+        error: '没有可清理的 workspace。',
+        success: null,
+      });
+      return;
+    }
+
+    setOperationState({
+      loading: 'cleanup',
+      error: null,
+      success: null,
+    });
+
+    try {
+      await cleanupPackagingWorkspace({ workspacePath });
+      setPrepareResult(null);
+      setValidateResult(null);
+      setPackResult(null);
+      setOperationState({
+        loading: false,
+        error: null,
+        success: 'workspace 已清理，当前 packaging session 已重置。',
+      });
+      appendLog('cleanup', 'succeeded', `Removed workspace ${workspacePath}.`);
+    } catch (error: unknown) {
+      appendLog('cleanup', 'failed', error instanceof Error ? error.message : String(error));
       setOperationState({
         loading: false,
         error: error instanceof Error ? error.message : String(error),
@@ -453,6 +493,14 @@ export function ImportPage() {
                 type="button"
               >
                 {operationState.loading === 'pack' ? 'Packing…' : 'Pack'}
+              </button>
+              <button
+                className="button button--secondary"
+                disabled={!canCleanup}
+                onClick={() => void handleCleanup()}
+                type="button"
+              >
+                {operationState.loading === 'cleanup' ? 'Cleaning…' : 'Discard workspace'}
               </button>
             </div>
           </div>

@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { basename, join, resolve } from 'path';
 import {
+  downloadPackedBundle,
   getRegistryBaseUrl,
   packSkillPackaging,
   type PackagingImportReport,
@@ -41,23 +42,38 @@ interface PackedSkill {
   cleanup: () => void;
 }
 
-function materializePackedBundle(packed: PackPackagingResponse): PackedSkill {
-  if (!packed.bundleBase64) {
-    throw new Error('packaging API did not return bundle content');
-  }
-
+function writePackedBundleToTemp(packed: PackPackagingResponse, bundleContent: Buffer): PackedSkill {
   const tempDir = mkdtempSync(join(tmpdir(), 'skills-publish-'));
   const bundleName =
     basename(packed.bundlePath) ||
     `${packed.packageName.replace(/^@/, '').replace(/\//g, '-')}-${packed.version}.tgz`;
   const bundlePath = join(tempDir, bundleName);
 
-  writeFileSync(bundlePath, Buffer.from(packed.bundleBase64, 'base64'));
+  writeFileSync(bundlePath, bundleContent);
 
   return {
     bundlePath,
     cleanup: () => rmSync(tempDir, { recursive: true, force: true }),
   };
+}
+
+async function materializePackedBundle(
+  packed: PackPackagingResponse,
+  registry: string
+): Promise<PackedSkill> {
+  if (packed.bundleBase64) {
+    return writePackedBundleToTemp(packed, Buffer.from(packed.bundleBase64, 'base64'));
+  }
+
+  const bundleContent = await downloadPackedBundle({
+    registry,
+    workspacePath: packed.workspacePath,
+    target: {
+      packageName: packed.packageName,
+      version: packed.version,
+    },
+  });
+  return writePackedBundleToTemp(packed, bundleContent);
 }
 
 function publishBundle(directory: string, bundlePath: string): void {
@@ -107,13 +123,13 @@ export async function runPublishWorkflow(
         packageName: session.packageName,
         version: session.version,
       },
-      includeBundle: true,
+      includeBundle: false,
     });
     if (packed.errors.length > 0) {
       return failure(packed.errors);
     }
 
-    const bundle = materializePackedBundle(packed);
+    const bundle = await materializePackedBundle(packed, registry);
     let retainBundleUntilExit = false;
     try {
       publishBundle(directory, bundle.bundlePath);

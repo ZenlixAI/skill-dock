@@ -415,8 +415,8 @@ export function VersionDetailPage() {
 
         <SurfaceCard title="Applied Governance" description="写入后直接在右侧回看当前版本治理记录。">
           <div className="list-stack">
-            {governance.data?.length ? (
-              governance.data.map((item) => (
+            {governance.data?.items.length ? (
+              governance.data.items.map((item) => (
                 <article className="list-card" key={item.id}>
                   <div className="list-card__head">
                     <div>
@@ -437,6 +437,9 @@ export function VersionDetailPage() {
               <div className="empty-box">No governance events for this version yet.</div>
             )}
           </div>
+          {governance.data?.pageInfo.hasNextPage ? (
+            <p className="support-copy">这里只展示第一页 version governance；完整时间线请到 Governance 页面继续翻页。</p>
+          ) : null}
         </SurfaceCard>
       </div>
     </div>

@@ -5,7 +5,7 @@ import type { CatalogSourceType, SkillStatus } from '../api/types';
 import { SectionHeading } from '../components/SectionHeading';
 import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
-import { useAsyncData } from '../lib/useAsyncData';
+import { usePaginatedCollection } from '../lib/usePaginatedCollection';
 
 export function CatalogPage() {
   const [query, setQuery] = useState('');
@@ -13,16 +13,21 @@ export function CatalogPage() {
   const [status, setStatus] = useState<SkillStatus | ''>('');
   const deferredQuery = useDeferredValue(query);
 
-  const skills = useAsyncData(
-    () =>
+  const skills = usePaginatedCollection({
+    loader: (filters) =>
       listSkills({
+        ...filters,
         query: deferredQuery,
         sourceType,
         status,
+        pageSize: 12,
       }),
-    [deferredQuery, sourceType, status]
-  );
-  const resultItems = skills.data || [];
+    filters: {
+      cursor: undefined,
+    },
+    deps: [deferredQuery, sourceType, status],
+  });
+  const resultItems = skills.items;
   const activeCount = resultItems.filter((item) => item.status === 'active').length;
   const retiredCount = resultItems.filter((item) => item.status === 'retired').length;
   const importedCount = resultItems.filter((item) => item.sourceType === 'imported').length;
@@ -46,7 +51,7 @@ export function CatalogPage() {
             <StatusPill tone="accent">query {deferredQuery || 'all'}</StatusPill>
             <StatusPill>{sourceType || 'all sources'}</StatusPill>
             <StatusPill tone={status === 'retired' ? 'bad' : status === 'active' ? 'good' : undefined}>{status || 'all states'}</StatusPill>
-            <StatusPill tone="good">{resultItems.length} results</StatusPill>
+            <StatusPill tone="good">{resultItems.length} shown</StatusPill>
           </div>
         </div>
       </SurfaceCard>
@@ -153,6 +158,24 @@ export function CatalogPage() {
               <div className="empty-box">No skills matched the current filters.</div>
             ) : null}
           </div>
+
+          {!skills.loading && !skills.error ? (
+            <div className="action-row">
+              <div className="action-row__copy">
+                <strong>Pagination</strong>
+                <p>
+                  {skills.pageInfo.hasNextPage
+                    ? `当前只展示前 ${resultItems.length} 条结果，后面还有更多。`
+                    : `当前结果集已完整展示，共 ${resultItems.length} 条。`}
+                </p>
+              </div>
+              {skills.pageInfo.hasNextPage ? (
+                <button className="button button--secondary" disabled={skills.loadingMore} onClick={skills.loadMore} type="button">
+                  {skills.loadingMore ? 'Loading…' : 'Load more'}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </SurfaceCard>
       </div>
     </div>

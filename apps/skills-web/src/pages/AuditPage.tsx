@@ -4,8 +4,8 @@ import type { AuditEventRecord } from '../api/types';
 import { SectionHeading } from '../components/SectionHeading';
 import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
-import { useAsyncData } from '../lib/useAsyncData';
 import { formatDate } from '../lib/format';
+import { usePaginatedCollection } from '../lib/usePaginatedCollection';
 
 type AuditLayer = {
   key: string;
@@ -47,18 +47,23 @@ export function AuditPage() {
   const [outcome, setOutcome] = useState('');
   const [authDecision, setAuthDecision] = useState('');
 
-  const audit = useAsyncData(
-    () =>
+  const audit = usePaginatedCollection({
+    loader: (filters) =>
       listAuditEvents({
+        ...filters,
         packageName: packageName.trim() || undefined,
         actor: actor.trim() || undefined,
         outcome: outcome || undefined,
         authDecision: authDecision || undefined,
+        pageSize: 10,
       }),
-    [packageName, actor, outcome, authDecision]
-  );
+    filters: {
+      cursor: undefined,
+    },
+    deps: [packageName, actor, outcome, authDecision],
+  });
 
-  const items = useMemo(() => audit.data || [], [audit.data]);
+  const items = useMemo(() => audit.items, [audit.items]);
   const layers = buildAuditLayers(items);
   const deniedCount = items.filter((item) => item.authDecision === 'denied').length;
   const failedCount = items.filter((item) => item.outcome !== 'succeeded').length;
@@ -181,6 +186,24 @@ export function AuditPage() {
               </div>
             </SurfaceCard>
           ))}
+
+          {!audit.loading && !audit.error ? (
+            <SurfaceCard
+              description={
+                audit.pageInfo.hasNextPage
+                  ? `当前只展示前 ${items.length} 条审计记录，后面还有更多 trace。`
+                  : `当前审计结果集已完整展示，共 ${items.length} 条。`
+              }
+              title="Pagination"
+              variant="rail"
+            >
+              {audit.pageInfo.hasNextPage ? (
+                <button className="button button--secondary" disabled={audit.loadingMore} onClick={audit.loadMore} type="button">
+                  {audit.loadingMore ? 'Loading…' : 'Load more'}
+                </button>
+              ) : null}
+            </SurfaceCard>
+          ) : null}
         </div>
       </div>
     </div>

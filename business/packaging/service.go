@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"skill_registry/business/catalog"
 )
@@ -27,19 +28,28 @@ const requiredPackageScope = "@platform.skill/"
 const importReportPath = ".skill-packaging-import-report.json"
 
 type Service struct {
-	tempRoot string
+	tempRoot     string
+	workspaceTTL time.Duration
 }
 
 func NewService(tempRoot string) *Service {
 	if strings.TrimSpace(tempRoot) == "" {
 		tempRoot = os.TempDir()
 	}
-	return &Service{tempRoot: tempRoot}
+	return &Service{
+		tempRoot:     tempRoot,
+		workspaceTTL: 24 * time.Hour,
+	}
 }
 
 func (s *Service) Prepare(input PrepareRequest) (PrepareResponse, error) {
 	if err := validateTarget(input.Target); err != nil {
 		return PrepareResponse{}, err
+	}
+	if s.workspaceTTL > 0 {
+		if err := s.PruneExpiredWorkspaces(s.workspaceTTL); err != nil {
+			return PrepareResponse{}, catalog.NewError(500, "internal_error", "Failed to prune expired packaging workspaces.", nil)
+		}
 	}
 
 	workspacePath, err := os.MkdirTemp(s.tempRoot, "skill-packaging-*")
@@ -150,7 +160,14 @@ func (s *Service) Pack(input PackRequest) (PackResponse, error) {
 		}, nil
 	}
 
-	bundlePath := filepath.Join(filepath.Dir(input.WorkspacePath), packageBasename(input.Target.PackageName)+"-"+input.Target.Version+".tgz")
+	bundlePath, err := s.BundlePath(input.WorkspacePath, input.Target)
+	if err != nil {
+		return PackResponse{}, err
+	}
+	bundleDir := filepath.Dir(bundlePath)
+	if err := os.MkdirAll(bundleDir, 0o755); err != nil {
+		return PackResponse{}, catalog.NewError(500, "internal_error", "Failed to create bundle output directory.", nil)
+	}
 	if err := createBundleArchive(input.WorkspacePath, bundlePath); err != nil {
 		return PackResponse{}, catalog.NewError(500, "internal_error", "Failed to create bundle archive.", nil)
 	}
@@ -177,6 +194,57 @@ func (s *Service) Pack(input PackRequest) (PackResponse, error) {
 		ImportReport:   readImportReport(input.WorkspacePath, result.Warnings),
 		Errors:         result.Errors,
 	}, nil
+}
+
+func (s *Service) Cleanup(workspacePath string) error {
+	if !s.managesWorkspace(workspacePath) {
+		return catalog.NewError(422, "invalid_request", "workspacePath must reference a managed packaging workspace.", map[string]any{"workspacePath": workspacePath})
+	}
+	if err := os.RemoveAll(workspacePath); err != nil {
+		return catalog.NewError(500, "internal_error", "Failed to remove packaging workspace.", nil)
+	}
+	return nil
+}
+
+func (s *Service) BundlePath(workspacePath string, target Target) (string, error) {
+	if err := validateTarget(target); err != nil {
+		return "", err
+	}
+	if !s.managesWorkspace(workspacePath) {
+		return "", catalog.NewError(422, "invalid_request", "workspacePath must reference a managed packaging workspace.", map[string]any{"workspacePath": workspacePath})
+	}
+	return filepath.Join(workspacePath, ".dist", packageBasename(target.PackageName)+"-"+target.Version+".tgz"), nil
+}
+
+func (s *Service) PruneExpiredWorkspaces(ttl time.Duration) error {
+	if ttl <= 0 {
+		return nil
+	}
+
+	entries, err := os.ReadDir(s.tempRoot)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	cutoff := time.Now().Add(-ttl)
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), "skill-packaging-") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if info.ModTime().Before(cutoff) {
+			if err := os.RemoveAll(filepath.Join(s.tempRoot, entry.Name())); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 type validationResult struct {
@@ -650,6 +718,16 @@ func validatePackageJSON(content []byte, expectedPackageName string, expectedVer
 func packageBasename(packageName string) string {
 	parts := strings.Split(packageName, "/")
 	return parts[len(parts)-1]
+}
+
+func (s *Service) managesWorkspace(workspacePath string) bool {
+	cleanWorkspacePath := filepath.Clean(workspacePath)
+	relativePath, err := filepath.Rel(s.tempRoot, cleanWorkspacePath)
+	if err != nil || relativePath == "." || strings.HasPrefix(relativePath, "..") {
+		return false
+	}
+	firstSegment := strings.Split(filepath.ToSlash(relativePath), "/")[0]
+	return strings.HasPrefix(firstSegment, "skill-packaging-")
 }
 
 func prepareGitSource(tempRoot string, source Source, workspacePath string) error {

@@ -411,8 +411,15 @@ npx skills publish ./my-skill --registry https://catalog.example.com
 
 1. 运行 packaging session
 2. 调用 `POST /api/v1/skill-packaging/pack`
-3. 本地 `npm publish <bundle>`
-4. 调用 `PUT /api/v1/skills/{packageName}/versions/{version}/release-record`
+3. 如果 `pack` 默认只返回 metadata，则再调用 `GET /api/v1/skill-packaging/bundle` 下载 tarball
+4. 本地 `npm publish <bundle>`
+5. 调用 `PUT /api/v1/skills/{packageName}/versions/{version}/release-record`
+
+补充说明：
+
+- `pack` 的默认稳态响应现在应视为 metadata-only；只有显式要求时才返回 inline `bundleBase64`
+- `includeBundle=true` 兼容路径不再进入常规 idempotency cache / SQL `response_body`，避免把 tarball 级 payload 长期持久化
+- packaging workspace 现在可通过 `POST /api/v1/skill-packaging/cleanup` 显式回收，遗留 `skill-packaging-*` 目录也会按 TTL 自动清理
 
 这意味着发布方还要自己准备 npm publish 凭据，例如：
 

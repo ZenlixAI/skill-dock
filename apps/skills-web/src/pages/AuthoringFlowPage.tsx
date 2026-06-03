@@ -11,9 +11,9 @@ export function AuthoringFlowPage() {
   const handoff = readReleaseHandoff(searchParams);
   const hasHandoff = Boolean(handoff.manifestDigest || handoff.bundlePath || handoff.workspacePath);
 
-  const skills = useAsyncData(() => listSkills({ includeRetired: true }), []);
-  const governance = useAsyncData(() => listGovernanceChanges(), []);
-  const audit = useAsyncData(() => listAuditEvents(), []);
+  const skills = useAsyncData(() => listSkills({ includeRetired: true, pageSize: 8 }), []);
+  const governance = useAsyncData(() => listGovernanceChanges({ pageSize: 8 }), []);
+  const audit = useAsyncData(() => listAuditEvents({ pageSize: 8 }), []);
 
   const releaseTarget =
     handoff.packageName && handoff.version
@@ -49,19 +49,19 @@ export function AuthoringFlowPage() {
 
       <div className="metric-grid">
         <div className="metric-card">
-          <strong>{skills.data?.length || '—'}</strong>
+          <strong>{skills.data?.items.length || '—'}</strong>
           <span>Registry packages</span>
         </div>
         <div className="metric-card">
-          <strong>{audit.data?.filter((item) => item.action.startsWith('packaging.')).length || '—'}</strong>
+          <strong>{audit.data?.items.filter((item) => item.action.startsWith('packaging.')).length || '—'}</strong>
           <span>Packaging actions</span>
         </div>
         <div className="metric-card">
-          <strong>{audit.data?.filter((item) => item.action === 'release.record').length || '—'}</strong>
+          <strong>{audit.data?.items.filter((item) => item.action === 'release.record').length || '—'}</strong>
           <span>Release records</span>
         </div>
         <div className="metric-card">
-          <strong>{governance.data?.length || '—'}</strong>
+          <strong>{governance.data?.items.length || '—'}</strong>
           <span>Governance changes</span>
         </div>
       </div>

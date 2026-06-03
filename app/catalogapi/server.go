@@ -112,6 +112,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/api/v1/skill-packaging/prepare", s.requireAction(s.handlePackagingPrepare, auth.ActionPackagingPrepare))
 	mux.Handle("/api/v1/skill-packaging/validate", s.requireAction(s.handlePackagingValidate, auth.ActionPackagingValidate))
 	mux.Handle("/api/v1/skill-packaging/pack", s.requireAction(s.handlePackagingPack, auth.ActionPackagingPack))
+	mux.Handle("/api/v1/skill-packaging/cleanup", s.requireAction(s.handlePackagingCleanup, auth.ActionPackagingPack))
+	mux.Handle("/api/v1/skill-packaging/bundle", s.requireAction(s.handlePackagingBundleDownload, auth.ActionPackagingPack))
 	if !s.disableMockRegistry {
 		mux.Handle("/mock-npm/", http.HandlerFunc(s.handleMockRegistry))
 	}
@@ -575,13 +577,13 @@ func (s *Server) handleInstallTarget(writer http.ResponseWriter, request *http.R
 }
 
 func (s *Server) handlePackagingPrepare(writer http.ResponseWriter, request *http.Request) {
-	handlePackagingRequest(s, writer, request, "prepare", func(payload packaging.PrepareRequest) (any, error) {
+	handlePackagingRequest(s, writer, request, "prepare", nil, func(payload packaging.PrepareRequest) (any, error) {
 		return s.packaging.Prepare(payload)
 	})
 }
 
 func (s *Server) handlePackagingValidate(writer http.ResponseWriter, request *http.Request) {
-	handlePackagingRequest(s, writer, request, "validate", func(payload packaging.ValidateRequest) (any, error) {
+	handlePackagingRequest(s, writer, request, "validate", nil, func(payload packaging.ValidateRequest) (any, error) {
 		return s.packaging.Validate(payload)
 	})
 }
@@ -591,9 +593,105 @@ func (s *Server) handlePackagingPack(writer http.ResponseWriter, request *http.R
 		http.NotFound(writer, request)
 		return
 	}
-	handlePackagingRequest(s, writer, request, "pack", func(payload packaging.PackRequest) (any, error) {
+	handlePackagingRequest(s, writer, request, "pack", func(payload packaging.PackRequest) bool {
+		return !payload.IncludeBundle
+	}, func(payload packaging.PackRequest) (any, error) {
 		return s.packaging.Pack(payload)
 	})
+}
+
+func (s *Server) handlePackagingCleanup(writer http.ResponseWriter, request *http.Request) {
+	if s.packaging == nil {
+		http.NotFound(writer, request)
+		return
+	}
+
+	var payload packaging.CleanupRequest
+	if err := decodeJSONBody(request, &payload); err != nil {
+		s.recordMutationAudit(request, "packaging.cleanup", "", "", err.Status, "failed", map[string]any{
+			"errorCode": err.Code,
+		})
+		writeCatalogError(writer, request, err)
+		return
+	}
+
+	if strings.TrimSpace(payload.WorkspacePath) == "" {
+		err := catalog.NewError(422, "invalid_request", "workspacePath is required.", nil)
+		s.recordMutationAudit(request, "packaging.cleanup", "", "", err.Status, "failed", map[string]any{
+			"errorCode": err.Code,
+		})
+		writeCatalogError(writer, request, err)
+		return
+	}
+
+	if err := s.packaging.Cleanup(payload.WorkspacePath); err != nil {
+		s.recordMutationAudit(request, "packaging.cleanup", "", "", statusFromError(err), "failed", map[string]any{
+			"errorCode": errorCodeFromError(err),
+		})
+		writeCatalogError(writer, request, err)
+		return
+	}
+
+	s.recordMutationAudit(request, "packaging.cleanup", "", "", http.StatusOK, "succeeded", map[string]any{
+		"workspacePath": payload.WorkspacePath,
+	})
+	writeJSON(writer, http.StatusOK, packaging.CleanupResponse{
+		WorkspacePath: payload.WorkspacePath,
+		Removed:       true,
+	})
+}
+
+func (s *Server) handlePackagingBundleDownload(writer http.ResponseWriter, request *http.Request) {
+	if s.packaging == nil {
+		http.NotFound(writer, request)
+		return
+	}
+
+	workspacePath := strings.TrimSpace(request.URL.Query().Get("workspacePath"))
+	packageName := strings.TrimSpace(request.URL.Query().Get("packageName"))
+	version := strings.TrimSpace(request.URL.Query().Get("version"))
+	if workspacePath == "" || packageName == "" || version == "" {
+		err := catalog.NewError(422, "invalid_request", "workspacePath, packageName, and version are required.", nil)
+		s.recordMutationAudit(request, "packaging.bundle.download", packageName, version, err.Status, "failed", map[string]any{
+			"errorCode": err.Code,
+		})
+		writeCatalogError(writer, request, err)
+		return
+	}
+	if !s.authorizePackageAccess(writer, request, packageName) {
+		return
+	}
+
+	bundlePath, err := s.packaging.BundlePath(workspacePath, packaging.Target{
+		PackageName: packageName,
+		Version:     version,
+	})
+	if err != nil {
+		s.recordMutationAudit(request, "packaging.bundle.download", packageName, version, statusFromError(err), "failed", map[string]any{
+			"errorCode": errorCodeFromError(err),
+		})
+		writeCatalogError(writer, request, err)
+		return
+	}
+
+	content, readErr := os.ReadFile(bundlePath)
+	if readErr != nil {
+		err := catalog.NewError(404, "bundle_not_found", "Bundle archive does not exist for the requested workspace.", map[string]any{
+			"workspacePath": workspacePath,
+			"packageName":   packageName,
+			"version":       version,
+		})
+		s.recordMutationAudit(request, "packaging.bundle.download", packageName, version, err.Status, "failed", map[string]any{
+			"errorCode": err.Code,
+		})
+		writeCatalogError(writer, request, err)
+		return
+	}
+
+	s.recordMutationAudit(request, "packaging.bundle.download", packageName, version, http.StatusOK, "succeeded", nil)
+	writer.Header().Set("Content-Type", "application/octet-stream")
+	writer.WriteHeader(http.StatusOK)
+	_, _ = writer.Write(content)
 }
 
 func (s *Server) handleReleaseRecord(writer http.ResponseWriter, request *http.Request, packageName string, versionPath string) {
@@ -961,7 +1059,7 @@ func mockRegistryBaseURL(request *http.Request) string {
 	return scheme + "://" + host + "/mock-npm"
 }
 
-func handlePackagingRequest[T interface{ GetIdempotencyKey() string }](s *Server, writer http.ResponseWriter, request *http.Request, endpoint string, execute func(T) (any, error)) {
+func handlePackagingRequest[T interface{ GetIdempotencyKey() string }](s *Server, writer http.ResponseWriter, request *http.Request, endpoint string, shouldCache func(T) bool, execute func(T) (any, error)) {
 	if s.packaging == nil {
 		http.NotFound(writer, request)
 		return
@@ -988,24 +1086,27 @@ func handlePackagingRequest[T interface{ GetIdempotencyKey() string }](s *Server
 	}
 
 	idempotencyKey := payload.GetIdempotencyKey()
+	cacheAllowed := shouldCache == nil || shouldCache(payload)
 	requestHash, hashErr := hashRequestPayload(payload)
 	if hashErr != nil {
 		writeCatalogError(writer, request, catalog.NewError(500, "internal_error", "Internal server error.", nil))
 		return
 	}
-	if cachedBody, cachedStatus, cacheErr, found := s.lookupCachedPackagingResponse(endpoint, auth.RoleFromContext(request.Context()), idempotencyKey, requestHash); found {
-		if cacheErr != nil {
-			s.recordMutationAudit(request, "packaging."+endpoint, packageNameFromPayload(payload), versionFromPayload(payload), cacheErr.Status, "failed", map[string]any{
-				"errorCode": cacheErr.Code,
+	if cacheAllowed {
+		if cachedBody, cachedStatus, cacheErr, found := s.lookupCachedPackagingResponse(endpoint, auth.RoleFromContext(request.Context()), idempotencyKey, requestHash); found {
+			if cacheErr != nil {
+				s.recordMutationAudit(request, "packaging."+endpoint, packageNameFromPayload(payload), versionFromPayload(payload), cacheErr.Status, "failed", map[string]any{
+					"errorCode": cacheErr.Code,
+				})
+				writeCatalogError(writer, request, cacheErr)
+				return
+			}
+			s.recordMutationAudit(request, "packaging."+endpoint, packageNameFromPayload(payload), versionFromPayload(payload), cachedStatus, "succeeded", map[string]any{
+				"idempotentReplay": true,
 			})
-			writeCatalogError(writer, request, cacheErr)
+			writeJSONBytes(writer, cachedStatus, cachedBody)
 			return
 		}
-		s.recordMutationAudit(request, "packaging."+endpoint, packageNameFromPayload(payload), versionFromPayload(payload), cachedStatus, "succeeded", map[string]any{
-			"idempotentReplay": true,
-		})
-		writeJSONBytes(writer, cachedStatus, cachedBody)
-		return
 	}
 
 	response, err := execute(payload)
@@ -1019,6 +1120,13 @@ func handlePackagingRequest[T interface{ GetIdempotencyKey() string }](s *Server
 
 	if strings.TrimSpace(idempotencyKey) == "" {
 		s.recordMutationAudit(request, "packaging."+endpoint, packageNameFromPayload(payload), versionFromPayload(payload), http.StatusOK, "succeeded", nil)
+		writeJSON(writer, http.StatusOK, response)
+		return
+	}
+	if !cacheAllowed {
+		s.recordMutationAudit(request, "packaging."+endpoint, packageNameFromPayload(payload), versionFromPayload(payload), http.StatusOK, "succeeded", map[string]any{
+			"idempotencyBypassed": true,
+		})
 		writeJSON(writer, http.StatusOK, response)
 		return
 	}

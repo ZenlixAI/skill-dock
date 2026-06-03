@@ -3,6 +3,8 @@ import { requestJSON } from './httpClient';
 import { mockClient } from './mockClient';
 import type {
   AuditEventRecord,
+  PackagingCleanupRequest,
+  PackagingCleanupResponse,
   CuratedSkillSummary,
   GovernanceChangeResponse,
   GovernanceRecord,
@@ -50,10 +52,14 @@ const realClient: RegistryApiClient = {
         q: filters?.query?.trim() || undefined,
         source_type: filters?.sourceType || undefined,
         include_retired: filters?.includeRetired || filters?.status === 'retired' ? true : undefined,
-        pageSize: 100,
+        cursor: filters?.cursor,
+        pageSize: filters?.pageSize ?? 12,
       })
     );
-    return filters?.status ? response.items.filter((item) => item.status === filters.status) : response.items;
+    return {
+      items: filters?.status ? response.items.filter((item) => item.status === filters.status) : response.items,
+      pageInfo: response.pageInfo,
+    };
   },
 
   async listCuratedSkills() {
@@ -69,15 +75,15 @@ const realClient: RegistryApiClient = {
     return requestJSON<SkillDetail>(`/api/v1/skills/${encodeURIComponent(packageName)}`);
   },
 
-  async getSkillVersions(packageName: string) {
-    const response = await requestJSON<SkillsPage<SkillVersionSummary>>(
+  getSkillVersions(packageName: string, options?: { cursor?: string; pageSize?: number }) {
+    return requestJSON<SkillsPage<SkillVersionSummary>>(
       withQuery(`/api/v1/skills/${encodeURIComponent(packageName)}/versions`, {
         include_deprecated: true,
         include_yanked: true,
-        pageSize: 100,
+        cursor: options?.cursor,
+        pageSize: options?.pageSize ?? 20,
       })
     );
-    return response.items;
   },
 
   getInstallTarget(packageName: string, version?: string) {
@@ -95,19 +101,19 @@ const realClient: RegistryApiClient = {
   },
 
   async listGovernanceChanges(filters?: ListGovernanceFilters) {
-    const response = await requestJSON<SkillsPage<GovernanceRecord>>(
+    return requestJSON<SkillsPage<GovernanceRecord>>(
       withQuery('/api/v1/governance-changes', {
         package_name: filters?.packageName,
         version: filters?.version,
         target_type: filters?.targetType || undefined,
-        pageSize: 100,
+        cursor: filters?.cursor,
+        pageSize: filters?.pageSize ?? 10,
       })
     );
-    return response.items;
   },
 
   async listAuditEvents(filters?: ListAuditFilters) {
-    const response = await requestJSON<SkillsPage<AuditEventRecord>>(
+    return requestJSON<SkillsPage<AuditEventRecord>>(
       withQuery('/api/v1/audit-events', {
         action: filters?.action,
         actor: filters?.actor,
@@ -115,10 +121,10 @@ const realClient: RegistryApiClient = {
         package_name: filters?.packageName,
         version: filters?.version,
         outcome: filters?.outcome,
-        pageSize: 100,
+        cursor: filters?.cursor,
+        pageSize: filters?.pageSize ?? 10,
       })
     );
-    return response.items;
   },
 
   preparePackaging(request: PackagingPrepareRequest) {
@@ -137,6 +143,13 @@ const realClient: RegistryApiClient = {
 
   packSkill(request: PackagingPackRequest) {
     return requestJSON<PackagingPackResponse>('/api/v1/skill-packaging/pack', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  },
+
+  cleanupPackagingWorkspace(request: PackagingCleanupRequest) {
+    return requestJSON<PackagingCleanupResponse>('/api/v1/skill-packaging/cleanup', {
       method: 'POST',
       body: JSON.stringify(request),
     });
@@ -188,6 +201,7 @@ export const listAuditEvents = apiClient.listAuditEvents.bind(apiClient);
 export const preparePackaging = apiClient.preparePackaging.bind(apiClient);
 export const validatePackaging = apiClient.validatePackaging.bind(apiClient);
 export const packSkill = apiClient.packSkill.bind(apiClient);
+export const cleanupPackagingWorkspace = apiClient.cleanupPackagingWorkspace.bind(apiClient);
 export const createReleaseRecord = apiClient.createReleaseRecord.bind(apiClient);
 export const applySkillGovernanceChange = apiClient.applySkillGovernanceChange.bind(apiClient);
 export const applyVersionGovernanceChange = apiClient.applyVersionGovernanceChange.bind(apiClient);

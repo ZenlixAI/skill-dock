@@ -8,11 +8,14 @@ import { useAsyncData } from '../lib/useAsyncData';
 import { formatDate } from '../lib/format';
 
 export function OverviewPage() {
-  const skills = useAsyncData(() => listSkills({ includeRetired: true }), []);
+  const skills = useAsyncData(() => listSkills({ includeRetired: true, pageSize: 8 }), []);
   const curated = useAsyncData(() => listCuratedSkills(), []);
-  const governance = useAsyncData(() => listGovernanceChanges(), []);
-  const audit = useAsyncData(() => listAuditEvents(), []);
-  const packagingEvents = audit.data?.filter((item) => item.action.startsWith('packaging.')) || [];
+  const governance = useAsyncData(() => listGovernanceChanges({ pageSize: 5 }), []);
+  const audit = useAsyncData(() => listAuditEvents({ pageSize: 5 }), []);
+  const packagingEvents = audit.data?.items.filter((item) => item.action.startsWith('packaging.')) || [];
+  const shownSkills = skills.data?.items.length || 0;
+  const shownGovernance = governance.data?.items.length || 0;
+  const shownAudit = audit.data?.items.length || 0;
 
   return (
     <div className="page-grid">
@@ -55,8 +58,8 @@ export function OverviewPage() {
           <div className="hero-band">
             <article className="hero-band__item">
               <span>Catalog footprint</span>
-              <strong>{skills.data?.length || '—'}</strong>
-              <p>可被安装、被治理、被追溯的 package 总量。</p>
+              <strong>{shownSkills || '—'}</strong>
+              <p>{skills.data?.pageInfo.hasNextPage ? '这里只展示第一页 package 摘要。' : '当前 package 摘要已完整展开。'}</p>
             </article>
             <article className="hero-band__item">
               <span>Curated lane</span>
@@ -78,14 +81,14 @@ export function OverviewPage() {
         >
           <div className="signal-list">
             <article className="signal-row">
-              <strong>{governance.data?.length || '—'}</strong>
+              <strong>{shownGovernance || '—'}</strong>
               <div>
                 <span>Governance pressure</span>
                 <p>动作持续增长时，产品面需要更强调 retire、deprecate、yank 的影响和替代路径。</p>
               </div>
             </article>
             <article className="signal-row">
-              <strong>{audit.data?.length || '—'}</strong>
+              <strong>{shownAudit || '—'}</strong>
               <div>
                 <span>Audit visibility</span>
                 <p>一旦流程进入发布或治理阶段，谁做了什么必须能被直接追溯。</p>
@@ -104,8 +107,8 @@ export function OverviewPage() {
 
       <div className="metric-grid">
         <div className="metric-card">
-          <strong>{skills.data?.length || '—'}</strong>
-          <span>Indexed skills</span>
+          <strong>{shownSkills || '—'}</strong>
+          <span>Indexed skills shown</span>
         </div>
         <div className="metric-card">
           <strong>{curated.data?.length || '—'}</strong>
@@ -116,8 +119,8 @@ export function OverviewPage() {
           <span>Packaging events</span>
         </div>
         <div className="metric-card">
-          <strong>{governance.data?.length || '—'}</strong>
-          <span>Governance actions</span>
+          <strong>{shownGovernance || '—'}</strong>
+          <span>Governance shown</span>
         </div>
       </div>
 
@@ -157,7 +160,7 @@ export function OverviewPage() {
         <div className="stack-column">
           <SurfaceCard description="治理变化应该被当成产品层事件，而不是埋在角落日志里。" title="Recent Governance" variant="console">
             <TimelineList
-              items={(governance.data || []).slice(0, 5).map((item) => ({
+              items={(governance.data?.items || []).map((item) => ({
                 key: item.id,
                 title: `${item.action} ${item.packageName}${item.version ? ` ${item.version}` : ''}`,
                 subtitle: `${item.reason} · ${item.changedBy} · ${formatDate(item.changedAt)}`,
@@ -169,13 +172,16 @@ export function OverviewPage() {
           </SurfaceCard>
           <SurfaceCard description="审计记录回答谁在什么时候做了哪一步，以及结果是否真的落地。" title="Recent Audit" variant="console">
             <TimelineList
-              items={(audit.data || []).slice(0, 5).map((item) => ({
+              items={(audit.data?.items || []).map((item) => ({
                 key: item.id,
                 title: item.action,
                 subtitle: `${item.actor} · ${item.statusCode} · ${formatDate(item.createdAt)}`,
                 meta: <StatusPill tone={item.outcome === 'succeeded' ? 'good' : 'bad'}>{item.outcome}</StatusPill>,
               }))}
             />
+            {audit.data?.pageInfo.hasNextPage ? (
+              <p className="support-copy">Overview 只显示第一页审计摘要；完整列表请去 Audit 页面继续翻页。</p>
+            ) : null}
           </SurfaceCard>
         </div>
       </div>

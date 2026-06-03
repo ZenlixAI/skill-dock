@@ -434,3 +434,32 @@ export async function packSkillPackaging(input: {
 
   return (await response.json()) as PackPackagingResponse;
 }
+
+export async function downloadPackedBundle(input: {
+  registry?: string;
+  workspacePath: string;
+  target: PackagingTarget;
+}): Promise<Buffer> {
+  const url = buildCatalogUrl(
+    '/api/v1/skill-packaging/bundle',
+    {
+      workspacePath: input.workspacePath,
+      packageName: input.target.packageName,
+      version: input.target.version,
+    },
+    input.registry
+  );
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      accept: 'application/octet-stream',
+      ...getCatalogAuthHeaders(),
+    },
+  });
+
+  if (!response.ok) {
+    throw await parseCatalogError(response);
+  }
+
+  return Buffer.from(await response.arrayBuffer());
+}

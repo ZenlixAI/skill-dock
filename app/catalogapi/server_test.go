@@ -617,6 +617,131 @@ func TestSkillPackagingPrepareValidateAndPack(t *testing.T) {
 	}
 }
 
+func TestSkillPackagingCleanupRemovesWorkspaceAndBundle(t *testing.T) {
+	server := newTestServer()
+	fixtureDir := createPackagingFixture(t)
+
+	prepareRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
+		"source":{"type":"local","location":"`+fixtureDir+`"},
+		"target":{"packageName":"@platform.skill/fixture-skill","version":"0.2.0"},
+		"metadata":{"displayName":"Fixture Skill","description":"Fixture packaging flow","sourceType":"imported"}
+	}`)
+	prepareRequest.Header.Set("X-Role", "publisher")
+	prepareRecorder := httptest.NewRecorder()
+	server.Handler().ServeHTTP(prepareRecorder, prepareRequest)
+	if prepareRecorder.Code != http.StatusOK {
+		t.Fatalf("expected prepare status %d, got %d body=%s", http.StatusOK, prepareRecorder.Code, prepareRecorder.Body.String())
+	}
+
+	var preparePayload struct {
+		WorkspacePath string `json:"workspacePath"`
+	}
+	if err := json.Unmarshal(prepareRecorder.Body.Bytes(), &preparePayload); err != nil {
+		t.Fatalf("decode prepare response: %v", err)
+	}
+
+	packRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/pack", `{
+		"workspacePath":"`+preparePayload.WorkspacePath+`",
+		"target":{"packageName":"@platform.skill/fixture-skill","version":"0.2.0"}
+	}`)
+	packRequest.Header.Set("X-Role", "publisher")
+	packRecorder := httptest.NewRecorder()
+	server.Handler().ServeHTTP(packRecorder, packRequest)
+	if packRecorder.Code != http.StatusOK {
+		t.Fatalf("expected pack status %d, got %d body=%s", http.StatusOK, packRecorder.Code, packRecorder.Body.String())
+	}
+
+	var packPayload struct {
+		BundlePath string `json:"bundlePath"`
+	}
+	if err := json.Unmarshal(packRecorder.Body.Bytes(), &packPayload); err != nil {
+		t.Fatalf("decode pack response: %v", err)
+	}
+
+	cleanupRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/cleanup", `{
+		"workspacePath":"`+preparePayload.WorkspacePath+`"
+	}`)
+	cleanupRequest.Header.Set("X-Role", "publisher")
+	cleanupRecorder := httptest.NewRecorder()
+	server.Handler().ServeHTTP(cleanupRecorder, cleanupRequest)
+
+	if cleanupRecorder.Code != http.StatusOK {
+		t.Fatalf("expected cleanup status %d, got %d body=%s", http.StatusOK, cleanupRecorder.Code, cleanupRecorder.Body.String())
+	}
+	if _, err := os.Stat(preparePayload.WorkspacePath); !os.IsNotExist(err) {
+		t.Fatalf("expected workspace to be removed, got err=%v", err)
+	}
+	if _, err := os.Stat(packPayload.BundlePath); !os.IsNotExist(err) {
+		t.Fatalf("expected bundle to be removed, got err=%v", err)
+	}
+}
+
+func TestSkillPackagingPackMetadataAndBundleDownload(t *testing.T) {
+	server := newTestServer()
+	fixtureDir := createPackagingFixture(t)
+
+	prepareRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
+		"source":{"type":"local","location":"`+fixtureDir+`"},
+		"target":{"packageName":"@platform.skill/fixture-skill","version":"0.2.0"},
+		"metadata":{"displayName":"Fixture Skill","description":"Fixture packaging flow","sourceType":"imported"}
+	}`)
+	prepareRequest.Header.Set("X-Role", "publisher")
+	prepareRecorder := httptest.NewRecorder()
+	server.Handler().ServeHTTP(prepareRecorder, prepareRequest)
+	if prepareRecorder.Code != http.StatusOK {
+		t.Fatalf("expected prepare status %d, got %d body=%s", http.StatusOK, prepareRecorder.Code, prepareRecorder.Body.String())
+	}
+
+	var preparePayload struct {
+		WorkspacePath string `json:"workspacePath"`
+	}
+	if err := json.Unmarshal(prepareRecorder.Body.Bytes(), &preparePayload); err != nil {
+		t.Fatalf("decode prepare response: %v", err)
+	}
+
+	packRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/pack", `{
+		"workspacePath":"`+preparePayload.WorkspacePath+`",
+		"target":{"packageName":"@platform.skill/fixture-skill","version":"0.2.0"},
+		"includeBundle":false
+	}`)
+	packRequest.Header.Set("X-Role", "publisher")
+	packRecorder := httptest.NewRecorder()
+	server.Handler().ServeHTTP(packRecorder, packRequest)
+	if packRecorder.Code != http.StatusOK {
+		t.Fatalf("expected pack status %d, got %d body=%s", http.StatusOK, packRecorder.Code, packRecorder.Body.String())
+	}
+
+	var packPayload struct {
+		BundleBase64 string `json:"bundleBase64"`
+	}
+	if err := json.Unmarshal(packRecorder.Body.Bytes(), &packPayload); err != nil {
+		t.Fatalf("decode pack response: %v", err)
+	}
+	if packPayload.BundleBase64 != "" {
+		t.Fatalf("expected metadata-only pack response, got bundleBase64=%q", packPayload.BundleBase64)
+	}
+
+	downloadRequest := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/skill-packaging/bundle?workspacePath="+url.QueryEscape(preparePayload.WorkspacePath)+"&packageName="+url.QueryEscape("@platform.skill/fixture-skill")+"&version=0.2.0",
+		nil,
+	)
+	downloadRequest.Header.Set("X-Role", "publisher")
+	downloadRecorder := httptest.NewRecorder()
+	server.Handler().ServeHTTP(downloadRecorder, downloadRequest)
+
+	if downloadRecorder.Code != http.StatusOK {
+		t.Fatalf("expected download status %d, got %d body=%s", http.StatusOK, downloadRecorder.Code, downloadRecorder.Body.String())
+	}
+	scanResult, validationError := artifactadapter.ScanNPMPackageTarballForTest(bytes.NewReader(downloadRecorder.Body.Bytes()), "@platform.skill/fixture-skill", "0.2.0")
+	if validationError != "" {
+		t.Fatalf("expected downloaded bundle to validate, got %s", validationError)
+	}
+	if scanResult.DisplayName != "Fixture Skill" {
+		t.Fatalf("unexpected downloaded packed display name: %s", scanResult.DisplayName)
+	}
+}
+
 func TestSkillPackagingSupportsPlatformAuthoringSource(t *testing.T) {
 	server := newTestServer()
 
@@ -1145,6 +1270,59 @@ func TestSkillPackagingPrepareIdempotencyPersistsAcrossServerInstances(t *testin
 	}
 	if firstPayload.WorkspacePath != secondPayload.WorkspacePath {
 		t.Fatalf("expected persistent workspacePath, got %q and %q", firstPayload.WorkspacePath, secondPayload.WorkspacePath)
+	}
+}
+
+func TestSkillPackagingPackWithInlineBundleSkipsIdempotencyPersistence(t *testing.T) {
+	fixtureDir := createPackagingFixture(t)
+	databaseURL := "file:" + filepath.Join(t.TempDir(), "idempotency.db")
+	store, err := persist.NewSQLIdempotencyStore(context.Background(), databaseURL, time.Hour)
+	if err != nil {
+		t.Fatalf("create idempotency store: %v", err)
+	}
+
+	server := NewServer(ServerConfig{
+		Repository:  catalog.NewMemoryRepository(catalog.SampleData()),
+		Packaging:   packaging.NewService(""),
+		Idempotency: store,
+	})
+
+	prepareRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
+		"source":{"type":"local","location":"`+fixtureDir+`"},
+		"target":{"packageName":"@platform.skill/inline-bundle","version":"0.9.2"}
+	}`)
+	prepareRequest.Header.Set("X-Role", "publisher")
+	prepareRecorder := httptest.NewRecorder()
+	server.Handler().ServeHTTP(prepareRecorder, prepareRequest)
+	if prepareRecorder.Code != http.StatusOK {
+		t.Fatalf("expected prepare status %d, got %d body=%s", http.StatusOK, prepareRecorder.Code, prepareRecorder.Body.String())
+	}
+
+	var preparePayload struct {
+		WorkspacePath string `json:"workspacePath"`
+	}
+	if err := json.Unmarshal(prepareRecorder.Body.Bytes(), &preparePayload); err != nil {
+		t.Fatalf("decode prepare response: %v", err)
+	}
+
+	packRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/pack", `{
+		"idempotencyKey":"inline-bundle-pack",
+		"workspacePath":"`+preparePayload.WorkspacePath+`",
+		"target":{"packageName":"@platform.skill/inline-bundle","version":"0.9.2"},
+		"includeBundle":true
+	}`)
+	packRequest.Header.Set("X-Role", "publisher")
+	packRecorder := httptest.NewRecorder()
+	server.Handler().ServeHTTP(packRecorder, packRequest)
+	if packRecorder.Code != http.StatusOK {
+		t.Fatalf("expected pack status %d, got %d body=%s", http.StatusOK, packRecorder.Code, packRecorder.Body.String())
+	}
+
+	if _, err := store.Lookup(context.Background(), "pack", "publisher", "inline-bundle-pack"); !errors.Is(err, persist.ErrIdempotencyRecordNotFound) {
+		t.Fatalf("expected no persisted idempotency record for inline bundle response, got err=%v", err)
+	}
+	if len(server.cacheEntries) != 0 {
+		t.Fatalf("expected inline bundle response to skip in-memory cache, got %d entries", len(server.cacheEntries))
 	}
 }
 

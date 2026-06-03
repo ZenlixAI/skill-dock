@@ -123,3 +123,12 @@ type PackResponse struct {
 	ImportReport   *ImportReport   `json:"importReport,omitempty"`
 	Errors         []string        `json:"errors"`
 }
+
+type CleanupRequest struct {
+	WorkspacePath string `json:"workspacePath"`
+}
+
+type CleanupResponse struct {
+	WorkspacePath string `json:"workspacePath"`
+	Removed       bool   `json:"removed"`
+}

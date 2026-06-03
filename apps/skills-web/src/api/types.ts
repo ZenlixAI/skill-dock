@@ -214,6 +214,15 @@ export interface PackagingPackResponse {
   errors: string[];
 }
 
+export interface PackagingCleanupRequest {
+  workspacePath: string;
+}
+
+export interface PackagingCleanupResponse {
+  workspacePath: string;
+  removed: boolean;
+}
+
 export interface ReleaseRecordInput {
   publishRegistry?: string;
   manifestDigest?: string;
@@ -245,12 +254,16 @@ export interface ListSkillsFilters {
   sourceType?: CatalogSourceType | '';
   status?: SkillStatus | '';
   includeRetired?: boolean;
+  cursor?: string;
+  pageSize?: number;
 }
 
 export interface ListGovernanceFilters {
   packageName?: string;
   version?: string;
   targetType?: GovernanceTargetType | '';
+  cursor?: string;
+  pageSize?: number;
 }
 
 export interface ListAuditFilters {
@@ -260,6 +273,8 @@ export interface ListAuditFilters {
   packageName?: string;
   version?: string;
   outcome?: string;
+  cursor?: string;
+  pageSize?: number;
 }
 
 export interface RegistryClientConfig {
@@ -272,17 +287,24 @@ export interface RegistryClientConfig {
 
 export interface RegistryApiClient {
   getConfig(): RegistryClientConfig;
-  listSkills(filters?: ListSkillsFilters): Promise<SkillSummary[]>;
+  listSkills(filters?: ListSkillsFilters): Promise<SkillsPage<SkillSummary>>;
   listCuratedSkills(): Promise<CuratedSkillSummary[]>;
   getSkillDetail(packageName: string): Promise<SkillDetail>;
-  getSkillVersions(packageName: string): Promise<SkillVersionSummary[]>;
+  getSkillVersions(
+    packageName: string,
+    options?: {
+      cursor?: string;
+      pageSize?: number;
+    }
+  ): Promise<SkillsPage<SkillVersionSummary>>;
   getInstallTarget(packageName: string, version?: string): Promise<InstallTarget>;
   getVersionDetail(packageName: string, version: string): Promise<SkillVersionDetail>;
-  listGovernanceChanges(filters?: ListGovernanceFilters): Promise<GovernanceRecord[]>;
-  listAuditEvents(filters?: ListAuditFilters): Promise<AuditEventRecord[]>;
+  listGovernanceChanges(filters?: ListGovernanceFilters): Promise<SkillsPage<GovernanceRecord>>;
+  listAuditEvents(filters?: ListAuditFilters): Promise<SkillsPage<AuditEventRecord>>;
   preparePackaging(request: PackagingPrepareRequest): Promise<PackagingPrepareResponse>;
   validatePackaging(request: PackagingValidateRequest): Promise<PackagingValidateResponse>;
   packSkill(request: PackagingPackRequest): Promise<PackagingPackResponse>;
+  cleanupPackagingWorkspace(request: PackagingCleanupRequest): Promise<PackagingCleanupResponse>;
   createReleaseRecord(packageName: string, version: string, input: ReleaseRecordInput): Promise<ReleaseRecordResult>;
   applySkillGovernanceChange(packageName: string, input: SkillGovernanceChangeInput): Promise<GovernanceChangeResponse>;
   applyVersionGovernanceChange(

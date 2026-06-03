@@ -43,7 +43,7 @@ export function SkillDetailPage() {
     () => listGovernanceChanges({ packageName: decodedPackage }),
     [decodedPackage, refreshKey]
   );
-  const latestVersionItem = versionList.data?.[0];
+  const latestVersionItem = versionList.data?.items[0];
   const statusTone = detail.data?.status === 'active' ? 'good' : 'bad';
 
   function appendLog(outcome: SkillLogEntry['outcome'], summary: string) {
@@ -125,12 +125,12 @@ export function SkillDetailPage() {
         </article>
         <article className="console-signal">
           <span>Version surface</span>
-          <strong>{versionList.data?.length || 0}</strong>
+          <strong>{versionList.data?.items.length || 0}</strong>
           <p>这里有多少个可检查版本，决定了后续是去 latest review 还是回看历史治理。</p>
         </article>
         <article className="console-signal">
           <span>Governance pressure</span>
-          <strong>{governance.data?.length || 0}</strong>
+          <strong>{governance.data?.items.length || 0}</strong>
           <p>治理事件越多，说明这个 skill 越应该用控制台视角去看，而不是只看 README 式详情。</p>
         </article>
       </div>
@@ -195,7 +195,7 @@ export function SkillDetailPage() {
       <div className="two-column">
         <SurfaceCard title="Versions" description="这里不是纯列表，而是从 skill 进入 version review 的分发台。">
           <div className="list-stack">
-            {versionList.data?.map((item) => (
+            {versionList.data?.items.map((item) => (
               <article className="list-card" key={item.version}>
                 <div className="list-card__head">
                   <div>
@@ -283,8 +283,8 @@ export function SkillDetailPage() {
 
           <SurfaceCard title="Recent Governance" description="只展示当前 skill 的治理记录，方便和写动作闭环。">
             <div className="list-stack">
-              {governance.data?.length ? (
-                governance.data.map((item) => (
+              {governance.data?.items.length ? (
+                governance.data.items.map((item) => (
                   <article className="list-card" key={item.id}>
                     <div className="list-card__head">
                       <div>
@@ -300,6 +300,9 @@ export function SkillDetailPage() {
                 <div className="empty-box">No governance events for this skill yet.</div>
               )}
             </div>
+            {governance.data?.pageInfo.hasNextPage ? (
+              <p className="support-copy">这里只展示第一页治理记录；更长时间线请到 Governance 页面继续翻页。</p>
+            ) : null}
           </SurfaceCard>
 
           <SurfaceCard title="Execution Log" description="记录这次会话里对这个 skill 做过的治理动作。">

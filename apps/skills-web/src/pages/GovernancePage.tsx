@@ -4,8 +4,8 @@ import type { GovernanceAction, GovernanceRecord, GovernanceTargetType } from '.
 import { SectionHeading } from '../components/SectionHeading';
 import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
-import { useAsyncData } from '../lib/useAsyncData';
 import { formatDate } from '../lib/format';
+import { usePaginatedCollection } from '../lib/usePaginatedCollection';
 
 type GovernanceLayer = {
   key: string;
@@ -46,22 +46,27 @@ export function GovernancePage() {
   const [targetType, setTargetType] = useState<GovernanceTargetType | ''>('');
   const [action, setAction] = useState<GovernanceAction | ''>('');
 
-  const governance = useAsyncData(
-    () =>
+  const governance = usePaginatedCollection({
+    loader: (filters) =>
       listGovernanceChanges({
+        ...filters,
         packageName: packageName.trim() || undefined,
         targetType,
+        pageSize: 10,
       }),
-    [packageName, targetType]
-  );
+    filters: {
+      cursor: undefined,
+    },
+    deps: [packageName, targetType],
+  });
 
   const filteredItems = useMemo(() => {
-    const items = governance.data || [];
+    const items = governance.items;
     if (!action) {
       return items;
     }
     return items.filter((item) => item.action === action);
-  }, [governance.data, action]);
+  }, [governance.items, action]);
 
   const layers = buildGovernanceLayers(filteredItems);
   const blockingCount = filteredItems.filter((item) => item.action === 'yank' || item.action === 'retire').length;
@@ -83,7 +88,7 @@ export function GovernancePage() {
         <StatusPill tone={action === 'yank' || action === 'retire' ? 'bad' : action === 'deprecate' ? 'warn' : undefined}>
           {action || 'all actions'}
         </StatusPill>
-        <StatusPill tone="good">{filteredItems.length} records</StatusPill>
+        <StatusPill tone="good">{filteredItems.length} shown</StatusPill>
       </div>
 
       <div className="console-strip">
@@ -177,6 +182,24 @@ export function GovernancePage() {
               </div>
             </SurfaceCard>
           ))}
+
+          {!governance.loading && !governance.error ? (
+            <SurfaceCard
+              description={
+                governance.pageInfo.hasNextPage
+                  ? `当前只展示前 ${filteredItems.length} 条治理记录，后面仍有更多事件。`
+                  : `当前治理结果集已完整展示，共 ${filteredItems.length} 条。`
+              }
+              title="Pagination"
+              variant="rail"
+            >
+              {governance.pageInfo.hasNextPage ? (
+                <button className="button button--secondary" disabled={governance.loadingMore} onClick={governance.loadMore} type="button">
+                  {governance.loadingMore ? 'Loading…' : 'Load more'}
+                </button>
+              ) : null}
+            </SurfaceCard>
+          ) : null}
         </div>
       </div>
     </div>
