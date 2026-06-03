@@ -39,8 +39,14 @@ QUERY ?= pdf
 SKILL_PATH ?=
 MANIFEST ?=
 STRICT ?=
+REGISTRY_BACKEND ?= sample
+RESET_DB ?=
+OUTPUT ?= text
+NPM_BACKEND ?= direct
+COMPOSE_STACK ?= production
+VERDACCIO_MODE ?= public
 
-.PHONY: help verify verify-full test test-go test-go-packaging python-sync test-cli test-cli-dist test-cli-packaging typecheck-cli build-cli web-install typecheck-web build-web web-dev docker-build compose-production-up compose-production-down compose-local-up compose-local-down compose-nexus-up compose-nexus-down registry-reset registry-run registry-run-fresh registry-run-mock verdaccio-run verdaccio-reset registry-run-verdaccio verdaccio-run-auth verdaccio-run-auth-strict verdaccio-login verdaccio-auth-reset nexus-run nexus-reset nexus-bootstrap nexus-bootstrap-strict registry-run-nexus registry-run-verdaccio-auth cli-find cli-find-json cli-add cli-add-nexus cli-publish cli-publish-verdaccio cli-publish-verdaccio-auth cli-publish-nexus batch-import batch-import-verdaccio batch-import-verdaccio-auth batch-import-nexus clean-dev
+.PHONY: help verify verify-full test test-go test-go-packaging python-sync test-cli test-cli-dist test-cli-packaging typecheck-cli build-cli web-install typecheck-web build-web web-dev docker-build compose-up compose-down registry-reset registry-run verdaccio-run verdaccio-reset verdaccio-login verdaccio-auth-reset nexus-run nexus-reset nexus-bootstrap cli-find cli-add cli-publish batch-import clean-dev
 
 help:
 	@printf "skill_registry make targets\n\n"
@@ -62,48 +68,29 @@ help:
 	@printf "  make web-dev           Start Vite dev server for %s\n\n" "$(WEB_DIR)"
 	@printf "Local Catalog:\n"
 	@printf "  make registry-reset    Remove the local Catalog sqlite files\n"
-	@printf "  make registry-run      Start Catalog with sample tarballs served from local /mock-npm\n"
-	@printf "  make registry-run-fresh Reset the local DB, then start Catalog with sample tarballs\n"
-	@printf "  make registry-run-mock Start Catalog with tarballs and package metadata served from local /mock-npm\n\n"
+	@printf "  make registry-run REGISTRY_BACKEND=sample|mock|verdaccio|verdaccio-auth|nexus [RESET_DB=1]\n\n"
 	@printf "Local Verdaccio:\n"
-	@printf "  make verdaccio-run     Start public local Verdaccio on %s\n" "$(VERDACCIO_URL)"
+	@printf "  make verdaccio-run VERDACCIO_MODE=public|auth|strict\n"
 	@printf "  make verdaccio-reset   Remove local Verdaccio state under %s\n" "$(VERDACCIO_STATE_DIR)"
-	@printf "  make registry-run-verdaccio Start Catalog against local Verdaccio\n\n"
-	@printf "Authenticated Verdaccio:\n"
-	@printf "  make verdaccio-run-auth Start Verdaccio with authenticated publish on %s\n" "$(VERDACCIO_AUTH_URL)"
-	@printf "  make verdaccio-run-auth-strict Start Verdaccio with authenticated publish and read on %s\n" "$(VERDACCIO_AUTH_URL)"
-	@printf "  make verdaccio-login   Run npm adduser against authenticated Verdaccio\n"
 	@printf "  make verdaccio-auth-reset Remove authenticated Verdaccio state under %s\n" "$(VERDACCIO_AUTH_STATE_DIR)"
-	@printf "  make registry-run-verdaccio-auth Start Catalog against authenticated Verdaccio\n\n"
+	@printf "  make verdaccio-login   Run npm adduser against authenticated Verdaccio\n\n"
+	@printf "Authenticated Verdaccio:\n"
+	@printf "  use VERDACCIO_MODE=auth|strict together with registry-run REGISTRY_BACKEND=verdaccio-auth\n\n"
 	@printf "Local Nexus:\n"
 	@printf "  make nexus-run         Start local Nexus 3 on %s\n" "$(NEXUS_URL)"
-	@printf "  make nexus-bootstrap   Change admin password, configure anonymous read, create npm hosted repo, and write %s\n" "$(NEXUS_NPMRC)"
-	@printf "  make nexus-bootstrap-strict Same as nexus-bootstrap but disable anonymous read for tarball/metadata probes\n"
+	@printf "  make nexus-bootstrap [STRICT=1]   Configure Nexus and write %s\n" "$(NEXUS_NPMRC)"
 	@printf "  make nexus-reset       Remove local Nexus state under %s\n" "$(NEXUS_STATE_DIR)"
-	@printf "  make registry-run-nexus Start Catalog against local Nexus npm repo %s\n\n" "$(NEXUS_REPOSITORY_URL)"
+	@printf "  use registry-run REGISTRY_BACKEND=nexus for Catalog against %s\n\n" "$(NEXUS_REPOSITORY_URL)"
 	@printf "Containers:\n"
 	@printf "  make docker-build      Build the production Catalog image\n"
-	@printf "  make compose-production-up   Run Catalog + Postgres via docker compose\n"
-	@printf "  make compose-production-down Stop Catalog + Postgres compose stack\n"
-	@printf "  make compose-local-up        Run Catalog + Postgres + Verdaccio locally\n"
-	@printf "  make compose-local-down      Stop local compose stack\n"
-	@printf "  make compose-nexus-up        Run Catalog + Postgres + Nexus locally\n"
-	@printf "  make compose-nexus-down      Stop local Nexus compose stack\n\n"
+	@printf "  make compose-up COMPOSE_STACK=production|local|nexus\n"
+	@printf "  make compose-down COMPOSE_STACK=production|local|nexus\n\n"
 	@printf "CLI against local registry:\n"
-	@printf "  make cli-find QUERY=pdf\n"
-	@printf "  make cli-find-json QUERY=pdf\n"
-	@printf "  make cli-add PACKAGE=@platform.skill/pdf-skill   # installs into ./.agents/skills and updates skills-lock.json\n"
-	@printf "  make cli-add-nexus PACKAGE=@platform.skill/pdf-skill  # reuses %s for authenticated Nexus tarball reads\n" "$(NEXUS_NPMRC)"
-	@printf "  make cli-publish SKILL_PATH=/abs/path/to/skill\n"
-	@printf "  make cli-publish-verdaccio SKILL_PATH=/abs/path/to/skill\n"
-	@printf "  make cli-publish-verdaccio-auth SKILL_PATH=/abs/path/to/skill\n"
-	@printf "  make cli-publish-nexus SKILL_PATH=/abs/path/to/skill\n\n"
+	@printf "  make cli-find QUERY=pdf [OUTPUT=json]\n"
+	@printf "  make cli-add PACKAGE=@platform.skill/pdf-skill [NPM_BACKEND=direct|verdaccio|verdaccio-auth|nexus]\n"
+	@printf "  make cli-publish SKILL_PATH=/abs/path/to/skill [NPM_BACKEND=direct|verdaccio|verdaccio-auth|nexus]\n\n"
 	@printf "Batch import:\n"
-	@printf "  make batch-import MANIFEST=/abs/path/to/import.json            # uses uv-managed Python\n"
-	@printf "  make batch-import-verdaccio MANIFEST=/abs/path/to/import.json  # uses uv-managed Python\n"
-	@printf "  make batch-import-verdaccio-auth MANIFEST=/abs/path/to/import.json\n"
-	@printf "  make batch-import-nexus MANIFEST=/abs/path/to/import.json\n"
-	@printf "  append STRICT=1 to any batch-import target to disable normalization during prepare\n\n"
+	@printf "  make batch-import MANIFEST=/abs/path/to/import.json [NPM_BACKEND=direct|verdaccio|verdaccio-auth|nexus] [STRICT=1]\n\n"
 	@printf "Cleanup:\n"
 	@printf "  make clean-dev         Remove temp CLI, Catalog, Verdaccio, Nexus, uv cache, and .venv state\n"
 
@@ -152,95 +139,84 @@ web-dev:
 docker-build:
 	docker build -f zarf/docker/Dockerfile -t skill-registry:latest .
 
-compose-production-up:
-	docker compose -f zarf/compose/production.yml up --build
+compose-up:
+	@compose_file=""; \
+	case "$(COMPOSE_STACK)" in \
+		production) compose_file="zarf/compose/production.yml" ;; \
+		local) compose_file="zarf/compose/local.yml" ;; \
+		nexus) compose_file="zarf/compose/nexus.yml" ;; \
+		*) echo "Unsupported COMPOSE_STACK: $(COMPOSE_STACK). Use production, local, or nexus." >&2; exit 1 ;; \
+	esac; \
+	docker compose -f "$$compose_file" up --build
 
-compose-production-down:
-	docker compose -f zarf/compose/production.yml down
-
-compose-local-up:
-	docker compose -f zarf/compose/local.yml up --build
-
-compose-local-down:
-	docker compose -f zarf/compose/local.yml down
-
-compose-nexus-up:
-	docker compose -f zarf/compose/nexus.yml up --build
-
-compose-nexus-down:
-	docker compose -f zarf/compose/nexus.yml down
+compose-down:
+	@compose_file=""; \
+	case "$(COMPOSE_STACK)" in \
+		production) compose_file="zarf/compose/production.yml" ;; \
+		local) compose_file="zarf/compose/local.yml" ;; \
+		nexus) compose_file="zarf/compose/nexus.yml" ;; \
+		*) echo "Unsupported COMPOSE_STACK: $(COMPOSE_STACK). Use production, local, or nexus." >&2; exit 1 ;; \
+	esac; \
+	docker compose -f "$$compose_file" down
 
 registry-reset:
 	rm -f /private/tmp/skill-registry.db /private/tmp/skill-registry.db-shm /private/tmp/skill-registry.db-wal
 
 registry-run:
-	env \
-		GOCACHE=$(GO_CACHE) \
-		SKILL_REGISTRY_ADDR=$(REGISTRY_ADDR) \
-		SKILL_REGISTRY_DATABASE_URL=$(REGISTRY_DB) \
-		SKILL_REGISTRY_SAMPLE_NPM_BASE_URL=$(REGISTRY_URL)/mock-npm \
-		SKILL_REGISTRY_READER_TOKEN=$(READER_TOKEN) \
-		SKILL_REGISTRY_AUTHORING_TOKEN=$(AUTHORING_TOKEN) \
-		SKILL_REGISTRY_PUBLISHER_TOKEN=$(PUBLISHER_TOKEN) \
-		go run ./cmd/skill-registry
-
-registry-run-fresh: registry-reset
-	env \
-		GOCACHE=$(GO_CACHE) \
-		SKILL_REGISTRY_ADDR=$(REGISTRY_ADDR) \
-		SKILL_REGISTRY_DATABASE_URL=$(REGISTRY_DB) \
-		SKILL_REGISTRY_SAMPLE_NPM_BASE_URL=$(REGISTRY_URL)/mock-npm \
-		SKILL_REGISTRY_READER_TOKEN=$(READER_TOKEN) \
-		SKILL_REGISTRY_AUTHORING_TOKEN=$(AUTHORING_TOKEN) \
-		SKILL_REGISTRY_PUBLISHER_TOKEN=$(PUBLISHER_TOKEN) \
-		go run ./cmd/skill-registry
-
-registry-run-mock:
-	env \
-		GOCACHE=$(GO_CACHE) \
-		SKILL_REGISTRY_ADDR=$(REGISTRY_ADDR) \
-		SKILL_REGISTRY_DATABASE_URL=$(REGISTRY_DB) \
-		SKILL_REGISTRY_SAMPLE_NPM_BASE_URL=$(REGISTRY_URL)/mock-npm \
-		SKILL_REGISTRY_NPM_REGISTRY_URL=$(REGISTRY_URL)/mock-npm \
-		SKILL_REGISTRY_READER_TOKEN=$(READER_TOKEN) \
-		SKILL_REGISTRY_AUTHORING_TOKEN=$(AUTHORING_TOKEN) \
-		SKILL_REGISTRY_PUBLISHER_TOKEN=$(PUBLISHER_TOKEN) \
-		go run ./cmd/skill-registry
+	@if [ -n "$(RESET_DB)" ]; then \
+		$(MAKE) registry-reset; \
+	fi
+	@sample_base_url="$(REGISTRY_URL)/mock-npm"; \
+	npm_registry_url=""; \
+	case "$(REGISTRY_BACKEND)" in \
+		sample) ;; \
+		mock) npm_registry_url="$(REGISTRY_URL)/mock-npm" ;; \
+		verdaccio) sample_base_url="$(VERDACCIO_URL)"; npm_registry_url="$(VERDACCIO_URL)" ;; \
+		verdaccio-auth) sample_base_url="$(VERDACCIO_AUTH_URL)"; npm_registry_url="$(VERDACCIO_AUTH_URL)" ;; \
+		nexus) sample_base_url="$(NEXUS_REPOSITORY_URL)"; npm_registry_url="$(NEXUS_REPOSITORY_URL)" ;; \
+		*) echo "Unsupported REGISTRY_BACKEND: $(REGISTRY_BACKEND). Use sample, mock, verdaccio, verdaccio-auth, or nexus." >&2; exit 1 ;; \
+	esac; \
+	if [ -n "$$npm_registry_url" ]; then \
+		env \
+			GOCACHE=$(GO_CACHE) \
+			SKILL_REGISTRY_ADDR=$(REGISTRY_ADDR) \
+			SKILL_REGISTRY_DATABASE_URL=$(REGISTRY_DB) \
+			SKILL_REGISTRY_SAMPLE_NPM_BASE_URL="$$sample_base_url" \
+			SKILL_REGISTRY_NPM_REGISTRY_URL="$$npm_registry_url" \
+			SKILL_REGISTRY_READER_TOKEN=$(READER_TOKEN) \
+			SKILL_REGISTRY_AUTHORING_TOKEN=$(AUTHORING_TOKEN) \
+			SKILL_REGISTRY_PUBLISHER_TOKEN=$(PUBLISHER_TOKEN) \
+			go run ./cmd/skill-registry; \
+	else \
+		env \
+			GOCACHE=$(GO_CACHE) \
+			SKILL_REGISTRY_ADDR=$(REGISTRY_ADDR) \
+			SKILL_REGISTRY_DATABASE_URL=$(REGISTRY_DB) \
+			SKILL_REGISTRY_SAMPLE_NPM_BASE_URL="$$sample_base_url" \
+			SKILL_REGISTRY_READER_TOKEN=$(READER_TOKEN) \
+			SKILL_REGISTRY_AUTHORING_TOKEN=$(AUTHORING_TOKEN) \
+			SKILL_REGISTRY_PUBLISHER_TOKEN=$(PUBLISHER_TOKEN) \
+			go run ./cmd/skill-registry; \
+	fi
 
 verdaccio-run:
+	@verdaccio_addr="$(VERDACCIO_ADDR)"; \
+	verdaccio_state_dir="$(VERDACCIO_STATE_DIR)"; \
+	verdaccio_config="$(PWD)/zarf/docker/verdaccio/public.yaml"; \
+	case "$(VERDACCIO_MODE)" in \
+		public) ;; \
+		auth) verdaccio_addr="$(VERDACCIO_AUTH_ADDR)"; verdaccio_state_dir="$(VERDACCIO_AUTH_STATE_DIR)"; verdaccio_config="$(PWD)/zarf/docker/verdaccio/auth.yaml" ;; \
+		strict) verdaccio_addr="$(VERDACCIO_AUTH_ADDR)"; verdaccio_state_dir="$(VERDACCIO_AUTH_STATE_DIR)"; verdaccio_config="$(PWD)/zarf/docker/verdaccio/strict-auth.yaml" ;; \
+		*) echo "Unsupported VERDACCIO_MODE: $(VERDACCIO_MODE). Use public, auth, or strict." >&2; exit 1 ;; \
+	esac; \
 	env \
-		VERDACCIO_ADDR=$(VERDACCIO_ADDR) \
-		VERDACCIO_STATE_DIR=$(VERDACCIO_STATE_DIR) \
+		VERDACCIO_ADDR="$$verdaccio_addr" \
+		VERDACCIO_STATE_DIR="$$verdaccio_state_dir" \
+		VERDACCIO_CONFIG="$$verdaccio_config" \
 		./zarf/scripts/run-verdaccio.sh
 
 verdaccio-reset:
 	rm -rf $(VERDACCIO_STATE_DIR)
-
-registry-run-verdaccio:
-	env \
-		GOCACHE=$(GO_CACHE) \
-		SKILL_REGISTRY_ADDR=$(REGISTRY_ADDR) \
-		SKILL_REGISTRY_DATABASE_URL=$(REGISTRY_DB) \
-		SKILL_REGISTRY_SAMPLE_NPM_BASE_URL=$(VERDACCIO_URL) \
-		SKILL_REGISTRY_NPM_REGISTRY_URL=$(VERDACCIO_URL) \
-		SKILL_REGISTRY_READER_TOKEN=$(READER_TOKEN) \
-		SKILL_REGISTRY_AUTHORING_TOKEN=$(AUTHORING_TOKEN) \
-		SKILL_REGISTRY_PUBLISHER_TOKEN=$(PUBLISHER_TOKEN) \
-		go run ./cmd/skill-registry
-
-verdaccio-run-auth:
-	env \
-		VERDACCIO_ADDR=$(VERDACCIO_AUTH_ADDR) \
-		VERDACCIO_STATE_DIR=$(VERDACCIO_AUTH_STATE_DIR) \
-		VERDACCIO_CONFIG=$(PWD)/zarf/docker/verdaccio/auth.yaml \
-		./zarf/scripts/run-verdaccio.sh
-
-verdaccio-run-auth-strict:
-	env \
-		VERDACCIO_ADDR=$(VERDACCIO_AUTH_ADDR) \
-		VERDACCIO_STATE_DIR=$(VERDACCIO_AUTH_STATE_DIR) \
-		VERDACCIO_CONFIG=$(PWD)/zarf/docker/verdaccio/strict-auth.yaml \
-		./zarf/scripts/run-verdaccio.sh
 
 verdaccio-login:
 	env \
@@ -266,151 +242,147 @@ nexus-bootstrap:
 		NEXUS_REPOSITORY_NAME=$(NEXUS_REPOSITORY_NAME) \
 		NEXUS_REPOSITORY_URL=$(NEXUS_REPOSITORY_URL) \
 		NEXUS_ADMIN_PASSWORD=$(NEXUS_ADMIN_PASSWORD) \
-		NEXUS_ENABLE_ANONYMOUS_READ=$(NEXUS_ENABLE_ANONYMOUS_READ) \
+		NEXUS_ENABLE_ANONYMOUS_READ=$(if $(STRICT),false,$(NEXUS_ENABLE_ANONYMOUS_READ)) \
 		NEXUS_NPMRC_PATH=$(NEXUS_NPMRC) \
 		./zarf/scripts/nexus-bootstrap.sh
-
-nexus-bootstrap-strict:
-	env \
-		NEXUS_ENABLE_ANONYMOUS_READ=false \
-		$(MAKE) nexus-bootstrap
 
 nexus-reset:
 	rm -rf $(NEXUS_STATE_DIR)
 
-registry-run-verdaccio-auth:
-	env \
-		GOCACHE=$(GO_CACHE) \
-		SKILL_REGISTRY_ADDR=$(REGISTRY_ADDR) \
-		SKILL_REGISTRY_DATABASE_URL=$(REGISTRY_DB) \
-		SKILL_REGISTRY_SAMPLE_NPM_BASE_URL=$(VERDACCIO_AUTH_URL) \
-		SKILL_REGISTRY_NPM_REGISTRY_URL=$(VERDACCIO_AUTH_URL) \
-		SKILL_REGISTRY_READER_TOKEN=$(READER_TOKEN) \
-		SKILL_REGISTRY_AUTHORING_TOKEN=$(AUTHORING_TOKEN) \
-		SKILL_REGISTRY_PUBLISHER_TOKEN=$(PUBLISHER_TOKEN) \
-		go run ./cmd/skill-registry
-
-registry-run-nexus:
-	env \
-		GOCACHE=$(GO_CACHE) \
-		SKILL_REGISTRY_ADDR=$(REGISTRY_ADDR) \
-		SKILL_REGISTRY_DATABASE_URL=$(REGISTRY_DB) \
-		SKILL_REGISTRY_SAMPLE_NPM_BASE_URL=$(NEXUS_REPOSITORY_URL) \
-		SKILL_REGISTRY_NPM_REGISTRY_URL=$(NEXUS_REPOSITORY_URL) \
-		SKILL_REGISTRY_READER_TOKEN=$(READER_TOKEN) \
-		SKILL_REGISTRY_AUTHORING_TOKEN=$(AUTHORING_TOKEN) \
-		SKILL_REGISTRY_PUBLISHER_TOKEN=$(PUBLISHER_TOKEN) \
-		go run ./cmd/skill-registry
-
 cli-find:
+	@find_output_arg=""; \
+	case "$(OUTPUT)" in \
+		text|"") ;; \
+		json) find_output_arg="--json" ;; \
+		*) echo "Unsupported OUTPUT: $(OUTPUT). Use text or json." >&2; exit 1 ;; \
+	esac; \
 	env \
 		SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
 		SKILLS_REGISTRY_TOKEN=$(READER_TOKEN) \
-		node $(CLI_ENTRY) find "$(QUERY)" --registry $(REGISTRY_URL)
-
-cli-find-json:
-	env \
-		SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
-		SKILLS_REGISTRY_TOKEN=$(READER_TOKEN) \
-		node $(CLI_ENTRY) find "$(QUERY)" --registry $(REGISTRY_URL) --json
+		node $(CLI_ENTRY) find "$(QUERY)" --registry $(REGISTRY_URL) $$find_output_arg
 
 cli-add:
-	env \
-		SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
-		SKILLS_REGISTRY_TOKEN=$(READER_TOKEN) \
-		HOME=$(CLI_HOME) \
-		XDG_CACHE_HOME=$(CLI_CACHE) \
-		XDG_STATE_HOME=$(CLI_STATE) \
-		node $(CLI_ENTRY) add $(PACKAGE) -y --registry $(REGISTRY_URL)
-
-cli-add-nexus:
-	env \
-		SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
-		SKILLS_REGISTRY_TOKEN=$(READER_TOKEN) \
-		HOME=$(CLI_HOME) \
-		XDG_CACHE_HOME=$(CLI_CACHE) \
-		XDG_STATE_HOME=$(CLI_STATE) \
-		NPM_CONFIG_USERCONFIG=$(NEXUS_NPMRC) \
-		node $(CLI_ENTRY) add $(PACKAGE) -y --registry $(REGISTRY_URL)
+	@npm_userconfig=""; \
+	npm_registry=""; \
+	case "$(NPM_BACKEND)" in \
+		direct|"") ;; \
+		verdaccio) npm_registry="$(VERDACCIO_URL)" ;; \
+		verdaccio-auth) npm_userconfig="$(VERDACCIO_AUTH_NPMRC)"; npm_registry="$(VERDACCIO_AUTH_URL)" ;; \
+		nexus) npm_userconfig="$(NEXUS_NPMRC)" ;; \
+		*) echo "Unsupported NPM_BACKEND: $(NPM_BACKEND). Use direct, verdaccio, verdaccio-auth, or nexus." >&2; exit 1 ;; \
+	esac; \
+	if [ -n "$$npm_userconfig" ] && [ -n "$$npm_registry" ]; then \
+		env \
+			SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
+			SKILLS_REGISTRY_TOKEN=$(READER_TOKEN) \
+			HOME=$(CLI_HOME) \
+			XDG_CACHE_HOME=$(CLI_CACHE) \
+			XDG_STATE_HOME=$(CLI_STATE) \
+			NPM_CONFIG_USERCONFIG="$$npm_userconfig" \
+			npm_config_registry="$$npm_registry" \
+			node $(CLI_ENTRY) add $(PACKAGE) -y --registry $(REGISTRY_URL); \
+	elif [ -n "$$npm_userconfig" ]; then \
+		env \
+			SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
+			SKILLS_REGISTRY_TOKEN=$(READER_TOKEN) \
+			HOME=$(CLI_HOME) \
+			XDG_CACHE_HOME=$(CLI_CACHE) \
+			XDG_STATE_HOME=$(CLI_STATE) \
+			NPM_CONFIG_USERCONFIG="$$npm_userconfig" \
+			node $(CLI_ENTRY) add $(PACKAGE) -y --registry $(REGISTRY_URL); \
+	elif [ -n "$$npm_registry" ]; then \
+		env \
+			SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
+			SKILLS_REGISTRY_TOKEN=$(READER_TOKEN) \
+			HOME=$(CLI_HOME) \
+			XDG_CACHE_HOME=$(CLI_CACHE) \
+			XDG_STATE_HOME=$(CLI_STATE) \
+			npm_config_registry="$$npm_registry" \
+			node $(CLI_ENTRY) add $(PACKAGE) -y --registry $(REGISTRY_URL); \
+	else \
+		env \
+			SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
+			SKILLS_REGISTRY_TOKEN=$(READER_TOKEN) \
+			HOME=$(CLI_HOME) \
+			XDG_CACHE_HOME=$(CLI_CACHE) \
+			XDG_STATE_HOME=$(CLI_STATE) \
+			node $(CLI_ENTRY) add $(PACKAGE) -y --registry $(REGISTRY_URL); \
+	fi
 
 cli-publish:
-	@test -n "$(SKILL_PATH)" || (echo "SKILL_PATH is required, e.g. make cli-publish SKILL_PATH=/abs/path/to/skill" && exit 1)
-	env \
-		SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
-		SKILLS_REGISTRY_TOKEN=$(PUBLISHER_TOKEN) \
-		HOME=$(CLI_HOME) \
-		XDG_CACHE_HOME=$(CLI_CACHE) \
-		XDG_STATE_HOME=$(CLI_STATE) \
-		node $(CLI_ENTRY) publish $(SKILL_PATH) --registry $(REGISTRY_URL)
-
-cli-publish-verdaccio:
-	@test -n "$(SKILL_PATH)" || (echo "SKILL_PATH is required, e.g. make cli-publish-verdaccio SKILL_PATH=/abs/path/to/skill" && exit 1)
-	env \
-		SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
-		SKILLS_REGISTRY_TOKEN=$(PUBLISHER_TOKEN) \
-		HOME=$(CLI_HOME) \
-		XDG_CACHE_HOME=$(CLI_CACHE) \
-		XDG_STATE_HOME=$(CLI_STATE) \
-		npm_config_registry=$(VERDACCIO_URL) \
-		node $(CLI_ENTRY) publish $(SKILL_PATH) --registry $(REGISTRY_URL)
-
-cli-publish-verdaccio-auth:
-	@test -n "$(SKILL_PATH)" || (echo "SKILL_PATH is required, e.g. make cli-publish-verdaccio-auth SKILL_PATH=/abs/path/to/skill" && exit 1)
-	env \
-		SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
-		SKILLS_REGISTRY_TOKEN=$(PUBLISHER_TOKEN) \
-		HOME=$(CLI_HOME) \
-		XDG_CACHE_HOME=$(CLI_CACHE) \
-		XDG_STATE_HOME=$(CLI_STATE) \
-		NPM_CONFIG_USERCONFIG=$(VERDACCIO_AUTH_NPMRC) \
-		npm_config_registry=$(VERDACCIO_AUTH_URL) \
-		node $(CLI_ENTRY) publish $(SKILL_PATH) --registry $(REGISTRY_URL)
-
-cli-publish-nexus:
-	@test -n "$(SKILL_PATH)" || (echo "SKILL_PATH is required, e.g. make cli-publish-nexus SKILL_PATH=/abs/path/to/skill" && exit 1)
-	env \
-		SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
-		SKILLS_REGISTRY_TOKEN=$(PUBLISHER_TOKEN) \
-		HOME=$(CLI_HOME) \
-		XDG_CACHE_HOME=$(CLI_CACHE) \
-		XDG_STATE_HOME=$(CLI_STATE) \
-		NPM_CONFIG_USERCONFIG=$(NEXUS_NPMRC) \
-		npm_config_registry=$(NEXUS_REPOSITORY_URL)/ \
-		node $(CLI_ENTRY) publish $(SKILL_PATH) --registry $(REGISTRY_URL)
+	@test -n "$(SKILL_PATH)" || (echo "SKILL_PATH is required, e.g. make cli-publish SKILL_PATH=/abs/path/to/skill [NPM_BACKEND=verdaccio|verdaccio-auth|nexus]" && exit 1)
+	@npm_userconfig=""; \
+	npm_registry=""; \
+	case "$(NPM_BACKEND)" in \
+		direct|"") ;; \
+		verdaccio) npm_registry="$(VERDACCIO_URL)" ;; \
+		verdaccio-auth) npm_userconfig="$(VERDACCIO_AUTH_NPMRC)"; npm_registry="$(VERDACCIO_AUTH_URL)" ;; \
+		nexus) npm_userconfig="$(NEXUS_NPMRC)"; npm_registry="$(NEXUS_REPOSITORY_URL)/" ;; \
+		*) echo "Unsupported NPM_BACKEND: $(NPM_BACKEND). Use direct, verdaccio, verdaccio-auth, or nexus." >&2; exit 1 ;; \
+	esac; \
+	if [ -n "$$npm_userconfig" ] && [ -n "$$npm_registry" ]; then \
+		env \
+			SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
+			SKILLS_REGISTRY_TOKEN=$(PUBLISHER_TOKEN) \
+			HOME=$(CLI_HOME) \
+			XDG_CACHE_HOME=$(CLI_CACHE) \
+			XDG_STATE_HOME=$(CLI_STATE) \
+			NPM_CONFIG_USERCONFIG="$$npm_userconfig" \
+			npm_config_registry="$$npm_registry" \
+			node $(CLI_ENTRY) publish $(SKILL_PATH) --registry $(REGISTRY_URL); \
+	elif [ -n "$$npm_userconfig" ]; then \
+		env \
+			SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
+			SKILLS_REGISTRY_TOKEN=$(PUBLISHER_TOKEN) \
+			HOME=$(CLI_HOME) \
+			XDG_CACHE_HOME=$(CLI_CACHE) \
+			XDG_STATE_HOME=$(CLI_STATE) \
+			NPM_CONFIG_USERCONFIG="$$npm_userconfig" \
+			node $(CLI_ENTRY) publish $(SKILL_PATH) --registry $(REGISTRY_URL); \
+	elif [ -n "$$npm_registry" ]; then \
+		env \
+			SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
+			SKILLS_REGISTRY_TOKEN=$(PUBLISHER_TOKEN) \
+			HOME=$(CLI_HOME) \
+			XDG_CACHE_HOME=$(CLI_CACHE) \
+			XDG_STATE_HOME=$(CLI_STATE) \
+			npm_config_registry="$$npm_registry" \
+			node $(CLI_ENTRY) publish $(SKILL_PATH) --registry $(REGISTRY_URL); \
+	else \
+		env \
+			SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
+			SKILLS_REGISTRY_TOKEN=$(PUBLISHER_TOKEN) \
+			HOME=$(CLI_HOME) \
+			XDG_CACHE_HOME=$(CLI_CACHE) \
+			XDG_STATE_HOME=$(CLI_STATE) \
+			node $(CLI_ENTRY) publish $(SKILL_PATH) --registry $(REGISTRY_URL); \
+	fi
 
 batch-import:
-	@test -n "$(MANIFEST)" || (echo "MANIFEST is required, e.g. make batch-import MANIFEST=/abs/path/to/import.json" && exit 1)
-	env \
-		SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
-		SKILLS_REGISTRY_TOKEN=$(PUBLISHER_TOKEN) \
-		UV_CACHE_DIR=$(UV_CACHE_DIR) \
-		uv run python tools/batch-import/batch_import_skills.py --manifest $(MANIFEST) --catalog-url $(REGISTRY_URL) $(if $(STRICT),--strict)
-
-batch-import-verdaccio:
-	@test -n "$(MANIFEST)" || (echo "MANIFEST is required, e.g. make batch-import-verdaccio MANIFEST=/abs/path/to/import.json" && exit 1)
-	env \
-		SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
-		SKILLS_REGISTRY_TOKEN=$(PUBLISHER_TOKEN) \
-		UV_CACHE_DIR=$(UV_CACHE_DIR) \
-		uv run python tools/batch-import/batch_import_skills.py --manifest $(MANIFEST) --catalog-url $(REGISTRY_URL) --npm-registry $(VERDACCIO_URL) $(if $(STRICT),--strict)
-
-batch-import-verdaccio-auth:
-	@test -n "$(MANIFEST)" || (echo "MANIFEST is required, e.g. make batch-import-verdaccio-auth MANIFEST=/abs/path/to/import.json" && exit 1)
-	env \
-		SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
-		SKILLS_REGISTRY_TOKEN=$(PUBLISHER_TOKEN) \
-		NPM_CONFIG_USERCONFIG=$(VERDACCIO_AUTH_NPMRC) \
-		UV_CACHE_DIR=$(UV_CACHE_DIR) \
-		uv run python tools/batch-import/batch_import_skills.py --manifest $(MANIFEST) --catalog-url $(REGISTRY_URL) --npm-registry $(VERDACCIO_AUTH_URL) $(if $(STRICT),--strict)
-
-batch-import-nexus:
-	@test -n "$(MANIFEST)" || (echo "MANIFEST is required, e.g. make batch-import-nexus MANIFEST=/abs/path/to/import.json" && exit 1)
-	env \
-		SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
-		SKILLS_REGISTRY_TOKEN=$(PUBLISHER_TOKEN) \
-		NPM_CONFIG_USERCONFIG=$(NEXUS_NPMRC) \
-		UV_CACHE_DIR=$(UV_CACHE_DIR) \
-		uv run python tools/batch-import/batch_import_skills.py --manifest $(MANIFEST) --catalog-url $(REGISTRY_URL) --npm-registry $(NEXUS_REPOSITORY_URL)/ $(if $(STRICT),--strict)
+	@test -n "$(MANIFEST)" || (echo "MANIFEST is required, e.g. make batch-import MANIFEST=/abs/path/to/import.json [NPM_BACKEND=verdaccio|verdaccio-auth|nexus]" && exit 1)
+	@npm_userconfig=""; \
+	npm_registry_arg=""; \
+	case "$(NPM_BACKEND)" in \
+		direct|"") ;; \
+		verdaccio) npm_registry_arg="--npm-registry $(VERDACCIO_URL)" ;; \
+		verdaccio-auth) npm_userconfig="$(VERDACCIO_AUTH_NPMRC)"; npm_registry_arg="--npm-registry $(VERDACCIO_AUTH_URL)" ;; \
+		nexus) npm_userconfig="$(NEXUS_NPMRC)"; npm_registry_arg="--npm-registry $(NEXUS_REPOSITORY_URL)/" ;; \
+		*) echo "Unsupported NPM_BACKEND: $(NPM_BACKEND). Use direct, verdaccio, verdaccio-auth, or nexus." >&2; exit 1 ;; \
+	esac; \
+	if [ -n "$$npm_userconfig" ]; then \
+		env \
+			SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
+			SKILLS_REGISTRY_TOKEN=$(PUBLISHER_TOKEN) \
+			NPM_CONFIG_USERCONFIG="$$npm_userconfig" \
+			UV_CACHE_DIR=$(UV_CACHE_DIR) \
+			uv run python tools/batch-import/batch_import_skills.py --manifest $(MANIFEST) --catalog-url $(REGISTRY_URL) $$npm_registry_arg $(if $(STRICT),--strict); \
+	else \
+		env \
+			SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
+			SKILLS_REGISTRY_TOKEN=$(PUBLISHER_TOKEN) \
+			UV_CACHE_DIR=$(UV_CACHE_DIR) \
+			uv run python tools/batch-import/batch_import_skills.py --manifest $(MANIFEST) --catalog-url $(REGISTRY_URL) $$npm_registry_arg $(if $(STRICT),--strict); \
+	fi
 
 clean-dev:
 	rm -rf $(CLI_HOME) $(CLI_CACHE) $(UV_CACHE_DIR) .venv /private/tmp/skill-registry.db /private/tmp/skill-registry.db-shm /private/tmp/skill-registry.db-wal $(VERDACCIO_STATE_DIR) $(VERDACCIO_AUTH_STATE_DIR) $(NEXUS_STATE_DIR)

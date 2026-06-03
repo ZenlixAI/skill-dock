@@ -68,7 +68,7 @@ make verdaccio-auth-reset
 启动 Verdaccio：
 
 ```bash
-make verdaccio-run-auth
+make verdaccio-run VERDACCIO_MODE=auth
 ```
 
 保持这个终端不要退出。
@@ -105,7 +105,7 @@ cat /private/tmp/skill-registry-verdaccio-auth/.npmrc
 
 ```bash
 make registry-reset
-make registry-run-verdaccio-auth
+make registry-run REGISTRY_BACKEND=verdaccio-auth
 ```
 
 保持这个终端不要退出。
@@ -115,7 +115,7 @@ make registry-run-verdaccio-auth
 执行：
 
 ```bash
-make cli-publish-verdaccio-auth SKILL_PATH=/abs/path/to/skill
+make cli-publish SKILL_PATH=/abs/path/to/skill NPM_BACKEND=verdaccio-auth
 ```
 
 预期结果：
@@ -144,12 +144,12 @@ make cli-add PACKAGE=@platform.skill/your-skill-name
 
 ### 发布失败时优先检查
 
-如果 `make cli-publish-verdaccio-auth` 失败，优先检查这几项：
+如果 `make cli-publish SKILL_PATH=/abs/path/to/skill NPM_BACKEND=verdaccio-auth` 失败，优先检查这几项：
 
 1. Verdaccio 是否仍在运行
 2. `/private/tmp/skill-registry-verdaccio-auth/.npmrc` 是否存在
 3. `SKILL_PATH` 下的 `SKILL.md` 和 `package.json` 是否满足当前发布契约
-4. Catalog 是否是通过 `make registry-run-verdaccio-auth` 启动的
+4. Catalog 是否是通过 `make registry-run REGISTRY_BACKEND=verdaccio-auth` 启动的
 5. 同版本是否已经发布过
 
 ### 一套最短命令清单
@@ -159,7 +159,7 @@ make cli-add PACKAGE=@platform.skill/your-skill-name
 ```bash
 # terminal 1
 make verdaccio-auth-reset
-make verdaccio-run-auth
+make verdaccio-run VERDACCIO_MODE=auth
 ```
 
 ```bash
@@ -170,12 +170,12 @@ make verdaccio-login
 ```bash
 # terminal 3
 make registry-reset
-make registry-run-verdaccio-auth
+make registry-run REGISTRY_BACKEND=verdaccio-auth
 ```
 
 ```bash
 # terminal 4
-make cli-publish-verdaccio-auth SKILL_PATH=/abs/path/to/skill
+make cli-publish SKILL_PATH=/abs/path/to/skill NPM_BACKEND=verdaccio-auth
 make cli-find QUERY=your-skill
 make cli-add PACKAGE=@platform.skill/your-skill-name
 ```
@@ -183,10 +183,10 @@ make cli-add PACKAGE=@platform.skill/your-skill-name
 ## 简版步骤
 
 ```bash
-make verdaccio-run-auth
+make verdaccio-run VERDACCIO_MODE=auth
 make verdaccio-login
-make registry-run-verdaccio-auth
-make cli-publish-verdaccio-auth SKILL_PATH=/abs/path/to/skill
+make registry-run REGISTRY_BACKEND=verdaccio-auth
+make cli-publish SKILL_PATH=/abs/path/to/skill NPM_BACKEND=verdaccio-auth
 make cli-find QUERY=your-skill
 make cli-add PACKAGE=@platform.skill/your-skill-name
 ```
@@ -196,7 +196,7 @@ make cli-add PACKAGE=@platform.skill/your-skill-name
 认证版 Verdaccio 下批量导入用：
 
 ```bash
-make batch-import-verdaccio-auth MANIFEST=/abs/path/to/import.json
+make batch-import MANIFEST=/abs/path/to/import.json NPM_BACKEND=verdaccio-auth
 ```
 
 它会复用同一个 `NPM_CONFIG_USERCONFIG`，因此前提也是先 `make verdaccio-login`。
@@ -206,14 +206,14 @@ make batch-import-verdaccio-auth MANIFEST=/abs/path/to/import.json
 如果你要验证“CLI `add` 还不支持私有 tarball 下载”，可手动启严格模式：
 
 ```bash
-make verdaccio-run-auth-strict
+make verdaccio-run VERDACCIO_MODE=strict
 ```
 
 然后重复：
 
 1. `make verdaccio-login`
-2. `make registry-run-verdaccio-auth`
-3. `make cli-publish-verdaccio-auth SKILL_PATH=...`
+2. `make registry-run REGISTRY_BACKEND=verdaccio-auth`
+3. `make cli-publish SKILL_PATH=... NPM_BACKEND=verdaccio-auth`
 4. `make cli-add PACKAGE=...`
 
 此时预期是：

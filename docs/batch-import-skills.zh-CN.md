@@ -67,7 +67,7 @@ uv run python tools/batch-import/batch_import_skills.py \
 或直接：
 
 ```bash
-make batch-import-verdaccio MANIFEST=/abs/path/to/import.json
+make batch-import MANIFEST=/abs/path/to/import.json NPM_BACKEND=verdaccio
 ```
 
 严格模式示例：
@@ -82,7 +82,7 @@ uv run python tools/batch-import/batch_import_skills.py \
 或：
 
 ```bash
-make batch-import-verdaccio MANIFEST=/abs/path/to/import.json STRICT=1
+make batch-import MANIFEST=/abs/path/to/import.json NPM_BACKEND=verdaccio STRICT=1
 ```
 
 manifest 最小格式：

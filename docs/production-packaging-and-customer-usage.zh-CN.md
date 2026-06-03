@@ -172,7 +172,7 @@ docker compose -f zarf/compose/production.yml up --build
 或：
 
 ```bash
-make compose-production-up
+make compose-up COMPOSE_STACK=production
 ```
 
 这个 compose 文件包含：
@@ -235,7 +235,7 @@ docker compose -f zarf/compose/local.yml up --build
 或：
 
 ```bash
-make compose-local-up
+make compose-up COMPOSE_STACK=local
 ```
 
 这个 compose 文件包含：
@@ -324,9 +324,9 @@ env \
 本仓库已经提供：
 
 - `make verdaccio-run`
-- `make registry-run-verdaccio`
-- `make cli-publish-verdaccio`
-- `make batch-import-verdaccio`
+- `make registry-run REGISTRY_BACKEND=verdaccio`
+- `make cli-publish SKILL_PATH=/abs/path/to/skill NPM_BACKEND=verdaccio`
+- `make batch-import MANIFEST=/abs/path/to/import.json NPM_BACKEND=verdaccio`
 
 详细步骤见 [docs/local-verdaccio-e2e.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/local-verdaccio-e2e.zh-CN.md)。
 

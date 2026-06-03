@@ -91,7 +91,7 @@ make test-cli-packaging
 最短路径是先跑 Catalog，再用 CLI 对拍：
 
 ```bash
-make registry-run-fresh
+make registry-run RESET_DB=1
 ```
 
 另一个终端：
@@ -106,7 +106,7 @@ make cli-add PACKAGE=@platform.skill/pdf-skill
 如果你要连 package metadata 也一起切到内置 mock registry：
 
 ```bash
-make registry-run-mock
+make registry-run REGISTRY_BACKEND=mock
 ```
 
 如果你只是在现有 sqlite 上重启 Catalog：
@@ -121,13 +121,13 @@ make registry-run
 
 ```bash
 make verdaccio-run
-make registry-run-verdaccio
+make registry-run REGISTRY_BACKEND=verdaccio
 ```
 
 然后：
 
 ```bash
-make cli-publish-verdaccio SKILL_PATH=/abs/path/to/skill
+make cli-publish SKILL_PATH=/abs/path/to/skill NPM_BACKEND=verdaccio
 make cli-find QUERY=pdf
 make cli-add PACKAGE=@platform.skill/pdf-skill
 ```
@@ -137,10 +137,10 @@ make cli-add PACKAGE=@platform.skill/pdf-skill
 如果要验证“发布需要登录”的路径：
 
 ```bash
-make verdaccio-run-auth
+make verdaccio-run VERDACCIO_MODE=auth
 make verdaccio-login
-make registry-run-verdaccio-auth
-make cli-publish-verdaccio-auth SKILL_PATH=/abs/path/to/skill
+make registry-run REGISTRY_BACKEND=verdaccio-auth
+make cli-publish SKILL_PATH=/abs/path/to/skill NPM_BACKEND=verdaccio-auth
 ```
 
 完整实操见 [docs/local-verdaccio-auth-e2e.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/local-verdaccio-auth-e2e.zh-CN.md)。
@@ -150,18 +150,18 @@ make cli-publish-verdaccio-auth SKILL_PATH=/abs/path/to/skill
 ```bash
 make nexus-run
 make nexus-bootstrap
-make registry-run-nexus
-make cli-publish-nexus SKILL_PATH=/abs/path/to/skill
+make registry-run REGISTRY_BACKEND=nexus
+make cli-publish SKILL_PATH=/abs/path/to/skill NPM_BACKEND=nexus
 ```
 
 如果你要验证“tarball / metadata 读取也要求鉴权”的严格模式：
 
 ```bash
 make nexus-run
-make nexus-bootstrap-strict
-make registry-run-nexus
-make cli-publish-nexus SKILL_PATH=/abs/path/to/skill
-make cli-add-nexus PACKAGE=@platform.skill/pdf-skill
+make nexus-bootstrap STRICT=1
+make registry-run REGISTRY_BACKEND=nexus
+make cli-publish SKILL_PATH=/abs/path/to/skill NPM_BACKEND=nexus
+make cli-add PACKAGE=@platform.skill/pdf-skill NPM_BACKEND=nexus
 ```
 
 详细步骤看 [docs/local-nexus-e2e.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/local-nexus-e2e.zh-CN.md)。
@@ -194,16 +194,16 @@ env \
 
 ```bash
 make cli-find QUERY=pdf
-make cli-find-json QUERY=pdf
+make cli-find QUERY=pdf OUTPUT=json
 make cli-add PACKAGE=@platform.skill/pdf-skill
-make cli-add-nexus PACKAGE=@platform.skill/pdf-skill
+make cli-add PACKAGE=@platform.skill/pdf-skill NPM_BACKEND=nexus
 make cli-publish SKILL_PATH=/abs/path/to/skill
 ```
 
 说明：
 
 - `make cli-add` 默认做项目级安装
-- 对严格鉴权的 Nexus tarball 读取，使用 `make cli-add-nexus` 让 install-side 复用 `/private/tmp/skill-registry-nexus/.npmrc`
+- 对严格鉴权的 Nexus tarball 读取，使用 `make cli-add PACKAGE=@platform.skill/pdf-skill NPM_BACKEND=nexus` 让 install-side 复用 `/private/tmp/skill-registry-nexus/.npmrc`
 - skill 会安装到当前工作目录下的 `./.agents/skills/`
 - 项目级安装状态会写到当前工作目录下的 `skills-lock.json`
 - 用户级安装请直接使用 CLI 并传 `-g`
@@ -234,7 +234,7 @@ make web-dev
 如果要让 Web UI 直接命中本地 Catalog，而不是默认 mock client：
 
 ```bash
-make registry-run-fresh
+make registry-run RESET_DB=1
 ```
 
 另一个终端：
@@ -290,7 +290,7 @@ make docker-build
 如果你要直接起一个 `Catalog + Postgres` 的最小生产部署示例：
 
 ```bash
-make compose-production-up
+make compose-up COMPOSE_STACK=production
 ```
 
 关键点：
@@ -302,7 +302,7 @@ make compose-production-up
 如果你要起一个本地真实联调栈 `Catalog + Postgres + Verdaccio`：
 
 ```bash
-make compose-local-up
+make compose-up COMPOSE_STACK=local
 ```
 
 详细说明看 [docs/production-packaging-and-customer-usage.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/production-packaging-and-customer-usage.zh-CN.md)。
@@ -329,8 +329,8 @@ uv run python tools/batch-import/batch_import_skills.py \
 
 ```bash
 make batch-import MANIFEST=/abs/path/to/import.json
-make batch-import-verdaccio MANIFEST=/abs/path/to/import.json
-make batch-import-verdaccio-auth MANIFEST=/abs/path/to/import.json
+make batch-import MANIFEST=/abs/path/to/import.json NPM_BACKEND=verdaccio
+make batch-import MANIFEST=/abs/path/to/import.json NPM_BACKEND=verdaccio-auth
 ```
 
 当前导入行为：
@@ -376,7 +376,7 @@ Registry：
 
 - `make registry-run` 默认让 sample skill 的 tarball 指向本地 `/mock-npm`
 - seed 只在空库时写入；如果你改过 registry 地址，先 `make registry-reset`
-- `make registry-run-mock` 会把 package metadata 读取也切到本地 `/mock-npm`
+- `make registry-run REGISTRY_BACKEND=mock` 会把 package metadata 读取也切到本地 `/mock-npm`
 - CLI 永远连 Catalog；切换后端 npm registry 时，只需要改 Catalog 的环境变量
 - 批量导入脚本不依赖具体 npm 实现；只要 `npm publish` 与 Catalog `release-record` 指向同一个 registry 即可
 - 本地真实 E2E 优先 Verdaccio；要模拟企业权限和仓库治理再接 Nexus 一类系统

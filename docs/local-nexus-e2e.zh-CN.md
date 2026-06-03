@@ -43,17 +43,17 @@
   - 按模式打开或关闭匿名读取
   - 创建 `skills-npm` hosted repository
   - 写出隔离的 `.npmrc`
-- `make nexus-bootstrap-strict`
+- `make nexus-bootstrap STRICT=1`
   - 关闭 anonymous read，用来验证 tarball / metadata 读取也要鉴权的场景
-- `make registry-run-nexus`
+- `make registry-run REGISTRY_BACKEND=nexus`
   - 把 Catalog 指向 Nexus npm repository
-- `make cli-publish-nexus`
+- `make cli-publish SKILL_PATH=/abs/path/to/skill NPM_BACKEND=nexus`
   - 让 CLI 用隔离 `.npmrc` 发布到 Nexus
-- `make cli-add-nexus`
+- `make cli-add PACKAGE=@platform.skill/your-skill-name NPM_BACKEND=nexus`
   - 让 `skills add` 也显式复用 Nexus `.npmrc`
-- `make batch-import-nexus`
+- `make batch-import MANIFEST=/abs/path/to/import.json NPM_BACKEND=nexus`
   - 让批量导入工具用同一个 Nexus 仓
-- `make compose-nexus-up`
+- `make compose-up COMPOSE_STACK=nexus`
   - 一次拉起 `catalog + postgres + nexus`
 
 默认参数：
@@ -70,15 +70,15 @@
 
 - `make nexus-run`
 - `make nexus-bootstrap`
-- `make registry-run-nexus`
+- `make registry-run REGISTRY_BACKEND=nexus`
 - `npm publish` 到 Nexus hosted repo
-- `make cli-publish-nexus`
+- `make cli-publish SKILL_PATH=/abs/path/to/skill NPM_BACKEND=nexus`
 - `make cli-find QUERY=nexus-cli-smoke`
 - `make cli-add PACKAGE=@platform.skill/nexus-cli-smoke`
-- `make nexus-bootstrap-strict`
+- `make nexus-bootstrap STRICT=1`
 - 严格模式下：
   - `make cli-add PACKAGE=@platform.skill/nexus-cli-smoke` 会在 tarball 下载阶段 `401 Unauthorized`
-  - `make cli-add-nexus PACKAGE=@platform.skill/nexus-cli-smoke` 会成功
+  - `make cli-add PACKAGE=@platform.skill/nexus-cli-smoke NPM_BACKEND=nexus` 会成功
 
 也确认了：
 
@@ -109,7 +109,7 @@
 - Catalog 对接 Nexus：已跑通
 - Nexus Community onboarding / EULA 接受：已纳入 bootstrap
 - `npm publish` 最后一跳：根因已定位并可通过 bootstrap 自动消除
-- 严格 tarball 鉴权模式：CLI adapter 已具备能力；repo 里的本地 E2E 现在通过 `make cli-add-nexus` 提供标准接线
+- 严格 tarball 鉴权模式：CLI adapter 已具备能力；repo 里的本地 E2E 现在通过 `make cli-add PACKAGE=@platform.skill/your-skill-name NPM_BACKEND=nexus` 提供标准接线
 
 ## 路径 A：分终端启动，最容易排查
 
@@ -138,7 +138,7 @@ make nexus-bootstrap
 如果你要验证严格读鉴权模式，改成：
 
 ```bash
-make nexus-bootstrap-strict
+make nexus-bootstrap STRICT=1
 ```
 
 预期结果：
@@ -155,7 +155,7 @@ make nexus-bootstrap-strict
 
 ```bash
 make registry-reset
-make registry-run-nexus
+make registry-run REGISTRY_BACKEND=nexus
 ```
 
 保持这个终端不要退出。
@@ -165,7 +165,7 @@ make registry-run-nexus
 发布一个本地 skill：
 
 ```bash
-make cli-publish-nexus SKILL_PATH=/abs/path/to/skill
+make cli-publish SKILL_PATH=/abs/path/to/skill NPM_BACKEND=nexus
 ```
 
 然后继续验证：
@@ -180,7 +180,7 @@ make cli-add PACKAGE=@platform.skill/your-skill-name
 如果你不想分开手工起 Catalog / Postgres，可以直接：
 
 ```bash
-make compose-nexus-up
+make compose-up COMPOSE_STACK=nexus
 ```
 
 然后在另一个终端做一次初始化：
@@ -192,7 +192,7 @@ make nexus-bootstrap
 之后继续：
 
 ```bash
-make cli-publish-nexus SKILL_PATH=/abs/path/to/skill
+make cli-publish SKILL_PATH=/abs/path/to/skill NPM_BACKEND=nexus
 make cli-find QUERY=your-skill
 make cli-add PACKAGE=@platform.skill/your-skill-name
 ```
@@ -200,13 +200,13 @@ make cli-add PACKAGE=@platform.skill/your-skill-name
 如果当前是严格模式，最后一步改成：
 
 ```bash
-make cli-add-nexus PACKAGE=@platform.skill/your-skill-name
+make cli-add PACKAGE=@platform.skill/your-skill-name NPM_BACKEND=nexus
 ```
 
 结束时：
 
 ```bash
-make compose-nexus-down
+make compose-down COMPOSE_STACK=nexus
 ```
 
 ## 批量导入
@@ -214,7 +214,7 @@ make compose-nexus-down
 如果你要验证批量导入和 Nexus 的组合：
 
 ```bash
-make batch-import-nexus MANIFEST=/abs/path/to/import.json
+make batch-import MANIFEST=/abs/path/to/import.json NPM_BACKEND=nexus
 ```
 
 它会复用：
@@ -239,12 +239,12 @@ make nexus-bootstrap
 ```bash
 # terminal 3
 make registry-reset
-make registry-run-nexus
+make registry-run REGISTRY_BACKEND=nexus
 ```
 
 ```bash
 # terminal 4
-make cli-publish-nexus SKILL_PATH=/abs/path/to/skill
+make cli-publish SKILL_PATH=/abs/path/to/skill NPM_BACKEND=nexus
 make cli-find QUERY=your-skill
 make cli-add PACKAGE=@platform.skill/your-skill-name
 ```
@@ -253,14 +253,14 @@ make cli-add PACKAGE=@platform.skill/your-skill-name
 
 ```bash
 # terminal 2
-make nexus-bootstrap-strict
+make nexus-bootstrap STRICT=1
 ```
 
 ```bash
 # terminal 4
-make cli-publish-nexus SKILL_PATH=/abs/path/to/skill
+make cli-publish SKILL_PATH=/abs/path/to/skill NPM_BACKEND=nexus
 make cli-find QUERY=your-skill
-make cli-add-nexus PACKAGE=@platform.skill/your-skill-name
+make cli-add PACKAGE=@platform.skill/your-skill-name NPM_BACKEND=nexus
 ```
 
 ## 失败时优先检查
@@ -272,12 +272,12 @@ make cli-add-nexus PACKAGE=@platform.skill/your-skill-name
 3. `http://127.0.0.1:8081/service/rest/v1/status` 是否可访问
 4. 当前机器是否安装了 `expect`
 
-如果 `make cli-publish-nexus` 失败，优先检查：
+如果 `make cli-publish SKILL_PATH=/abs/path/to/skill NPM_BACKEND=nexus` 失败，优先检查：
 
 1. `make nexus-bootstrap` 是否已经成功跑过
 2. `/private/tmp/skill-registry-nexus/.npmrc` 是否存在
 3. `SKILL_PATH` 下的 `SKILL.md` / `package.json` 是否满足当前发布契约
-4. Catalog 是否通过 `make registry-run-nexus` 启动
+4. Catalog 是否通过 `make registry-run REGISTRY_BACKEND=nexus` 启动
 5. 同版本是否已经发布过
 6. 如果仍然是 `403`，先直接看响应体是不是 EULA / onboarding 问题，而不是先怀疑 skill metadata
 
@@ -286,4 +286,4 @@ make cli-add-nexus PACKAGE=@platform.skill/your-skill-name
 1. Nexus anonymous access 是否被关掉了
 2. `dist.tarball` URL 是否仍然指向 `skills-npm`
 3. 是否把 Nexus 改成了 tarball 读取强鉴权模式
-4. 如果是严格模式，当前命令是否显式带了 `NPM_CONFIG_USERCONFIG=/private/tmp/skill-registry-nexus/.npmrc`，或者直接使用 `make cli-add-nexus`
+4. 如果是严格模式，当前命令是否显式带了 `NPM_CONFIG_USERCONFIG=/private/tmp/skill-registry-nexus/.npmrc`，或者直接使用 `make cli-add PACKAGE=@platform.skill/your-skill-name NPM_BACKEND=nexus`

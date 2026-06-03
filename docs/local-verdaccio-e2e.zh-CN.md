@@ -46,7 +46,7 @@ zarf/docker/verdaccio/public.yaml
 另一个终端执行：
 
 ```bash
-make registry-run-verdaccio
+make registry-run REGISTRY_BACKEND=verdaccio
 ```
 
 这会把下面两个配置一起指向 Verdaccio：
@@ -59,13 +59,13 @@ make registry-run-verdaccio
 发布本地 skill 到 Verdaccio：
 
 ```bash
-make cli-publish-verdaccio SKILL_PATH=/abs/path/to/skill
+make cli-publish SKILL_PATH=/abs/path/to/skill NPM_BACKEND=verdaccio
 ```
 
 批量导入到 Verdaccio：
 
 ```bash
-make batch-import-verdaccio MANIFEST=/abs/path/to/import.json
+make batch-import MANIFEST=/abs/path/to/import.json NPM_BACKEND=verdaccio
 ```
 
 搜索和安装仍然通过 Catalog：
@@ -78,8 +78,8 @@ make cli-add PACKAGE=@platform.skill/pdf-skill
 ## 推荐验证顺序
 
 1. 启动 Verdaccio
-2. 启动 `make registry-run-verdaccio`
-3. 运行 `make cli-publish-verdaccio SKILL_PATH=...`
+2. 启动 `make registry-run REGISTRY_BACKEND=verdaccio`
+3. 运行 `make cli-publish SKILL_PATH=... NPM_BACKEND=verdaccio`
 4. 运行 `make cli-find QUERY=...`
 5. 运行 `make cli-add PACKAGE=...`
 
