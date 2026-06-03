@@ -1,5 +1,5 @@
 import { spawnSync } from 'child_process';
-import { existsSync, mkdirSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -41,6 +41,7 @@ describe('publish workflow', () => {
   });
 
   it('runs packaging session, pack, publish, and release-record in order', async () => {
+    writeFileSync(join(testDir, '.npmrc'), '//npm.example.com/:_authToken=publish-token\n');
     vi.mocked(spawnSync).mockReturnValueOnce({
       status: 0,
       stdout: 'published',
@@ -131,6 +132,12 @@ describe('publish workflow', () => {
       'publish',
       expect.stringContaining('my-skill-1.2.0.tgz'),
     ]);
+    expect(publishCall?.[2]).toMatchObject({
+      cwd: testDir,
+      env: expect.objectContaining({
+        NPM_CONFIG_USERCONFIG: join(testDir, '.npmrc'),
+      }),
+    });
     expect(result).toEqual({
       ok: true,
       packageName: '@platform.skill/my-skill',
@@ -167,6 +174,25 @@ describe('publish workflow', () => {
       components: [],
       errors: [],
       warnings: ['normalized_missing_capability_content'],
+      warningDetails: [
+        {
+          code: 'normalized_missing_capability_content',
+          severity: 'warning',
+          title: 'Generated placeholder capability content',
+          message: 'The imported skill did not contain publishable capability content.',
+          suggestedAction: 'Replace the placeholder with real capability content.',
+        },
+      ],
+      importReport: {
+        sourceType: 'imported',
+        strictMode: false,
+        normalized: true,
+        generatedPackageJson: false,
+        generatedCapabilityPlaceholder: true,
+        rewrotePackageIdentity: false,
+        generatedPaths: ['docs/README.md'],
+        warningCodes: ['normalized_missing_capability_content'],
+      },
     });
 
     fetchMock
@@ -204,6 +230,25 @@ describe('publish workflow', () => {
       version: '1.2.0',
       bundlePath: expect.stringContaining('my-skill-1.2.0.tgz'),
       warnings: ['normalized_missing_capability_content'],
+      warningDetails: [
+        {
+          code: 'normalized_missing_capability_content',
+          severity: 'warning',
+          title: 'Generated placeholder capability content',
+          message: 'The imported skill did not contain publishable capability content.',
+          suggestedAction: 'Replace the placeholder with real capability content.',
+        },
+      ],
+      importReport: {
+        sourceType: 'imported',
+        strictMode: false,
+        normalized: true,
+        generatedPackageJson: false,
+        generatedCapabilityPlaceholder: true,
+        rewrotePackageIdentity: false,
+        generatedPaths: ['docs/README.md'],
+        warningCodes: ['normalized_missing_capability_content'],
+      },
     });
 
     if (result.ok) {

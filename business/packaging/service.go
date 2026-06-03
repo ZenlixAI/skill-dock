@@ -24,6 +24,7 @@ var (
 )
 
 const requiredPackageScope = "@platform.skill/"
+const importReportPath = ".skill-packaging-import-report.json"
 
 type Service struct {
 	tempRoot string
@@ -77,6 +78,13 @@ func (s *Service) Prepare(input PrepareRequest) (PrepareResponse, error) {
 		}
 		warnings = append(warnings, normalizationWarnings...)
 	}
+	identityRewriteWarning, err := detectPackageIdentityRewrite(workspacePath, input.Target)
+	if err != nil {
+		return PrepareResponse{}, err
+	}
+	if identityRewriteWarning != "" {
+		warnings = append(warnings, identityRewriteWarning)
+	}
 
 	if _, err := os.Stat(filepath.Join(workspacePath, "SKILL.md")); err != nil {
 		return PrepareResponse{}, catalog.NewError(422, "missing_skill_md", "Root SKILL.md is required.", nil)
@@ -84,13 +92,19 @@ func (s *Service) Prepare(input PrepareRequest) (PrepareResponse, error) {
 	if err := writePackageJSON(workspacePath, input.Target, input.Metadata, input.Options, len(warnings) > 0); err != nil {
 		return PrepareResponse{}, catalog.NewError(500, "internal_error", "Failed to write package.json.", nil)
 	}
+	report := buildImportReport(input.Metadata.SourceType, input.Options.Strict, warnings)
+	if err := writeImportReport(workspacePath, report); err != nil {
+		return PrepareResponse{}, err
+	}
 
 	return PrepareResponse{
-		WorkspacePath: workspacePath,
-		PackageName:   input.Target.PackageName,
-		Version:       input.Target.Version,
-		Warnings:      warnings,
-		Errors:        []string{},
+		WorkspacePath:  workspacePath,
+		PackageName:    input.Target.PackageName,
+		Version:        input.Target.Version,
+		Warnings:       warnings,
+		WarningDetails: warningDetails(warnings),
+		ImportReport:   report,
+		Errors:         []string{},
 	}, nil
 }
 
@@ -110,6 +124,8 @@ func (s *Service) Validate(input ValidateRequest) (ValidateResponse, error) {
 		ManifestDigest: result.ManifestDigest,
 		Components:     result.Components,
 		Warnings:       result.Warnings,
+		WarningDetails: warningDetails(result.Warnings),
+		ImportReport:   readImportReport(input.WorkspacePath, result.Warnings),
 		Errors:         result.Errors,
 	}, nil
 }
@@ -124,11 +140,13 @@ func (s *Service) Pack(input PackRequest) (PackResponse, error) {
 	}
 	if len(result.Errors) > 0 {
 		return PackResponse{
-			WorkspacePath: input.WorkspacePath,
-			PackageName:   input.Target.PackageName,
-			Version:       input.Target.Version,
-			Warnings:      result.Warnings,
-			Errors:        result.Errors,
+			WorkspacePath:  input.WorkspacePath,
+			PackageName:    input.Target.PackageName,
+			Version:        input.Target.Version,
+			Warnings:       result.Warnings,
+			WarningDetails: warningDetails(result.Warnings),
+			ImportReport:   readImportReport(input.WorkspacePath, result.Warnings),
+			Errors:         result.Errors,
 		}, nil
 	}
 
@@ -155,6 +173,8 @@ func (s *Service) Pack(input PackRequest) (PackResponse, error) {
 		ManifestDigest: result.ManifestDigest,
 		Components:     result.Components,
 		Warnings:       result.Warnings,
+		WarningDetails: warningDetails(result.Warnings),
+		ImportReport:   readImportReport(input.WorkspacePath, result.Warnings),
 		Errors:         result.Errors,
 	}, nil
 }
@@ -293,6 +313,9 @@ func createBundleArchive(workspacePath string, bundlePath string) error {
 		if err != nil {
 			return err
 		}
+		if filepath.ToSlash(relativePath) == importReportPath {
+			return nil
+		}
 		content, err := os.ReadFile(path)
 		if err != nil {
 			return err
@@ -404,6 +427,157 @@ did not include any capability directories or compatibility manifests.
 	}
 
 	return warnings, nil
+}
+
+func detectPackageIdentityRewrite(workspacePath string, target Target) (string, error) {
+	content, err := os.ReadFile(filepath.Join(workspacePath, "package.json"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", catalog.NewError(500, "internal_error", "Failed to inspect package.json.", nil)
+	}
+
+	var payload struct {
+		Name    string `json:"name"`
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(content, &payload); err != nil {
+		return "", nil
+	}
+	if payload.Name != "" && payload.Name != target.PackageName {
+		return "normalized_rewrote_package_json_identity", nil
+	}
+	if payload.Version != "" && payload.Version != target.Version {
+		return "normalized_rewrote_package_json_identity", nil
+	}
+	return "", nil
+}
+
+func buildImportReport(sourceType string, strictMode bool, warnings []string) *ImportReport {
+	if strings.TrimSpace(sourceType) == "" && len(warnings) == 0 && !strictMode {
+		return nil
+	}
+
+	report := &ImportReport{
+		SourceType: sourceType,
+		StrictMode: strictMode,
+	}
+	for _, warning := range warnings {
+		switch warning {
+		case "normalized_missing_package_json":
+			report.Normalized = true
+			report.GeneratedPackageJSON = true
+			report.GeneratedPaths = append(report.GeneratedPaths, "package.json")
+		case "normalized_missing_capability_content":
+			report.Normalized = true
+			report.GeneratedCapabilityPlaceholder = true
+			report.GeneratedPaths = append(report.GeneratedPaths, "docs/README.md")
+		case "normalized_rewrote_package_json_identity":
+			report.Normalized = true
+			report.RewrotePackageIdentity = true
+		}
+	}
+	if len(warnings) > 0 {
+		report.WarningCodes = append([]string(nil), warnings...)
+	}
+	if len(report.GeneratedPaths) > 0 {
+		report.GeneratedPaths = uniqueStrings(report.GeneratedPaths)
+	}
+	return report
+}
+
+func writeImportReport(workspacePath string, report *ImportReport) error {
+	if report == nil {
+		return nil
+	}
+	content, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		return catalog.NewError(500, "internal_error", "Failed to write import report.", nil)
+	}
+	if err := os.WriteFile(filepath.Join(workspacePath, importReportPath), content, 0o644); err != nil {
+		return catalog.NewError(500, "internal_error", "Failed to write import report.", nil)
+	}
+	return nil
+}
+
+func readImportReport(workspacePath string, warnings []string) *ImportReport {
+	content, err := os.ReadFile(filepath.Join(workspacePath, importReportPath))
+	if err == nil {
+		var report ImportReport
+		if json.Unmarshal(content, &report) == nil {
+			if len(warnings) > 0 && len(report.WarningCodes) == 0 {
+				report.WarningCodes = append([]string(nil), warnings...)
+			}
+			return &report
+		}
+	}
+	return inferImportReportFromWorkspace(workspacePath, warnings)
+}
+
+func inferImportReportFromWorkspace(workspacePath string, warnings []string) *ImportReport {
+	content, err := os.ReadFile(filepath.Join(workspacePath, "package.json"))
+	if err != nil {
+		return buildImportReport("", false, warnings)
+	}
+
+	var payload struct {
+		Skill struct {
+			SourceType                     string `json:"sourceType"`
+			NormalizedFromImport           bool   `json:"normalizedFromImport"`
+			GeneratedPackageJSON           bool   `json:"generatedPackageJson"`
+			GeneratedCapabilityPlaceholder bool   `json:"generatedCapabilityPlaceholder"`
+			RewrotePackageIdentity         bool   `json:"rewrotePackageIdentity"`
+		} `json:"skill"`
+	}
+	if err := json.Unmarshal(content, &payload); err != nil {
+		return buildImportReport("", false, warnings)
+	}
+
+	report := buildImportReport(payload.Skill.SourceType, false, warnings)
+	if report == nil && !payload.Skill.NormalizedFromImport && !payload.Skill.GeneratedPackageJSON &&
+		!payload.Skill.GeneratedCapabilityPlaceholder && !payload.Skill.RewrotePackageIdentity {
+		return nil
+	}
+	if report == nil {
+		report = &ImportReport{SourceType: payload.Skill.SourceType}
+	}
+	if payload.Skill.NormalizedFromImport {
+		report.Normalized = true
+	}
+	if payload.Skill.GeneratedPackageJSON {
+		report.GeneratedPackageJSON = true
+		report.GeneratedPaths = append(report.GeneratedPaths, "package.json")
+	}
+	if payload.Skill.GeneratedCapabilityPlaceholder {
+		report.Normalized = true
+		report.GeneratedCapabilityPlaceholder = true
+		report.GeneratedPaths = append(report.GeneratedPaths, "docs/README.md")
+	}
+	if payload.Skill.RewrotePackageIdentity {
+		report.Normalized = true
+		report.RewrotePackageIdentity = true
+	}
+	if len(report.GeneratedPaths) > 0 {
+		report.GeneratedPaths = uniqueStrings(report.GeneratedPaths)
+	}
+	return report
+}
+
+func uniqueStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
 }
 
 func writePackageJSON(workspacePath string, target Target, metadata Metadata, options Options, normalizedFromImport bool) error {

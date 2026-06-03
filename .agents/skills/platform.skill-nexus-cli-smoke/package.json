@@ -1,0 +1,9 @@
+{
+  "description": "Smoke test skill for Nexus CLI publish",
+  "name": "@platform.skill/nexus-cli-smoke",
+  "skill": {
+    "displayName": "nexus-cli-smoke",
+    "sourceType": "native"
+  },
+  "version": "1.0.0"
+}

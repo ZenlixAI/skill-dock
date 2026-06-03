@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: skill_registry
+      POSTGRES_USER: skill_registry
+      POSTGRES_PASSWORD: skill_registry
+    ports:
+      - "5432:5432"
+    volumes:
+      - local_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U skill_registry -d skill_registry"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nexus:
+    image: sonatype/nexus3:latest
+    ports:
+      - "8081:8081"
+    environment:
+      INSTALL4J_ADD_VM_PARAMS: >-
+        -Xms1024m -Xmx1024m -XX:MaxDirectMemorySize=1024m
+        -Djava.util.prefs.userRoot=/nexus-data/javaprefs
+    volumes:
+      - ${NEXUS_STATE_DIR:-/private/tmp/skill-registry-nexus}:/nexus-data
+
+  catalog:
+    build:
+      context: ../..
+      dockerfile: zarf/docker/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nexus:
+        condition: service_started
+    ports:
+      - "18080:8080"
+    environment:
+      SKILL_REGISTRY_ADDR: :8080
+      SKILL_REGISTRY_DATABASE_URL: postgres://skill_registry:skill_registry@postgres:5432/skill_registry?sslmode=disable
+      SKILL_REGISTRY_READER_TOKEN: reader-secret
+      SKILL_REGISTRY_AUTHORING_TOKEN: authoring-secret
+      SKILL_REGISTRY_PUBLISHER_TOKEN: publisher-secret
+      SKILL_REGISTRY_NPM_REGISTRY_URL: http://nexus:8081/repository/skills-npm
+      SKILL_REGISTRY_SAMPLE_NPM_BASE_URL: http://nexus:8081/repository/skills-npm
+      SKILL_REGISTRY_ENABLE_SAMPLE_DATA: "false"
+      SKILL_REGISTRY_ENABLE_MOCK_REGISTRY: "false"
+
+volumes:
+  local_pg_data:

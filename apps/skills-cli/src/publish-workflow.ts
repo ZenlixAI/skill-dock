@@ -5,9 +5,12 @@ import { basename, join, resolve } from 'path';
 import {
   getRegistryBaseUrl,
   packSkillPackaging,
+  type PackagingImportReport,
   putReleaseRecord,
+  type PackagingWarningDetail,
   type PackPackagingResponse,
 } from './catalog.ts';
+import { resolveNpmUserConfigPath } from './npm-auth.ts';
 import { runPackagingSession } from './packaging-session.ts';
 
 export interface PublishWorkflowOptions {
@@ -22,6 +25,8 @@ export interface PublishWorkflowSuccessResult {
   version: string;
   bundlePath: string;
   warnings?: string[];
+  warningDetails?: PackagingWarningDetail[];
+  importReport?: PackagingImportReport;
 }
 
 export interface PublishWorkflowFailureResult {
@@ -60,6 +65,12 @@ function publishBundle(directory: string, bundlePath: string): void {
     cwd: directory,
     stdio: ['inherit', 'pipe', 'pipe'],
     encoding: 'utf-8',
+    env: {
+      ...process.env,
+      ...(resolveNpmUserConfigPath({ cwd: directory })
+        ? { NPM_CONFIG_USERCONFIG: resolveNpmUserConfigPath({ cwd: directory }) }
+        : {}),
+    },
     shell: process.platform === 'win32',
   });
 
@@ -123,6 +134,8 @@ export async function runPublishWorkflow(
         version: session.version,
         bundlePath: bundle.bundlePath,
         ...(session.warnings ? { warnings: session.warnings } : {}),
+        ...(session.warningDetails ? { warningDetails: session.warningDetails } : {}),
+        ...(session.importReport ? { importReport: session.importReport } : {}),
       };
     } finally {
       if (!retainBundleUntilExit) {

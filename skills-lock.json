@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "skills": {
+    "@platform.skill/nexus-cli-smoke": {
+      "sourceType": "registry",
+      "computedHash": "347647bd0926071bad3f471af9e61fe49ebea843ad6ccef46bb06c32c9fa16e1",
+      "packageName": "@platform.skill/nexus-cli-smoke",
+      "version": "1.0.0",
+      "registry": "http://127.0.0.1:18080",
+      "integrity": "sha512-idOquTg55pqCZU2JyeaxX6hoJLr6/MLcVo8X0FSX6gWElXhehwBM3husV4HrjGL9tL2TMA6uhTwjnwtxXMBaDQ==",
+      "skillManifestDigest": "sha256:7f009eaa663b423b8d870ab420fc86b9cea7015c55f3b3cd8316c32a3f2c8732"
+    }
+  }
+}

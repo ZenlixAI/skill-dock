@@ -86,6 +86,57 @@ description: PDF processing workflow
       expect(bundle.skill.name).toBe('@platform.skill/pdf-skill');
       expect(bundle.skill.description).toBe('PDF processing workflow');
       expect(bundle.extractedPath).toContain('/package');
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        'https://npm.example.com/@platform.skill/pdf-skill/-/pdf-skill-1.2.0.tgz',
+        expect.objectContaining({
+          headers: {
+            accept: 'application/octet-stream',
+          },
+        })
+      );
+    } finally {
+      await bundle.cleanup();
+    }
+  });
+
+  it('attaches npm auth headers when the tarball url matches a local npmrc', async () => {
+    const fixture = createBundleFixture();
+    const authDir = join(fixtureDir, 'auth');
+    mkdirSync(authDir, { recursive: true });
+    writeFileSync(join(authDir, '.npmrc'), '//npm.example.com/private/:_authToken=fixture-token\n');
+
+    globalThis.fetch = vi.fn(async () => {
+      return new Response(fixture.tarball, {
+        status: 200,
+        headers: { 'content-type': 'application/octet-stream' },
+      });
+    }) as unknown as typeof globalThis.fetch;
+
+    const bundle = await downloadRegistrySkillBundle(
+      {
+        packageName: '@platform.skill/pdf-skill',
+        version: '1.2.0',
+        npmRegistry: 'https://npm.example.com/private',
+        tarballUrl: 'https://npm.example.com/private/@platform.skill/pdf-skill/-/pdf-skill-1.2.0.tgz',
+        integrity: sha512Integrity(fixture.tarball),
+        skillManifestDigest: skillManifestDigest(fixture.skillContent),
+        versionStatus: 'published',
+      },
+      {
+        cwd: authDir,
+      }
+    );
+
+    try {
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        'https://npm.example.com/private/@platform.skill/pdf-skill/-/pdf-skill-1.2.0.tgz',
+        expect.objectContaining({
+          headers: {
+            accept: 'application/octet-stream',
+            Authorization: 'Bearer fixture-token',
+          },
+        })
+      );
     } finally {
       await bundle.cleanup();
     }

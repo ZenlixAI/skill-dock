@@ -33,11 +33,12 @@ foundation/
 
 apps/
   skills-cli/         独立 CLI
+  skills-web/         首版 Web UI scaffold（Catalog / Import / Governance）
 
 zarf/
   docker/             Dockerfile 与 Verdaccio 配置
   compose/            本地 / 生产 compose
-  scripts/            运行 Verdaccio 的辅助脚本
+  scripts/            运行 Verdaccio / Nexus 的辅助脚本
 
 tools/
   batch-import/       批量导入工具
@@ -48,6 +49,14 @@ tools/
 ```bash
 make help
 make verify
+make verify-full
+```
+
+Web UI 骨架：
+
+```bash
+make web-install
+make web-dev
 ```
 
 ## 快速开始
@@ -62,7 +71,20 @@ make verify
 
 - `go test ./...`
 - CLI type-check
-- CLI tests
+- CLI fast tests（默认排除 `apps/skills-cli/tests/dist.test.ts` 这类构建烟测）
+
+如果你要连 CLI 的 dist build smoke test 一起跑：
+
+```bash
+make verify-full
+```
+
+如果你只在改 packaging / publish 链路，优先用更窄的目标：
+
+```bash
+make test-go-packaging
+make test-cli-packaging
+```
 
 ### 2. 本地联调
 
@@ -123,6 +145,27 @@ make cli-publish-verdaccio-auth SKILL_PATH=/abs/path/to/skill
 
 完整实操见 [docs/local-verdaccio-auth-e2e.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/local-verdaccio-auth-e2e.zh-CN.md)。
 
+如果你要补一条更接近企业仓行为的本地 Nexus 路径：
+
+```bash
+make nexus-run
+make nexus-bootstrap
+make registry-run-nexus
+make cli-publish-nexus SKILL_PATH=/abs/path/to/skill
+```
+
+如果你要验证“tarball / metadata 读取也要求鉴权”的严格模式：
+
+```bash
+make nexus-run
+make nexus-bootstrap-strict
+make registry-run-nexus
+make cli-publish-nexus SKILL_PATH=/abs/path/to/skill
+make cli-add-nexus PACKAGE=@platform.skill/pdf-skill
+```
+
+详细步骤看 [docs/local-nexus-e2e.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/local-nexus-e2e.zh-CN.md)。
+
 如果你要接别的本地或企业 npm-compatible registry
 （例如 Nexus、Artifactory、GitLab Package Registry），启动 Catalog 时改这两个值即可：
 
@@ -153,15 +196,85 @@ env \
 make cli-find QUERY=pdf
 make cli-find-json QUERY=pdf
 make cli-add PACKAGE=@platform.skill/pdf-skill
+make cli-add-nexus PACKAGE=@platform.skill/pdf-skill
 make cli-publish SKILL_PATH=/abs/path/to/skill
 ```
 
 说明：
 
 - `make cli-add` 默认做项目级安装
+- 对严格鉴权的 Nexus tarball 读取，使用 `make cli-add-nexus` 让 install-side 复用 `/private/tmp/skill-registry-nexus/.npmrc`
 - skill 会安装到当前工作目录下的 `./.agents/skills/`
 - 项目级安装状态会写到当前工作目录下的 `skills-lock.json`
 - 用户级安装请直接使用 CLI 并传 `-g`
+
+### 4.5 Web UI Skeleton
+
+当前仓库已经补了一个独立的首版 Web UI 骨架：
+
+- 目录：`apps/skills-web/`
+- 技术栈：`Vite + React + TypeScript`
+- 当前页面：
+  - `/`
+  - `/authoring`
+  - `/catalog`
+  - `/skills/:packageName`
+  - `/skills/:packageName/versions/:version`
+  - `/import`
+  - `/governance`
+  - `/audit`
+
+运行：
+
+```bash
+make web-install
+make web-dev
+```
+
+如果要让 Web UI 直接命中本地 Catalog，而不是默认 mock client：
+
+```bash
+make registry-run-fresh
+```
+
+另一个终端：
+
+```bash
+cd apps/skills-web
+VITE_SKILL_REGISTRY_URL=http://127.0.0.1:18080 \
+VITE_SKILL_REGISTRY_TOKEN=publisher-secret \
+npm run dev
+```
+
+可选环境变量：
+
+- `VITE_SKILL_REGISTRY_URL`
+  - Catalog 基地址；为空时前端自动退回 mock mode
+- `VITE_SKILL_REGISTRY_TOKEN`
+  - 真实 bearer token，优先级高于 `VITE_SKILL_REGISTRY_ROLE`
+- `VITE_SKILL_REGISTRY_ROLE`
+  - 仅本地联调用；未提供 token 时走 `X-Role`
+- `VITE_SKILL_REGISTRY_ACTOR`
+  - 可选，透传到 `X-Actor`
+- `VITE_SKILL_REGISTRY_USE_MOCK=true`
+  - 即使提供了 URL，也强制前端走 mock mode
+
+构建验证：
+
+```bash
+make typecheck-web
+make build-web
+```
+
+说明：
+
+- 当前 UI 已支持 mock / real API 双模式
+- 读接口已接 Catalog API
+- 写接口已接 packaging prepare/validate/pack、release-record、skill/version governance
+- `Import & Package` 的 `pack` 结果现在可以直接 handoff 到 `/skills/:packageName/versions/:version` 的 release review 表单
+- 新增 `/authoring` 作为更上层 platform / authoring 入口页，用来承接 import -> release review -> governance / audit 的作者流
+- UI 设计规格见 [docs/superpowers/specs/2026-06-02-registry-web-ui-design.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/superpowers/specs/2026-06-02-registry-web-ui-design.zh-CN.md)
+- 前端实施计划见 [docs/superpowers/plans/2026-06-02-registry-web-ui-implementation-plan.md](/Users/ultraman/workspace/skill_registry/docs/superpowers/plans/2026-06-02-registry-web-ui-implementation-plan.md)
 
 ### 5. Docker 部署
 

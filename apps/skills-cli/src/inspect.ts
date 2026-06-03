@@ -3,10 +3,12 @@ import {
   runPackagingSession,
   type RegistryPackagingSessionSuccessResult,
 } from './packaging-session.ts';
+import { formatImportReportSummary, formatPackagingWarnings } from './packaging-warning-output.ts';
 
 interface InspectOptions {
   path?: string;
   registry?: string;
+  strict?: boolean;
 }
 
 function isRegistryValue(value: string | undefined): value is string {
@@ -38,6 +40,11 @@ export function parseInspectOptions(args: string[]): InspectOptions {
       continue;
     }
 
+    if (arg === '--strict') {
+      options.strict = true;
+      continue;
+    }
+
     if (typeof arg === 'string' && !arg.startsWith('-')) {
       positional.push(arg);
     }
@@ -62,6 +69,7 @@ export async function runInspect(args: string[] = []): Promise<void> {
   const result = await runPackagingSession({
     path: resolve(options.path || process.cwd()),
     registry,
+    strict: options.strict,
   });
 
   console.log();
@@ -89,6 +97,24 @@ export async function runInspect(args: string[] = []): Promise<void> {
   }
   if (isRegistryPackagingSuccess(result)) {
     console.log(`workspace: ${result.workspacePath}`);
+    const importSummary = formatImportReportSummary(result.importReport);
+    if (importSummary.length > 0) {
+      console.log('Import summary:');
+      for (const line of importSummary) {
+        console.log(`- ${line}`);
+      }
+    }
+    if (result.warnings && result.warnings.length > 0) {
+      console.log('Warnings:');
+      for (const warning of formatPackagingWarnings(result.warnings, result.warningDetails)) {
+        console.log(`- ${warning.title}`);
+        console.log(`  code: ${warning.code}`);
+        console.log(`  ${warning.message}`);
+        if (warning.suggestedAction) {
+          console.log(`  Suggested action: ${warning.suggestedAction}`);
+        }
+      }
+    }
   }
   if (result.components.length > 0) {
     console.log(`components: ${result.components.join(', ')}`);

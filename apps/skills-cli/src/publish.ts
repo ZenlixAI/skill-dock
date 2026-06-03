@@ -1,8 +1,10 @@
 import { runPublishWorkflow } from './publish-workflow.ts';
+import { formatImportReportSummary, formatPackagingWarnings } from './packaging-warning-output.ts';
 
 interface PublishOptions {
   path?: string;
   registry?: string;
+  strict?: boolean;
 }
 
 export function parsePublishOptions(args: string[]): PublishOptions {
@@ -14,6 +16,11 @@ export function parsePublishOptions(args: string[]): PublishOptions {
 
     if (arg === '--registry') {
       options.registry = args[++i];
+      continue;
+    }
+
+    if (arg === '--strict') {
+      options.strict = true;
       continue;
     }
 
@@ -35,6 +42,7 @@ export async function runPublish(args: string[] = []): Promise<void> {
   const result = await runPublishWorkflow({
     path: options.path,
     registry: options.registry,
+    strict: options.strict,
   });
 
   if (result.ok) {
@@ -43,6 +51,27 @@ export async function runPublish(args: string[] = []): Promise<void> {
     console.log(`package_name: ${result.packageName}`);
     console.log(`version: ${result.version}`);
     console.log(`bundle: ${result.bundlePath}`);
+    const importSummary = formatImportReportSummary(result.importReport);
+    if (importSummary.length > 0) {
+      console.log();
+      console.log('Import summary:');
+      for (const line of importSummary) {
+        console.log(`- ${line}`);
+      }
+    }
+    if (result.warnings && result.warnings.length > 0) {
+      const warningDetails = formatPackagingWarnings(result.warnings, result.warningDetails);
+      console.log();
+      console.log('Warnings:');
+      for (const warning of warningDetails) {
+        console.log(`- ${warning.title}`);
+        console.log(`  code: ${warning.code}`);
+        console.log(`  ${warning.message}`);
+        if (warning.suggestedAction) {
+          console.log(`  Suggested action: ${warning.suggestedAction}`);
+        }
+      }
+    }
     return;
   }
 

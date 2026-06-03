@@ -22,7 +22,10 @@
     "format": "prettier --write \"src/**/*.ts\" \"scripts/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"scripts/**/*.ts\"",
     "prepare": "husky",
-    "test": "vitest",
+    "test": "vitest run --exclude tests/dist.test.ts",
+    "test:dist": "vitest run tests/dist.test.ts",
+    "test:full": "npm run test && npm run test:dist",
+    "test:packaging": "vitest run src/inspect.test.ts src/packaging-session.test.ts src/publish.test.ts src/publish-workflow.test.ts",
     "type-check": "tsc --noEmit",
     "publish:snapshot": "npm version prerelease --preid=snapshot --no-git-tag-version && npm publish --tag snapshot"
   },

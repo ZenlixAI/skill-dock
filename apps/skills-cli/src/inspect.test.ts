@@ -157,6 +157,7 @@ description: Should not exist
     expect(output).toContain('Usage: skills inspect [path] [options]');
     expect(output).toContain('Validate a local skill directory');
     expect(output).toContain('--registry <url>');
+    expect(output).toContain('--strict');
     expect(output).toContain('skills inspect ./my-skill');
   });
 });
@@ -226,6 +227,34 @@ description: API-backed inspect
     expect(process.exitCode).toBeUndefined();
   });
 
+  it('passes strict mode through to the packaging session seam', async () => {
+    vi.mocked(runPackagingSession).mockResolvedValueOnce({
+      ok: true,
+      sessionKind: 'registry',
+      directory: testDir,
+      skillMdPath: join(testDir, 'SKILL.md'),
+      packageJsonPath: join(testDir, 'package.json'),
+      packageName: '@platform.skill/inspect-skill',
+      version: '1.0.0',
+      displayName: 'inspect-skill',
+      description: 'API-backed inspect',
+      publishRegistry: undefined,
+      components: ['commands'],
+      errors: [],
+      workspacePath: '/tmp/workspace',
+      idempotencyKey: 'packaging-test-key',
+      manifestDigest: 'sha256:test',
+    });
+
+    await runInspect(['--registry', 'https://flag.example.com', '--strict', testDir]);
+
+    expect(runPackagingSession).toHaveBeenCalledWith({
+      path: testDir,
+      registry: 'https://flag.example.com',
+      strict: true,
+    });
+  });
+
   it('uses the packaging session seam when the registry comes from the environment', async () => {
     vi.mocked(runPackagingSession).mockResolvedValueOnce({
       ok: true,
@@ -253,6 +282,54 @@ description: API-backed inspect
     });
     expect(logSpy).toHaveBeenCalledWith('Inspect OK');
     expect(process.exitCode).toBeUndefined();
+  });
+
+  it('prints normalization warnings from registry-backed inspection', async () => {
+    vi.mocked(runPackagingSession).mockResolvedValueOnce({
+      ok: true,
+      sessionKind: 'registry',
+      directory: testDir,
+      skillMdPath: join(testDir, 'SKILL.md'),
+      packageJsonPath: join(testDir, 'package.json'),
+      packageName: '@platform.skill/inspect-skill',
+      version: '1.0.0',
+      displayName: 'inspect-skill',
+      description: 'API-backed inspect',
+      publishRegistry: undefined,
+      components: ['commands'],
+      errors: [],
+      workspacePath: '/tmp/workspace',
+      idempotencyKey: 'packaging-test-key',
+      manifestDigest: 'sha256:test',
+      warnings: ['normalized_missing_capability_content'],
+      warningDetails: [
+        {
+          code: 'normalized_missing_capability_content',
+          severity: 'warning',
+          title: 'Generated placeholder capability content',
+          message: 'The imported skill did not contain publishable capability content.',
+          suggestedAction: 'Replace the placeholder with real capability content.',
+        },
+      ],
+      importReport: {
+        sourceType: 'imported',
+        strictMode: false,
+        normalized: true,
+        generatedPackageJson: false,
+        generatedCapabilityPlaceholder: true,
+        rewrotePackageIdentity: false,
+        generatedPaths: ['docs/README.md'],
+        warningCodes: ['normalized_missing_capability_content'],
+      },
+    });
+
+    await runInspect(['--registry', 'https://flag.example.com', testDir]);
+
+    expect(logSpy).toHaveBeenCalledWith('Import summary:');
+    expect(logSpy).toHaveBeenCalledWith('- status: normalized import');
+    expect(logSpy).toHaveBeenCalledWith('Warnings:');
+    expect(logSpy).toHaveBeenCalledWith('- Generated placeholder capability content');
+    expect(logSpy).toHaveBeenCalledWith('  code: normalized_missing_capability_content');
   });
 
   it('maps a registry-backed failure result to inspect failure output and exit code 1', async () => {

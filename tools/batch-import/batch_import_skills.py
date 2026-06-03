@@ -513,6 +513,38 @@ def import_entry(
     prepare_payload = call_prepare(entry, args, headers)
     if prepare_payload.get("errors"):
         raise RuntimeError(f"prepare returned errors: {prepare_payload['errors']}")
+    warning_details = prepare_payload.get("warningDetails")
+    if isinstance(warning_details, list):
+        for detail in warning_details:
+            if not isinstance(detail, dict):
+                continue
+            title = detail.get("title")
+            code = detail.get("code")
+            message = detail.get("message")
+            suggested_action = detail.get("suggestedAction")
+            if isinstance(title, str):
+                print(f"{prefix} warning {title}")
+            elif isinstance(code, str):
+                print(f"{prefix} warning {code}")
+            if isinstance(code, str):
+                print(f"{prefix}   code: {code}")
+            if isinstance(message, str):
+                print(f"{prefix}   {message}")
+            if isinstance(suggested_action, str):
+                print(f"{prefix}   Suggested action: {suggested_action}")
+    import_report = prepare_payload.get("importReport")
+    if isinstance(import_report, dict):
+        normalized = bool(import_report.get("normalized"))
+        strict_mode = bool(import_report.get("strictMode"))
+        print(f"{prefix} import {'normalized' if normalized else 'direct'} (strict={str(strict_mode).lower()})")
+        source_type = import_report.get("sourceType")
+        if isinstance(source_type, str) and source_type:
+            print(f"{prefix}   source_type: {source_type}")
+        generated_paths = import_report.get("generatedPaths")
+        if isinstance(generated_paths, list) and generated_paths:
+            print(f"{prefix}   generated_paths: {', '.join(str(path) for path in generated_paths)}")
+        if import_report.get("rewrotePackageIdentity"):
+            print(f"{prefix}   package_identity: rewritten")
 
     workspace_path = prepare_payload.get("workspacePath")
     if not isinstance(workspace_path, str) or not workspace_path:
@@ -541,6 +573,9 @@ def import_entry(
         "version": entry["target"]["version"],
         "manifestDigest": manifest_digest,
         "components": components,
+        "warnings": prepare_payload.get("warnings") or [],
+        "warningDetails": warning_details if isinstance(warning_details, list) else [],
+        "importReport": import_report if isinstance(import_report, dict) else None,
     }
 
 
@@ -585,6 +620,27 @@ def main() -> int:
         "total": total,
         "succeeded": len(successes),
         "failed": len(failures),
+        "importSummary": {
+            "normalizedImports": sum(
+                1 for item in successes if isinstance(item.get("importReport"), dict) and item["importReport"].get("normalized")
+            ),
+            "importsWithGeneratedPackageJson": sum(
+                1
+                for item in successes
+                if isinstance(item.get("importReport"), dict) and item["importReport"].get("generatedPackageJson")
+            ),
+            "importsWithGeneratedCapabilityPlaceholder": sum(
+                1
+                for item in successes
+                if isinstance(item.get("importReport"), dict)
+                and item["importReport"].get("generatedCapabilityPlaceholder")
+            ),
+            "importsWithRewrittenIdentity": sum(
+                1
+                for item in successes
+                if isinstance(item.get("importReport"), dict) and item["importReport"].get("rewrotePackageIdentity")
+            ),
+        },
         "successes": successes,
         "failures": failures,
     }

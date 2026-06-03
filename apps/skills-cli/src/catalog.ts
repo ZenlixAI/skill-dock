@@ -48,11 +48,32 @@ export interface PackagingOptions {
   strict?: boolean;
 }
 
+export interface PackagingWarningDetail {
+  code: string;
+  severity?: string;
+  title: string;
+  message: string;
+  suggestedAction?: string;
+}
+
+export interface PackagingImportReport {
+  sourceType?: string;
+  strictMode: boolean;
+  normalized: boolean;
+  generatedPackageJson: boolean;
+  generatedCapabilityPlaceholder: boolean;
+  rewrotePackageIdentity: boolean;
+  generatedPaths?: string[];
+  warningCodes?: string[];
+}
+
 export interface PreparePackagingResponse {
   workspacePath: string;
   packageName: string;
   version: string;
   warnings: string[];
+  warningDetails?: PackagingWarningDetail[];
+  importReport?: PackagingImportReport;
   errors: string[];
 }
 
@@ -76,6 +97,46 @@ interface CatalogErrorBody {
     details?: Record<string, unknown>;
     requestId?: string;
   };
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function isWarningDetailsArray(value: unknown): value is PackagingWarningDetail[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (item) =>
+        item &&
+        typeof item === 'object' &&
+        typeof (item as PackagingWarningDetail).code === 'string' &&
+        ((item as PackagingWarningDetail).severity === undefined ||
+          typeof (item as PackagingWarningDetail).severity === 'string') &&
+        typeof (item as PackagingWarningDetail).title === 'string' &&
+        typeof (item as PackagingWarningDetail).message === 'string' &&
+        ((item as PackagingWarningDetail).suggestedAction === undefined ||
+          typeof (item as PackagingWarningDetail).suggestedAction === 'string')
+    )
+  );
+}
+
+function isImportReport(value: unknown): value is PackagingImportReport {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    ((value as PackagingImportReport).sourceType === undefined ||
+      typeof (value as PackagingImportReport).sourceType === 'string') &&
+    typeof (value as PackagingImportReport).strictMode === 'boolean' &&
+    typeof (value as PackagingImportReport).normalized === 'boolean' &&
+    typeof (value as PackagingImportReport).generatedPackageJson === 'boolean' &&
+    typeof (value as PackagingImportReport).generatedCapabilityPlaceholder === 'boolean' &&
+    typeof (value as PackagingImportReport).rewrotePackageIdentity === 'boolean' &&
+    ((value as PackagingImportReport).generatedPaths === undefined ||
+      isStringArray((value as PackagingImportReport).generatedPaths)) &&
+    ((value as PackagingImportReport).warningCodes === undefined ||
+      isStringArray((value as PackagingImportReport).warningCodes))
+  );
 }
 
 export class CatalogError extends Error {

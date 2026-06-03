@@ -223,6 +223,55 @@ warning 语义：
 - 调用成功，但 workspace 不是原始源的原样镜像
 - 方便 CLI、batch-import、平台 UI 做提示和审计
 
+### warningDetails 规则
+
+除稳定 `warnings` code 之外，响应还应返回 `warningDetails`，供 CLI、batch import 和未来平台 UI 直接展示人类可读提示。
+
+建议结构：
+
+```json
+{
+  "code": "normalized_missing_capability_content",
+  "title": "Generated placeholder capability content",
+  "message": "The imported skill did not contain publishable capability content, so packaging added a docs/README.md placeholder.",
+  "suggestedAction": "Replace the placeholder with real capability content when the upstream source is ready."
+}
+```
+
+约束：
+
+- `warnings` 继续作为稳定机读字段
+- `warningDetails` 作为展示层辅助字段
+- CLI / 平台 UI 应优先展示 `warningDetails`，而不是直接把 code 暴露给最终用户
+
+### importReport 规则
+
+除 `warnings` / `warningDetails` 外，响应还应返回 `importReport`，供 CLI、batch import 和未来平台 UI 直接渲染“这次导入到底被系统改写了什么”。
+
+建议结构：
+
+```json
+{
+  "sourceType": "imported",
+  "strictMode": false,
+  "normalized": true,
+  "generatedPackageJson": true,
+  "generatedCapabilityPlaceholder": true,
+  "rewrotePackageIdentity": false,
+  "generatedPaths": ["package.json", "docs/README.md"],
+  "warningCodes": [
+    "normalized_missing_package_json",
+    "normalized_missing_capability_content"
+  ]
+}
+```
+
+约束：
+
+- `importReport` 是展示层和上层编排层都可直接消费的结构化状态
+- `warnings` / `warningDetails` 仍保留，不能被 `importReport` 替代
+- `validate` / `pack` 应继续回传同一份 `importReport`，避免上层只在 `prepare` 时才能拿到导入状态
+
 ## API 变更
 
 ### POST /api/v1/skill-packaging/prepare
@@ -259,6 +308,8 @@ type Options struct {
 - `packageName`
 - `version`
 - `warnings`
+- `warningDetails`
+- `importReport`
 - `errors`
 
 其中 `warnings` 可能包含新增 normalization warning。
@@ -286,9 +337,10 @@ type Options struct {
 
 本轮结论：
 
-- 不增加新的 CLI flag
 - CLI 默认走 `strict=false`
-- 严格模式先通过直接调用 packaging API 或批量导入脚本扩展使用
+- `skills publish --strict` 已作为正式入口暴露
+- `skills inspect --strict` 已作为正式入口暴露
+- 当发生 imported normalization 时，CLI 应展示 `Import summary + Warnings`
 
 ### batch import
 
@@ -297,6 +349,7 @@ type Options struct {
 - 允许 imported normalization
 - 用户不需要为纯 `SKILL.md` existing skill 手工补 `package.json`
 - 用户也不需要手工添加 `docs/README.md`
+- batch import 最终 summary 应聚合输出 normalization 计数，便于批次审计
 
 如果调用方需要“只导入本来就满足 publishable bundle 契约的目录”，应显式传 strict。
 
@@ -306,6 +359,8 @@ type Options struct {
 
 - imported normalization 属于 packager 层
 - 不在平台 UI 或业务服务层重复实现
+- 平台 UI 只负责选择 `strict=false/true` 模式、展示 `warningDetails`、以及把 warning 写入导入审计
+- 平台 UI / authoring flow 可以直接消费 `importReport`，在导入确认页、导入结果页和审计记录里展示“自动补齐了什么”
 
 ## 错误与边界
 

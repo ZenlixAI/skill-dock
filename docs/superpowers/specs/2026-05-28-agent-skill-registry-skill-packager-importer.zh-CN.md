@@ -94,9 +94,26 @@
   "manifestDigest": "sha256:...",
   "components": ["commands", "scripts"],
   "warnings": [],
+  "warningDetails": [],
+  "importReport": {
+    "sourceType": "imported",
+    "strictMode": false,
+    "normalized": false,
+    "generatedPackageJson": false,
+    "generatedCapabilityPlaceholder": false,
+    "rewrotePackageIdentity": false,
+    "generatedPaths": [],
+    "warningCodes": []
+  },
   "errors": []
 }
 ```
+
+其中：
+
+- `warnings` 保持稳定机读 code
+- `warningDetails` 提供人类可读说明与建议动作，供 CLI、batch import 和平台 UI 直接展示
+- `importReport` 提供结构化导入改写结果，供上层 authoring / import UI 做摘要和审计
 
 ## Bundle 目录规范
 
@@ -236,6 +253,13 @@ docs/
 - `POST /api/v1/skill-packaging/pack`
 
 V1 推荐同步 API，而不是异步 job API。原因是当前打包路径预期应保持轻量、秒级完成，同步请求更利于实现和联调。
+
+平台 Authoring UI / 导入流程在接入时应遵循：
+
+- `strict` 作为导入模式开关，由平台显式传入
+- `warnings` 作为稳定机读信号写入导入审计
+- `warningDetails` 作为用户提示内容直接展示
+- 前端不重复实现 normalization 判断，只消费服务端结果
 
 ### 同步 API 请求模型
 

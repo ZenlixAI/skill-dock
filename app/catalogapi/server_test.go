@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -239,6 +240,57 @@ func TestMockNPMRegistryCanBeDisabled(t *testing.T) {
 
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("expected status %d when mock registry is disabled, got %d", http.StatusNotFound, recorder.Code)
+	}
+}
+
+func TestMockNPMRegistryTarballRejectsNonGETMethods(t *testing.T) {
+	server := NewServer(ServerConfig{
+		Repository:   catalog.NewMemoryRepository(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm")),
+		MockRegistry: artifactadapter.NewMockRegistry(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm").Artifacts),
+	})
+
+	request := httptest.NewRequest(http.MethodPut, "/mock-npm/platform.skill/pdf-skill/-/pdf-skill-1.2.0.tgz", nil)
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusMethodNotAllowed, recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestMockNPMRegistryRejectsInvalidPublishPayload(t *testing.T) {
+	server := NewServer(ServerConfig{
+		Repository:   catalog.NewMemoryRepository(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm")),
+		MockRegistry: artifactadapter.NewMockRegistry(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm").Artifacts),
+	})
+
+	request := httptest.NewRequest(http.MethodPut, "/mock-npm/%40platform.skill%2Fprobe-skill", strings.NewReader(`not-json`))
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusBadRequest, recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "invalid publish payload") {
+		t.Fatalf("expected invalid publish payload body, got %s", recorder.Body.String())
+	}
+}
+
+func TestMockNPMRegistryReturnsNotFoundForUnknownTarball(t *testing.T) {
+	server := NewServer(ServerConfig{
+		Repository:   catalog.NewMemoryRepository(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm")),
+		MockRegistry: artifactadapter.NewMockRegistry(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm").Artifacts),
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/mock-npm/platform.skill/pdf-skill/-/pdf-skill-9.9.9.tgz", nil)
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusNotFound, recorder.Code, recorder.Body.String())
 	}
 }
 
@@ -718,8 +770,17 @@ Prompt body.
 	}
 
 	var payload struct {
-		WorkspacePath string   `json:"workspacePath"`
-		Warnings      []string `json:"warnings"`
+		WorkspacePath  string   `json:"workspacePath"`
+		Warnings       []string `json:"warnings"`
+		WarningDetails []struct {
+			Code string `json:"code"`
+		} `json:"warningDetails"`
+		ImportReport struct {
+			Normalized                     bool     `json:"normalized"`
+			GeneratedPackageJSON           bool     `json:"generatedPackageJson"`
+			GeneratedCapabilityPlaceholder bool     `json:"generatedCapabilityPlaceholder"`
+			GeneratedPaths                 []string `json:"generatedPaths"`
+		} `json:"importReport"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode response: %v", err)
@@ -728,6 +789,12 @@ Prompt body.
 	wantWarnings := []string{"normalized_missing_package_json", "normalized_missing_capability_content"}
 	if !reflect.DeepEqual(wantWarnings, payload.Warnings) {
 		t.Fatalf("unexpected warnings (-want +got):\nwant: %#v\ngot:  %#v", wantWarnings, payload.Warnings)
+	}
+	if len(payload.WarningDetails) != 2 || payload.WarningDetails[0].Code != "normalized_missing_package_json" {
+		t.Fatalf("unexpected warningDetails: %#v", payload.WarningDetails)
+	}
+	if !payload.ImportReport.Normalized || !payload.ImportReport.GeneratedPackageJSON || !payload.ImportReport.GeneratedCapabilityPlaceholder {
+		t.Fatalf("unexpected importReport: %#v", payload.ImportReport)
 	}
 }
 
@@ -795,6 +862,69 @@ Prompt body.
 	wantErrors := []string{"missing_capability_content"}
 	if !reflect.DeepEqual(wantErrors, validatePayload.Errors) {
 		t.Fatalf("unexpected validate errors (-want +got):\nwant: %#v\ngot:  %#v", wantErrors, validatePayload.Errors)
+	}
+}
+
+func TestSkillPackagingPrepareReturnsIdentityRewriteWarningDetails(t *testing.T) {
+	server := newTestServer()
+	sourceDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(sourceDir, "SKILL.md"), []byte(`---
+name: zoom-out
+description: Broader context
+---
+
+Prompt body.
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(sourceDir, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "docs", "README.md"), []byte("# docs\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "package.json"), []byte(`{"name":"@upstream.skill/zoom-out","version":"9.9.9"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
+		"source":{"type":"local","location":"`+sourceDir+`"},
+		"target":{"packageName":"@platform.skill/zoom-out","version":"1.0.0"},
+		"metadata":{"displayName":"Zoom Out","description":"Broader context","sourceType":"imported"},
+		"options":{"strict":true}
+	}`)
+	request.Header.Set("X-Role", "publisher")
+	recorder := httptest.NewRecorder()
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected prepare success, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Warnings       []string `json:"warnings"`
+		WarningDetails []struct {
+			Code    string `json:"code"`
+			Title   string `json:"title"`
+			Message string `json:"message"`
+		} `json:"warningDetails"`
+		ImportReport struct {
+			Normalized             bool `json:"normalized"`
+			RewrotePackageIdentity bool `json:"rewrotePackageIdentity"`
+		} `json:"importReport"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	wantWarnings := []string{"normalized_rewrote_package_json_identity"}
+	if !reflect.DeepEqual(wantWarnings, payload.Warnings) {
+		t.Fatalf("unexpected warnings (-want +got):\nwant: %#v\ngot:  %#v", wantWarnings, payload.Warnings)
+	}
+	if len(payload.WarningDetails) != 1 || payload.WarningDetails[0].Code != "normalized_rewrote_package_json_identity" {
+		t.Fatalf("unexpected warningDetails: %#v", payload.WarningDetails)
+	}
+	if !payload.ImportReport.Normalized || !payload.ImportReport.RewrotePackageIdentity {
+		t.Fatalf("unexpected importReport: %#v", payload.ImportReport)
 	}
 }
 
@@ -1078,6 +1208,77 @@ func TestSkillPackagingRequiresPublisherRole(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusForbidden, recorder.Code)
 	}
 	assertErrorCode(t, recorder, "forbidden")
+}
+
+func TestSkillPackagingPrepareRejectsUnknownJSONFields(t *testing.T) {
+	server := newTestServer()
+	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
+		"source":{"type":"local","location":"/tmp"},
+		"target":{"packageName":"@platform.skill/test","version":"0.1.0"},
+		"unexpected":true
+	}`)
+	request.Header.Set("X-Role", "publisher")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusUnprocessableEntity, recorder.Code, recorder.Body.String())
+	}
+	assertErrorCode(t, recorder, "invalid_request")
+	assertErrorDetailContains(t, recorder, "error", `unknown field "unexpected"`)
+}
+
+func TestSkillPackagingPrepareRejectsMultipleJSONObjects(t *testing.T) {
+	server := newTestServer()
+	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{"source":{"type":"local","location":"/tmp"},"target":{"packageName":"@platform.skill/test","version":"0.1.0"}}{"source":{"type":"local","location":"/tmp"}}`)
+	request.Header.Set("X-Role", "publisher")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusUnprocessableEntity, recorder.Code, recorder.Body.String())
+	}
+	assertErrorCode(t, recorder, "invalid_request")
+	assertErrorMessage(t, recorder, "request body must contain a single JSON object.")
+}
+
+func TestSkillPackagingPrepareReturnsInternalErrorWhenIdempotencyLookupFails(t *testing.T) {
+	server := NewServer(ServerConfig{
+		Repository:  catalog.NewMemoryRepository(catalog.SampleData()),
+		Packaging:   packaging.NewService(""),
+		Idempotency: stubIdempotencyStore{lookupErr: errors.New("lookup failed")},
+	})
+	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
+		"idempotencyKey":"prepare-error",
+		"source":{"type":"local","location":"/tmp"},
+		"target":{"packageName":"@platform.skill/test","version":"0.1.0"}
+	}`)
+	request.Header.Set("X-Role", "publisher")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusInternalServerError, recorder.Code, recorder.Body.String())
+	}
+	assertErrorCode(t, recorder, "internal_error")
+}
+
+func TestSkillPackagingPackReturnsNotFoundWithoutPackagingService(t *testing.T) {
+	server := NewServer(ServerConfig{
+		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+	})
+	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/pack", `{"workspacePath":"/tmp","target":{"packageName":"@platform.skill/test","version":"0.1.0"}}`)
+	request.Header.Set("X-Role", "publisher")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusNotFound, recorder.Code, recorder.Body.String())
+	}
 }
 
 func TestPublishedPackageCanBeReleasedAndResolvedThroughCatalog(t *testing.T) {
@@ -1372,6 +1573,22 @@ func TestListCuratedSkills(t *testing.T) {
 	}
 }
 
+func TestListCuratedSkillsRejectsOversizedPageSize(t *testing.T) {
+	server := newTestServer()
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills/curated?pageSize=101", nil)
+	request.Header.Set("X-Role", "reader")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusBadRequest, recorder.Code, recorder.Body.String())
+	}
+	assertErrorCode(t, recorder, "invalid_request")
+	assertErrorNumericDetail(t, recorder, "pageSize", 101)
+}
+
 func TestGetSkillDetailWithEncodedPackageName(t *testing.T) {
 	server := newTestServer()
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills/%40platform.skill%2Fpdf-skill", nil)
@@ -1392,6 +1609,21 @@ func TestGetSkillDetailWithEncodedPackageName(t *testing.T) {
 	if response.PackageName != "@platform.skill/pdf-skill" {
 		t.Fatalf("unexpected package: %s", response.PackageName)
 	}
+}
+
+func TestGetSkillDetailReturnsNotFoundForUnknownSkill(t *testing.T) {
+	server := newTestServer()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills/%40platform.skill%2Fmissing-skill", nil)
+	request.Header.Set("X-Role", "reader")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusNotFound, recorder.Code, recorder.Body.String())
+	}
+	assertErrorCode(t, recorder, "skill_not_found")
+	assertErrorDetail(t, recorder, "packageName", "@platform.skill/missing-skill")
 }
 
 func TestVersionListDefaultsExcludeYanked(t *testing.T) {
@@ -1421,6 +1653,21 @@ func TestVersionListDefaultsExcludeYanked(t *testing.T) {
 	}
 }
 
+func TestVersionListReturnsNotFoundForUnknownSkill(t *testing.T) {
+	server := newTestServer()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills/%40platform.skill%2Fmissing-skill/versions", nil)
+	request.Header.Set("X-Role", "reader")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusNotFound, recorder.Code, recorder.Body.String())
+	}
+	assertErrorCode(t, recorder, "skill_not_found")
+	assertErrorDetail(t, recorder, "packageName", "@platform.skill/missing-skill")
+}
+
 func TestGetVersionDetail(t *testing.T) {
 	server := newTestServer()
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills/%40platform.skill%2Fpdf-skill/versions/1.1.0", nil)
@@ -1441,6 +1688,22 @@ func TestGetVersionDetail(t *testing.T) {
 	if response.VersionStatus != catalog.VersionStatusDeprecated {
 		t.Fatalf("expected deprecated version, got %s", response.VersionStatus)
 	}
+}
+
+func TestGetVersionDetailReturnsNotFoundForUnknownVersion(t *testing.T) {
+	server := newTestServer()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills/%40platform.skill%2Fpdf-skill/versions/9.9.9", nil)
+	request.Header.Set("X-Role", "reader")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusNotFound, recorder.Code, recorder.Body.String())
+	}
+	assertErrorCode(t, recorder, "version_not_found")
+	assertErrorDetail(t, recorder, "packageName", "@platform.skill/pdf-skill")
+	assertErrorDetail(t, recorder, "version", "9.9.9")
 }
 
 func TestGetVersionDetailRejectsNonSemverVersionPath(t *testing.T) {
@@ -1558,6 +1821,21 @@ func TestGovernanceChangesCanBeFiltered(t *testing.T) {
 	if response.Items[0].Action != catalog.GovernanceActionYank {
 		t.Fatalf("expected yank action, got %s", response.Items[0].Action)
 	}
+}
+
+func TestGovernanceChangesRejectsOversizedPageSize(t *testing.T) {
+	server := newTestServer()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/governance-changes?pageSize=101", nil)
+	request.Header.Set("X-Role", "publisher")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusBadRequest, recorder.Code, recorder.Body.String())
+	}
+	assertErrorCode(t, recorder, "invalid_request")
+	assertErrorNumericDetail(t, recorder, "pageSize", 101)
 }
 
 func TestSkillsRejectUnknownSortFilter(t *testing.T) {
@@ -1837,6 +2115,45 @@ func TestAuditEventsRejectsUnknownAuthDecisionFilter(t *testing.T) {
 	}
 	assertErrorCode(t, recorder, "invalid_request")
 	assertErrorDetail(t, recorder, "auth_decision", "maybe")
+}
+
+func TestAuditEventsReturnsServiceUnavailableWhenStoreMissing(t *testing.T) {
+	server := NewServer(ServerConfig{
+		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+		Packaging:  packaging.NewService(""),
+	})
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/audit-events", nil)
+	request.Header.Set("X-Role", "publisher")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusServiceUnavailable, recorder.Code, recorder.Body.String())
+	}
+	assertErrorCode(t, recorder, "internal_error")
+	assertErrorMessage(t, recorder, "Audit store is not configured.")
+}
+
+func TestAuditEventsPropagatesAuditStoreErrors(t *testing.T) {
+	server := NewServer(ServerConfig{
+		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+		Packaging:  packaging.NewService(""),
+		Audit: stubAuditStore{
+			listErr: catalog.NewError(503, "audit_unavailable", "Audit backend unavailable.", nil),
+		},
+	})
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/audit-events", nil)
+	request.Header.Set("X-Role", "publisher")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusServiceUnavailable, recorder.Code, recorder.Body.String())
+	}
+	assertErrorCode(t, recorder, "audit_unavailable")
+	assertErrorMessage(t, recorder, "Audit backend unavailable.")
 }
 
 func TestAuditEventsRejectNonSemverVersionFilter(t *testing.T) {
@@ -2254,6 +2571,20 @@ func TestSkillGovernanceRetiresSkillAndBlocksInstall(t *testing.T) {
 	assertErrorCode(t, verifyRecorder, "skill_retired")
 }
 
+func TestSkillGovernanceRejectsRetiringAlreadyRetiredSkill(t *testing.T) {
+	server := newTestServer()
+	request := jsonRequest(http.MethodPost, "/api/v1/skills/%40community%2Flegacy-notes/governance-changes", `{"action":"retire","reason":"already retired"}`)
+	request.Header.Set("X-Role", "publisher")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusConflict, recorder.Code, recorder.Body.String())
+	}
+	assertErrorCode(t, recorder, "invalid_state_transition")
+}
+
 func TestVersionGovernanceYanksVersionAndBlocksExplicitInstall(t *testing.T) {
 	server := newTestServer()
 	request := jsonRequest(http.MethodPost, "/api/v1/skills/%40platform.skill%2Fpdf-skill/versions/1.2.0/governance-changes", `{"action":"yank","reason":"security issue","replacementRecommendation":"1.1.0"}`)
@@ -2276,6 +2607,20 @@ func TestVersionGovernanceYanksVersionAndBlocksExplicitInstall(t *testing.T) {
 	}
 	assertErrorCode(t, verifyRecorder, "version_yanked")
 	assertErrorDetail(t, verifyRecorder, "replacementRecommendation", "1.1.0")
+}
+
+func TestVersionGovernanceRejectsYankingAlreadyYankedVersion(t *testing.T) {
+	server := newTestServer()
+	request := jsonRequest(http.MethodPost, "/api/v1/skills/%40platform.skill%2Fpdf-skill/versions/1.3.0/governance-changes", `{"action":"yank","reason":"already yanked"}`)
+	request.Header.Set("X-Role", "publisher")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusConflict, recorder.Code, recorder.Body.String())
+	}
+	assertErrorCode(t, recorder, "invalid_state_transition")
 }
 
 func TestVersionGovernanceRejectsNonSemverVersionPath(t *testing.T) {
@@ -2443,6 +2788,230 @@ func TestHealthAndReadinessEndpointsReturnOK(t *testing.T) {
 	}
 }
 
+func TestReadyzReturnsDegradedWhenDependenciesFail(t *testing.T) {
+	server := NewServer(ServerConfig{
+		Repository: pingingRepository{
+			Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+			err:        errors.New("repository unavailable"),
+		},
+		Packaging: packaging.NewService(""),
+		Audit: stubAuditStore{
+			pingErr: errors.New("audit unavailable"),
+		},
+		Idempotency: stubIdempotencyStore{
+			pingErr: errors.New("idempotency unavailable"),
+		},
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusServiceUnavailable, recorder.Code, recorder.Body.String())
+	}
+
+	var response struct {
+		Status string            `json:"status"`
+		Checks map[string]string `json:"checks"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Status != "degraded" {
+		t.Fatalf("expected degraded status, got %+v", response)
+	}
+	if response.Checks["repository"] != "repository unavailable" {
+		t.Fatalf("unexpected repository check: %+v", response.Checks)
+	}
+	if response.Checks["audit"] != "audit unavailable" {
+		t.Fatalf("unexpected audit check: %+v", response.Checks)
+	}
+	if response.Checks["idempotency"] != "idempotency unavailable" {
+		t.Fatalf("unexpected idempotency check: %+v", response.Checks)
+	}
+}
+
+func TestSkillGovernanceRejectsMissingJSONBody(t *testing.T) {
+	server := newTestServer()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/skills/%40platform.skill%2Fcode-review/governance-changes", nil)
+	request.Header.Set("X-Role", "publisher")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusUnprocessableEntity, recorder.Code, recorder.Body.String())
+	}
+	assertErrorCode(t, recorder, "invalid_request")
+	assertErrorMessage(t, recorder, "request body is required.")
+}
+
+func TestSkillGovernanceRejectsUnknownJSONFields(t *testing.T) {
+	server := newTestServer()
+	request := jsonRequest(http.MethodPost, "/api/v1/skills/%40platform.skill%2Fcode-review/governance-changes", `{"action":"retire","reason":"cleanup","unexpected":true}`)
+	request.Header.Set("X-Role", "publisher")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusUnprocessableEntity, recorder.Code, recorder.Body.String())
+	}
+	assertErrorCode(t, recorder, "invalid_request")
+	assertErrorDetailContains(t, recorder, "error", `unknown field "unexpected"`)
+}
+
+func TestSkillGovernanceRejectsMultipleJSONObjects(t *testing.T) {
+	server := newTestServer()
+	request := jsonRequest(http.MethodPost, "/api/v1/skills/%40platform.skill%2Fcode-review/governance-changes", `{"action":"retire","reason":"cleanup"}{"action":"retire"}`)
+	request.Header.Set("X-Role", "publisher")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusUnprocessableEntity, recorder.Code, recorder.Body.String())
+	}
+	assertErrorCode(t, recorder, "invalid_request")
+	assertErrorMessage(t, recorder, "request body must contain a single JSON object.")
+}
+
+func TestDecodeOptionalReleaseRecordInputAllowsNilBody(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPut, "/api/v1/skills/%40platform.skill%2Fagent-notes/versions/0.1.0/release-record", nil)
+	request.Body = nil
+
+	payload, err := decodeOptionalReleaseRecordInput(request)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if !reflect.DeepEqual(payload, catalog.ReleaseRecordInput{}) {
+		t.Fatalf("expected zero-value payload, got %+v", payload)
+	}
+}
+
+func TestReleaseRecordRejectsUnknownJSONFields(t *testing.T) {
+	server := newTestServer()
+	request := jsonRequest(http.MethodPut, "/api/v1/skills/%40platform.skill%2Fagent-notes/versions/0.1.0/release-record", `{"unexpected":true}`)
+	request.Header.Set("X-Role", "publisher")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusUnprocessableEntity, recorder.Code, recorder.Body.String())
+	}
+	assertErrorCode(t, recorder, "invalid_request")
+	assertErrorDetailContains(t, recorder, "error", `unknown field "unexpected"`)
+}
+
+func TestReleaseRecordRejectsMultipleJSONObjects(t *testing.T) {
+	server := newTestServer()
+	request := jsonRequest(http.MethodPut, "/api/v1/skills/%40platform.skill%2Fagent-notes/versions/0.1.0/release-record", `{"publishRegistry":"https://registry.example.com"}{"publishRegistry":"https://registry.example.com"}`)
+	request.Header.Set("X-Role", "publisher")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusUnprocessableEntity, recorder.Code, recorder.Body.String())
+	}
+	assertErrorCode(t, recorder, "invalid_request")
+	assertErrorMessage(t, recorder, "request body must contain a single JSON object.")
+}
+
+func TestRecordMutationAuditLogsWriteFailure(t *testing.T) {
+	var logBuffer bytes.Buffer
+	server := NewServer(ServerConfig{
+		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+		Packaging:  packaging.NewService(""),
+		Audit: stubAuditStore{
+			appendErr: errors.New("append failed"),
+		},
+		Logger: log.New(&logBuffer, "", 0),
+	})
+
+	request := httptest.NewRequest(http.MethodPut, "/api/v1/skills/%40platform.skill%2Fagent-notes/versions/0.1.0/release-record", nil)
+	ctx := context.WithValue(request.Context(), requestIDContextKey, "req_audit")
+	ctx = context.WithValue(ctx, traceIDContextKey, "trace_audit")
+
+	server.recordMutationAudit(
+		request.WithContext(ctx),
+		"release.record",
+		"@platform.skill/agent-notes",
+		"0.1.0",
+		http.StatusCreated,
+		"succeeded",
+		nil,
+	)
+
+	payload := findLoggedEvent(t, logBuffer.String(), "audit_write_failed")
+	if payload["action"] != "release.record" {
+		t.Fatalf("unexpected action payload: %+v", payload)
+	}
+	if payload["error"] != "append failed" {
+		t.Fatalf("unexpected error payload: %+v", payload)
+	}
+	if payload["requestId"] != "req_audit" || payload["traceId"] != "trace_audit" {
+		t.Fatalf("unexpected request metadata payload: %+v", payload)
+	}
+}
+
+func TestAuthenticationDeniedAuditLogsWriteFailure(t *testing.T) {
+	var logBuffer bytes.Buffer
+	server := NewServer(ServerConfig{
+		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+		Packaging:  packaging.NewService(""),
+		Audit: stubAuditStore{
+			appendErr: errors.New("append failed"),
+		},
+		Logger: log.New(&logBuffer, "", 0),
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills", nil)
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusUnauthorized, recorder.Code, recorder.Body.String())
+	}
+
+	payload := findLoggedEvent(t, logBuffer.String(), "audit_write_failed")
+	if payload["action"] != "auth.denied" {
+		t.Fatalf("unexpected action payload: %+v", payload)
+	}
+	if payload["error"] != "append failed" {
+		t.Fatalf("unexpected error payload: %+v", payload)
+	}
+	if _, ok := payload["requestId"].(string); !ok || payload["requestId"] == "" {
+		t.Fatalf("expected requestId in payload, got %+v", payload)
+	}
+	if _, ok := payload["traceId"].(string); !ok || payload["traceId"] == "" {
+		t.Fatalf("expected traceId in payload, got %+v", payload)
+	}
+}
+
+func TestLogAuditWriteFailureIgnoresNilError(t *testing.T) {
+	var logBuffer bytes.Buffer
+	server := NewServer(ServerConfig{
+		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+		Packaging:  packaging.NewService(""),
+		Logger:     log.New(&logBuffer, "", 0),
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills", nil)
+	ctx := context.WithValue(request.Context(), requestIDContextKey, "req_nil")
+	ctx = context.WithValue(ctx, traceIDContextKey, "trace_nil")
+
+	server.logAuditWriteFailure(request.WithContext(ctx), "auth.denied", nil)
+
+	if strings.TrimSpace(logBuffer.String()) != "" {
+		t.Fatalf("expected no log output, got %q", logBuffer.String())
+	}
+}
+
 func newTestServer() *Server {
 	return NewServer(ServerConfig{
 		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
@@ -2486,6 +3055,85 @@ func assertErrorDetail(t *testing.T, recorder *httptest.ResponseRecorder, key st
 	}
 }
 
+func assertErrorNumericDetail(t *testing.T, recorder *httptest.ResponseRecorder, key string, want float64) {
+	t.Helper()
+
+	var payload struct {
+		Error struct {
+			Details map[string]any `json:"details"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+
+	got, ok := payload.Error.Details[key].(float64)
+	if !ok {
+		t.Fatalf("expected numeric detail %s, got %#v", key, payload.Error.Details[key])
+	}
+	if got != want {
+		t.Fatalf("expected detail %s=%v, got %#v", key, want, payload.Error.Details[key])
+	}
+}
+
+func assertErrorMessage(t *testing.T, recorder *httptest.ResponseRecorder, want string) {
+	t.Helper()
+
+	var payload struct {
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+
+	if payload.Error.Message != want {
+		t.Fatalf("expected error message %q, got %q", want, payload.Error.Message)
+	}
+}
+
+func assertErrorDetailContains(t *testing.T, recorder *httptest.ResponseRecorder, key string, want string) {
+	t.Helper()
+
+	var payload struct {
+		Error struct {
+			Details map[string]any `json:"details"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+
+	value, ok := payload.Error.Details[key].(string)
+	if !ok {
+		t.Fatalf("expected detail %s to be a string, got %#v", key, payload.Error.Details[key])
+	}
+	if !strings.Contains(value, want) {
+		t.Fatalf("expected detail %s to contain %q, got %q", key, want, value)
+	}
+}
+
+func findLoggedEvent(t *testing.T, raw string, event string) map[string]any {
+	t.Helper()
+
+	lines := strings.Split(strings.TrimSpace(raw), "\n")
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(line), &payload); err != nil {
+			t.Fatalf("decode log line %q: %v", line, err)
+		}
+		if payload["event"] == event {
+			return payload
+		}
+	}
+	t.Fatalf("expected log event %s in %q", event, raw)
+	return nil
+}
+
 type httpRoundTripFunc func(request *http.Request) (*http.Response, error)
 
 func (fn httpRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -2506,6 +3154,59 @@ func httpBinaryResponse(status int, body []byte) *http.Response {
 		Header:     http.Header{"Content-Type": []string{"application/octet-stream"}},
 		Body:       io.NopCloser(bytes.NewReader(body)),
 	}
+}
+
+type pingingRepository struct {
+	catalog.Repository
+	err error
+}
+
+func (r pingingRepository) Ping(context.Context) error {
+	return r.err
+}
+
+type stubAuditStore struct {
+	appendErr error
+	listPage  persist.AuditPage
+	listErr   error
+	pingErr   error
+}
+
+func (s stubAuditStore) Append(context.Context, persist.AuditEvent) error {
+	return s.appendErr
+}
+
+func (s stubAuditStore) List(context.Context, persist.AuditQuery) (persist.AuditPage, error) {
+	return s.listPage, s.listErr
+}
+
+func (s stubAuditStore) Ping(context.Context) error {
+	return s.pingErr
+}
+
+type stubIdempotencyStore struct {
+	lookupRecord     persist.IdempotencyRecord
+	lookupErr        error
+	saveOK           bool
+	saveErr          error
+	deleteExpiredErr error
+	pingErr          error
+}
+
+func (s stubIdempotencyStore) Lookup(context.Context, string, string, string) (persist.IdempotencyRecord, error) {
+	return s.lookupRecord, s.lookupErr
+}
+
+func (s stubIdempotencyStore) Save(context.Context, string, string, string, persist.IdempotencyRecord) (bool, error) {
+	return s.saveOK, s.saveErr
+}
+
+func (s stubIdempotencyStore) DeleteExpired(context.Context) error {
+	return s.deleteExpiredErr
+}
+
+func (s stubIdempotencyStore) Ping(context.Context) error {
+	return s.pingErr
 }
 
 type testAuditRecord struct {

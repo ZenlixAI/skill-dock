@@ -23,6 +23,25 @@ type Options struct {
 	Strict          bool   `json:"strict,omitempty"`
 }
 
+type WarningDetail struct {
+	Code            string `json:"code"`
+	Severity        string `json:"severity"`
+	Title           string `json:"title"`
+	Message         string `json:"message"`
+	SuggestedAction string `json:"suggestedAction,omitempty"`
+}
+
+type ImportReport struct {
+	SourceType                     string   `json:"sourceType,omitempty"`
+	StrictMode                     bool     `json:"strictMode"`
+	Normalized                     bool     `json:"normalized"`
+	GeneratedPackageJSON           bool     `json:"generatedPackageJson"`
+	GeneratedCapabilityPlaceholder bool     `json:"generatedCapabilityPlaceholder"`
+	RewrotePackageIdentity         bool     `json:"rewrotePackageIdentity"`
+	GeneratedPaths                 []string `json:"generatedPaths,omitempty"`
+	WarningCodes                   []string `json:"warningCodes,omitempty"`
+}
+
 type PrepareRequest struct {
 	IdempotencyKey string   `json:"idempotencyKey,omitempty"`
 	Source         Source   `json:"source"`
@@ -40,11 +59,13 @@ func (r PrepareRequest) GetTarget() Target {
 }
 
 type PrepareResponse struct {
-	WorkspacePath string   `json:"workspacePath"`
-	PackageName   string   `json:"packageName"`
-	Version       string   `json:"version"`
-	Warnings      []string `json:"warnings"`
-	Errors        []string `json:"errors"`
+	WorkspacePath  string          `json:"workspacePath"`
+	PackageName    string          `json:"packageName"`
+	Version        string          `json:"version"`
+	Warnings       []string        `json:"warnings"`
+	WarningDetails []WarningDetail `json:"warningDetails,omitempty"`
+	ImportReport   *ImportReport   `json:"importReport,omitempty"`
+	Errors         []string        `json:"errors"`
 }
 
 type ValidateRequest struct {
@@ -62,14 +83,16 @@ func (r ValidateRequest) GetTarget() Target {
 }
 
 type ValidateResponse struct {
-	OK             bool     `json:"ok"`
-	WorkspacePath  string   `json:"workspacePath"`
-	PackageName    string   `json:"packageName"`
-	Version        string   `json:"version"`
-	ManifestDigest string   `json:"manifestDigest,omitempty"`
-	Components     []string `json:"components,omitempty"`
-	Warnings       []string `json:"warnings"`
-	Errors         []string `json:"errors"`
+	OK             bool            `json:"ok"`
+	WorkspacePath  string          `json:"workspacePath"`
+	PackageName    string          `json:"packageName"`
+	Version        string          `json:"version"`
+	ManifestDigest string          `json:"manifestDigest,omitempty"`
+	Components     []string        `json:"components,omitempty"`
+	Warnings       []string        `json:"warnings"`
+	WarningDetails []WarningDetail `json:"warningDetails,omitempty"`
+	ImportReport   *ImportReport   `json:"importReport,omitempty"`
+	Errors         []string        `json:"errors"`
 }
 
 type PackRequest struct {
@@ -88,13 +111,15 @@ func (r PackRequest) GetTarget() Target {
 }
 
 type PackResponse struct {
-	WorkspacePath  string   `json:"workspacePath"`
-	BundlePath     string   `json:"bundlePath"`
-	BundleBase64   string   `json:"bundleBase64,omitempty"`
-	PackageName    string   `json:"packageName"`
-	Version        string   `json:"version"`
-	ManifestDigest string   `json:"manifestDigest"`
-	Components     []string `json:"components"`
-	Warnings       []string `json:"warnings"`
-	Errors         []string `json:"errors"`
+	WorkspacePath  string          `json:"workspacePath"`
+	BundlePath     string          `json:"bundlePath"`
+	BundleBase64   string          `json:"bundleBase64,omitempty"`
+	PackageName    string          `json:"packageName"`
+	Version        string          `json:"version"`
+	ManifestDigest string          `json:"manifestDigest"`
+	Components     []string        `json:"components"`
+	Warnings       []string        `json:"warnings"`
+	WarningDetails []WarningDetail `json:"warningDetails,omitempty"`
+	ImportReport   *ImportReport   `json:"importReport,omitempty"`
+	Errors         []string        `json:"errors"`
 }

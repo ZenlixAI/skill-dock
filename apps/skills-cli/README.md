@@ -64,6 +64,42 @@ When talking to a private Catalog, the CLI can attach auth headers from env:
 - `SKILLS_REGISTRY_ROLE` -> `X-Role: <role>` for local/dev registries such as the current Go prototype
 - `skills publish` still requires publisher-capable credentials because it ends with `release-record`
 
+### npm Registry Auth
+
+Catalog auth and npm-compatible registry auth are treated as separate concerns:
+
+- Catalog calls use `SKILLS_REGISTRY_TOKEN` / `SKILLS_REGISTRY_ROLE`
+- bundle publish / tarball download use npm auth context
+
+The CLI now resolves npm auth from the local npm configuration seam instead of assuming
+anonymous tarball access:
+
+- explicit `NPM_CONFIG_USERCONFIG`
+- nearest project `.npmrc`
+- fallback `~/.npmrc`
+
+When the resolved `.npmrc` contains a matching registry entry such as:
+
+```ini
+//npm.example.com/private/:_authToken=token-value
+```
+
+the CLI will:
+
+- reuse that config when running `npm publish`
+- attach the matching `Authorization` header when downloading `tarballUrl`
+
+This is especially relevant for private registries where:
+
+- `publish` requires npm login
+- tarball reads are also authenticated
+
+For local Nexus-style E2E, this means:
+
+- `skills publish` can reuse a generated `NPM_CONFIG_USERCONFIG`
+- `skills add` also needs that same npm auth context when tarball reads are not anonymous
+- if your wrapper command overrides `HOME`, do not assume `~/.npmrc` will still be discoverable
+
 ### Installation Scope
 
 | Scope       | Flag      | Location            | Use Case                                      |
@@ -181,6 +217,9 @@ npx skills inspect ./my-skill
 
 # Use a specific catalog entry point for packaging validation
 npx skills inspect ./my-skill --registry https://catalog.example.com
+
+# Disable imported workspace normalization and require a publishable bundle as-is
+npx skills inspect ./my-skill --registry https://catalog.example.com --strict
 ```
 
 Without registry configuration, `inspect` uses the local authoring validator.
@@ -191,9 +230,15 @@ packaging flow:
 1. `POST /api/v1/skill-packaging/prepare`
 2. `POST /api/v1/skill-packaging/validate`
 
+When imported-source normalization happens, `inspect` prints two operator-facing blocks:
+
+- `Import summary`: normalized vs direct import, strict mode, generated paths, identity rewrite
+- `Warnings`: human-readable warning titles, stable warning codes, and suggested actions
+
 | Option             | Description                                            |
 | ------------------ | ------------------------------------------------------ |
 | `--registry <url>` | Catalog base URL override for packaging validation     |
+| `--strict`         | Disable imported workspace normalization during prepare |
 
 ### `skills publish`
 
@@ -206,6 +251,9 @@ npx skills publish ./my-skill
 
 # Override the catalog entry point used for packaging and release record
 npx skills publish ./my-skill --registry https://catalog.example.com
+
+# Require the source to already satisfy the publishable bundle contract
+npx skills publish ./my-skill --registry https://catalog.example.com --strict
 ```
 
 The publish command follows the registry-first flow:
@@ -216,9 +264,13 @@ The publish command follows the registry-first flow:
 4. `npm publish <bundle>`
 5. `PUT /api/v1/skills/{packageName}/versions/{version}/release-record`
 
+When the imported source had to be normalized, `publish` prints the same `Import summary`
+and human-readable `Warnings` blocks before returning the published bundle path.
+
 | Option             | Description                                                   |
 | ------------------ | ------------------------------------------------------------- |
 | `--registry <url>` | Catalog base URL override for packaging and release-record    |
+| `--strict`         | Disable imported workspace normalization during prepare       |
 
 ### `skills remove`
 

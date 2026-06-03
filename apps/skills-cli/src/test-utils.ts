@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { join } from 'path';
 import { stripTerminalEscapes } from './sanitize.ts';
 
@@ -38,7 +38,7 @@ export function runCli(
   timeout?: number
 ): { stdout: string; stderr: string; exitCode: number } {
   try {
-    const output = execSync(`node "${CLI_PATH}" ${args.join(' ')}`, {
+    const output = execFileSync(process.execPath, [CLI_PATH, ...args], {
       encoding: 'utf-8',
       cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -66,7 +66,7 @@ export function runCliWithInput(
   cwd?: string
 ): { stdout: string; stderr: string; exitCode: number } {
   try {
-    const output = execSync(`node "${CLI_PATH}" ${args.join(' ')}`, {
+    const output = execFileSync(process.execPath, [CLI_PATH, ...args], {
       encoding: 'utf-8',
       cwd,
       input: input + '\n',

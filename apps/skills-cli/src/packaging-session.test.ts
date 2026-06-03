@@ -133,6 +133,25 @@ description: Broader context
             packageName: '@platform.skill/zoom-out',
             version: '1.0.0',
             warnings: ['normalized_missing_capability_content'],
+            warningDetails: [
+              {
+                code: 'normalized_missing_capability_content',
+                severity: 'warning',
+                title: 'Generated placeholder capability content',
+                message: 'The imported skill did not contain publishable capability content.',
+                suggestedAction: 'Replace the placeholder with real capability content.',
+              },
+            ],
+            importReport: {
+              sourceType: 'imported',
+              strictMode: false,
+              normalized: true,
+              generatedPackageJson: false,
+              generatedCapabilityPlaceholder: true,
+              rewrotePackageIdentity: false,
+              generatedPaths: ['docs/README.md'],
+              warningCodes: ['normalized_missing_capability_content'],
+            },
             errors: [],
           }),
           { status: 200, headers: { 'content-type': 'application/json' } }
@@ -158,6 +177,25 @@ description: Broader context
     expect(result.ok).toBe(true);
     if (result.ok && result.sessionKind === 'registry') {
       expect(result.warnings).toEqual(['normalized_missing_capability_content']);
+      expect(result.warningDetails).toEqual([
+        {
+          code: 'normalized_missing_capability_content',
+          severity: 'warning',
+          title: 'Generated placeholder capability content',
+          message: 'The imported skill did not contain publishable capability content.',
+          suggestedAction: 'Replace the placeholder with real capability content.',
+        },
+      ]);
+      expect(result.importReport).toEqual({
+        sourceType: 'imported',
+        strictMode: false,
+        normalized: true,
+        generatedPackageJson: false,
+        generatedCapabilityPlaceholder: true,
+        rewrotePackageIdentity: false,
+        generatedPaths: ['docs/README.md'],
+        warningCodes: ['normalized_missing_capability_content'],
+      });
     }
   });
 

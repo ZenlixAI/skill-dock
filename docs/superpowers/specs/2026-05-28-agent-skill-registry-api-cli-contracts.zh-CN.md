@@ -271,6 +271,17 @@ V1 推荐同步 API，内部仍按 `prepare -> validate -> pack` 三阶段推进
   "packageName": "@platform.skill/pdf-skill",
   "version": "1.2.0",
   "warnings": [],
+  "warningDetails": [],
+  "importReport": {
+    "sourceType": "imported",
+    "strictMode": false,
+    "normalized": false,
+    "generatedPackageJson": false,
+    "generatedCapabilityPlaceholder": false,
+    "rewrotePackageIdentity": false,
+    "generatedPaths": [],
+    "warningCodes": []
+  },
   "errors": []
 }
 ```
@@ -287,6 +298,7 @@ V1 推荐同步 API，内部仍按 `prepare -> validate -> pack` 三阶段推进
 {
   "ok": true,
   "warnings": [],
+  "warningDetails": [],
   "errors": []
 }
 ```
@@ -306,9 +318,18 @@ V1 推荐同步 API，内部仍按 `prepare -> validate -> pack` 三阶段推进
   "packageName": "@platform.skill/pdf-skill",
   "version": "1.2.0",
   "manifestDigest": "sha256:...",
-  "components": ["commands", "scripts"]
+  "components": ["commands", "scripts"],
+  "warnings": [],
+  "warningDetails": [],
+  "errors": []
 }
 ```
+
+补充约束：
+
+- `warnings` 保持稳定机读 code，供脚本、批量导入和审计使用
+- `warningDetails` 提供人类可读展示内容，供 CLI 和未来平台 UI 直接渲染
+- `importReport` 提供结构化导入状态，供 CLI、batch import 和未来平台 authoring flow 直接消费
 
 ### Packaging API 边界
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import module from 'node:module';
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs';
 import { basename, join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -12,6 +13,14 @@ import { isRunningInAgent } from './detect-agent.ts';
 import { runInspect } from './inspect.ts';
 import { runPublish } from './publish.ts';
 import { runUpdate } from './update.ts';
+
+if (module.enableCompileCache && !process.env.NODE_DISABLE_COMPILE_CACHE) {
+  try {
+    module.enableCompileCache();
+  } catch {
+    // Ignore errors so CLI startup still works on runtimes without compile-cache support.
+  }
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -148,6 +157,10 @@ ${BOLD}List Options:${RESET}
 ${BOLD}Find Options:${RESET}
   --registry <url>       Catalog base URL override (default env: SKILLS_REGISTRY_URL)
   --json                 Output query results as JSON
+
+${BOLD}Inspect / Publish Options:${RESET}
+  --registry <url>       Catalog base URL override for registry-backed packaging flows
+  --strict               Disable imported workspace normalization
 
 ${BOLD}Options:${RESET}
   --help, -h        Show this help message
@@ -318,10 +331,12 @@ ${BOLD}Arguments:${RESET}
 
 ${BOLD}Options:${RESET}
   --registry <url>  Catalog base URL override for registry-backed packaging validation
+  --strict          Disable imported workspace normalization during prepare
 
 ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} skills inspect
   ${DIM}$${RESET} skills inspect ./my-skill
+  ${DIM}$${RESET} skills inspect ./my-skill --strict
   ${DIM}$${RESET} skills inspect ./my-skill --registry https://catalog.example.com
 
 Discover more skills at ${TEXT}https://skills.sh/${RESET}
@@ -340,10 +355,12 @@ ${BOLD}Arguments:${RESET}
 
 ${BOLD}Options:${RESET}
   --registry <url>  Catalog base URL override for packaging and release-record calls
+  --strict          Disable imported workspace normalization during prepare
 
 ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} skills publish
   ${DIM}$${RESET} skills publish ./my-skill
+  ${DIM}$${RESET} skills publish ./my-skill --strict
   ${DIM}$${RESET} skills publish ./my-skill --registry https://catalog.example.com
 
 Discover more skills at ${TEXT}https://skills.sh/${RESET}

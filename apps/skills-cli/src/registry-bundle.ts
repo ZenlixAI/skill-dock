@@ -6,12 +6,18 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { parseSkillMd } from './skills.ts';
 import type { InstallTarget } from './catalog.ts';
+import { resolveNpmAuthHeaders } from './npm-auth.ts';
 import type { Skill } from './types.ts';
 
 export interface DownloadedRegistrySkill {
   extractedPath: string;
   skill: Skill;
   cleanup: () => Promise<void>;
+}
+
+interface DownloadRegistrySkillBundleOptions {
+  cwd?: string;
+  userConfigPath?: string;
 }
 
 interface RegistryPackageJson {
@@ -53,7 +59,8 @@ async function verifyPackageMetadata(target: InstallTarget, packageJsonPath: str
 }
 
 export async function downloadRegistrySkillBundle(
-  target: InstallTarget
+  target: InstallTarget,
+  options: DownloadRegistrySkillBundleOptions = {}
 ): Promise<DownloadedRegistrySkill> {
   const workingDir = await mkdtemp(join(tmpdir(), 'skills-registry-'));
   const archivePath = join(workingDir, 'bundle.tgz');
@@ -64,8 +71,12 @@ export async function downloadRegistrySkillBundle(
   };
 
   try {
+    const authHeaders = resolveNpmAuthHeaders(target.tarballUrl, options).headers;
     const response = await fetch(target.tarballUrl, {
-      headers: { accept: 'application/octet-stream' },
+      headers: {
+        accept: 'application/octet-stream',
+        ...authHeaders,
+      },
     });
 
     if (!response.ok) {

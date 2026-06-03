@@ -50,7 +50,7 @@ export async function runRegistryInstallWorkflow(
     registry: options.registry,
     version: options.version,
   });
-  const bundle = await downloadRegistrySkillBundle(target);
+  const bundle = await downloadRegistrySkillBundle(target, { cwd });
 
   try {
     const results = await Promise.all(
