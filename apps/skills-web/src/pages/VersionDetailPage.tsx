@@ -148,6 +148,18 @@ export function VersionDetailPage() {
   return (
     <div className="page-grid">
       <SectionHeading
+        actions={
+          <div className="authoring-actions">
+            <Link className="button button--secondary" to={`/skills/${encodeURIComponent(decodedPackage)}`}>
+              Back to skill
+            </Link>
+            {hasHandoff ? (
+              <Link className="button button--primary" to={authoringPath}>
+                Return to authoring
+              </Link>
+            ) : null}
+          </div>
+        }
         eyebrow="Version Detail"
         title={`${decodedPackage} · ${version}`}
         description={
@@ -155,6 +167,7 @@ export function VersionDetailPage() {
             ? '这个页面已经承接上一步 pack 结果，release-record 表单会自动预填。'
             : '这个页面专门回答某个精确版本的 registry、bundle 和治理状态。'
         }
+        tone="detail"
       />
 
       <div className="context-strip">
@@ -168,6 +181,7 @@ export function VersionDetailPage() {
         <SurfaceCard
           title="Release Handoff"
           description="这些字段来自上一步 `pack`，用于减少作者在 release review 阶段的重复录入。"
+          variant="spotlight"
           action={
             <Link className="button button--secondary" to={authoringPath}>
               Back to authoring flow
@@ -310,7 +324,7 @@ export function VersionDetailPage() {
           </dl>
         </SurfaceCard>
 
-        <SurfaceCard className="surface-card--cool surface-card--sticky" title="Release Action Center" description="把 release-record 做成独立控制面动作，而不是附带按钮。">
+        <SurfaceCard className="surface-card--sticky" title="Release Action Center" description="把 release-record 做成独立控制面动作，而不是附带按钮。" variant="console">
           <div className="stack-column">
             <label className="field">
               <span>publish registry</span>
@@ -357,7 +371,7 @@ export function VersionDetailPage() {
       </div>
 
       <div className="two-column">
-        <SurfaceCard className="surface-card--warm" title="Version Governance" description="当前支持 deprecate / yank，并允许带 replacement recommendation。">
+        <SurfaceCard title="Version Governance" description="当前支持 deprecate / yank，并允许带 replacement recommendation。" variant="console">
           <div className="stack-column">
             <label className="field">
               <span>Action</span>

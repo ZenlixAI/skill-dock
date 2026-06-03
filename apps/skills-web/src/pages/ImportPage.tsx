@@ -297,6 +297,7 @@ export function ImportPage() {
         eyebrow="Import & Package"
         title="把 prepare → validate → pack 做成显式工作流，而不是一键黑盒。"
         description="这个页面已经可以直连真实 packaging API。前端不做规则判断，只把 warningDetails 和 importReport 变成用户能看懂的确认面。"
+        tone="backstage"
       />
 
       <div className="context-strip">
@@ -308,7 +309,7 @@ export function ImportPage() {
       </div>
 
       <div className="two-column two-column--wide-right">
-        <SurfaceCard className="surface-card--warm" title="Workflow" description="按当前同步 packaging API 合同拆成 4 步。">
+        <SurfaceCard title="Workflow" description="按当前同步 packaging API 合同拆成 4 步。" variant="console">
           <div className="step-list">
             {steps.map((step, index) => (
               <article className={index === activeStepIndex ? 'step-card step-card--active' : 'step-card'} key={step.title}>
@@ -457,7 +458,7 @@ export function ImportPage() {
           </div>
         </SurfaceCard>
 
-        <SurfaceCard className="surface-card--sticky surface-card--cool" title="Validation Review" description="右侧始终展示当前 prepare / validate / pack 的最新结果。">
+        <SurfaceCard className="surface-card--sticky" title="Validation Review" description="右侧始终展示当前 prepare / validate / pack 的最新结果。" variant="rail">
           {!reviewData ? <div className="empty-box">Run `prepare` to start the packaging workflow.</div> : null}
           {reviewData ? (
             <div className="stack-column">

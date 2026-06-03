@@ -70,6 +70,7 @@ export function AuditPage() {
         eyebrow="Audit"
         title="让人追溯‘谁在什么时候对哪个 skill/version 做了哪一步’，并先看真正重要的失败面。"
         description="Audit 页现在不只堆 feed，而是把 denied / failed / mutating / read-side trace 拆开看。"
+        tone="backstage"
       />
 
       <div className="context-strip">
@@ -98,7 +99,7 @@ export function AuditPage() {
       </div>
 
       <div className="two-column two-column--wide-right">
-        <SurfaceCard className="surface-card--warm" title="Filters" description="先缩小 actor / outcome / package 再读时间轴。">
+        <SurfaceCard title="Filters" description="先缩小 actor / outcome / package 再读时间轴。" variant="console">
           <label className="field">
             <span>Package name</span>
             <input

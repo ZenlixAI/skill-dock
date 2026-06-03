@@ -16,9 +16,12 @@ export function TimelineList({ items }: TimelineListProps) {
     <div className="timeline-list">
       {items.map((item) => (
         <article className="timeline-item" key={item.key}>
-          <strong>{item.title}</strong>
-          <p>{item.subtitle}</p>
-          {item.meta ? <div>{item.meta}</div> : null}
+          <div className="timeline-item__bar" />
+          <div className="timeline-item__body">
+            <strong>{item.title}</strong>
+            <p>{item.subtitle}</p>
+            {item.meta ? <div>{item.meta}</div> : null}
+          </div>
         </article>
       ))}
     </div>

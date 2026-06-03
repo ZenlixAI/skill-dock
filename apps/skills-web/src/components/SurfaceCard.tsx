@@ -6,11 +6,19 @@ interface SurfaceCardProps extends PropsWithChildren {
   description?: string;
   action?: ReactNode;
   className?: string;
+  variant?: 'default' | 'hero' | 'spotlight' | 'rail' | 'console' | 'warm' | 'cool';
 }
 
-export function SurfaceCard({ title, description, action, className, children }: SurfaceCardProps) {
+export function SurfaceCard({
+  title,
+  description,
+  action,
+  className,
+  variant = 'default',
+  children,
+}: SurfaceCardProps) {
   return (
-    <section className={clsx('surface-card', className)}>
+    <section className={clsx('surface-card', `surface-card--${variant}`, className)}>
       {(title || description || action) && (
         <header className="surface-card__header">
           <div>

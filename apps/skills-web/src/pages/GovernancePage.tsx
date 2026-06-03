@@ -74,6 +74,7 @@ export function GovernancePage() {
         eyebrow="Governance"
         title="把 retire / deprecate / yank 从后端状态机翻译成可操作的治理控制台。"
         description="这页现在不只是一条时间线，而是先回答影响面，再让人按 target / action / package 缩小范围。"
+        tone="backstage"
       />
 
       <div className="context-strip">
@@ -104,7 +105,7 @@ export function GovernancePage() {
       </div>
 
       <div className="two-column two-column--wide-right">
-        <SurfaceCard className="surface-card--warm" title="Filters" description="先缩小治理面，再读时间线。">
+        <SurfaceCard title="Filters" description="先缩小治理面，再读时间线。" variant="console">
           <label className="field">
             <span>Package name</span>
             <input

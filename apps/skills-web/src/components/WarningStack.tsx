@@ -29,7 +29,7 @@ export function WarningStack({ warnings }: WarningStackProps) {
           <p>{warning.message}</p>
           {warning.suggestedAction ? (
             <p className="warning-card__action">
-              <strong>Suggested action:</strong> {warning.suggestedAction}
+              <strong>Suggested action</strong> {warning.suggestedAction}
             </p>
           ) : null}
         </article>

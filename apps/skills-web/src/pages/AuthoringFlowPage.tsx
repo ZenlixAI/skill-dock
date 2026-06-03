@@ -26,6 +26,7 @@ export function AuthoringFlowPage() {
         eyebrow="Platform Authoring"
         title="把外部导入、发布登记、治理审阅接成上层平台里的一个作者工作台。"
         description="这个页面不是单独 registry 页签，而是模拟更上层 authoring / platform 入口该怎么承接 skills-web 的行为。"
+        tone="backstage"
       />
 
       <div className="flow-ribbon">
@@ -67,9 +68,9 @@ export function AuthoringFlowPage() {
 
       {hasHandoff ? (
         <SurfaceCard
-          className="surface-card--hero"
           title="Active Release Handoff"
           description="这是从 `Import & Package` 带过来的 authoring handoff，平台层可以直接承接到 release review。"
+          variant="rail"
           action={
             releaseTarget ? (
               <Link className="button button--primary" to={releaseTarget}>
@@ -109,9 +110,9 @@ export function AuthoringFlowPage() {
 
       <div className="authoring-grid">
         <SurfaceCard
-          className="surface-card--warm"
           title="1. Intake & Normalize"
           description="把社区 / 本地 / 平台 authoring 源接进 package 工作流。"
+          variant="console"
           action={
             <Link className="button button--secondary" to="/import">
               Open import workflow
@@ -131,9 +132,9 @@ export function AuthoringFlowPage() {
         </SurfaceCard>
 
         <SurfaceCard
-          className="surface-card--cool"
           title="2. Release Review"
           description="pack 的产物不直接丢给用户，而是进入一个 release review 承接点。"
+          variant="console"
           action={
             releaseTarget ? (
               <Link className="button button--secondary" to={releaseTarget}>

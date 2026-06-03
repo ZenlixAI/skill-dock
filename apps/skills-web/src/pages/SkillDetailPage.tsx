@@ -89,9 +89,25 @@ export function SkillDetailPage() {
   return (
     <div className="page-grid">
       <SectionHeading
+        actions={
+          <div className="authoring-actions">
+            <Link className="button button--secondary" to="/catalog">
+              Back to catalog
+            </Link>
+            {latestVersionItem ? (
+              <Link
+                className="button button--primary"
+                to={`/skills/${encodeURIComponent(decodedPackage)}/versions/${latestVersionItem.version}`}
+              >
+                Inspect latest version
+              </Link>
+            ) : null}
+          </div>
+        }
         eyebrow="Skill Detail"
         title={detail.data?.displayName || decodedPackage}
         description={detail.data?.description || 'Loading skill detail…'}
+        tone="detail"
       />
 
       <div className="context-strip">
@@ -120,7 +136,7 @@ export function SkillDetailPage() {
       </div>
 
       <div className="two-column">
-        <SurfaceCard className="surface-card--warm" title="Identity" description="这是用户判断‘这个 skill 是什么’的第一屏。">
+        <SurfaceCard title="Identity" description="这是用户判断‘这个 skill 是什么’的第一屏。" variant="spotlight">
           <dl className="property-list">
             <div>
               <dt>package name</dt>
@@ -141,7 +157,7 @@ export function SkillDetailPage() {
           </dl>
         </SurfaceCard>
 
-        <SurfaceCard className="surface-card--cool" title="Install target preview" description="Reader 最关心的不是对象理论，而是怎么装。">
+        <SurfaceCard title="Install target preview" description="Reader 最关心的不是对象理论，而是怎么装。" variant="rail">
           <dl className="property-list">
             <div>
               <dt>registry</dt>
@@ -209,7 +225,7 @@ export function SkillDetailPage() {
         </SurfaceCard>
 
         <div className="stack-column">
-          <SurfaceCard className="surface-card--cool surface-card--sticky" title="Skill Governance" description="skill 级治理写接口：当前先接 retire。">
+          <SurfaceCard className="surface-card--sticky" title="Skill Governance" description="skill 级治理写接口：当前先接 retire。" variant="console">
             <label className="field">
               <span>Reason</span>
               <textarea

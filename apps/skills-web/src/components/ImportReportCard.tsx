@@ -14,6 +14,16 @@ export function ImportReportCard({ report }: ImportReportCardProps) {
         </StatusPill>
         <StatusPill tone="accent">{report.strictMode ? 'strict' : 'relaxed'}</StatusPill>
       </div>
+      <div className="import-report__metrics">
+        <article className="console-signal console-signal--compact">
+          <span>Identity</span>
+          <strong>{report.rewrotePackageIdentity ? 'rewritten' : 'stable'}</strong>
+        </article>
+        <article className="console-signal console-signal--compact">
+          <span>Artifacts</span>
+          <strong>{report.generatedPaths?.length || 0}</strong>
+        </article>
+      </div>
       <dl className="property-list">
         <div>
           <dt>source type</dt>
