@@ -1,4 +1,5 @@
 import { getRegistryToken, registryClientConfig } from './config';
+import type { RegistryRequestError } from './types';
 
 interface CatalogErrorPayload {
   error?: {
@@ -58,13 +59,85 @@ function toErrorMessage(status: number, payload?: CatalogErrorPayload) {
   return `Request failed with status ${status}.`;
 }
 
-export async function requestJSON<T>(path: string, init?: RequestInit): Promise<T> {
-  if (!registryClientConfig.baseUrl) {
-    throw new Error('Registry base URL is not configured.');
+function isNetworkMessage(message: string) {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes('failed to fetch') ||
+    normalized.includes('networkerror') ||
+    normalized.includes('network error') ||
+    normalized.includes('load failed') ||
+    normalized.includes('fetch failed')
+  );
+}
+
+export function normalizeRegistryError(input: {
+  status?: number;
+  message: string;
+  requestId?: string;
+}): RegistryRequestError {
+  if (input.status === 401 || input.status === 403) {
+    return {
+      kind: 'auth',
+      message: 'Current session is not allowed to perform this action.',
+      requestId: input.requestId,
+    };
   }
 
+  if (input.status === 404) {
+    return {
+      kind: 'not_found',
+      message: 'The requested registry resource was not found.',
+      requestId: input.requestId,
+    };
+  }
+
+  if (input.status != null && input.status >= 500) {
+    return {
+      kind: 'server',
+      message: input.message,
+      requestId: input.requestId,
+    };
+  }
+
+  if (input.status == null && isNetworkMessage(input.message)) {
+    return {
+      kind: 'network',
+      message: 'Unable to reach the registry backend.',
+      requestId: input.requestId,
+    };
+  }
+
+  return {
+    kind: 'unknown',
+    message: input.message,
+    requestId: input.requestId,
+  };
+}
+
+export function normalizeThrownRegistryError(error: unknown): RegistryRequestError {
+  if (error instanceof RegistryHttpError) {
+    return normalizeRegistryError({
+      status: error.status,
+      message: error.message,
+      requestId: error.requestId,
+    });
+  }
+
+  if (error instanceof Error) {
+    return normalizeRegistryError({
+      message: error.message,
+    });
+  }
+
+  return normalizeRegistryError({
+    message: String(error),
+  });
+}
+
+export async function requestJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const hasBody = init?.body != null;
-  const response = await fetch(`${registryClientConfig.baseUrl}${path}`, {
+  const requestUrl = registryClientConfig.baseUrl ? `${registryClientConfig.baseUrl}${path}` : path;
+  const response = await fetch(requestUrl, {
     ...init,
     headers: buildHeaders(hasBody),
   });

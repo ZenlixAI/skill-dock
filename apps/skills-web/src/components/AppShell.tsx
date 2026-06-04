@@ -2,9 +2,12 @@ import type { PropsWithChildren } from 'react';
 import { motion } from 'framer-motion';
 import { Activity, AppWindow, BookOpenText, Boxes, ScanSearch, ShieldAlert } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { getRegistryClientConfig } from '../api/client';
+import { getRegistryClientConfig, getSession } from '../api/client';
+import { canMutateCatalog, describeSessionPosture, describeSessionScope } from '../api/session';
+import { useAsyncData } from '../lib/useAsyncData';
 import { getRouteTheme } from '../lib/routeTheme';
 import clsx from '../vendor/clsx';
+import { EnvironmentGuard } from './EnvironmentGuard';
 import { StatusPill } from './StatusPill';
 
 const navItems = [
@@ -20,6 +23,7 @@ export function AppShell({ children }: PropsWithChildren) {
   const config = getRegistryClientConfig();
   const location = useLocation();
   const routeTheme = getRouteTheme(location.pathname);
+  const session = useAsyncData(() => getSession(), [config.mode, config.baseUrl]);
 
   return (
     <div className={clsx('app-shell', `app-shell--${routeTheme.tone}`, `app-shell--${routeTheme.accent}`)}>
@@ -43,6 +47,9 @@ export function AppShell({ children }: PropsWithChildren) {
               {routeTheme.tone === 'frontstage' ? 'Frontstage' : 'Backstage'}
             </StatusPill>
             <Status mode={config.mode} />
+            <StatusPill tone={canMutateCatalog(session.data) ? 'accent' : 'default'}>
+              {session.loading ? 'Loading session…' : describeSessionPosture(session.data)}
+            </StatusPill>
           </div>
         </div>
 
@@ -64,10 +71,19 @@ export function AppShell({ children }: PropsWithChildren) {
             })}
           </nav>
 
+          <EnvironmentGuard
+            baseUrl={config.baseUrl}
+            mode={config.mode}
+            session={session.data}
+            sessionError={session.error}
+          />
           <div className="env-banner">
-            {config.baseUrl ? <span>{config.baseUrl}</span> : <span>using local mock client</span>}
-            {config.role ? <span>role {config.role}</span> : null}
-            {config.actor ? <span>actor {config.actor}</span> : null}
+            {session.data ? <span>role {session.data.role}</span> : null}
+            {session.data ? <span>actor {session.data.actor}</span> : null}
+            {session.data ? <span>auth {session.data.authMechanism}</span> : null}
+            {session.data && describeSessionScope(session.data) ? <span>{describeSessionScope(session.data)}</span> : null}
+            {!session.data && config.role ? <span>runtime role {config.role}</span> : null}
+            {!session.data && config.actor ? <span>runtime actor {config.actor}</span> : null}
             {config.hasToken ? <span>bearer token</span> : null}
           </div>
         </div>

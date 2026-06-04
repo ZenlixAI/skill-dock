@@ -60,6 +60,10 @@ export interface Skill {
   name: string;
   description: string;
   path: string;
+  /** Registry package identity when the skill comes from a package registry. */
+  packageName?: string;
+  /** Local install directory slug, distinct from display name and package identity. */
+  installName?: string;
   /** Raw SKILL.md content for hashing */
   rawContent?: string;
   /** Name of the plugin this skill belongs to (if any) */

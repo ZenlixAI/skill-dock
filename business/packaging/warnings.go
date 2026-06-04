@@ -16,13 +16,13 @@ func warningDetails(codes []string) []WarningDetail {
 				Message:         "The imported skill did not provide a root package.json, so packaging generated one from the requested package_name, version, and metadata.",
 				SuggestedAction: "Add and maintain a root package.json in the source skill if you want the package identity to live with the upstream source.",
 			})
-		case "normalized_missing_capability_content":
+		case "missing_capability_content":
 			details = append(details, WarningDetail{
 				Code:            code,
-				Severity:        "warning",
-				Title:           "Generated placeholder capability content",
-				Message:         "The imported skill did not contain commands/, agents/, hooks/, scripts/, docs/, plugin.json, or .mcp.json, so packaging added a docs/README.md placeholder to satisfy the publishable bundle contract.",
-				SuggestedAction: "Replace the placeholder with real capability content when the upstream source is ready to publish as a first-class skill bundle.",
+				Severity:        "high-risk",
+				Title:           "Missing capability content",
+				Message:         "The imported skill did not contain a root SKILL.md or any recognized capability content such as commands/, agents/, hooks/, scripts/, docs/, plugin.json, or .mcp.json.",
+				SuggestedAction: "Add a valid root SKILL.md or real capability content before validate/pack so the bundle contract is satisfied.",
 			})
 		case "normalized_rewrote_package_json_identity":
 			details = append(details, WarningDetail{

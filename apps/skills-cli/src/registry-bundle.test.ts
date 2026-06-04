@@ -83,7 +83,9 @@ description: PDF processing workflow
     });
 
     try {
-      expect(bundle.skill.name).toBe('@platform.skill/pdf-skill');
+      expect(bundle.skill.name).toBe('pdf-skill');
+      expect(bundle.skill.packageName).toBe('@platform.skill/pdf-skill');
+      expect(bundle.skill.installName).toBe('pdf-skill');
       expect(bundle.skill.description).toBe('PDF processing workflow');
       expect(bundle.extractedPath).toContain('/package');
       expect(globalThis.fetch).toHaveBeenCalledWith(
@@ -117,7 +119,8 @@ description: PDF processing workflow
         packageName: '@platform.skill/pdf-skill',
         version: '1.2.0',
         npmRegistry: 'https://npm.example.com/private',
-        tarballUrl: 'https://npm.example.com/private/@platform.skill/pdf-skill/-/pdf-skill-1.2.0.tgz',
+        tarballUrl:
+          'https://npm.example.com/private/@platform.skill/pdf-skill/-/pdf-skill-1.2.0.tgz',
         integrity: sha512Integrity(fixture.tarball),
         skillManifestDigest: skillManifestDigest(fixture.skillContent),
         versionStatus: 'published',

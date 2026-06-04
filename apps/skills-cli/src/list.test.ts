@@ -514,11 +514,13 @@ description: PDF processing workflow
     });
   });
 
-  describe('banner', () => {
-    it('should include list command in banner', () => {
+  describe('default output', () => {
+    it('should include list command in the concise help output', () => {
       const result = runCli([]);
-      expect(result.stdout).toContain('npx skills list');
+      expect(result.stdout).toContain('Usage: skills <command> [options]');
+      expect(result.stdout).toContain('list, ls');
       expect(result.stdout).toContain('List installed skills');
+      expect(result.stdout).not.toContain('The open agent skills ecosystem');
     });
   });
 });

@@ -206,7 +206,7 @@ describe('catalog client', () => {
 
     await prepareSkillPackaging({
       registry: 'https://catalog.example.com',
-      source: { type: 'local', location: '/tmp/skill' },
+      source: { type: 'upload_archive', archiveBase64: 'archive-base64' },
       target: { packageName: '@platform.skill/pdf-skill', version: '1.2.0' },
     });
     await validateSkillPackaging({

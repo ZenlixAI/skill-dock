@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { listAuditEvents } from '../api/client';
 import type { AuditEventRecord } from '../api/types';
 import { SectionHeading } from '../components/SectionHeading';
@@ -42,16 +43,19 @@ function buildAuditLayers(records: AuditEventRecord[]): AuditLayer[] {
 }
 
 export function AuditPage() {
-  const [packageName, setPackageName] = useState('');
-  const [actor, setActor] = useState('');
-  const [outcome, setOutcome] = useState('');
-  const [authDecision, setAuthDecision] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const packageName = searchParams.get('package') || '';
+  const version = searchParams.get('version') || '';
+  const actor = searchParams.get('actor') || '';
+  const outcome = searchParams.get('outcome') || '';
+  const authDecision = searchParams.get('authDecision') || '';
 
   const audit = usePaginatedCollection({
     loader: (filters) =>
       listAuditEvents({
         ...filters,
         packageName: packageName.trim() || undefined,
+        version: version.trim() || undefined,
         actor: actor.trim() || undefined,
         outcome: outcome || undefined,
         authDecision: authDecision || undefined,
@@ -60,7 +64,7 @@ export function AuditPage() {
     filters: {
       cursor: undefined,
     },
-    deps: [packageName, actor, outcome, authDecision],
+    deps: [packageName, version, actor, outcome, authDecision],
   });
 
   const items = useMemo(() => audit.items, [audit.items]);
@@ -68,6 +72,17 @@ export function AuditPage() {
   const deniedCount = items.filter((item) => item.authDecision === 'denied').length;
   const failedCount = items.filter((item) => item.outcome !== 'succeeded').length;
   const mutatingCount = items.filter((item) => item.method !== 'GET').length;
+
+  function updateFilter(key: 'package' | 'version' | 'actor' | 'outcome' | 'authDecision', value: string) {
+    const next = new URLSearchParams(searchParams);
+    const normalizedValue = value.trim();
+    if (normalizedValue === '') {
+      next.delete(key);
+    } else {
+      next.set(key, normalizedValue);
+    }
+    setSearchParams(next, { replace: true });
+  }
 
   return (
     <div className="page-grid">
@@ -80,8 +95,9 @@ export function AuditPage() {
 
       <div className="context-strip">
         <StatusPill tone="accent">{packageName.trim() || 'all packages'}</StatusPill>
+        <StatusPill>{version.trim() || 'all versions'}</StatusPill>
         <StatusPill>{actor.trim() || 'all actors'}</StatusPill>
-        <StatusPill tone={outcome === 'failed' ? 'bad' : outcome === 'succeeded' ? 'good' : undefined}>{outcome || 'all outcomes'}</StatusPill>
+        <StatusPill tone={outcome === 'succeeded' ? 'good' : outcome ? 'bad' : undefined}>{outcome || 'all outcomes'}</StatusPill>
         <StatusPill tone={authDecision === 'denied' ? 'bad' : authDecision === 'allowed' ? 'good' : undefined}>{authDecision || 'all auth decisions'}</StatusPill>
       </div>
 
@@ -108,31 +124,36 @@ export function AuditPage() {
           <label className="field">
             <span>Package name</span>
             <input
-              onChange={(event) => setPackageName(event.target.value)}
-              placeholder="@platform.skill/pdf-skill"
+              onChange={(event) => updateFilter('package', event.target.value)}
+              placeholder="@company.skill/pdf-skill"
               value={packageName}
             />
           </label>
           <label className="field">
+            <span>Version</span>
+            <input onChange={(event) => updateFilter('version', event.target.value)} placeholder="1.2.0" value={version} />
+          </label>
+          <label className="field">
             <span>Actor</span>
             <input
-              onChange={(event) => setActor(event.target.value)}
+              onChange={(event) => updateFilter('actor', event.target.value)}
               placeholder="svc-publisher / web-ui / user_214"
               value={actor}
             />
           </label>
           <label className="field">
             <span>Outcome</span>
-            <select value={outcome} onChange={(event) => setOutcome(event.target.value)}>
+            <select value={outcome} onChange={(event) => updateFilter('outcome', event.target.value)}>
               <option value="">All</option>
               <option value="succeeded">succeeded</option>
               <option value="failed">failed</option>
               <option value="forbidden">forbidden</option>
+              <option value="unauthorized">unauthorized</option>
             </select>
           </label>
           <label className="field">
             <span>Auth decision</span>
-            <select value={authDecision} onChange={(event) => setAuthDecision(event.target.value)}>
+            <select value={authDecision} onChange={(event) => updateFilter('authDecision', event.target.value)}>
               <option value="">All</option>
               <option value="allowed">allowed</option>
               <option value="denied">denied</option>

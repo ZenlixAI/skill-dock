@@ -1,10 +1,11 @@
 package packaging
 
 type Source struct {
-	Type     string            `json:"type"`
-	Location string            `json:"location,omitempty"`
-	Ref      string            `json:"ref,omitempty"`
-	Files    map[string]string `json:"files,omitempty"`
+	Type          string            `json:"type"`
+	Location      string            `json:"location,omitempty"`
+	Ref           string            `json:"ref,omitempty"`
+	Files         map[string]string `json:"files,omitempty"`
+	ArchiveBase64 string            `json:"archiveBase64,omitempty"`
 }
 
 type Target struct {
@@ -52,6 +53,10 @@ type PrepareRequest struct {
 
 func (r PrepareRequest) GetIdempotencyKey() string {
 	return r.IdempotencyKey
+}
+
+func (r PrepareRequest) GetSource() Source {
+	return r.Source
 }
 
 func (r PrepareRequest) GetTarget() Target {

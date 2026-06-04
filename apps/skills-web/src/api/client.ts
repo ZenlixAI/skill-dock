@@ -3,6 +3,7 @@ import { requestJSON } from './httpClient';
 import { mockClient } from './mockClient';
 import type {
   AuditEventRecord,
+  BundleMetadata,
   PackagingCleanupRequest,
   PackagingCleanupResponse,
   CuratedSkillSummary,
@@ -19,6 +20,7 @@ import type {
   PackagingValidateRequest,
   PackagingValidateResponse,
   RegistryApiClient,
+  RegistrySession,
   ReleaseRecordInput,
   ReleaseRecordResult,
   SkillDetail,
@@ -41,20 +43,59 @@ function withQuery(path: string, params: Record<string, string | number | boolea
   return `${url.pathname}${url.search}`;
 }
 
+export function normalizeSkillsPage<T>(response: {
+  items?: T[] | null;
+  pageInfo?: Partial<SkillsPage<T>['pageInfo']> | null;
+} | null | undefined): SkillsPage<T> {
+  return {
+    items: Array.isArray(response?.items) ? response.items : [],
+    pageInfo: {
+      hasNextPage: response?.pageInfo?.hasNextPage ?? false,
+      nextCursor: response?.pageInfo?.nextCursor ?? null,
+    },
+  };
+}
+
+export function normalizeBundleMetadata(bundle: Partial<BundleMetadata> | null | undefined): BundleMetadata {
+  return {
+    skillManifestDigest: bundle?.skillManifestDigest || '',
+    components: Array.isArray(bundle?.components) ? bundle.components : [],
+  };
+}
+
+export function normalizePackagingReview<
+  T extends { warnings?: string[] | null; warningDetails?: unknown[] | null; errors?: string[] | null },
+>(
+  response: T
+) {
+  return {
+    ...response,
+    warnings: Array.isArray(response.warnings) ? response.warnings : [],
+    warningDetails: Array.isArray(response.warningDetails) ? response.warningDetails : [],
+    errors: Array.isArray(response.errors) ? response.errors : [],
+  };
+}
+
 const realClient: RegistryApiClient = {
   getConfig() {
     return registryClientConfig;
   },
 
+  getSession() {
+    return requestJSON<RegistrySession>('/api/v1/session');
+  },
+
   async listSkills(filters?: ListSkillsFilters) {
-    const response = await requestJSON<SkillsPage<SkillSummary>>(
-      withQuery('/api/v1/skills', {
-        q: filters?.query?.trim() || undefined,
-        source_type: filters?.sourceType || undefined,
-        include_retired: filters?.includeRetired || filters?.status === 'retired' ? true : undefined,
-        cursor: filters?.cursor,
-        pageSize: filters?.pageSize ?? 12,
-      })
+    const response = normalizeSkillsPage(
+      await requestJSON<SkillsPage<SkillSummary>>(
+        withQuery('/api/v1/skills', {
+          q: filters?.query?.trim() || undefined,
+          source_type: filters?.sourceType || undefined,
+          include_retired: filters?.includeRetired || filters?.status === 'retired' ? true : undefined,
+          cursor: filters?.cursor,
+          pageSize: filters?.pageSize ?? 12,
+        })
+      )
     );
     return {
       items: filters?.status ? response.items.filter((item) => item.status === filters.status) : response.items,
@@ -63,10 +104,12 @@ const realClient: RegistryApiClient = {
   },
 
   async listCuratedSkills() {
-    const response = await requestJSON<SkillsPage<CuratedSkillSummary>>(
-      withQuery('/api/v1/skills/curated', {
-        pageSize: 20,
-      })
+    const response = normalizeSkillsPage(
+      await requestJSON<SkillsPage<CuratedSkillSummary>>(
+        withQuery('/api/v1/skills/curated', {
+          pageSize: 20,
+        })
+      )
     );
     return response.items;
   },
@@ -83,7 +126,7 @@ const realClient: RegistryApiClient = {
         cursor: options?.cursor,
         pageSize: options?.pageSize ?? 20,
       })
-    );
+    ).then(normalizeSkillsPage);
   },
 
   getInstallTarget(packageName: string, version?: string) {
@@ -94,10 +137,14 @@ const realClient: RegistryApiClient = {
     );
   },
 
-  getVersionDetail(packageName: string, version: string) {
-    return requestJSON<SkillVersionDetail>(
+  async getVersionDetail(packageName: string, version: string) {
+    const response = await requestJSON<SkillVersionDetail>(
       `/api/v1/skills/${encodeURIComponent(packageName)}/versions/${encodeURIComponent(version)}`
     );
+    return {
+      ...response,
+      bundle: normalizeBundleMetadata(response.bundle),
+    };
   },
 
   async listGovernanceChanges(filters?: ListGovernanceFilters) {
@@ -109,7 +156,7 @@ const realClient: RegistryApiClient = {
         cursor: filters?.cursor,
         pageSize: filters?.pageSize ?? 10,
       })
-    );
+    ).then(normalizeSkillsPage);
   },
 
   async listAuditEvents(filters?: ListAuditFilters) {
@@ -124,28 +171,37 @@ const realClient: RegistryApiClient = {
         cursor: filters?.cursor,
         pageSize: filters?.pageSize ?? 10,
       })
-    );
+    ).then(normalizeSkillsPage);
   },
 
-  preparePackaging(request: PackagingPrepareRequest) {
-    return requestJSON<PackagingPrepareResponse>('/api/v1/skill-packaging/prepare', {
+  async preparePackaging(request: PackagingPrepareRequest) {
+    const response = await requestJSON<PackagingPrepareResponse>('/api/v1/skill-packaging/prepare', {
       method: 'POST',
       body: JSON.stringify(request),
     });
+    return normalizePackagingReview(response);
   },
 
-  validatePackaging(request: PackagingValidateRequest) {
-    return requestJSON<PackagingValidateResponse>('/api/v1/skill-packaging/validate', {
+  async validatePackaging(request: PackagingValidateRequest) {
+    const response = await requestJSON<PackagingValidateResponse>('/api/v1/skill-packaging/validate', {
       method: 'POST',
       body: JSON.stringify(request),
     });
+    return {
+      ...normalizePackagingReview(response),
+      components: Array.isArray(response.components) ? response.components : [],
+    };
   },
 
-  packSkill(request: PackagingPackRequest) {
-    return requestJSON<PackagingPackResponse>('/api/v1/skill-packaging/pack', {
+  async packSkill(request: PackagingPackRequest) {
+    const response = await requestJSON<PackagingPackResponse>('/api/v1/skill-packaging/pack', {
       method: 'POST',
       body: JSON.stringify(request),
     });
+    return {
+      ...normalizePackagingReview(response),
+      components: Array.isArray(response.components) ? response.components : [],
+    };
   },
 
   cleanupPackagingWorkspace(request: PackagingCleanupRequest) {
@@ -189,6 +245,7 @@ const realClient: RegistryApiClient = {
 export const apiClient: RegistryApiClient = registryClientConfig.mode === 'real' ? realClient : mockClient;
 
 export const getRegistryClientConfig = () => apiClient.getConfig();
+export const getSession = apiClient.getSession.bind(apiClient);
 
 export const listSkills = apiClient.listSkills.bind(apiClient);
 export const listCuratedSkills = apiClient.listCuratedSkills.bind(apiClient);

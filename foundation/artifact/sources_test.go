@@ -151,6 +151,48 @@ func TestNPMRegistryArtifactSourceAcceptsPluginOnlyBundleMetadata(t *testing.T) 
 	}
 }
 
+func TestNPMRegistryArtifactSourceAcceptsSkillMdOnlyBundleMetadata(t *testing.T) {
+	tarball := buildNPMPackageTarball(t, map[string]string{
+		"package/SKILL.md":     "---\nname: Test Skill\ndescription: Artifact source test\n---\nBody content\n",
+		"package/package.json": `{"name":"@platform.skill/test-skill","version":"0.2.0"}`,
+	})
+	client := &http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			if request.URL.Path == ExpectedPackageTarballPathForTest("@platform.skill/test-skill", "0.2.0") {
+				return binaryResponse(http.StatusOK, tarball), nil
+			}
+			return jsonResponse(http.StatusOK, `{
+			"name":"@platform.skill/test-skill",
+			"time":{"0.2.0":"2026-05-30T13:00:00Z"},
+			"versions":{
+				"0.2.0":{
+					"name":"@platform.skill/test-skill",
+					"version":"0.2.0",
+					"dist":{
+						"tarball":"https://registry.example.com/platform.skill/test-skill/-/test-skill-0.2.0.tgz",
+						"integrity":"sha512-020",
+						"shasum":"sha1-020"
+					}
+				}
+			}
+		}`), nil
+		}),
+	}
+
+	source := NewNPMRegistryArtifactSource("https://registry.example.com", client)
+	artifact, err := source.FindReleaseArtifact(context.Background(), "@platform.skill/test-skill", "0.2.0")
+	if err != nil {
+		t.Fatalf("find release artifact: %v", err)
+	}
+
+	if artifact.ValidationError != "" {
+		t.Fatalf("expected SKILL.md-only bundle to validate, got %s", artifact.ValidationError)
+	}
+	if len(artifact.Version.Bundle.Components) != 0 {
+		t.Fatalf("expected no derived components for SKILL.md-only bundle, got %#v", artifact.Version.Bundle.Components)
+	}
+}
+
 func mustTime(value string) time.Time {
 	timestamp, err := time.Parse(time.RFC3339, value)
 	if err != nil {

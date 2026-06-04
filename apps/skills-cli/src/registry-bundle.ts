@@ -25,6 +25,11 @@ interface RegistryPackageJson {
   version?: unknown;
 }
 
+function packageBasename(packageName: string): string {
+  const parts = packageName.split('/');
+  return parts[parts.length - 1] || packageName;
+}
+
 function verifyTarballIntegrity(target: InstallTarget, tarball: Buffer): void {
   const [algorithm, expectedDigest] = target.integrity.split('-', 2);
   if (!algorithm || !expectedDigest) {
@@ -45,7 +50,10 @@ async function verifyManifestDigest(target: InstallTarget, skillMdPath: string):
   }
 }
 
-async function verifyPackageMetadata(target: InstallTarget, packageJsonPath: string): Promise<void> {
+async function verifyPackageMetadata(
+  target: InstallTarget,
+  packageJsonPath: string
+): Promise<void> {
   let parsed: RegistryPackageJson;
   try {
     parsed = JSON.parse(await readFile(packageJsonPath, 'utf-8')) as RegistryPackageJson;
@@ -116,7 +124,8 @@ export async function downloadRegistrySkillBundle(
       extractedPath: packageDir,
       skill: {
         ...parsed,
-        name: target.packageName,
+        packageName: target.packageName,
+        installName: packageBasename(target.packageName),
         path: packageDir,
       },
       cleanup,

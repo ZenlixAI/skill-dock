@@ -1,16 +1,20 @@
 import { Link, useSearchParams } from 'react-router-dom';
-import { listAuditEvents, listGovernanceChanges, listSkills } from '../api/client';
+import { getRegistryClientConfig, getSession, listAuditEvents, listGovernanceChanges, listSkills } from '../api/client';
+import { canMutateCatalog, describeSessionPosture, describeSessionScope } from '../api/session';
 import { SectionHeading } from '../components/SectionHeading';
 import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
 import { useAsyncData } from '../lib/useAsyncData';
+import { buildAuditLink } from '../lib/auditLink';
 import { buildReleaseHandoffPath, readReleaseHandoff } from '../lib/releaseHandoff';
 
 export function AuthoringFlowPage() {
   const [searchParams] = useSearchParams();
   const handoff = readReleaseHandoff(searchParams);
   const hasHandoff = Boolean(handoff.manifestDigest || handoff.bundlePath || handoff.workspacePath);
+  const config = getRegistryClientConfig();
 
+  const session = useAsyncData(() => getSession(), [config.mode, config.baseUrl]);
   const skills = useAsyncData(() => listSkills({ includeRetired: true, pageSize: 8 }), []);
   const governance = useAsyncData(() => listGovernanceChanges({ pageSize: 8 }), []);
   const audit = useAsyncData(() => listAuditEvents({ pageSize: 8 }), []);
@@ -19,6 +23,11 @@ export function AuthoringFlowPage() {
     handoff.packageName && handoff.version
       ? buildReleaseHandoffPath(handoff, `/skills/${encodeURIComponent(handoff.packageName)}/versions/${encodeURIComponent(handoff.version)}`)
       : null;
+  const auditTarget = buildAuditLink({
+    packageName: handoff.packageName,
+    version: handoff.version,
+    actor: session.data?.actor ?? config.actor,
+  });
 
   return (
     <div className="page-grid">
@@ -47,6 +56,17 @@ export function AuthoringFlowPage() {
         </article>
       </div>
 
+      <div className="context-strip">
+        <StatusPill tone={config.mode === 'real' ? 'good' : 'warn'}>{config.mode === 'real' ? 'real mode' : 'mock mode'}</StatusPill>
+        <StatusPill tone={canMutateCatalog(session.data) ? 'accent' : 'default'}>
+          {session.loading ? 'session loading' : session.error ? 'session unavailable' : describeSessionPosture(session.data)}
+        </StatusPill>
+        {session.data ? <StatusPill>{session.data.actor}</StatusPill> : null}
+        {session.data && describeSessionScope(session.data) ? <StatusPill>{describeSessionScope(session.data)}</StatusPill> : null}
+        {hasHandoff && handoff.packageName ? <StatusPill tone="accent">{handoff.packageName}</StatusPill> : null}
+        {hasHandoff && handoff.version ? <StatusPill>{handoff.version}</StatusPill> : null}
+      </div>
+
       <div className="metric-grid">
         <div className="metric-card">
           <strong>{skills.data?.items.length || '—'}</strong>
@@ -65,6 +85,40 @@ export function AuthoringFlowPage() {
           <span>Governance changes</span>
         </div>
       </div>
+
+      <SurfaceCard
+        title="Mutation & Audit Context"
+        description="作者工作台需要知道当前写权限、运行环境，以及 mutation 完成后应该落到哪条 audit 线索上。"
+        variant="console"
+        action={
+          <Link className="button button--secondary" to={auditTarget}>
+            Open scoped audit
+          </Link>
+        }
+      >
+        <dl className="property-list">
+          <div>
+            <dt>runtime</dt>
+            <dd>{config.mode}</dd>
+          </div>
+          <div>
+            <dt>base URL</dt>
+            <dd>{config.baseUrl || 'same-origin runtime'}</dd>
+          </div>
+          <div>
+            <dt>session posture</dt>
+            <dd>{session.loading ? 'Loading session…' : session.error ? 'Session unavailable' : describeSessionPosture(session.data)}</dd>
+          </div>
+          <div>
+            <dt>actor</dt>
+            <dd>{session.data?.actor || config.actor || '—'}</dd>
+          </div>
+          <div>
+            <dt>package/version focus</dt>
+            <dd>{handoff.packageName && handoff.version ? `${handoff.packageName} · ${handoff.version}` : 'No active release handoff yet.'}</dd>
+          </div>
+        </dl>
+      </SurfaceCard>
 
       {hasHandoff ? (
         <SurfaceCard

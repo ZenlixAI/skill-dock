@@ -2,7 +2,13 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('./source-archive.ts', () => ({
+  createSourceArchiveBase64: vi.fn(() => 'archive-base64'),
+}));
+
 import { runPackagingSession } from './packaging-session.ts';
+import { createSourceArchiveBase64 } from './source-archive.ts';
 
 describe('packaging session', () => {
   let testDir: string;
@@ -16,6 +22,7 @@ describe('packaging session', () => {
     originalFetch = globalThis.fetch;
     fetchMock = vi.fn();
     globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+    vi.mocked(createSourceArchiveBase64).mockClear();
   });
 
   afterEach(() => {
@@ -103,6 +110,10 @@ description: A valid skill
     const validatePayload = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
     expect(preparePayload.idempotencyKey).toBeTruthy();
     expect(validatePayload.idempotencyKey).toBe(preparePayload.idempotencyKey);
+    expect(preparePayload.source).toEqual({
+      type: 'upload_archive',
+      archiveBase64: 'archive-base64',
+    });
     expect(preparePayload.metadata).toEqual({
       displayName: 'my-skill',
       description: 'A valid skill',
@@ -226,7 +237,7 @@ description: Missing version
       publishRegistry: undefined,
       components: [],
       errors: [
-        'package.json name must use the reserved @platform.skill/ scope',
+        'package.json name must use a scoped @<company>.skill/<skill-name> package name',
         'package.json version is required',
       ],
     });
@@ -263,7 +274,7 @@ description: Local-only inspect
       packageName: '@platform.skill/local-skill',
       version: '1.2.0',
       publishRegistry: undefined,
-      components: ['commands'],
+      components: [],
       errors: [],
     });
     expect('workspacePath' in result).toBe(false);

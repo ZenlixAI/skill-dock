@@ -1,12 +1,22 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
   applySkillGovernanceChange,
+  getSession,
   getInstallTarget,
   getSkillDetail,
   getSkillVersions,
   listGovernanceChanges,
 } from '../api/client';
+import { normalizeThrownRegistryError } from '../api/httpClient';
+import { canPerformAction } from '../api/session';
+import {
+  inferMutationFailureOutcome,
+  MutationResultPanel,
+  readMutationResultSearchParams,
+  writeMutationResultSearchParams,
+} from '../components/MutationResultPanel';
+import { PermissionGate } from '../components/PermissionGate';
 import { SectionHeading } from '../components/SectionHeading';
 import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
@@ -22,9 +32,12 @@ type SkillLogEntry = {
 
 export function SkillDetailPage() {
   const { packageName = '' } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const decodedPackage = decodeURIComponent(packageName);
+  const session = useAsyncData(() => getSession(), []);
   const [refreshKey, setRefreshKey] = useState(0);
   const [retireReason, setRetireReason] = useState('');
+  const [retireConfirmed, setRetireConfirmed] = useState(false);
   const [activityLog, setActivityLog] = useState<SkillLogEntry[]>([]);
   const [submitState, setSubmitState] = useState<{
     loading: boolean;
@@ -45,6 +58,13 @@ export function SkillDetailPage() {
   );
   const latestVersionItem = versionList.data?.items[0];
   const statusTone = detail.data?.status === 'active' ? 'good' : 'bad';
+  const canRetireSkill = retireReason.trim() !== '' && retireConfirmed && !submitState.loading;
+  const governanceWriteEnabled = canPerformAction(session.data, 'catalog.governance.skill.apply', decodedPackage);
+  const mutationResult = readMutationResultSearchParams(searchParams, {
+    packageName: decodedPackage,
+    version: null,
+    actor: session.data?.actor ?? null,
+  });
 
   function appendLog(outcome: SkillLogEntry['outcome'], summary: string) {
     setActivityLog((current) => [
@@ -56,6 +76,23 @@ export function SkillDetailPage() {
       },
       ...current,
     ]);
+  }
+
+  function persistMutationResult(result: {
+    action: string;
+    outcome: 'succeeded' | 'failed' | 'forbidden' | 'unauthorized';
+    message: string;
+    requestId?: string | null;
+  }) {
+    setSearchParams(
+      writeMutationResultSearchParams(searchParams, {
+        ...result,
+        actor: session.data?.actor ?? null,
+        packageName: decodedPackage,
+        version: null,
+      }),
+      { replace: true }
+    );
   }
 
   async function handleRetireSkill() {
@@ -74,14 +111,27 @@ export function SkillDetailPage() {
         error: null,
         success: `已提交 skill retire。当前状态：${response.resultingState.status || 'retired'}`,
       });
+      persistMutationResult({
+        action: 'retire',
+        outcome: 'succeeded',
+        message: `已提交 skill retire。当前状态：${response.resultingState.status || 'retired'}`,
+      });
       appendLog('succeeded', `Retired ${decodedPackage}.`);
       setRefreshKey((current) => current + 1);
     } catch (error: unknown) {
-      appendLog('failed', error instanceof Error ? error.message : String(error));
+      const outcome = inferMutationFailureOutcome(error);
+      const normalizedError = normalizeThrownRegistryError(error);
+      appendLog('failed', normalizedError.message);
       setSubmitState({
         loading: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: normalizedError.message,
         success: null,
+      });
+      persistMutationResult({
+        action: 'retire',
+        outcome,
+        message: normalizedError.message,
+        requestId: normalizedError.requestId,
       });
     }
   }
@@ -115,6 +165,9 @@ export function SkillDetailPage() {
         {detail.data?.sourceType ? <StatusPill tone="accent">{detail.data.sourceType}</StatusPill> : null}
         {detail.data?.latestVersion ? <StatusPill>latest {detail.data.latestVersion}</StatusPill> : null}
         {installTarget.data?.version ? <StatusPill tone="good">install target {installTarget.data.version}</StatusPill> : null}
+        <StatusPill tone={governanceWriteEnabled ? 'accent' : 'default'}>
+          {session.loading ? 'session loading' : session.error ? 'session unavailable' : governanceWriteEnabled ? 'retire enabled' : 'read-only'}
+        </StatusPill>
       </div>
 
       <div className="console-strip">
@@ -226,30 +279,46 @@ export function SkillDetailPage() {
 
         <div className="stack-column">
           <SurfaceCard className="surface-card--sticky" title="Skill Governance" description="skill 级治理写接口：当前先接 retire。" variant="console">
-            <label className="field">
-              <span>Reason</span>
-              <textarea
-                value={retireReason}
-                onChange={(event) => setRetireReason(event.target.value)}
-                placeholder="merged into successor skill / no longer allowed in catalog"
-              />
-            </label>
-            {submitState.error ? <div className="error-box">{submitState.error}</div> : null}
-            {submitState.success ? <div className="empty-box empty-box--success">{submitState.success}</div> : null}
-            <div className="action-row">
-              <div className="action-row__copy">
-                <strong>Retire the whole skill line</strong>
-                <p>这是 package 级动作，不只是某个版本下线。它会把这个 skill 从继续演进的对象变成历史对象。</p>
-              </div>
-            </div>
-            <button
-              className="button button--secondary"
-              disabled={submitState.loading || retireReason.trim() === ''}
-              onClick={() => void handleRetireSkill()}
-              type="button"
+            <MutationResultPanel result={mutationResult} />
+            <PermissionGate
+              fallback={<div className="empty-box">Current session is read-only for catalog.governance.skill.apply.</div>}
+              packageName={decodedPackage}
+              requiredAction="catalog.governance.skill.apply"
+              session={session.data}
+              sessionError={session.error}
+              sessionLoading={session.loading}
             >
-              {submitState.loading ? 'Submitting…' : 'Retire skill'}
-            </button>
+              <label className="field">
+                <span>Reason</span>
+                <textarea
+                  value={retireReason}
+                  onChange={(event) => setRetireReason(event.target.value)}
+                  placeholder="merged into successor skill / no longer allowed in catalog"
+                />
+              </label>
+              <label className="checkbox-row">
+                <input
+                  checked={retireConfirmed}
+                  onChange={(event) => setRetireConfirmed(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>I understand this changes installability for the whole skill line.</span>
+              </label>
+              <div className="action-row">
+                <div className="action-row__copy">
+                  <strong>Retire the whole skill line</strong>
+                  <p>这是 package 级动作，不只是某个版本下线。它会把这个 skill 从继续演进的对象变成历史对象。</p>
+                </div>
+              </div>
+              <button
+                className="button button--secondary"
+                disabled={!canRetireSkill}
+                onClick={() => void handleRetireSkill()}
+                type="button"
+              >
+                {submitState.loading ? 'Submitting…' : 'Retire skill'}
+              </button>
+            </PermissionGate>
           </SurfaceCard>
 
           <SurfaceCard title="Selection Path" description="把这个 skill 当前最合理的下一步动作说清楚。">

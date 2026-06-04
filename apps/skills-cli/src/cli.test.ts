@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
+import { mkdtempSync, readFileSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
 import { join } from 'path';
 import { runCliOutput, stripLogo, hasLogo } from './test-utils.ts';
 
@@ -46,14 +47,13 @@ describe('skills CLI', () => {
   });
 
   describe('no arguments', () => {
-    it('should display banner', () => {
-      const output = stripLogo(runCliOutput([]));
-      expect(output).toContain('The open agent skills ecosystem');
-      expect(output).toContain('npx skills add');
-      expect(output).toContain('npx skills update');
-      expect(output).toContain('npx skills init');
-      expect(output).toContain('skills.sh');
-      expect(output).toContain('@platform.skill/pdf-skill');
+    it('should display concise help instead of the marketing banner', () => {
+      const output = runCliOutput([]);
+      expect(output).toContain('Usage: skills <command> [options]');
+      expect(output).toContain('Manage Skills:');
+      expect(output).not.toContain('The open agent skills ecosystem');
+      expect(output).not.toContain('npx skills add');
+      expect(output).not.toContain('skills.sh');
       expect(output).not.toContain('vercel-labs/agent-skills');
     });
   });
@@ -70,6 +70,16 @@ describe('skills CLI', () => {
   });
 
   describe('logo display', () => {
+    it('should not display logo for init command', () => {
+      const testDir = mkdtempSync(join(tmpdir(), 'skills-cli-logo-test-'));
+      try {
+        const output = runCliOutput(['init', 'smoke-skill'], testDir);
+        expect(hasLogo(output)).toBe(false);
+      } finally {
+        rmSync(testDir, { recursive: true, force: true });
+      }
+    });
+
     it('should not display logo for list command', () => {
       const output = runCliOutput(['list']);
       expect(hasLogo(output)).toBe(false);

@@ -13,9 +13,9 @@
 
 组织成一套真正可供用户使用的 Web 产品界面。
 
-配套原型见：
+配套实现见：
 
-- `docs/prototypes/skill-registry-web-ui-prototype.html`
+- `apps/skills-web/`
 
 ## 设计目标
 

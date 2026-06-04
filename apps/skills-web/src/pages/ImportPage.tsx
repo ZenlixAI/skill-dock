@@ -1,24 +1,36 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   cleanupPackagingWorkspace,
+  getSession,
   packSkill,
   preparePackaging,
   validatePackaging,
 } from '../api/client';
+import { normalizeThrownRegistryError } from '../api/httpClient';
+import { canPerformAction } from '../api/session';
 import type {
   PackagingPackResponse,
   PackagingPrepareRequest,
   PackagingPrepareResponse,
   PackagingSourceType,
   PackagingValidateResponse,
+  RegistryRequestError,
 } from '../api/types';
 import { ImportReportCard } from '../components/ImportReportCard';
+import {
+  inferMutationFailureOutcome,
+  MutationResultPanel,
+  readMutationResultSearchParams,
+  writeMutationResultSearchParams,
+} from '../components/MutationResultPanel';
+import { PermissionGate } from '../components/PermissionGate';
 import { SectionHeading } from '../components/SectionHeading';
 import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
 import { WarningStack } from '../components/WarningStack';
 import { buildReleaseHandoffPath } from '../lib/releaseHandoff';
+import { useAsyncData } from '../lib/useAsyncData';
 
 const steps = [
   {
@@ -80,12 +92,41 @@ function hasBundlePath(data: ReviewData): data is PackagingPackResponse {
   return 'bundlePath' in data;
 }
 
+function createLocalRequestError(message: string): RegistryRequestError {
+  return {
+    kind: 'unknown',
+    message,
+  };
+}
+
+function describeImportOperationError(error: RegistryRequestError) {
+  if (error.kind === 'auth') {
+    return `${error.message} This import action needs a session with packaging permissions before retrying.`;
+  }
+
+  if (error.kind === 'network') {
+    return `${error.message} The packaging backend could not be reached. Retry after the real backend is back.`;
+  }
+
+  if (error.kind === 'server') {
+    return error.message;
+  }
+
+  if (error.kind === 'not_found') {
+    return `${error.message} The workspace or referenced registry object may have been removed.`;
+  }
+
+  return error.message;
+}
+
 export function ImportPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const session = useAsyncData(() => getSession(), []);
   const [sourceType, setSourceType] = useState<PackagingSourceType>('git');
   const [location, setLocation] = useState('https://github.com/mattpocock/skills?path=skills/pdf');
   const [sourceRef, setSourceRef] = useState('main');
   const [inlineFiles, setInlineFiles] = useState('{\n  "commands/run.txt": "echo authored"\n}');
-  const [packageName, setPackageName] = useState('@platform.skill/pdf-skill');
+  const [packageName, setPackageName] = useState('@company.skill/pdf-skill');
   const [version, setVersion] = useState('1.2.0');
   const [displayName, setDisplayName] = useState('PDF Skill');
   const [description, setDescription] = useState('PDF processing workflow');
@@ -96,10 +137,12 @@ export function ImportPage() {
   const [operationState, setOperationState] = useState<{
     loading: false | 'prepare' | 'validate' | 'pack' | 'cleanup';
     error: string | null;
+    errorDetail: RegistryRequestError | null;
     success: string | null;
   }>({
     loading: false,
     error: null,
+    errorDetail: null,
     success: null,
   });
   const [prepareResult, setPrepareResult] = useState<PackagingPrepareResponse | null>(null);
@@ -140,6 +183,15 @@ export function ImportPage() {
   const canValidate = Boolean(prepareResult?.workspacePath) && operationState.loading === false;
   const canPack = Boolean(validateResult?.ok) && operationState.loading === false;
   const canCleanup = Boolean(prepareResult?.workspacePath) && operationState.loading === false;
+  const normalizedPackageName = packageName.trim();
+  const cleanupPackageName =
+    packResult?.packageName || validateResult?.packageName || prepareResult?.packageName || normalizedPackageName;
+  const packagingWriteEnabled = canPerformAction(session.data, 'packaging.pack', normalizedPackageName);
+  const mutationResult = readMutationResultSearchParams(searchParams, {
+    packageName: null,
+    version: null,
+    actor: session.data?.actor ?? null,
+  });
 
   function appendLog(step: ImportLogEntry['step'], outcome: ImportLogEntry['outcome'], summary: string) {
     setActivityLog((current) => [
@@ -151,6 +203,23 @@ export function ImportPage() {
       },
       ...current,
     ]);
+  }
+
+  function persistMutationResult(result: {
+    action: string;
+    outcome: 'succeeded' | 'failed' | 'forbidden' | 'unauthorized';
+    message: string;
+    requestId?: string | null;
+    packageName?: string | null;
+    version?: string | null;
+  }) {
+    setSearchParams(
+      writeMutationResultSearchParams(searchParams, {
+        ...result,
+        actor: session.data?.actor ?? null,
+      }),
+      { replace: true }
+    );
   }
 
   function buildPrepareRequest(): PackagingPrepareRequest {
@@ -186,6 +255,7 @@ export function ImportPage() {
     setOperationState({
       loading: 'prepare',
       error: null,
+      errorDetail: null,
       success: null,
     });
     try {
@@ -196,15 +266,35 @@ export function ImportPage() {
       setOperationState({
         loading: false,
         error: null,
+        errorDetail: null,
         success: 'prepare 完成，已经拿到 workspacePath 和 import review 数据。',
+      });
+      persistMutationResult({
+        action: 'prepare',
+        outcome: 'succeeded',
+        message: 'prepare 完成，已经拿到 workspacePath 和 import review 数据。',
+        packageName: response.packageName,
+        version: response.version,
       });
       appendLog('prepare', 'succeeded', `Prepared ${response.packageName}@${response.version}.`);
     } catch (error: unknown) {
-      appendLog('prepare', 'failed', error instanceof Error ? error.message : String(error));
+      const outcome = inferMutationFailureOutcome(error);
+      const normalizedError = normalizeThrownRegistryError(error);
+      const message = describeImportOperationError(normalizedError);
+      appendLog('prepare', 'failed', normalizedError.message);
       setOperationState({
         loading: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: normalizedError.message,
+        errorDetail: normalizedError,
         success: null,
+      });
+      persistMutationResult({
+        action: 'prepare',
+        outcome,
+        message,
+        requestId: normalizedError.requestId,
+        packageName: normalizedPackageName || null,
+        version: version.trim() || null,
       });
     }
   }
@@ -214,13 +304,22 @@ export function ImportPage() {
       setOperationState({
         loading: false,
         error: '请先执行 prepare。',
+        errorDetail: createLocalRequestError('请先执行 prepare。'),
         success: null,
+      });
+      persistMutationResult({
+        action: 'validate',
+        outcome: 'failed',
+        message: '请先执行 prepare。',
+        packageName: normalizedPackageName || null,
+        version: version.trim() || null,
       });
       return;
     }
     setOperationState({
       loading: 'validate',
       error: null,
+      errorDetail: null,
       success: null,
     });
     try {
@@ -236,17 +335,37 @@ export function ImportPage() {
       setOperationState({
         loading: false,
         error: null,
+        errorDetail: null,
         success: response.ok
           ? 'validate 通过，可以继续 pack。'
           : 'validate 返回未通过，请先处理 errors。',
       });
+      persistMutationResult({
+        action: 'validate',
+        outcome: response.ok ? 'succeeded' : 'failed',
+        message: response.ok ? 'validate 通过，可以继续 pack。' : 'validate 返回未通过，请先处理 errors。',
+        packageName: response.packageName,
+        version: response.version,
+      });
       appendLog('validate', response.ok ? 'succeeded' : 'failed', response.ok ? 'Validation passed.' : 'Validation returned blocking errors.');
     } catch (error: unknown) {
-      appendLog('validate', 'failed', error instanceof Error ? error.message : String(error));
+      const outcome = inferMutationFailureOutcome(error);
+      const normalizedError = normalizeThrownRegistryError(error);
+      const message = describeImportOperationError(normalizedError);
+      appendLog('validate', 'failed', normalizedError.message);
       setOperationState({
         loading: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: normalizedError.message,
+        errorDetail: normalizedError,
         success: null,
+      });
+      persistMutationResult({
+        action: 'validate',
+        outcome,
+        message,
+        requestId: normalizedError.requestId,
+        packageName: prepareResult.packageName || normalizedPackageName || null,
+        version: prepareResult.version || version.trim() || null,
       });
     }
   }
@@ -257,7 +376,15 @@ export function ImportPage() {
       setOperationState({
         loading: false,
         error: '请先执行 prepare，建议再执行 validate。',
+        errorDetail: createLocalRequestError('请先执行 prepare，建议再执行 validate。'),
         success: null,
+      });
+      persistMutationResult({
+        action: 'pack',
+        outcome: 'failed',
+        message: '请先执行 prepare，建议再执行 validate。',
+        packageName: normalizedPackageName || null,
+        version: version.trim() || null,
       });
       appendLog('pack', 'failed', 'Pack requested before validate passed.');
       return;
@@ -265,6 +392,7 @@ export function ImportPage() {
     setOperationState({
       loading: 'pack',
       error: null,
+      errorDetail: null,
       success: null,
     });
     try {
@@ -280,15 +408,35 @@ export function ImportPage() {
       setOperationState({
         loading: false,
         error: null,
+        errorDetail: null,
         success: 'pack 完成，已经拿到 bundlePath / manifestDigest / components。',
+      });
+      persistMutationResult({
+        action: 'pack',
+        outcome: 'succeeded',
+        message: 'pack 完成，已经拿到 bundlePath / manifestDigest / components。',
+        packageName: response.packageName,
+        version: response.version,
       });
       appendLog('pack', 'succeeded', `Packed bundle ${response.bundlePath}.`);
     } catch (error: unknown) {
-      appendLog('pack', 'failed', error instanceof Error ? error.message : String(error));
+      const outcome = inferMutationFailureOutcome(error);
+      const normalizedError = normalizeThrownRegistryError(error);
+      const message = describeImportOperationError(normalizedError);
+      appendLog('pack', 'failed', normalizedError.message);
       setOperationState({
         loading: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: normalizedError.message,
+        errorDetail: normalizedError,
         success: null,
+      });
+      persistMutationResult({
+        action: 'pack',
+        outcome,
+        message,
+        requestId: normalizedError.requestId,
+        packageName: validateResult?.packageName || prepareResult?.packageName || normalizedPackageName || null,
+        version: validateResult?.version || prepareResult?.version || version.trim() || null,
       });
     }
   }
@@ -299,7 +447,15 @@ export function ImportPage() {
       setOperationState({
         loading: false,
         error: '没有可清理的 workspace。',
+        errorDetail: createLocalRequestError('没有可清理的 workspace。'),
         success: null,
+      });
+      persistMutationResult({
+        action: 'cleanup',
+        outcome: 'failed',
+        message: '没有可清理的 workspace。',
+        packageName: null,
+        version: null,
       });
       return;
     }
@@ -307,6 +463,7 @@ export function ImportPage() {
     setOperationState({
       loading: 'cleanup',
       error: null,
+      errorDetail: null,
       success: null,
     });
 
@@ -318,15 +475,35 @@ export function ImportPage() {
       setOperationState({
         loading: false,
         error: null,
+        errorDetail: null,
         success: 'workspace 已清理，当前 packaging session 已重置。',
+      });
+      persistMutationResult({
+        action: 'cleanup',
+        outcome: 'succeeded',
+        message: 'workspace 已清理，当前 packaging session 已重置。',
+        packageName: null,
+        version: null,
       });
       appendLog('cleanup', 'succeeded', `Removed workspace ${workspacePath}.`);
     } catch (error: unknown) {
-      appendLog('cleanup', 'failed', error instanceof Error ? error.message : String(error));
+      const outcome = inferMutationFailureOutcome(error);
+      const normalizedError = normalizeThrownRegistryError(error);
+      const message = describeImportOperationError(normalizedError);
+      appendLog('cleanup', 'failed', normalizedError.message);
       setOperationState({
         loading: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: normalizedError.message,
+        errorDetail: normalizedError,
         success: null,
+      });
+      persistMutationResult({
+        action: 'cleanup',
+        outcome,
+        message,
+        requestId: normalizedError.requestId,
+        packageName: null,
+        version: null,
       });
     }
   }
@@ -346,6 +523,9 @@ export function ImportPage() {
         <StatusPill>{version}</StatusPill>
         <StatusPill tone={strictMode ? 'warn' : 'good'}>{strictMode ? 'strict' : 'relaxed'}</StatusPill>
         <StatusPill tone={stageTone}>stage {currentStage}</StatusPill>
+        <StatusPill tone={packagingWriteEnabled ? 'accent' : 'default'}>
+          {session.loading ? 'session loading' : session.error ? 'session unavailable' : packagingWriteEnabled ? 'packaging enabled' : 'packaging read-only'}
+        </StatusPill>
       </div>
 
       <div className="two-column two-column--wide-right">
@@ -382,7 +562,6 @@ export function ImportPage() {
               <span>Source type</span>
               <select value={sourceType} onChange={(event) => setSourceType(event.target.value as PackagingSourceType)}>
                 <option value="git">git</option>
-                <option value="local">local</option>
                 <option value="platform_authoring">platform_authoring</option>
               </select>
             </label>
@@ -402,7 +581,7 @@ export function ImportPage() {
                   <span>Location</span>
                   <input
                     onChange={(event) => setLocation(event.target.value)}
-                    placeholder="/abs/path/to/skill or git URL"
+                    placeholder="git URL"
                     value={location}
                   />
                 </label>
@@ -460,8 +639,7 @@ export function ImportPage() {
               <span>Include bundle base64 in pack response</span>
             </label>
 
-            {operationState.error ? <div className="error-box">{operationState.error}</div> : null}
-            {operationState.success ? <div className="empty-box empty-box--success">{operationState.success}</div> : null}
+            <MutationResultPanel result={mutationResult} />
 
             <div className="action-row">
               <div className="action-row__copy">
@@ -470,38 +648,74 @@ export function ImportPage() {
               </div>
             </div>
             <div className="button-row">
-              <button
-                className="button button--primary"
-                disabled={operationState.loading !== false}
-                onClick={() => void handlePrepare()}
-                type="button"
+              <PermissionGate
+                fallback={<div className="empty-box">Current session is read-only for packaging.prepare.</div>}
+                packageName={normalizedPackageName}
+                requiredAction="packaging.prepare"
+                session={session.data}
+                sessionError={session.error}
+                sessionLoading={session.loading}
               >
-                {operationState.loading === 'prepare' ? 'Preparing…' : 'Prepare'}
-              </button>
-              <button
-                className="button button--secondary"
-                disabled={!canValidate}
-                onClick={() => void handleValidate()}
-                type="button"
+                <button
+                  className="button button--primary"
+                  disabled={operationState.loading !== false}
+                  onClick={() => void handlePrepare()}
+                  type="button"
+                >
+                  {operationState.loading === 'prepare' ? 'Preparing…' : 'Prepare'}
+                </button>
+              </PermissionGate>
+              <PermissionGate
+                fallback={<div className="empty-box">Current session is read-only for packaging.validate.</div>}
+                packageName={normalizedPackageName}
+                requiredAction="packaging.validate"
+                session={session.data}
+                sessionError={session.error}
+                sessionLoading={session.loading}
               >
-                {operationState.loading === 'validate' ? 'Validating…' : 'Validate'}
-              </button>
-              <button
-                className="button button--secondary"
-                disabled={!canPack}
-                onClick={() => void handlePack()}
-                type="button"
+                <button
+                  className="button button--secondary"
+                  disabled={!canValidate}
+                  onClick={() => void handleValidate()}
+                  type="button"
+                >
+                  {operationState.loading === 'validate' ? 'Validating…' : 'Validate'}
+                </button>
+              </PermissionGate>
+              <PermissionGate
+                fallback={<div className="empty-box">Current session is read-only for packaging.pack.</div>}
+                packageName={normalizedPackageName}
+                requiredAction="packaging.pack"
+                session={session.data}
+                sessionError={session.error}
+                sessionLoading={session.loading}
               >
-                {operationState.loading === 'pack' ? 'Packing…' : 'Pack'}
-              </button>
-              <button
-                className="button button--secondary"
-                disabled={!canCleanup}
-                onClick={() => void handleCleanup()}
-                type="button"
+                <button
+                  className="button button--secondary"
+                  disabled={!canPack}
+                  onClick={() => void handlePack()}
+                  type="button"
+                >
+                  {operationState.loading === 'pack' ? 'Packing…' : 'Pack'}
+                </button>
+              </PermissionGate>
+              <PermissionGate
+                fallback={<div className="empty-box">Current session is read-only for packaging.pack.</div>}
+                packageName={cleanupPackageName}
+                requiredAction="packaging.pack"
+                session={session.data}
+                sessionError={session.error}
+                sessionLoading={session.loading}
               >
-                {operationState.loading === 'cleanup' ? 'Cleaning…' : 'Discard workspace'}
-              </button>
+                <button
+                  className="button button--secondary"
+                  disabled={!canCleanup}
+                  onClick={() => void handleCleanup()}
+                  type="button"
+                >
+                  {operationState.loading === 'cleanup' ? 'Cleaning…' : 'Discard workspace'}
+                </button>
+              </PermissionGate>
             </div>
           </div>
         </SurfaceCard>

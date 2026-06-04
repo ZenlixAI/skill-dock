@@ -1,285 +1,284 @@
 # skill_registry
 
-一个面向 agent skill 的 Catalog 服务与配套 CLI。
+## 启动模式
 
-CLI 细节看 [apps/skills-cli/README.md](/Users/ultraman/workspace/skill_registry/apps/skills-cli/README.md)。
+这套仓库现在只保留两类运行方式：
 
-## 环境
+- 本地 `kind` 开发与真实 E2E：
+  - `make dev-run`
+  - `make dev-status`
+  - `make dev-bootstrap`
+  - 这是唯一保留的本地运行主路径，`skills-web` / `catalog` / `postgres` / `nexus` 都在 `kind` 里
+- 可部署资产验证：
+  - `make compose-up`
+  - `make compose-down`
+  - 这里只保留 production compose，用来检查容器化交付资产，不再承担本地 Nexus E2E
 
-- Go `1.26+`
-- Node.js `18+`
-- `npm`
-- `uv`
-- `make`
+如果你现在关心的是**客户现场交付 / k3s 部署 / CLI 下发方式**，直接看：
 
-## 项目结构
+- [docs/customer-k3s-deployment.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/customer-k3s-deployment.zh-CN.md)
+- [docs/k3s-all-in-one.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/k3s-all-in-one.zh-CN.md)
 
-```text
-cmd/
-  skill-registry/     Go 服务入口
+## 本地开发
 
-app/
-  auth/               认证与授权
-  catalogapi/         HTTP API 与请求编排
-  observability/      请求指标与日志辅助
-
-business/
-  catalog/            Catalog 业务模型与仓储实现
-  packaging/          skill 打包规则与服务
-
-foundation/
-  artifact/           npm / mock registry artifact 适配器
-  persist/            SQL audit / idempotency 存储适配器
-
-apps/
-  skills-cli/         独立 CLI
-  skills-web/         首版 Web UI scaffold（Catalog / Import / Governance）
-
-zarf/
-  docker/             Dockerfile 与 Verdaccio 配置
-  compose/            本地 / 生产 compose
-  scripts/            运行 Verdaccio / Nexus 的辅助脚本
-
-tools/
-  batch-import/       批量导入工具
-```
-
-## 常用命令
-
-```bash
-make help
-make verify
-make verify-full
-```
-
-Web UI 骨架：
-
-```bash
-make web-install
-make web-dev
-```
-
-## 快速开始
-
-### 1. 验证
+### 1. 快速验证
 
 ```bash
 make verify
 ```
 
-会执行：
-
-- `go test ./...`
-- CLI type-check
-- CLI fast tests（默认排除 `apps/skills-cli/tests/dist.test.ts` 这类构建烟测）
-
-如果你要连 CLI 的 dist build smoke test 一起跑：
+如果需要额外跑 CLI dist smoke test，再执行：
 
 ```bash
 make verify-full
 ```
 
-如果你只在改 packaging / publish 链路，优先用更窄的目标：
+### 2. 本地 Kind 开发模式
+
+推荐路径：
 
 ```bash
-make test-go-packaging
-make test-cli-packaging
+make dev-run
+make dev-status
 ```
 
-### 2. 本地联调
+说明：
 
-最短路径是先跑 Catalog，再用 CLI 对拍：
+- `make dev-run` 会：
+  - 构建 `catalog` / `skills-web` 本地镜像
+  - 创建 kind 集群
+  - 把镜像 load 到集群
+  - apply 本地开发清单
+  - bootstrap 集群内 Nexus 仓并写出本地 `.npmrc`
+- 默认部署：
+  - `skills-web`
+  - `catalog`
+  - `postgres`
+  - `nexus`
+- 默认访问入口：
+  - Web：<http://127.0.0.1:8080>
+  - Nexus：<http://127.0.0.1:8081>
+  - Catalog：<http://127.0.0.1:18080>
+- 如果只想重跑 Nexus 初始化：
 
 ```bash
-make registry-run RESET_DB=1
+make dev-bootstrap
 ```
 
-另一个终端：
+相关清单：
+
+- [zarf/k8s/dev/kind-config.yaml](/Users/ultraman/workspace/skill_registry/zarf/k8s/dev/kind-config.yaml)
+- [zarf/k8s/dev/kind-stack.yaml](/Users/ultraman/workspace/skill_registry/zarf/k8s/dev/kind-stack.yaml)
+
+### 3. 本地真实 Nexus E2E
+
+本地发布 / 搜索 / 安装统一走 `kind`：
 
 ```bash
-make cli-find QUERY=pdf
-make cli-add PACKAGE=@platform.skill/pdf-skill
+make dev-run
+make cli ARGS="publish /abs/path/to/skill" NPM_BACKEND=nexus
+make cli ARGS="find your-skill"
+make cli ARGS="add @company.skill/your-skill -y" NPM_BACKEND=nexus
 ```
 
-这条路径默认使用 sample data，并让 sample skill 的 tarball 指向本地 `/mock-npm`。
+注意区分两类能力：
 
-如果你要连 package metadata 也一起切到内置 mock registry：
+- `make cli-publish SKILL_PATH=...` 现在走的是 **CLI 本地 pack -> npm publish -> Catalog release-record**
+- 所以它已经**不要求 Catalog 直接读你的 host 本地目录**
+- `make cli-import-local SKILL_PATH=... PACKAGE=... VERSION=...` 现在走的是 **CLI 本地归档源码 -> Catalog prepare/validate/pack -> npm publish -> Catalog release-record**
+- 正式跨环境发布应收敛到两条命令：`publish` 或 `import-local`
 
-```bash
-make registry-run REGISTRY_BACKEND=mock
-```
-
-如果你只是在现有 sqlite 上重启 Catalog：
-
-```bash
-make registry-run
-```
-
-### 3. 真实 npm-compatible registry 联调
-
-本地真实 E2E 优先用 Verdaccio：
+严格鉴权：
 
 ```bash
-make verdaccio-run
-make registry-run REGISTRY_BACKEND=verdaccio
-```
-
-然后：
-
-```bash
-make cli-publish SKILL_PATH=/abs/path/to/skill NPM_BACKEND=verdaccio
-make cli-find QUERY=pdf
-make cli-add PACKAGE=@platform.skill/pdf-skill
-```
-
-详细步骤看 [docs/local-verdaccio-e2e.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/local-verdaccio-e2e.zh-CN.md)。
-
-如果要验证“发布需要登录”的路径：
-
-```bash
-make verdaccio-run VERDACCIO_MODE=auth
-make verdaccio-login
-make registry-run REGISTRY_BACKEND=verdaccio-auth
-make cli-publish SKILL_PATH=/abs/path/to/skill NPM_BACKEND=verdaccio-auth
-```
-
-完整实操见 [docs/local-verdaccio-auth-e2e.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/local-verdaccio-auth-e2e.zh-CN.md)。
-
-如果你要补一条更接近企业仓行为的本地 Nexus 路径：
-
-```bash
-make nexus-run
-make nexus-bootstrap
-make registry-run REGISTRY_BACKEND=nexus
-make cli-publish SKILL_PATH=/abs/path/to/skill NPM_BACKEND=nexus
-```
-
-如果你要验证“tarball / metadata 读取也要求鉴权”的严格模式：
-
-```bash
-make nexus-run
-make nexus-bootstrap STRICT=1
-make registry-run REGISTRY_BACKEND=nexus
-make cli-publish SKILL_PATH=/abs/path/to/skill NPM_BACKEND=nexus
-make cli-add PACKAGE=@platform.skill/pdf-skill NPM_BACKEND=nexus
+make dev-run STRICT=1
+make cli ARGS="publish /abs/path/to/skill" NPM_BACKEND=nexus
+make cli ARGS="add @company.skill/your-skill -y" NPM_BACKEND=nexus
 ```
 
 详细步骤看 [docs/local-nexus-e2e.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/local-nexus-e2e.zh-CN.md)。
 
-如果你要接别的本地或企业 npm-compatible registry
-（例如 Nexus、Artifactory、GitLab Package Registry），启动 Catalog 时改这两个值即可：
+### 4. CLI 使用
 
 ```bash
-make registry-reset
-env \
-  GOCACHE=/private/tmp/go-cache \
-  SKILL_REGISTRY_ADDR=127.0.0.1:18080 \
-  SKILL_REGISTRY_DATABASE_URL=file:/private/tmp/skill-registry.db \
-  SKILL_REGISTRY_SAMPLE_NPM_BASE_URL=https://npm.example.internal/repository/skills-npm \
-  SKILL_REGISTRY_NPM_REGISTRY_URL=https://npm.example.internal/repository/skills-npm \
-  SKILL_REGISTRY_READER_TOKEN=reader-secret \
-  SKILL_REGISTRY_AUTHORING_TOKEN=authoring-secret \
-  SKILL_REGISTRY_PUBLISHER_TOKEN=publisher-secret \
-  go run ./cmd/skill-registry
+make cli ARGS="find pdf"
+make cli ARGS="find pdf --json"
+make cli ARGS="add @company.skill/pdf-skill -y" NPM_BACKEND=nexus
+make cli ARGS="publish /abs/path/to/skill" NPM_BACKEND=nexus
+make cli ARGS="import-local /abs/path/to/skill --package-name @company.skill/legacy-skill --version 0.1.0" NPM_BACKEND=nexus
+make cli-list CLI_ARGS="--json"
+make cli-update CLI_ARGS="@company.skill/pdf-skill -g"
 ```
 
 说明：
 
-- `SKILL_REGISTRY_SAMPLE_NPM_BASE_URL` 决定 sample skill 写入什么 `tarballUrl`
-- `SKILL_REGISTRY_NPM_REGISTRY_URL` 决定 Catalog 从哪个 npm registry 读取 package metadata
-- 上面示例是 Nexus 风格 URL；换成别的 npm registry 时，只需要替换成对应地址
-- 切换这两个值前应先 `make registry-reset`，避免旧 seed 数据残留
-
-### 4. CLI 使用方式
-
-```bash
-make cli-find QUERY=pdf
-make cli-find QUERY=pdf OUTPUT=json
-make cli-add PACKAGE=@platform.skill/pdf-skill
-make cli-add PACKAGE=@platform.skill/pdf-skill NPM_BACKEND=nexus
-make cli-publish SKILL_PATH=/abs/path/to/skill
-```
-
-说明：
-
-- `make cli-add` 默认做项目级安装
-- 对严格鉴权的 Nexus tarball 读取，使用 `make cli-add PACKAGE=@platform.skill/pdf-skill NPM_BACKEND=nexus` 让 install-side 复用 `/private/tmp/skill-registry-nexus/.npmrc`
-- skill 会安装到当前工作目录下的 `./.agents/skills/`
+- `make cli ARGS="..."` 是通用入口，本质上还是 `node apps/skills-cli/src/cli.ts ...`，但会自动按命令类型注入默认 token
+- 默认 token 规则：
+  - `find` / `add` / `list` / `remove` / `update` 走 `reader-secret`
+  - `init` / `inspect` 走 `authoring-secret`
+  - `publish` / `import-local` 走 `publisher-secret`
+- 对支持 Catalog 的命令，`make cli` 会自动补 `--registry http://127.0.0.1:18080`
+- 对 `import-local + NPM_BACKEND=nexus`，`make cli` 会自动补 `--npm-registry http://127.0.0.1:8081/repository/skills-npm/`
+- `make cli-find` / `cli-add` / `cli-publish` / `cli-import-local` / `cli-list` / `cli-remove` / `cli-update` / `cli-init` / `cli-inspect` 都保留着，但现在只是对 `make cli` 的薄封装
+- 需要切换 npm 仓场景时，通过 `NPM_BACKEND=nexus`
+- 安装内容会落到当前工作目录下的 `./.agents/skills/`
+- registry 包本地目录会优先使用短目录名；发生 basename 冲突时会稳定退化到带 scope 信息的目录名
 - 项目级安装状态会写到当前工作目录下的 `skills-lock.json`
+- `.dist/` 只是内部打包产物目录，不会进入最终安装结果
 - 用户级安装请直接使用 CLI 并传 `-g`
 
-### 4.5 Web UI Skeleton
+### 4.1 真实用户怎么用
 
-当前仓库已经补了一个独立的首版 Web UI 骨架：
+区分两类人：
 
-- 目录：`apps/skills-web/`
-- 技术栈：`Vite + React + TypeScript`
-- 当前页面：
-  - `/`
-  - `/authoring`
-  - `/catalog`
-  - `/skills/:packageName`
-  - `/skills/:packageName/versions/:version`
-  - `/import`
-  - `/governance`
-  - `/audit`
+- 仓库开发者 / 本地联调：用 `make cli`，因为它会自动注入本地 `kind + Nexus + Catalog` 的地址、token 和 `.npmrc`
+- 客户 / CI / 非仓库环境：直接用 `skills` CLI，本质上不应该依赖这个仓库里的 Makefile
 
-运行：
+真实用户通常这样用：
+
+```bash
+export SKILLS_REGISTRY_URL=http://catalog.example.com
+export SKILLS_REGISTRY_TOKEN=reader-or-publisher-token
+
+skills find pdf
+skills add @company.skill/pdf-skill -y
+skills publish /abs/path/to/skill
+skills import-local /abs/path/to/skill --package-name @company.skill/legacy-skill --version 0.1.0 --npm-registry https://nexus.example.com/repository/skills-npm/
+```
+
+也就是说：
+
+- Makefile 主要是给这个 repo 的维护者和本地 E2E 用
+- 真正的产品接口还是 `skills` CLI + `SKILLS_REGISTRY_URL` / `SKILLS_REGISTRY_TOKEN`
+
+### 4.2 用 CLI 走完整流程
+
+本地 `kind + Nexus + Catalog` 联调时，建议按这个顺序：
+
+1. 启动本地系统
+
+```bash
+make dev-run
+```
+
+2. 发布一个标准 skill 包
+
+```bash
+make cli ARGS="publish /abs/path/to/skill" NPM_BACKEND=nexus
+```
+
+适用场景：
+
+- 你的 skill 目录已经是可发布形态
+- CLI 本地会做校验、打包和 `npm publish`
+- Catalog 只负责 release-record 等服务端记录
+
+3. 搜索已发布 skill
+
+```bash
+make cli ARGS="find your-skill"
+make cli ARGS="find your-skill --json"
+```
+
+4. 安装已发布 skill
+
+```bash
+make cli ARGS="add @company.skill/your-skill -y" NPM_BACKEND=nexus
+```
+
+结果：
+
+- skill 会安装到当前项目的 `./.agents/skills/`
+- 项目安装状态会写进 `skills-lock.json`
+
+5. 导入一个还不规范的本地旧 skill
+
+```bash
+make cli ARGS="import-local /abs/path/to/legacy-skill --package-name @company.skill/legacy-skill --version 0.1.0" NPM_BACKEND=nexus
+```
+
+适用场景：
+
+- 原目录还不是一个现成可直接 publish 的包
+- CLI 会先归档源码，再交给 Catalog prepare / validate / pack
+- 最后再 `npm publish` 到 Nexus，并写 release-record
+
+6. 查看当前安装结果
+
+```bash
+make cli-list
+make cli-list CLI_ARGS="--json"
+```
+
+7. 更新已安装 skill
+
+```bash
+make cli-update
+make cli-update CLI_ARGS="@company.skill/your-skill -g"
+```
+
+8. 删除已安装 skill
+
+```bash
+make cli-remove CLI_ARGS="@company.skill/your-skill -y"
+```
+
+9. 本地初始化 / 检查 skill 目录
+
+```bash
+make cli-init NAME=my-skill
+make cli-inspect SKILL_PATH=/abs/path/to/skill
+```
+
+### 5. Web UI
+
+安装与启动：
 
 ```bash
 make web-install
 make web-dev
 ```
 
-如果要让 Web UI 直接命中本地 Catalog，而不是默认 mock client：
+直连本地 `kind` Catalog：
 
 ```bash
-make registry-run RESET_DB=1
-```
+make dev-run
 
-另一个终端：
-
-```bash
 cd apps/skills-web
 VITE_SKILL_REGISTRY_URL=http://127.0.0.1:18080 \
 VITE_SKILL_REGISTRY_TOKEN=publisher-secret \
 npm run dev
 ```
 
-可选环境变量：
-
-- `VITE_SKILL_REGISTRY_URL`
-  - Catalog 基地址；为空时前端自动退回 mock mode
-- `VITE_SKILL_REGISTRY_TOKEN`
-  - 真实 bearer token，优先级高于 `VITE_SKILL_REGISTRY_ROLE`
-- `VITE_SKILL_REGISTRY_ROLE`
-  - 仅本地联调用；未提供 token 时走 `X-Role`
-- `VITE_SKILL_REGISTRY_ACTOR`
-  - 可选，透传到 `X-Actor`
-- `VITE_SKILL_REGISTRY_USE_MOCK=true`
-  - 即使提供了 URL，也强制前端走 mock mode
-
 构建验证：
 
 ```bash
 make typecheck-web
 make build-web
+make test-web
 ```
 
-说明：
+Web E2E 见 [docs/local-web-catalog-e2e.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/local-web-catalog-e2e.zh-CN.md)。
 
-- 当前 UI 已支持 mock / real API 双模式
-- 读接口已接 Catalog API
-- 写接口已接 packaging prepare/validate/pack、release-record、skill/version governance
-- `Import & Package` 的 `pack` 结果现在可以直接 handoff 到 `/skills/:packageName/versions/:version` 的 release review 表单
-- `pack` 默认走 metadata-only 响应；CLI publish 会改用 `GET /api/v1/skill-packaging/bundle` 下载 tarball，而不是长期依赖 inline `bundleBase64`
-- 新增 `POST /api/v1/skill-packaging/cleanup`，`Import & Package` 页可以显式丢弃临时 workspace；遗留 `skill-packaging-*` workspace 也会按 TTL 清理
-- Catalog / Governance / Audit 列表页不再静默截断到第一页，前端会保留 `pageInfo` 并显式提供 `Load more`
-- 新增 `/authoring` 作为更上层 platform / authoring 入口页，用来承接 import -> release review -> governance / audit 的作者流
-- UI 设计规格见 [docs/superpowers/specs/2026-06-02-registry-web-ui-design.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/superpowers/specs/2026-06-02-registry-web-ui-design.zh-CN.md)
-- 前端实施计划见 [docs/superpowers/plans/2026-06-02-registry-web-ui-implementation-plan.md](/Users/ultraman/workspace/skill_registry/docs/superpowers/plans/2026-06-02-registry-web-ui-implementation-plan.md)
+### 6. 批量导入
 
-### 5. Docker 部署
+dry-run：
+
+```bash
+uv run python tools/batch-import/batch_import_skills.py \
+  --manifest tools/batch-import/example.json \
+  --dry-run
+```
+
+执行：
+
+```bash
+make batch-import MANIFEST=/abs/path/to/import.json NPM_BACKEND=nexus
+```
+
+详细说明看 [docs/batch-import-skills.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/batch-import-skills.zh-CN.md)。
+
+### 7. Docker / k3s 交付
 
 生产镜像：
 
@@ -287,68 +286,31 @@ make build-web
 make docker-build
 ```
 
-如果你要直接起一个 `Catalog + Postgres` 的最小生产部署示例：
+最小生产 compose：
 
 ```bash
-make compose-up COMPOSE_STACK=production
+make compose-up
 ```
 
-关键点：
+部署说明统一看 [docs/customer-k3s-deployment.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/customer-k3s-deployment.zh-CN.md)。
 
-- `zarf/docker/Dockerfile` 默认关闭 sample seed 和 `/mock-npm`
-- `zarf/compose/production.yml` 会同时起 `catalog` 和 `postgres`
-- 生产前应显式设置 `SKILL_REGISTRY_NPM_REGISTRY_URL`
+如果目标是客户现场 k3s 交付，补充看：
 
-如果你要起一个本地真实联调栈 `Catalog + Postgres + Verdaccio`：
+- [docs/customer-k3s-deployment.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/customer-k3s-deployment.zh-CN.md)
+- [zarf/k8s/customer-k3s-example.yaml](/Users/ultraman/workspace/skill_registry/zarf/k8s/customer-k3s-example.yaml)
 
-```bash
-make compose-up COMPOSE_STACK=local
-```
+如果目标是**整套系统都打进 k3s，包括 Nexus 和 Postgres**，直接看：
 
-详细说明看 [docs/production-packaging-and-customer-usage.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/production-packaging-and-customer-usage.zh-CN.md)。
+- [docs/k3s-all-in-one.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/k3s-all-in-one.zh-CN.md)
+- [zarf/k8s/k3s-all-in-one.yaml](/Users/ultraman/workspace/skill_registry/zarf/k8s/k3s-all-in-one.yaml)
 
-### 6. 批量导入
-
-如果你已经有一批本地 skill 目录，或者要从 git 源批量导入，可以直接用：
+### 8. 重置与清理
 
 ```bash
-uv run python tools/batch-import/batch_import_skills.py --manifest tools/batch-import/example.json --dry-run
-```
+# 重置 kind 集群 + 本地临时状态，并重新拉起整套 dev stack
+make dev-reset
 
-正式执行：
-
-```bash
-uv run python tools/batch-import/batch_import_skills.py \
-  --manifest tools/batch-import/example.json \
-  --npm-registry http://127.0.0.1:4873
-```
-
-详细说明看 [docs/batch-import-skills.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/batch-import-skills.zh-CN.md)。
-
-也可以直接走 Make 入口：
-
-```bash
-make batch-import MANIFEST=/abs/path/to/import.json
-make batch-import MANIFEST=/abs/path/to/import.json NPM_BACKEND=verdaccio
-make batch-import MANIFEST=/abs/path/to/import.json NPM_BACKEND=verdaccio-auth
-```
-
-当前导入行为：
-
-- 对于已经满足导入请求所需 target / metadata 条件的外部 `local` / `git` skill，默认路径不再要求源目录预先手写 bundle 用的 `package.json` 或 capability 占位内容
-- packaging `prepare` 默认会只在临时 workspace 内重写面向 bundle 的 `package.json` 以匹配内部 target / metadata，并在需要时合成缺失的 capability 占位内容，不会回写源目录
-- 如果你想拒绝这类还不满足 publishable bundle 契约的源目录，使用批量导入脚本的 `--strict`，或在 Make 入口传 `STRICT=1`
-
-如果想先把 Python 运行环境准备好：
-
-```bash
-make python-sync
-```
-
-### 7. 清理本地状态
-
-```bash
-make registry-reset
+# 只清掉本地临时状态，不重新启动
 make clean-dev
 ```
 
@@ -357,28 +319,25 @@ make clean-dev
 CLI：
 
 - `SKILLS_REGISTRY_URL`
-- 可选：`SKILLS_REGISTRY_TOKEN`
-- 可选：`SKILLS_REGISTRY_ROLE`
+- `SKILLS_REGISTRY_TOKEN`
+- `SKILLS_REGISTRY_ROLE`
+- `DEV_POSTGRES_IMAGE`
+- `DEV_NEXUS_IMAGE`
 
-Registry：
+Catalog：
 
 - `SKILL_REGISTRY_ADDR`
 - `SKILL_REGISTRY_DATABASE_URL`
 - `SKILL_REGISTRY_READER_TOKEN`
 - `SKILL_REGISTRY_AUTHORING_TOKEN`
 - `SKILL_REGISTRY_PUBLISHER_TOKEN`
-- `SKILL_REGISTRY_ENABLE_SAMPLE_DATA`
-- `SKILL_REGISTRY_ENABLE_MOCK_REGISTRY`
+- `SKILL_REGISTRY_NPM_REGISTRY_URL`
+- `SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL`
 
-`--registry <url>` 只建议作为临时调试覆盖，不应作为常态配置方式。
+补充：
 
-补充约束：
-
-- `make registry-run` 默认让 sample skill 的 tarball 指向本地 `/mock-npm`
-- seed 只在空库时写入；如果你改过 registry 地址，先 `make registry-reset`
-- `make registry-run REGISTRY_BACKEND=mock` 会把 package metadata 读取也切到本地 `/mock-npm`
-- CLI 永远连 Catalog；切换后端 npm registry 时，只需要改 Catalog 的环境变量
-- 批量导入脚本不依赖具体 npm 实现；只要 `npm publish` 与 Catalog `release-record` 指向同一个 registry 即可
-- 本地真实 E2E 优先 Verdaccio；要模拟企业权限和仓库治理再接 Nexus 一类系统
-- 当前认证版 Verdaccio 推荐“发布鉴权、读取匿名”；如果 tarball 读取也强制鉴权，`skills add` 不是当前目标
+- 本地开发默认就是 `kind`：Catalog 暴露在 `http://127.0.0.1:18080`，Nexus 暴露在 `http://127.0.0.1:8081`
+- `make dev-bootstrap` 会重新初始化集群内 Nexus 仓，并重写本地 `/private/tmp/skill-registry-nexus/.npmrc`
+- `SKILL_REGISTRY_NPM_REGISTRY_URL` 给 Catalog 自己读 registry 元数据；`SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL` 给宿主机 CLI 下载 tarball
+- CLI 永远连 Catalog；切换后端 npm registry 时，需要同时确认 Catalog 的内部访问地址和对外下载地址
 - Docker 镜像默认关闭 sample data 与 `/mock-npm`

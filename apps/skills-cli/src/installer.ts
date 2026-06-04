@@ -54,6 +54,38 @@ export function sanitizeName(name: string): string {
   return sanitized.substring(0, 255) || 'unnamed-skill';
 }
 
+export function deriveInstallName(reference: string): string {
+  const trimmed = reference.trim();
+  if (trimmed.startsWith('@') && trimmed.includes('/')) {
+    const scopedName = trimmed.split('/').pop();
+    if (scopedName) {
+      return scopedName;
+    }
+  }
+  return trimmed;
+}
+
+export function getInstalledDirectoryNames(
+  reference: string,
+  explicitInstallName?: string
+): string[] {
+  const candidates = [explicitInstallName, deriveInstallName(reference), reference]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .map((value) => sanitizeName(value));
+
+  return Array.from(new Set(candidates));
+}
+
+function resolveSkillInstallName(skill: Skill): string {
+  if (skill.installName && skill.installName.trim().length > 0) {
+    return skill.installName;
+  }
+  if (skill.packageName && skill.packageName.trim().length > 0) {
+    return deriveInstallName(skill.packageName);
+  }
+  return skill.name || basename(skill.path);
+}
+
 /**
  * Validates that a path is within an expected base directory
  * @param basePath - The expected base directory
@@ -243,7 +275,7 @@ export async function installSkillForAgent(
   }
 
   // Sanitize skill name to prevent directory traversal
-  const rawSkillName = skill.name || basename(skill.path);
+  const rawSkillName = resolveSkillInstallName(skill);
   const skillName = sanitizeName(rawSkillName);
 
   // Canonical location: .agents/skills/<skill-name>
@@ -444,7 +476,7 @@ export function getInstallPath(
 ): string {
   const agent = agents[agentType];
   const cwd = options.cwd || process.cwd();
-  const sanitized = sanitizeName(skillName);
+  const sanitized = sanitizeName(deriveInstallName(skillName));
 
   const targetBase = getAgentBaseDir(agentType, options.global ?? false, options.cwd);
   const installPath = join(targetBase, sanitized);
@@ -463,7 +495,7 @@ export function getCanonicalPath(
   skillName: string,
   options: { global?: boolean; cwd?: string } = {}
 ): string {
-  const sanitized = sanitizeName(skillName);
+  const sanitized = sanitizeName(deriveInstallName(skillName));
   const canonicalBase = getCanonicalSkillsDir(options.global ?? false, options.cwd);
   const canonicalPath = join(canonicalBase, sanitized);
 

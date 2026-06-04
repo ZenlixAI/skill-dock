@@ -100,8 +100,6 @@ func scanNPMPackageTarball(reader io.Reader, expectedPackageName string, expecte
 		return BundleScanResult{}, "single-skill bundle must contain package.json"
 	case skillCount != 1:
 		return BundleScanResult{}, "single-skill bundle must contain exactly one root SKILL.md"
-	case len(componentSet) == 0:
-		return BundleScanResult{}, "bundle must contain at least one capability directory or configuration"
 	}
 
 	components := make([]string, 0, len(componentSet))

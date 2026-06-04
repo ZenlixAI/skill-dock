@@ -40,7 +40,7 @@ description: Probe publish payload
     expect(digest).toBe(expected);
   });
 
-  it('surfaces display metadata and reserved scope validation', async () => {
+  it('surfaces display metadata and rejects package names outside the .skill scope pattern', async () => {
     writeFileSync(
       join(testDir, 'SKILL.md'),
       `---
@@ -60,8 +60,28 @@ description: Probe publish payload
     expect(inspection.description).toBe('Probe publish payload');
     expect(inspection.ok).toBe(false);
     expect(inspection.errors).toContain(
-      'package.json name must use the reserved @platform.skill/ scope'
+      'package.json name must use a scoped @<company>.skill/<skill-name> package name'
     );
+  });
+
+  it('accepts company-specific .skill package scopes', async () => {
+    writeFileSync(
+      join(testDir, 'SKILL.md'),
+      `---
+name: Probe Skill
+description: Probe publish payload
+---
+`
+    );
+    writeFileSync(
+      join(testDir, 'package.json'),
+      JSON.stringify({ name: '@zhenlikeji.skill/probe-skill', version: '0.1.0' }, null, 2)
+    );
+
+    const inspection = await inspectSkillDirectory(testDir);
+
+    expect(inspection.ok).toBe(true);
+    expect(inspection.packageName).toBe('@zhenlikeji.skill/probe-skill');
   });
 
   it('reads package skill sourceType metadata when present', async () => {
@@ -92,5 +112,26 @@ description: Probe publish payload
 
     expect(inspection.ok).toBe(true);
     expect(inspection.sourceType).toBe('platform_created');
+  });
+
+  it('does not report empty capability directories as components', async () => {
+    writeFileSync(
+      join(testDir, 'SKILL.md'),
+      `---
+name: Probe Skill
+description: Probe publish payload
+---
+`
+    );
+    writeFileSync(
+      join(testDir, 'package.json'),
+      JSON.stringify({ name: '@platform.skill/probe-skill', version: '0.1.0' }, null, 2)
+    );
+    mkdirSync(join(testDir, 'docs'), { recursive: true });
+
+    const inspection = await inspectSkillDirectory(testDir);
+
+    expect(inspection.ok).toBe(true);
+    expect(inspection.components).toEqual([]);
   });
 });

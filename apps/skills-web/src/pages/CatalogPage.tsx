@@ -1,7 +1,7 @@
 import { useDeferredValue, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { listSkills } from '../api/client';
-import type { CatalogSourceType, SkillStatus } from '../api/types';
+import type { CatalogSourceType, RegistryRequestError, SkillStatus } from '../api/types';
 import { SectionHeading } from '../components/SectionHeading';
 import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
@@ -26,11 +26,13 @@ export function CatalogPage() {
       cursor: undefined,
     },
     deps: [deferredQuery, sourceType, status],
+    preserveStaleItemsOnRefresh: true,
   });
   const resultItems = skills.items;
   const activeCount = resultItems.filter((item) => item.status === 'active').length;
   const retiredCount = resultItems.filter((item) => item.status === 'retired').length;
   const importedCount = resultItems.filter((item) => item.sourceType === 'imported').length;
+  const catalogErrorMessage = skills.errorDetail ? describeCatalogError(skills.errorDetail, resultItems.length > 0) : null;
 
   return (
     <div className="page-grid">
@@ -103,8 +105,9 @@ export function CatalogPage() {
         </SurfaceCard>
 
         <SurfaceCard description="映射 `GET /api/v1/skills`，但把结果组织成更接近产品面搜索体验的卡片流。" title="Results" variant="spotlight">
-          {skills.loading ? <div className="empty-box">Loading catalog…</div> : null}
-          {skills.error ? <div className="error-box">{skills.error}</div> : null}
+          {skills.loading && resultItems.length === 0 ? <div className="empty-box">Loading catalog…</div> : null}
+          {skills.refreshing ? <div className="empty-box">Refreshing catalog results while keeping the last successful page visible…</div> : null}
+          {catalogErrorMessage ? <div className="error-box">{catalogErrorMessage}</div> : null}
 
           <div className="console-strip console-strip--compact">
             <article className="console-signal console-signal--compact">
@@ -154,12 +157,12 @@ export function CatalogPage() {
                 </div>
               </article>
             ))}
-            {!skills.loading && !skills.error && resultItems.length === 0 ? (
+            {!skills.loading && !skills.errorDetail && resultItems.length === 0 ? (
               <div className="empty-box">No skills matched the current filters.</div>
             ) : null}
           </div>
 
-          {!skills.loading && !skills.error ? (
+          {!skills.loading && !(skills.errorDetail && resultItems.length === 0) ? (
             <div className="action-row">
               <div className="action-row__copy">
                 <strong>Pagination</strong>
@@ -180,4 +183,32 @@ export function CatalogPage() {
       </div>
     </div>
   );
+}
+
+function describeCatalogError(error: RegistryRequestError, hasStaleResults: boolean) {
+  if (error.kind === 'auth') {
+    return hasStaleResults
+      ? `${error.message} Keeping the last successful catalog results visible.`
+      : `${error.message} The current session cannot read catalog results from the real backend.`;
+  }
+
+  if (error.kind === 'network') {
+    return hasStaleResults
+      ? `${error.message} Showing the last successful catalog page while refresh failed.`
+      : `${error.message} The real backend is unavailable, so catalog results could not be loaded.`;
+  }
+
+  if (error.kind === 'server') {
+    return hasStaleResults
+      ? `${error.message} Showing the last successful catalog page while the backend returned an error.`
+      : error.message;
+  }
+
+  if (error.kind === 'not_found') {
+    return hasStaleResults
+      ? `${error.message} Keeping the previous results visible until the next successful refresh.`
+      : error.message;
+  }
+
+  return error.message;
 }

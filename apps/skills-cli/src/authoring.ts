@@ -1,5 +1,5 @@
 import { existsSync } from 'fs';
-import { readFile, stat } from 'fs/promises';
+import { readFile, readdir, stat } from 'fs/promises';
 import { createHash } from 'crypto';
 import { join } from 'path';
 import { parseFrontmatter } from './frontmatter.ts';
@@ -42,6 +42,20 @@ export function isPackageName(value: string): boolean {
   return PACKAGE_NAME_RE.test(value);
 }
 
+export function hasSkillPackageScope(value: string): boolean {
+  if (!isPackageName(value) || !value.startsWith('@')) {
+    return false;
+  }
+
+  const slashIndex = value.indexOf('/');
+  if (slashIndex <= 1) {
+    return false;
+  }
+
+  const scope = value.slice(1, slashIndex);
+  return scope.endsWith('.skill');
+}
+
 export function isExactVersion(value: string): boolean {
   return EXACT_VERSION_RE.test(value);
 }
@@ -54,11 +68,28 @@ async function readPackageJson(packageJsonPath: string): Promise<PackageJsonShap
 async function detectComponents(directory: string): Promise<string[]> {
   const components: string[] = [];
 
+  async function hasPublishableContent(path: string): Promise<boolean> {
+    try {
+      const entries = await readdir(path, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isFile()) {
+          return true;
+        }
+        if (entry.isDirectory() && (await hasPublishableContent(join(path, entry.name)))) {
+          return true;
+        }
+      }
+    } catch {
+      return false;
+    }
+    return false;
+  }
+
   await Promise.all(
     CAPABILITY_DIRS.map(async (name) => {
       try {
         const entry = await stat(join(directory, name));
-        if (entry.isDirectory()) {
+        if (entry.isDirectory() && (await hasPublishableContent(join(directory, name)))) {
           components.push(name);
         }
       } catch {
@@ -132,8 +163,8 @@ export async function inspectSkillDirectory(directory: string): Promise<SkillAut
         errors.push('package.json name is required');
       } else if (!isPackageName(pkg.name)) {
         errors.push('package.json name must be a valid package_name');
-      } else if (!pkg.name.startsWith('@platform.skill/')) {
-        errors.push('package.json name must use the reserved @platform.skill/ scope');
+      } else if (!hasSkillPackageScope(pkg.name)) {
+        errors.push('package.json name must use a scoped @<company>.skill/<skill-name> package name');
       } else {
         packageName = pkg.name;
       }

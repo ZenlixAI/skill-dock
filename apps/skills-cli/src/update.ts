@@ -1,11 +1,14 @@
-import { existsSync, readdirSync } from 'fs';
+import { readFile } from 'fs/promises';
 import { join } from 'path';
+import { existsSync, readdirSync } from 'fs';
 import * as p from '@clack/prompts';
 
 import { agents, detectInstalledAgents, getUniversalAgents } from './agents.ts';
+import { hasSkillPackageScope, isExactVersion } from './authoring.ts';
 import { readSkillLock, type SkillLockEntry } from './skill-lock.ts';
 import { readLocalLock, type LocalSkillLockEntry } from './local-lock.ts';
 import { runRegistryInstallWorkflow } from './registry-install-workflow.ts';
+import { listInstalledSkills } from './installer.ts';
 import { sanitizeMetadata } from './sanitize.ts';
 import { track } from './telemetry.ts';
 import { resolveInstallTarget } from './catalog.ts';
@@ -29,6 +32,11 @@ type RegistryUpdateEntry = {
   name: string;
   entry: SkillLockEntry | LocalSkillLockEntry;
 };
+
+interface InstalledPackageJson {
+  name?: unknown;
+  version?: unknown;
+}
 
 function ensureUniversalAgents(targetAgents: AgentType[]): AgentType[] {
   const universalAgents = getUniversalAgents();
@@ -151,6 +159,71 @@ export function matchesSkillFilter(name: string, filter?: string[]): boolean {
   return filter.some((value) => value.toLowerCase() === lower);
 }
 
+async function inferUnlockedGlobalRegistryEntries(
+  lockedSkills: Record<string, SkillLockEntry>,
+  skillFilter?: string[]
+): Promise<RegistryUpdateEntry[]> {
+  const installedSkills = await listInstalledSkills({ global: true });
+  const lockedPackageNames = new Set(
+    Object.entries(lockedSkills)
+      .filter(([, entry]) => entry.sourceType === 'registry')
+      .map(([name, entry]) => (entry.packageName || name).toLowerCase())
+  );
+  const lockedInstallNames = new Set(
+    Object.entries(lockedSkills)
+      .filter(([, entry]) => entry.sourceType === 'registry')
+      .map(([name, entry]) => (entry.installName || name).toLowerCase())
+  );
+  const inferred: RegistryUpdateEntry[] = [];
+
+  for (const installed of installedSkills) {
+    const installName = installed.name.trim();
+    if (lockedInstallNames.has(installName.toLowerCase())) {
+      continue;
+    }
+
+    try {
+      const raw = await readFile(join(installed.canonicalPath, 'package.json'), 'utf-8');
+      const pkg = JSON.parse(raw) as InstalledPackageJson;
+      if (typeof pkg.name !== 'string' || !hasSkillPackageScope(pkg.name)) {
+        continue;
+      }
+      if (typeof pkg.version !== 'string' || !isExactVersion(pkg.version)) {
+        continue;
+      }
+      if (
+        !matchesSkillFilter(pkg.name, skillFilter) &&
+        !matchesSkillFilter(installName, skillFilter)
+      ) {
+        continue;
+      }
+      if (lockedPackageNames.has(pkg.name.toLowerCase())) {
+        continue;
+      }
+
+      inferred.push({
+        name: pkg.name,
+        entry: {
+          sourceType: 'registry',
+          skillFolderHash: '',
+          installedAt: '',
+          updatedAt: '',
+          packageName: pkg.name,
+          installName,
+          version: pkg.version,
+          registry: process.env.SKILLS_REGISTRY_URL?.trim() || undefined,
+        },
+      });
+      lockedPackageNames.add(pkg.name.toLowerCase());
+      lockedInstallNames.add(installName.toLowerCase());
+    } catch {
+      continue;
+    }
+  }
+
+  return inferred;
+}
+
 async function updateRegistryEntries(
   entries: RegistryUpdateEntry[],
   global: boolean
@@ -223,18 +296,18 @@ export async function updateGlobalSkills(
   const matchedEntries = Object.entries(lock.skills)
     .filter(([name]) => matchesSkillFilter(name, options.skills))
     .map(([name, entry]) => ({ name, entry }));
+  const inferredEntries = await inferUnlockedGlobalRegistryEntries(lock.skills, options.skills);
+  const combinedEntries = [...matchedEntries, ...inferredEntries];
 
-  if (matchedEntries.length === 0) {
+  if (combinedEntries.length === 0) {
     if (!options.skills) {
       console.log(`${DIM}No global skills tracked in lock file.${RESET}`);
-      console.log(
-        `${DIM}Install skills with${RESET} ${TEXT}npx skills add <package_name> -g${RESET}`
-      );
+      console.log(`${DIM}Install skills with${RESET} ${TEXT}skills add <package_name> -g${RESET}`);
     }
     return { successCount: 0, failCount: 0, checkedCount: 0 };
   }
 
-  const registryEntries = matchedEntries.filter((item) => item.entry.sourceType === 'registry');
+  const registryEntries = combinedEntries.filter((item) => item.entry.sourceType === 'registry');
   const result = await updateRegistryEntries(registryEntries, true);
 
   if (
@@ -249,7 +322,7 @@ export async function updateGlobalSkills(
   return {
     successCount: result.successCount,
     failCount: result.failCount,
-    checkedCount: matchedEntries.length,
+    checkedCount: combinedEntries.length,
   };
 }
 
@@ -261,9 +334,7 @@ export async function updateProjectSkills(
   if (projectSkills.length === 0) {
     if (!options.skills) {
       console.log(`${DIM}No project skills to update.${RESET}`);
-      console.log(
-        `${DIM}Install project skills with${RESET} ${TEXT}npx skills add <package_name>${RESET}`
-      );
+      console.log(`${DIM}Install project skills with${RESET} ${TEXT}skills add <package_name>${RESET}`);
     }
     return { successCount: 0, failCount: 0, foundCount: 0 };
   }

@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import argparse
 import base64
+import io
 import json
 import os
 import re
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import urllib.error
@@ -65,8 +67,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--package-scope",
-        default="@platform.skill/",
-        help="Scope prefix used when inferring package names. Defaults to @platform.skill/.",
+        default="@company.skill/",
+        help="Scope prefix used when inferring package names. Defaults to @company.skill/.",
     )
     parser.add_argument(
         "--default-version",
@@ -207,6 +209,21 @@ def inspect_local_skill(directory: Path) -> dict[str, Any]:
     }
 
 
+def build_source_archive_base64(directory: Path) -> str:
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        for current_root, dirnames, filenames in os.walk(directory):
+            current_path = Path(current_root)
+            dirnames[:] = [name for name in dirnames if name not in {".git", ".dist", "node_modules", ".venv"}]
+            for filename in filenames:
+                if filename == ".skill-packaging-import-report.json":
+                    continue
+                source_path = current_path / filename
+                relative_path = source_path.relative_to(directory)
+                archive.add(source_path, arcname=str(relative_path))
+    return base64.b64encode(buffer.getvalue()).decode("ascii")
+
+
 def scan_root_dir(root_dir: Path, recursive: bool) -> list[dict[str, Any]]:
     skills: list[dict[str, Any]] = []
     seen: set[Path] = set()
@@ -307,8 +324,8 @@ def normalize_entry(
         return {
             "label": str(directory),
             "source": {
-                "type": "local",
-                "location": str(directory),
+                "type": "upload_archive",
+                "archiveBase64": build_source_archive_base64(directory),
             },
             "target": {
                 "packageName": validate_package_name(str(package_name)),
@@ -326,8 +343,8 @@ def normalize_entry(
     if not isinstance(source, dict):
         raise ValueError("entry must contain either path or source")
     source_type = source.get("type")
-    if source_type not in {"git", "platform_authoring"}:
-        raise ValueError("source.type must be git or platform_authoring when path is not used")
+    if source_type not in {"git", "platform_authoring", "upload_archive"}:
+        raise ValueError("source.type must be git, platform_authoring, or upload_archive when path is not used")
 
     package_name = raw.get("packageName")
     version = raw.get("version")

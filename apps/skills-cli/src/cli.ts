@@ -9,8 +9,8 @@ import { runFind } from './find.ts';
 import { runList } from './list.ts';
 import { removeCommand, parseRemoveOptions } from './remove.ts';
 import { flushTelemetry } from './telemetry.ts';
-import { isRunningInAgent } from './detect-agent.ts';
 import { runInspect } from './inspect.ts';
+import { runImportLocal } from './import-local.ts';
 import { runPublish } from './publish.ts';
 import { runUpdate } from './update.ts';
 
@@ -43,77 +43,13 @@ const BOLD = '\x1b[1m';
 const DIM = '\x1b[38;5;102m'; // darker gray for secondary text
 const TEXT = '\x1b[38;5;145m'; // lighter gray for primary text
 
-const LOGO_LINES = [
-  '███████╗██╗  ██╗██╗██╗     ██╗     ███████╗',
-  '██╔════╝██║ ██╔╝██║██║     ██║     ██╔════╝',
-  '███████╗█████╔╝ ██║██║     ██║     ███████╗',
-  '╚════██║██╔═██╗ ██║██║     ██║     ╚════██║',
-  '███████║██║  ██╗██║███████╗███████╗███████║',
-  '╚══════╝╚═╝  ╚═╝╚═╝╚══════╝╚══════╝╚══════╝',
-];
-
-// 256-color middle grays - visible on both light and dark backgrounds
-const GRAYS = [
-  '\x1b[38;5;250m', // lighter gray
-  '\x1b[38;5;248m',
-  '\x1b[38;5;245m', // mid gray
-  '\x1b[38;5;243m',
-  '\x1b[38;5;240m',
-  '\x1b[38;5;238m', // darker gray
-];
-
-function showLogo(): void {
-  console.log();
-  LOGO_LINES.forEach((line, i) => {
-    console.log(`${GRAYS[i]}${line}${RESET}`);
-  });
-}
-
-function showBanner(): void {
-  showLogo();
-  console.log();
-  console.log(`${DIM}The open agent skills ecosystem${RESET}`);
-  console.log();
-  console.log(
-    `  ${DIM}$${RESET} ${TEXT}npx skills add ${DIM}<package_name>${RESET}   ${DIM}Add a new skill${RESET}`
-  );
-  console.log(
-    `  ${DIM}$${RESET} ${TEXT}npx skills remove${RESET}               ${DIM}Remove installed skills${RESET}`
-  );
-  console.log(
-    `  ${DIM}$${RESET} ${TEXT}npx skills list${RESET}                 ${DIM}List installed skills${RESET}`
-  );
-  console.log(
-    `  ${DIM}$${RESET} ${TEXT}npx skills find ${DIM}[query]${RESET}         ${DIM}Search for skills${RESET}`
-  );
-  console.log();
-  console.log(
-    `  ${DIM}$${RESET} ${TEXT}npx skills update${RESET}               ${DIM}Update installed skills${RESET}`
-  );
-  console.log();
-  console.log(
-    `  ${DIM}$${RESET} ${TEXT}npx skills init ${DIM}[name]${RESET}          ${DIM}Create a new skill${RESET}`
-  );
-  console.log(
-    `  ${DIM}$${RESET} ${TEXT}npx skills inspect ${DIM}[path]${RESET}      ${DIM}Validate a skill directory${RESET}`
-  );
-  console.log(
-    `  ${DIM}$${RESET} ${TEXT}npx skills publish ${DIM}[path]${RESET}      ${DIM}Publish a local skill directory${RESET}`
-  );
-  console.log();
-  console.log(`${DIM}try:${RESET} npx skills add @platform.skill/pdf-skill`);
-  console.log();
-  console.log(`Discover more skills at ${TEXT}https://skills.sh/${RESET}`);
-  console.log();
-}
-
 function showHelp(): void {
   console.log(`
 ${BOLD}Usage:${RESET} skills <command> [options]
 
 ${BOLD}Manage Skills:${RESET}
   add <package_name>   Add a skill package from the registry (alias: a)
-                       e.g. @platform.skill/pdf-skill
+                       e.g. @company.skill/pdf-skill
   remove [skills]      Remove installed skills
   list, ls             List installed skills
   find [query]         Search for skills (supports --registry, --json)
@@ -130,6 +66,7 @@ ${BOLD}Project:${RESET}
   init [name]          Initialize a skill (creates <name>/SKILL.md or ./SKILL.md)
   inspect [path]       Validate a local skill directory
   publish [path]       Validate, pack, and publish a local skill directory
+  import-local [path]  Upload a local source directory for import + publish
 
 ${BOLD}Add Options:${RESET}
   -g, --global           Install skill globally (user-level) instead of project-level
@@ -167,10 +104,10 @@ ${BOLD}Options:${RESET}
   --version, -v     Show version number
 
 ${BOLD}Examples:${RESET}
-  ${DIM}$${RESET} skills add @platform.skill/pdf-skill
-  ${DIM}$${RESET} skills add @platform.skill/pdf-skill -g
-  ${DIM}$${RESET} skills add @platform.skill/pdf-skill --version 1.2.0
-  ${DIM}$${RESET} skills add @platform.skill/pdf-skill --registry https://catalog.example.com
+  ${DIM}$${RESET} skills add @company.skill/pdf-skill
+  ${DIM}$${RESET} skills add @company.skill/pdf-skill -g
+  ${DIM}$${RESET} skills add @company.skill/pdf-skill --version 1.2.0
+  ${DIM}$${RESET} skills add @company.skill/pdf-skill --registry https://catalog.example.com
   ${DIM}$${RESET} skills remove                        ${DIM}# interactive remove${RESET}
   ${DIM}$${RESET} skills remove web-design             ${DIM}# remove by name${RESET}
   ${DIM}$${RESET} skills rm --global frontend-design
@@ -187,9 +124,8 @@ ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} skills init my-skill
   ${DIM}$${RESET} skills inspect
   ${DIM}$${RESET} skills publish
+  ${DIM}$${RESET} skills import-local ./legacy-skill --package-name @company.skill/legacy-skill --version 0.1.0
   ${DIM}$${RESET} skills find pdf --json                ${DIM}# machine-readable search results${RESET}
-
-Discover more skills at ${TEXT}https://skills.sh/${RESET}
 `);
 }
 
@@ -219,8 +155,6 @@ ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} skills rm --agent claude-code my-skill   ${DIM}# remove from specific agent${RESET}
   ${DIM}$${RESET} skills remove --all                      ${DIM}# remove all skills${RESET}
   ${DIM}$${RESET} skills remove --skill '*' -a cursor      ${DIM}# remove all skills from cursor${RESET}
-
-Discover more skills at ${TEXT}https://skills.sh/${RESET}
 `);
 }
 
@@ -232,7 +166,7 @@ ${BOLD}Description:${RESET}
   Add a skill package from the registry.
 
 ${BOLD}Arguments:${RESET}
-  package_name      Registry package identity, e.g. @platform.skill/pdf-skill
+  package_name      Registry package identity, e.g. @company.skill/pdf-skill
 
 ${BOLD}Options:${RESET}
   -g, --global           Install skill globally (user-level) instead of project-level
@@ -243,11 +177,9 @@ ${BOLD}Options:${RESET}
   --copy                 Copy files instead of symlinking to agent directories
 
 ${BOLD}Examples:${RESET}
-  ${DIM}$${RESET} skills add @platform.skill/pdf-skill
-  ${DIM}$${RESET} skills add @platform.skill/pdf-skill --version 1.2.0
-  ${DIM}$${RESET} skills add @platform.skill/pdf-skill --registry https://catalog.example.com
-
-Discover more skills at ${TEXT}https://skills.sh/${RESET}
+  ${DIM}$${RESET} skills add @company.skill/pdf-skill
+  ${DIM}$${RESET} skills add @company.skill/pdf-skill --version 1.2.0
+  ${DIM}$${RESET} skills add @company.skill/pdf-skill --registry https://catalog.example.com
 `);
 }
 
@@ -270,8 +202,6 @@ ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} skills ls -g
   ${DIM}$${RESET} skills ls -a claude-code
   ${DIM}$${RESET} skills ls --all-scopes
-
-Discover more skills at ${TEXT}https://skills.sh/${RESET}
 `);
 }
 
@@ -290,8 +220,6 @@ ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} skills find
   ${DIM}$${RESET} skills find typescript
   ${DIM}$${RESET} skills find pdf --json
-
-Discover more skills at ${TEXT}https://skills.sh/${RESET}
 `);
 }
 
@@ -312,10 +240,8 @@ ${BOLD}Options:${RESET}
 
 ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} skills update
-  ${DIM}$${RESET} skills update @platform.skill/pdf-skill
+  ${DIM}$${RESET} skills update @company.skill/pdf-skill
   ${DIM}$${RESET} skills update -g
-
-Discover more skills at ${TEXT}https://skills.sh/${RESET}
 `);
 }
 
@@ -338,8 +264,6 @@ ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} skills inspect ./my-skill
   ${DIM}$${RESET} skills inspect ./my-skill --strict
   ${DIM}$${RESET} skills inspect ./my-skill --registry https://catalog.example.com
-
-Discover more skills at ${TEXT}https://skills.sh/${RESET}
 `);
 }
 
@@ -362,8 +286,30 @@ ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} skills publish ./my-skill
   ${DIM}$${RESET} skills publish ./my-skill --strict
   ${DIM}$${RESET} skills publish ./my-skill --registry https://catalog.example.com
+`);
+}
 
-Discover more skills at ${TEXT}https://skills.sh/${RESET}
+function showImportLocalHelp(): void {
+  console.log(`
+${BOLD}Usage:${RESET} skills import-local [path] [options]
+
+${BOLD}Description:${RESET}
+  Upload a local source directory to Catalog for normalization/import, then publish it.
+
+${BOLD}Arguments:${RESET}
+  path                   Optional path to a local source directory (default: current directory)
+
+${BOLD}Options:${RESET}
+  --registry <url>       Catalog base URL override
+  --package-name <name>  Override/inject package_name when package.json is missing
+  --version <version>    Override/inject version when package.json is missing
+  --publish-registry     Registry recorded into package metadata and release-record
+  --npm-registry         Registry passed to npm publish
+  --strict               Disable imported workspace normalization during prepare
+
+${BOLD}Examples:${RESET}
+  ${DIM}$${RESET} skills import-local ./legacy-skill --package-name @company.skill/legacy-skill --version 0.1.0
+  ${DIM}$${RESET} skills import-local ./legacy-skill --registry https://catalog.example.com
 `);
 }
 
@@ -388,9 +334,7 @@ ${BOLD}Output:${RESET}
   - commands/
 
   Default package identity:
-  - @platform.skill/my-skill
-
-Discover more skills at ${TEXT}https://skills.sh/${RESET}
+  - @company.skill/my-skill
 `);
 }
 
@@ -439,7 +383,7 @@ Describe when this skill should be used.
 
   const packageJsonContent = JSON.stringify(
     {
-      name: `@platform.skill/${skillName}`,
+      name: `@company.skill/${skillName}`,
       version: '0.1.0',
     },
     null,
@@ -456,21 +400,10 @@ Describe when this skill should be used.
   console.log(`  ${displayPackageJsonPath}`);
   console.log(`  ${displayCommandsPath}`);
   console.log();
-  console.log(`${DIM}Next steps:${RESET}`);
-  console.log(`  1. Edit ${TEXT}${displayPath}${RESET} to define your skill instructions`);
-  console.log(
-    `  2. Update the ${TEXT}name${RESET} and ${TEXT}description${RESET} in the frontmatter`
-  );
-  console.log(
-    `  3. Add capability files under ${TEXT}${displayCommandsPath}${RESET} or other supported directories`
-  );
-  console.log();
-  console.log(`${DIM}Publishing:${RESET}`);
-  console.log(`  1. Run ${TEXT}npx skills inspect${RESET}`);
-  console.log(`  2. Run ${TEXT}npx skills publish${RESET}`);
-  console.log(`  3. Install with ${TEXT}npx skills add <package_name>${RESET}`);
-  console.log();
-  console.log(`Browse existing skills for inspiration at ${TEXT}https://skills.sh/${RESET}`);
+  console.log(`${DIM}Next:${RESET}`);
+  console.log(`  - Edit ${TEXT}${displayPath}${RESET}`);
+  console.log(`  - Run ${TEXT}skills inspect${RESET}`);
+  console.log(`  - Run ${TEXT}skills publish${RESET}`);
   console.log();
 }
 
@@ -480,12 +413,9 @@ Describe when this skill should be used.
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  const inAgent = await isRunningInAgent();
 
   if (args.length === 0) {
-    if (!inAgent) {
-      showBanner();
-    }
+    showHelp();
     return;
   }
 
@@ -498,8 +428,6 @@ async function main(): Promise<void> {
         showFindHelp();
         break;
       }
-      if (!inAgent) showLogo();
-      console.log();
       await runFind(restArgs);
       break;
     case 'init':
@@ -507,8 +435,6 @@ async function main(): Promise<void> {
         showInitHelp();
         break;
       }
-      if (!inAgent) showLogo();
-      console.log();
       runInit(restArgs);
       break;
     case 'inspect':
@@ -516,7 +442,6 @@ async function main(): Promise<void> {
         showInspectHelp();
         break;
       }
-      if (!inAgent) showLogo();
       await runInspect(restArgs);
       break;
     case 'publish':
@@ -524,8 +449,14 @@ async function main(): Promise<void> {
         showPublishHelp();
         break;
       }
-      if (!inAgent) showLogo();
       await runPublish(restArgs);
+      break;
+    case 'import-local':
+      if (restArgs.includes('--help') || restArgs.includes('-h')) {
+        showImportLocalHelp();
+        break;
+      }
+      await runImportLocal(restArgs);
       break;
     case 'a':
     case 'add': {
@@ -533,7 +464,6 @@ async function main(): Promise<void> {
         showAddHelp();
         break;
       }
-      if (!inAgent) showLogo();
       const { source: addSource, options: addOpts } = parseAddOptions(restArgs);
       await runAdd(addSource, addOpts);
       break;

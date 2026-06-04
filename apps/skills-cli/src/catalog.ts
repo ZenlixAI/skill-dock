@@ -26,10 +26,11 @@ export interface InstallTarget {
 }
 
 export interface PackagingSource {
-  type: 'local' | 'git' | 'platform_authoring';
+  type: 'git' | 'platform_authoring' | 'upload_archive';
   location?: string;
   ref?: string;
   files?: Record<string, string>;
+  archiveBase64?: string;
 }
 
 export interface PackagingTarget {

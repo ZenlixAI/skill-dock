@@ -189,6 +189,25 @@ description: PDF processing workflow
       expect(existsSync(packageDir)).toBe(false);
     });
 
+    it('should remove an installed skill by package_name even when only the install directory name is visible', () => {
+      const packageDir = join(skillsDir, 'my-skill');
+      mkdirSync(packageDir, { recursive: true });
+      writeFileSync(
+        join(packageDir, 'SKILL.md'),
+        `---
+name: my-skill
+description: Demo skill
+---
+
+# My Skill
+`
+      );
+
+      const result = runCli(['remove', '@company.skill/my-skill', '-y'], testDir);
+      expect(result.stdout).toContain('Successfully removed');
+      expect(existsSync(packageDir)).toBe(false);
+    });
+
     it('should list skills to remove before confirmation', () => {
       // Answer 'n' to cancel the confirmation prompt
       const result = runCliWithInput(['remove', 'skill-one', 'skill-two'], 'n', testDir);

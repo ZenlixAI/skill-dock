@@ -4,6 +4,8 @@ import * as workflow from '../src/registry-install-workflow.ts';
 import * as catalog from '../src/catalog.ts';
 import * as localLock from '../src/local-lock.ts';
 import * as skillLock from '../src/skill-lock.ts';
+import * as installer from '../src/installer.ts';
+import * as fsPromises from 'fs/promises';
 import { runCliOutput } from '../src/test-utils.ts';
 
 vi.mock('../src/registry-install-workflow.ts', () => ({
@@ -13,6 +15,20 @@ vi.mock('../src/registry-install-workflow.ts', () => ({
 vi.mock('../src/catalog.ts');
 vi.mock('../src/local-lock.ts');
 vi.mock('../src/skill-lock.ts');
+vi.mock('fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs/promises')>();
+  return {
+    ...actual,
+    readFile: vi.fn(),
+  };
+});
+vi.mock('../src/installer.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/installer.ts')>();
+  return {
+    ...actual,
+    listInstalledSkills: vi.fn(),
+  };
+});
 vi.mock('../src/agents.ts', () => ({
   agents: {
     'claude-code': {
@@ -36,6 +52,8 @@ vi.mock('fs', async (importOriginal) => {
 describe('update command', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(fsPromises.readFile).mockRejectedValue(new Error('missing package.json'));
+    vi.mocked(installer.listInstalledSkills).mockResolvedValue([]);
     Object.defineProperty(process.stdin, 'isTTY', {
       value: true,
       configurable: true,
@@ -48,7 +66,22 @@ describe('update command', () => {
       expect(output).toContain('Usage: skills update [skills...] [options]');
       expect(output).toContain('Update installed skills to latest versions');
       expect(output).toContain('--global');
-      expect(output).toContain('skills update @platform.skill/pdf-skill');
+      expect(output).toContain('skills update @company.skill/pdf-skill');
+      expect(output).not.toContain('npx skills');
+    });
+
+    it('uses concise install guidance when no project skills are installed', async () => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      vi.mocked(localLock.readLocalLock).mockResolvedValue({ version: 1, skills: {} });
+
+      await updateProjectSkills({ yes: true });
+
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Install project skills with')
+      );
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('skills add <package_name>'));
+      expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('npx skills'));
+      logSpy.mockRestore();
     });
 
     it('re-resolves registry-installed project skills by package name', async () => {
@@ -245,6 +278,52 @@ describe('update command', () => {
 
       expect(catalog.resolveInstallTarget).not.toHaveBeenCalled();
       expect(workflow.runRegistryInstallWorkflow).not.toHaveBeenCalled();
+    });
+
+    it('updates unlocked global registry skills by inferring package identity from installed directories', async () => {
+      vi.mocked(skillLock.readSkillLock).mockResolvedValue({
+        version: 3,
+        skills: {},
+      });
+      vi.mocked(installer.listInstalledSkills).mockResolvedValue([
+        {
+          name: 'my-skill',
+          description: 'demo',
+          path: '/Users/test/.agents/skills/my-skill',
+          canonicalPath: '/Users/test/.agents/skills/my-skill',
+          scope: 'global',
+          agents: ['claude-code'],
+        },
+      ]);
+      vi.mocked(fsPromises.readFile).mockResolvedValueOnce(
+        JSON.stringify({
+          name: '@company.skill/my-skill',
+          version: '0.1.0',
+        })
+      );
+      vi.mocked(catalog.resolveInstallTarget).mockResolvedValue({
+        packageName: '@company.skill/my-skill',
+        version: '0.1.1',
+        npmRegistry: 'https://npm.example.com',
+        tarballUrl: 'https://npm.example.com/@company.skill/my-skill/-/my-skill-0.1.1.tgz',
+        integrity: 'sha512-test',
+        skillManifestDigest: 'sha256-test',
+        versionStatus: 'published',
+      });
+
+      await updateGlobalSkills({ yes: true });
+
+      expect(catalog.resolveInstallTarget).toHaveBeenCalledWith('@company.skill/my-skill', {
+        registry: undefined,
+        version: undefined,
+      });
+      expect(workflow.runRegistryInstallWorkflow).toHaveBeenCalledWith(
+        expect.objectContaining({
+          packageName: '@company.skill/my-skill',
+          version: '0.1.1',
+          installGlobally: true,
+        })
+      );
     });
   });
 });

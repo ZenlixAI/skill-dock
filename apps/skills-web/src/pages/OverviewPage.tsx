@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { listAuditEvents, listCuratedSkills, listGovernanceChanges, listSkills } from '../api/client';
+import type { RegistryRequestError } from '../api/types';
 import { SectionHeading } from '../components/SectionHeading';
 import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
@@ -16,6 +17,7 @@ export function OverviewPage() {
   const shownSkills = skills.data?.items.length || 0;
   const shownGovernance = governance.data?.items.length || 0;
   const shownAudit = audit.data?.items.length || 0;
+  const pageError = [skills.errorDetail, curated.errorDetail, governance.errorDetail, audit.errorDetail].find(Boolean) || null;
 
   return (
     <div className="page-grid">
@@ -35,6 +37,8 @@ export function OverviewPage() {
         description="前台先讲清楚 registry 的主线和节奏，后台再承接 import、发布和治理动作。这一屏负责把系统从“有页面”抬到“有方向感”。"
         tone="frontstage"
       />
+
+      {pageError ? <div className="error-box">{describeOverviewError(pageError)}</div> : null}
 
       <div className="spotlight-grid">
         <SurfaceCard variant="hero">
@@ -154,6 +158,9 @@ export function OverviewPage() {
                 </div>
               </Link>
             ))}
+            {!curated.loading && !curated.errorDetail && curated.data?.length === 0 ? (
+              <div className="empty-box">No curated skills are available right now.</div>
+            ) : null}
           </div>
         </SurfaceCard>
 
@@ -169,6 +176,9 @@ export function OverviewPage() {
                 ) : null,
               }))}
             />
+            {!governance.loading && !governance.errorDetail && governance.data?.items.length === 0 ? (
+              <div className="empty-box">No governance changes yet.</div>
+            ) : null}
           </SurfaceCard>
           <SurfaceCard description="审计记录回答谁在什么时候做了哪一步，以及结果是否真的落地。" title="Recent Audit" variant="console">
             <TimelineList
@@ -179,6 +189,9 @@ export function OverviewPage() {
                 meta: <StatusPill tone={item.outcome === 'succeeded' ? 'good' : 'bad'}>{item.outcome}</StatusPill>,
               }))}
             />
+            {!audit.loading && !audit.errorDetail && audit.data?.items.length === 0 ? (
+              <div className="empty-box">No audit events yet.</div>
+            ) : null}
             {audit.data?.pageInfo.hasNextPage ? (
               <p className="support-copy">Overview 只显示第一页审计摘要；完整列表请去 Audit 页面继续翻页。</p>
             ) : null}
@@ -187,4 +200,20 @@ export function OverviewPage() {
       </div>
     </div>
   );
+}
+
+function describeOverviewError(error: RegistryRequestError) {
+  if (error.kind === 'auth') {
+    return `${error.message} Overview metrics may look empty because the current session cannot read part of the real registry data.`;
+  }
+
+  if (error.kind === 'network' || error.kind === 'server') {
+    return `${error.message} Real-backend data may be stale or partially unavailable on this page.`;
+  }
+
+  if (error.kind === 'not_found') {
+    return `${error.message} One of the overview collections changed while the page was loading.`;
+  }
+
+  return error.message;
 }

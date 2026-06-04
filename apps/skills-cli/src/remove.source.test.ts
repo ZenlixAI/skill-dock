@@ -36,6 +36,8 @@ vi.mock('./installer.ts', () => ({
   getInstallPath: vi.fn(() => '/tmp/project/.claude/skills/platform.skill-pdf-skill'),
   getCanonicalPath: vi.fn(() => '/tmp/project/.agents/skills/platform.skill-pdf-skill'),
   getCanonicalSkillsDir: vi.fn(() => '/tmp/project/.agents/skills'),
+  deriveInstallName: vi.fn((value: string) => value.split('/').pop() || value),
+  getInstalledDirectoryNames: vi.fn(() => ['platform.skill-pdf-skill']),
   sanitizeName: vi.fn((value: string) => value.replace(/^@/, '').replace(/\//g, '-')),
 }));
 

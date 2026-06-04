@@ -5,9 +5,11 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 
+COPY app ./app
+COPY business ./business
 COPY cmd ./cmd
-COPY internal ./internal
 COPY data ./data
+COPY foundation ./foundation
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/skill-registry ./cmd/skill-registry
 

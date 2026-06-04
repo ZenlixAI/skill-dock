@@ -3,5 +3,8 @@ __pycache__/
 *.pyc
 node_modules/
 dist/
+.agents/
+skill-registry
+apps/skills-web/test-results/
 .worktrees/
 .superpowers

@@ -24,6 +24,8 @@ export interface LocalSkillLegacyMetadata {
 export interface LocalSkillLockEntry {
   /** Registry identity for registry-installed skills. */
   packageName?: string;
+  /** Actual local install directory name used for the installed skill. */
+  installName?: string;
   /** Resolved installed version for registry-installed skills. */
   version?: string;
   /** Catalog base URL used for resolution. */
@@ -230,6 +232,7 @@ function normalizeLocalSkillLockEntry(rawEntry: unknown): LocalSkillLockEntry {
     sourceType: entry.sourceType || 'registry',
     computedHash: entry.computedHash || '',
     packageName: entry.packageName,
+    installName: entry.installName,
     version: entry.version,
     registry: entry.registry,
     integrity: entry.integrity,
@@ -264,6 +267,7 @@ function serializeLocalSkillLockEntry(entry: LocalSkillLockEntry): Record<string
     sourceType: entry.sourceType,
     computedHash: entry.computedHash,
     ...(entry.packageName ? { packageName: entry.packageName } : {}),
+    ...(entry.installName ? { installName: entry.installName } : {}),
     ...(entry.version ? { version: entry.version } : {}),
     ...(entry.registry ? { registry: entry.registry } : {}),
     ...(entry.integrity ? { integrity: entry.integrity } : {}),

@@ -1,4 +1,3 @@
-import { lstat, readdir } from 'fs/promises';
 import { resolve } from 'path';
 import { inspectSkillDirectory, type SkillAuthoringInspection } from './authoring.ts';
 import {
@@ -9,6 +8,8 @@ import {
   validateSkillPackaging,
   type ValidatePackagingResponse,
 } from './catalog.ts';
+import { createSourceArchiveBase64 } from './source-archive.ts';
+import { validateLocalWorkspace } from './local-packaging.ts';
 
 export interface PackagingSessionOptions {
   path?: string;
@@ -210,66 +211,6 @@ function isValidatePackagingResponse(value: unknown): value is ValidatePackaging
   );
 }
 
-async function validateLocalWorkspace(directory: string): Promise<string[]> {
-  const capabilityRoots = new Set(['commands', 'agents', 'hooks', 'scripts', 'docs']);
-  const capabilityFiles = new Set(['plugin.json', '.mcp.json']);
-  const lowercasePaths = new Map<string, string>();
-  let nestedSkill = false;
-  let hasCapability = false;
-  let unsafePathEntry = false;
-
-  async function walk(currentDir: string, relativePrefix = ''): Promise<void> {
-    const entries = await readdir(currentDir, { withFileTypes: true });
-
-    for (const entry of entries) {
-      const relativePath = relativePrefix ? `${relativePrefix}/${entry.name}` : entry.name;
-      const stats = await lstat(`${currentDir}/${entry.name}`);
-
-      if (stats.isSymbolicLink()) {
-        unsafePathEntry = true;
-        continue;
-      }
-
-      const lowercasePath = relativePath.toLowerCase();
-      const existing = lowercasePaths.get(lowercasePath);
-      if (existing && existing !== relativePath) {
-        unsafePathEntry = true;
-      } else {
-        lowercasePaths.set(lowercasePath, relativePath);
-      }
-
-      if (entry.isDirectory()) {
-        if (capabilityRoots.has(relativePath.split('/')[0] || '')) {
-          hasCapability = true;
-        }
-        await walk(`${currentDir}/${entry.name}`, relativePath);
-        continue;
-      }
-
-      if (relativePath.endsWith('/SKILL.md')) {
-        nestedSkill = true;
-      }
-      if (capabilityFiles.has(relativePath)) {
-        hasCapability = true;
-      }
-    }
-  }
-
-  await walk(directory);
-
-  const errors: string[] = [];
-  if (unsafePathEntry) {
-    errors.push('unsafe_path_entry');
-  }
-  if (nestedSkill) {
-    errors.push('nested_skill_md');
-  }
-  if (!hasCapability) {
-    errors.push('missing_capability_content');
-  }
-  return errors;
-}
-
 export async function runPackagingSession(
   options: PackagingSessionOptions = {}
 ): Promise<PackagingSessionResult> {
@@ -295,8 +236,8 @@ export async function runPackagingSession(
       registry: options.registry,
       idempotencyKey,
       source: {
-        type: 'local',
-        location: directory,
+        type: 'upload_archive',
+        archiveBase64: createSourceArchiveBase64(directory),
       },
       target: {
         packageName: inspection.packageName,

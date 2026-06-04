@@ -18,12 +18,33 @@ import (
 	"skill_registry/business/catalog"
 )
 
-func TestPrepareNormalizesLocalSkillWithoutPackageJSONOrCapabilities(t *testing.T) {
+func TestValidateTargetAcceptsCompanySpecificSkillScope(t *testing.T) {
+	err := validateTarget(Target{PackageName: "@zhenlikeji.skill/zoom-out", Version: "1.0.0"})
+	if err != nil {
+		t.Fatalf("expected company-specific .skill scope to be valid, got %v", err)
+	}
+}
+
+func TestValidateTargetRejectsNonSkillScope(t *testing.T) {
+	err := validateTarget(Target{PackageName: "@zhenlikeji/zoom-out", Version: "1.0.0"})
+	if err == nil {
+		t.Fatal("expected non-.skill scope to be rejected")
+	}
+	catalogErr, ok := err.(*catalog.Error)
+	if !ok {
+		t.Fatalf("expected catalog error, got %T", err)
+	}
+	if catalogErr.Message != "packageName must use a scoped @<company>.skill/<skill-name> package name." {
+		t.Fatalf("unexpected error message: %q", catalogErr.Message)
+	}
+}
+
+func TestPrepareNormalizesSkillMdOnlyLocalSkillWithoutPackageJSON(t *testing.T) {
 	service := NewService(t.TempDir())
 	sourceDir := copyExternalSkillFixture(t, "minimal-imported-skill")
 
 	resp, err := service.Prepare(PrepareRequest{
-		Source:   Source{Type: "local", Location: sourceDir},
+		Source:   Source{Type: "upload_archive", ArchiveBase64: buildSourceArchiveBase64FromDirectory(t, sourceDir)},
 		Target:   Target{PackageName: "@platform.skill/zoom-out", Version: "1.0.0"},
 		Metadata: Metadata{DisplayName: "Zoom Out", Description: "Broader context", SourceType: "imported"},
 	})
@@ -31,22 +52,15 @@ func TestPrepareNormalizesLocalSkillWithoutPackageJSONOrCapabilities(t *testing.
 		t.Fatalf("prepare returned error: %v", err)
 	}
 
-	wantWarnings := []string{"normalized_missing_package_json", "normalized_missing_capability_content"}
+	wantWarnings := []string{"normalized_missing_package_json"}
 	if !reflect.DeepEqual(wantWarnings, resp.Warnings) {
 		t.Fatalf("unexpected warnings (-want +got):\nwant: %#v\ngot:  %#v", wantWarnings, resp.Warnings)
 	}
-	if resp.ImportReport == nil || !resp.ImportReport.Normalized || !resp.ImportReport.GeneratedPackageJSON || !resp.ImportReport.GeneratedCapabilityPlaceholder {
+	if resp.ImportReport == nil || !resp.ImportReport.Normalized || !resp.ImportReport.GeneratedPackageJSON || resp.ImportReport.GeneratedCapabilityPlaceholder {
 		t.Fatalf("unexpected import report: %#v", resp.ImportReport)
 	}
-	if _, err := os.Stat(filepath.Join(resp.WorkspacePath, "docs", "README.md")); err != nil {
-		t.Fatalf("expected placeholder docs README: %v", err)
-	}
-	readmeContent, err := os.ReadFile(filepath.Join(resp.WorkspacePath, "docs", "README.md"))
-	if err != nil {
-		t.Fatalf("read placeholder docs README: %v", err)
-	}
-	if !strings.Contains(string(readmeContent), "generated during packaging normalization") {
-		t.Fatalf("expected placeholder docs README to explain normalization, got %q", string(readmeContent))
+	if _, err := os.Stat(filepath.Join(resp.WorkspacePath, "docs", "README.md")); !os.IsNotExist(err) {
+		t.Fatalf("expected no generated placeholder docs README, got err=%v", err)
 	}
 
 	validateResp, err := service.Validate(ValidateRequest{
@@ -57,9 +71,9 @@ func TestPrepareNormalizesLocalSkillWithoutPackageJSONOrCapabilities(t *testing.
 		t.Fatalf("validate returned error: %v", err)
 	}
 	if !validateResp.OK {
-		t.Fatalf("expected validate to succeed, got errors: %#v", validateResp.Errors)
+		t.Fatalf("expected validate to succeed for SKILL.md-only skill, got errors: %#v", validateResp.Errors)
 	}
-	if validateResp.ImportReport == nil || !validateResp.ImportReport.GeneratedPackageJSON || !validateResp.ImportReport.GeneratedCapabilityPlaceholder {
+	if validateResp.ImportReport == nil || !validateResp.ImportReport.GeneratedPackageJSON || validateResp.ImportReport.GeneratedCapabilityPlaceholder {
 		t.Fatalf("expected validate import report to preserve normalization details, got %#v", validateResp.ImportReport)
 	}
 
@@ -69,7 +83,7 @@ func TestPrepareNormalizesLocalSkillWithoutPackageJSONOrCapabilities(t *testing.
 	}
 }
 
-func TestPrepareNormalizesGitSkillWithoutPackageJSONOrCapabilities(t *testing.T) {
+func TestPrepareNormalizesSkillMdOnlyGitSkillWithoutPackageJSON(t *testing.T) {
 	service := NewService(t.TempDir())
 	repoDir := createGitSkillRepo(t)
 
@@ -82,19 +96,12 @@ func TestPrepareNormalizesGitSkillWithoutPackageJSONOrCapabilities(t *testing.T)
 		t.Fatalf("prepare returned error: %v", err)
 	}
 
-	wantWarnings := []string{"normalized_missing_package_json", "normalized_missing_capability_content"}
+	wantWarnings := []string{"normalized_missing_package_json"}
 	if !reflect.DeepEqual(wantWarnings, resp.Warnings) {
 		t.Fatalf("unexpected warnings (-want +got):\nwant: %#v\ngot:  %#v", wantWarnings, resp.Warnings)
 	}
-	if _, err := os.Stat(filepath.Join(resp.WorkspacePath, "docs", "README.md")); err != nil {
-		t.Fatalf("expected placeholder docs README: %v", err)
-	}
-	readmeContent, err := os.ReadFile(filepath.Join(resp.WorkspacePath, "docs", "README.md"))
-	if err != nil {
-		t.Fatalf("read placeholder docs README: %v", err)
-	}
-	if !strings.Contains(string(readmeContent), "generated during packaging normalization") {
-		t.Fatalf("expected placeholder docs README to explain normalization, got %q", string(readmeContent))
+	if _, err := os.Stat(filepath.Join(resp.WorkspacePath, "docs", "README.md")); !os.IsNotExist(err) {
+		t.Fatalf("expected no generated placeholder docs README, got err=%v", err)
 	}
 
 	validateResp, err := service.Validate(ValidateRequest{
@@ -105,7 +112,7 @@ func TestPrepareNormalizesGitSkillWithoutPackageJSONOrCapabilities(t *testing.T)
 		t.Fatalf("validate returned error: %v", err)
 	}
 	if !validateResp.OK {
-		t.Fatalf("expected validate to succeed, got errors: %#v", validateResp.Errors)
+		t.Fatalf("expected validate to succeed for SKILL.md-only git skill, got errors: %#v", validateResp.Errors)
 	}
 
 	normalizedFromImport := readNormalizedFromImportFlag(t, resp.WorkspacePath)
@@ -114,13 +121,13 @@ func TestPrepareNormalizesGitSkillWithoutPackageJSONOrCapabilities(t *testing.T)
 	}
 }
 
-func TestPrepareStrictModeRewritesPackageJSONButValidateFailsWithoutCapabilityContent(t *testing.T) {
+func TestPrepareStrictModeAllowsSkillMdOnlyImport(t *testing.T) {
 	service := NewService(t.TempDir())
 	sourceDir := t.TempDir()
 	writeSkillMarkdownFixture(t, sourceDir)
 
 	resp, err := service.Prepare(PrepareRequest{
-		Source:   Source{Type: "local", Location: sourceDir},
+		Source:   Source{Type: "upload_archive", ArchiveBase64: buildSourceArchiveBase64FromDirectory(t, sourceDir)},
 		Target:   Target{PackageName: "@platform.skill/zoom-out", Version: "1.0.0"},
 		Metadata: Metadata{DisplayName: "Zoom Out", Description: "Broader context", SourceType: "imported"},
 		Options:  Options{Strict: true},
@@ -145,12 +152,8 @@ func TestPrepareStrictModeRewritesPackageJSONButValidateFailsWithoutCapabilityCo
 	if err != nil {
 		t.Fatalf("validate returned error: %v", err)
 	}
-	if validateResp.OK {
-		t.Fatal("expected validate to fail in strict mode")
-	}
-	wantErrors := []string{"missing_capability_content"}
-	if !reflect.DeepEqual(wantErrors, validateResp.Errors) {
-		t.Fatalf("unexpected validate errors (-want +got):\nwant: %#v\ngot:  %#v", wantErrors, validateResp.Errors)
+	if !validateResp.OK {
+		t.Fatalf("expected validate to succeed in strict mode for SKILL.md-only skill, got errors: %#v", validateResp.Errors)
 	}
 }
 
@@ -161,7 +164,7 @@ func TestPrepareStrictModeAllowsImportedLocalSkillWhenCapabilityContentExists(t 
 	writeCapabilityFixture(t, sourceDir)
 
 	resp, err := service.Prepare(PrepareRequest{
-		Source:   Source{Type: "local", Location: sourceDir},
+		Source:   Source{Type: "upload_archive", ArchiveBase64: buildSourceArchiveBase64FromDirectory(t, sourceDir)},
 		Target:   Target{PackageName: "@platform.skill/zoom-out", Version: "1.0.0"},
 		Metadata: Metadata{DisplayName: "Zoom Out", Description: "Broader context", SourceType: "imported"},
 		Options:  Options{Strict: true},
@@ -193,7 +196,7 @@ func TestPrepareWarnsWhenImportedPackageJSONIdentityIsRewritten(t *testing.T) {
 	sourceDir := copyExternalSkillFixture(t, "conflicting-package-json-skill")
 
 	resp, err := service.Prepare(PrepareRequest{
-		Source:   Source{Type: "local", Location: sourceDir},
+		Source:   Source{Type: "upload_archive", ArchiveBase64: buildSourceArchiveBase64FromDirectory(t, sourceDir)},
 		Target:   Target{PackageName: "@platform.skill/zoom-out", Version: "1.0.0"},
 		Metadata: Metadata{DisplayName: "Zoom Out", Description: "Broader context", SourceType: "imported"},
 		Options:  Options{Strict: true},
@@ -230,7 +233,7 @@ func TestPrepareSupportsImportedPluginOnlySkillWithoutPlaceholderDocs(t *testing
 	sourceDir := copyExternalSkillFixture(t, "plugin-only-skill")
 
 	resp, err := service.Prepare(PrepareRequest{
-		Source:   Source{Type: "local", Location: sourceDir},
+		Source:   Source{Type: "upload_archive", ArchiveBase64: buildSourceArchiveBase64FromDirectory(t, sourceDir)},
 		Target:   Target{PackageName: "@platform.skill/plugin-only", Version: "1.0.0"},
 		Metadata: Metadata{DisplayName: "Plugin Only", Description: "Plugin-only imported skill", SourceType: "imported"},
 	})
@@ -336,13 +339,13 @@ func TestPackCreatesBundleFromPlatformAuthoringSource(t *testing.T) {
 	}
 }
 
-func TestPackReturnsValidationErrorsWithoutCreatingBundle(t *testing.T) {
+func TestPackAllowsSkillMdOnlyBundleCreation(t *testing.T) {
 	service := NewService(t.TempDir())
 	sourceDir := t.TempDir()
 	writeSkillMarkdownFixture(t, sourceDir)
 
 	prepareResp, err := service.Prepare(PrepareRequest{
-		Source:   Source{Type: "local", Location: sourceDir},
+		Source:   Source{Type: "upload_archive", ArchiveBase64: buildSourceArchiveBase64FromDirectory(t, sourceDir)},
 		Target:   Target{PackageName: "@platform.skill/zoom-out", Version: "1.0.0"},
 		Metadata: Metadata{DisplayName: "Zoom Out", Description: "Broader context", SourceType: "imported"},
 		Options:  Options{Strict: true},
@@ -359,14 +362,14 @@ func TestPackReturnsValidationErrorsWithoutCreatingBundle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pack returned error: %v", err)
 	}
-	if !reflect.DeepEqual(packResp.Errors, []string{"missing_capability_content"}) {
-		t.Fatalf("unexpected pack errors (-want +got):\nwant: %#v\ngot:  %#v", []string{"missing_capability_content"}, packResp.Errors)
+	if len(packResp.Errors) != 0 {
+		t.Fatalf("expected pack to succeed for SKILL.md-only skill, got errors: %#v", packResp.Errors)
 	}
-	if packResp.BundlePath != "" {
-		t.Fatalf("expected no bundle path on validation failure, got %q", packResp.BundlePath)
+	if packResp.BundlePath == "" {
+		t.Fatal("expected bundle path for SKILL.md-only pack")
 	}
-	if packResp.BundleBase64 != "" {
-		t.Fatalf("expected no bundle payload on validation failure, got %q", packResp.BundleBase64)
+	if packResp.BundleBase64 == "" {
+		t.Fatal("expected bundle payload for SKILL.md-only pack")
 	}
 }
 
@@ -524,6 +527,59 @@ func TestPackagingRequestGettersExposeIdempotencyAndTarget(t *testing.T) {
 	}
 }
 
+func TestCopySourceDirectorySkipsPackagingArtifacts(t *testing.T) {
+	sourceDir := t.TempDir()
+	workspaceDir := t.TempDir()
+
+	writeSkillMarkdownFixture(t, sourceDir)
+	if err := os.MkdirAll(filepath.Join(sourceDir, ".dist"), 0o755); err != nil {
+		t.Fatalf("mkdir .dist: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, ".dist", "bundle.tgz"), []byte("artifact"), 0o644); err != nil {
+		t.Fatalf("write .dist artifact: %v", err)
+	}
+
+	if err := copySourceDirectory(sourceDir, workspaceDir); err != nil {
+		t.Fatalf("copySourceDirectory: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(workspaceDir, "SKILL.md")); err != nil {
+		t.Fatalf("expected SKILL.md to be copied, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workspaceDir, ".dist")); !os.IsNotExist(err) {
+		t.Fatalf("expected .dist to be skipped, got err=%v", err)
+	}
+}
+
+func TestCreateBundleArchiveSkipsPackagingArtifacts(t *testing.T) {
+	workspaceDir := t.TempDir()
+	writeSkillMarkdownFixture(t, workspaceDir)
+	if err := os.MkdirAll(filepath.Join(workspaceDir, ".dist"), 0o755); err != nil {
+		t.Fatalf("mkdir .dist: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workspaceDir, ".dist", "bundle.tgz"), []byte("artifact"), 0o644); err != nil {
+		t.Fatalf("write .dist artifact: %v", err)
+	}
+
+	archivePath := filepath.Join(t.TempDir(), "bundle.tgz")
+	if err := createBundleArchive(workspaceDir, archivePath); err != nil {
+		t.Fatalf("createBundleArchive: %v", err)
+	}
+
+	archiveContent, err := os.ReadFile(archivePath)
+	if err != nil {
+		t.Fatalf("read bundle archive: %v", err)
+	}
+	entries := readTarGzEntries(t, archiveContent)
+
+	if _, ok := entries["package/SKILL.md"]; !ok {
+		t.Fatalf("expected SKILL.md entry, got keys %v", sortedMapKeys(entries))
+	}
+	if _, ok := entries["package/.dist/bundle.tgz"]; ok {
+		t.Fatalf("expected .dist artifact to be excluded, got keys %v", sortedMapKeys(entries))
+	}
+}
+
 func writeSkillMarkdownFixture(t *testing.T, dir string) {
 	t.Helper()
 
@@ -626,6 +682,63 @@ func readNormalizedFromImportFlag(t *testing.T, workspacePath string) bool {
 		t.Fatalf("unmarshal package.json: %v", err)
 	}
 	return payload.Skill.NormalizedFromImport
+}
+
+func buildSourceArchiveBase64FromDirectory(t *testing.T, root string) string {
+	t.Helper()
+
+	var archive bytes.Buffer
+	gzipWriter := gzip.NewWriter(&archive)
+	tarWriter := tar.NewWriter(gzipWriter)
+	err := filepath.Walk(root, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if path == root {
+			return nil
+		}
+		relativePath, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		relativePath = filepath.ToSlash(relativePath)
+		if shouldIgnorePackagingPath(relativePath) {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil
+		}
+		header, err := tar.FileInfoHeader(info, "")
+		if err != nil {
+			return err
+		}
+		header.Name = relativePath
+		if err := tarWriter.WriteHeader(header); err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		_, err = tarWriter.Write(content)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("build source archive: %v", err)
+	}
+	if err := tarWriter.Close(); err != nil {
+		t.Fatalf("close tar writer: %v", err)
+	}
+	if err := gzipWriter.Close(); err != nil {
+		t.Fatalf("close gzip writer: %v", err)
+	}
+	return base64.StdEncoding.EncodeToString(archive.Bytes())
 }
 
 func readTarGzEntries(t *testing.T, archive []byte) map[string][]byte {

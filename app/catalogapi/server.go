@@ -27,34 +27,36 @@ import (
 )
 
 type ServerConfig struct {
-	Repository          catalog.Repository
-	ReaderToken         string
-	AuthoringToken      string
-	PublisherToken      string
-	AuthTokens          map[string]auth.TokenConfig
-	MockRegistry        *artifactadapter.MockRegistry
-	DisableMockRegistry bool
-	Packaging           *packaging.Service
-	Idempotency         persist.IdempotencyStore
-	Audit               persist.AuditStore
-	Logger              *log.Logger
+	Repository           catalog.Repository
+	ReaderToken          string
+	AuthoringToken       string
+	PublisherToken       string
+	PublicNPMRegistryURL string
+	AuthTokens           map[string]auth.TokenConfig
+	MockRegistry         *artifactadapter.MockRegistry
+	DisableMockRegistry  bool
+	Packaging            *packaging.Service
+	Idempotency          persist.IdempotencyStore
+	Audit                persist.AuditStore
+	Logger               *log.Logger
 }
 
 type Server struct {
-	repo                catalog.Repository
-	authorizer          *auth.Authorizer
-	mockRegistry        *artifactadapter.MockRegistry
-	disableMockRegistry bool
-	packaging           *packaging.Service
-	idempotency         persist.IdempotencyStore
-	audit               persist.AuditStore
-	auditRecorder       *AuditRecorder
-	logger              *log.Logger
-	metrics             *observability.Collector
-	requestID           atomic.Uint64
-	cacheMu             sync.Mutex
-	cacheTTL            time.Duration
-	cacheEntries        map[string]cachedPackagingResponse
+	repo                 catalog.Repository
+	authorizer           *auth.Authorizer
+	publicNPMRegistryURL string
+	mockRegistry         *artifactadapter.MockRegistry
+	disableMockRegistry  bool
+	packaging            *packaging.Service
+	idempotency          persist.IdempotencyStore
+	audit                persist.AuditStore
+	auditRecorder        *AuditRecorder
+	logger               *log.Logger
+	metrics              *observability.Collector
+	requestID            atomic.Uint64
+	cacheMu              sync.Mutex
+	cacheTTL             time.Duration
+	cacheEntries         map[string]cachedPackagingResponse
 }
 
 type cachedPackagingResponse struct {
@@ -85,16 +87,17 @@ func NewServer(config ServerConfig) *Server {
 			PublisherToken: config.PublisherToken,
 			Tokens:         config.AuthTokens,
 		}),
-		mockRegistry:        config.MockRegistry,
-		disableMockRegistry: config.DisableMockRegistry,
-		packaging:           config.Packaging,
-		idempotency:         config.Idempotency,
-		audit:               config.Audit,
-		auditRecorder:       NewAuditRecorder(config.Audit),
-		logger:              logger,
-		metrics:             observability.NewCollector(),
-		cacheTTL:            10 * time.Minute,
-		cacheEntries:        make(map[string]cachedPackagingResponse),
+		publicNPMRegistryURL: strings.TrimRight(strings.TrimSpace(config.PublicNPMRegistryURL), "/"),
+		mockRegistry:         config.MockRegistry,
+		disableMockRegistry:  config.DisableMockRegistry,
+		packaging:            config.Packaging,
+		idempotency:          config.Idempotency,
+		audit:                config.Audit,
+		auditRecorder:        NewAuditRecorder(config.Audit),
+		logger:               logger,
+		metrics:              observability.NewCollector(),
+		cacheTTL:             10 * time.Minute,
+		cacheEntries:         make(map[string]cachedPackagingResponse),
 	}
 }
 
@@ -104,6 +107,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/readyz", http.HandlerFunc(s.handleReadyz))
 	mux.Handle("/metrics", http.HandlerFunc(s.handleMetrics))
 	mux.Handle("/api/v1/audit-events", s.requireAction(s.handleAuditEvents, auth.ActionReadAuditEvents))
+	mux.Handle("/api/v1/session", s.requireAction(s.handleSession, auth.ActionReadSession))
 	mux.Handle("/api/v1/skills", s.requireAction(s.handleSkills, auth.ActionReadCatalog))
 	mux.Handle("/api/v1/skills/search", s.requireAction(s.handleSkills, auth.ActionReadCatalog))
 	mux.Handle("/api/v1/skills/curated", s.requireAction(s.handleCuratedSkills, auth.ActionReadCatalog))
@@ -117,7 +121,36 @@ func (s *Server) Handler() http.Handler {
 	if !s.disableMockRegistry {
 		mux.Handle("/mock-npm/", http.HandlerFunc(s.handleMockRegistry))
 	}
-	return s.withRequestMetadata(s.withObservability(mux))
+	return s.withCORS(s.withRequestMetadata(s.withObservability(mux)))
+}
+
+func (s *Server) withCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		origin := strings.TrimSpace(request.Header.Get("Origin"))
+		if origin != "" && isLocalOperatorOrigin(origin) {
+			writer.Header().Set("Access-Control-Allow-Origin", origin)
+			writer.Header().Set("Vary", "Origin")
+			writer.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Actor, X-Role, X-Trace-Id")
+			writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
+			writer.Header().Set("Access-Control-Max-Age", "600")
+		}
+
+		if request.Method == http.MethodOptions && origin != "" && isLocalOperatorOrigin(origin) {
+			writer.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		next.ServeHTTP(writer, request)
+	})
+}
+
+func isLocalOperatorOrigin(origin string) bool {
+	parsed, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(parsed.Hostname())
+	return host == "127.0.0.1" || host == "localhost"
 }
 
 func (s *Server) withRequestMetadata(next http.Handler) http.Handler {
@@ -573,17 +606,48 @@ func (s *Server) handleInstallTarget(writer http.ResponseWriter, request *http.R
 		writeCatalogError(writer, request, err)
 		return
 	}
+	response = s.publicInstallTarget(response)
 	writeJSON(writer, http.StatusOK, response)
 }
 
+func (s *Server) publicInstallTarget(response catalog.InstallResolution) catalog.InstallResolution {
+	if s.publicNPMRegistryURL == "" {
+		return response
+	}
+
+	internalRegistry := strings.TrimRight(strings.TrimSpace(response.NPMRegistry), "/")
+	response.NPMRegistry = s.publicNPMRegistryURL
+	response.TarballURL = rewriteRegistryBaseURL(response.TarballURL, internalRegistry, s.publicNPMRegistryURL)
+	return response
+}
+
+func rewriteRegistryBaseURL(rawURL string, fromBase string, toBase string) string {
+	trimmedURL := strings.TrimSpace(rawURL)
+	normalizedFrom := strings.TrimRight(strings.TrimSpace(fromBase), "/")
+	normalizedTo := strings.TrimRight(strings.TrimSpace(toBase), "/")
+
+	switch {
+	case trimmedURL == "":
+		return rawURL
+	case normalizedFrom == "":
+		return trimmedURL
+	case trimmedURL == normalizedFrom:
+		return normalizedTo
+	case strings.HasPrefix(trimmedURL, normalizedFrom+"/"):
+		return normalizedTo + strings.TrimPrefix(trimmedURL, normalizedFrom)
+	default:
+		return trimmedURL
+	}
+}
+
 func (s *Server) handlePackagingPrepare(writer http.ResponseWriter, request *http.Request) {
-	handlePackagingRequest(s, writer, request, "prepare", nil, func(payload packaging.PrepareRequest) (any, error) {
+	handlePackagingRequest(s, writer, request, "prepare", nil, s.validatePackagingPrepareRequest, func(payload packaging.PrepareRequest) (any, error) {
 		return s.packaging.Prepare(payload)
 	})
 }
 
 func (s *Server) handlePackagingValidate(writer http.ResponseWriter, request *http.Request) {
-	handlePackagingRequest(s, writer, request, "validate", nil, func(payload packaging.ValidateRequest) (any, error) {
+	handlePackagingRequest(s, writer, request, "validate", nil, nil, func(payload packaging.ValidateRequest) (any, error) {
 		return s.packaging.Validate(payload)
 	})
 }
@@ -595,8 +659,18 @@ func (s *Server) handlePackagingPack(writer http.ResponseWriter, request *http.R
 	}
 	handlePackagingRequest(s, writer, request, "pack", func(payload packaging.PackRequest) bool {
 		return !payload.IncludeBundle
-	}, func(payload packaging.PackRequest) (any, error) {
+	}, nil, func(payload packaging.PackRequest) (any, error) {
 		return s.packaging.Pack(payload)
+	})
+}
+
+func (s *Server) validatePackagingPrepareRequest(payload packaging.PrepareRequest) *catalog.Error {
+	if !strings.EqualFold(strings.TrimSpace(payload.Source.Type), "local") {
+		return nil
+	}
+	return catalog.NewError(422, "unsupported_source_type", "source.type=local has been removed. Upload source archive content instead of sending a local filesystem path.", map[string]any{
+		"sourceType":      payload.Source.Type,
+		"suggestedAction": "Use source.type=upload_archive, git, or platform_authoring instead.",
 	})
 }
 
@@ -1059,7 +1133,7 @@ func mockRegistryBaseURL(request *http.Request) string {
 	return scheme + "://" + host + "/mock-npm"
 }
 
-func handlePackagingRequest[T interface{ GetIdempotencyKey() string }](s *Server, writer http.ResponseWriter, request *http.Request, endpoint string, shouldCache func(T) bool, execute func(T) (any, error)) {
+func handlePackagingRequest[T interface{ GetIdempotencyKey() string }](s *Server, writer http.ResponseWriter, request *http.Request, endpoint string, shouldCache func(T) bool, preflight func(T) *catalog.Error, execute func(T) (any, error)) {
 	if s.packaging == nil {
 		http.NotFound(writer, request)
 		return
@@ -1081,6 +1155,15 @@ func handlePackagingRequest[T interface{ GetIdempotencyKey() string }](s *Server
 	}
 	if packageName := packageNameFromPayload(payload); packageName != "" {
 		if !s.authorizePackageAccess(writer, request, packageName) {
+			return
+		}
+	}
+	if preflight != nil {
+		if err := preflight(payload); err != nil {
+			s.recordMutationAudit(request, "packaging."+endpoint, packageNameFromPayload(payload), versionFromPayload(payload), err.Status, "failed", map[string]any{
+				"errorCode": err.Code,
+			})
+			writeCatalogError(writer, request, err)
 			return
 		}
 	}

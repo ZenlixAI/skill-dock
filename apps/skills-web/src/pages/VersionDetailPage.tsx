@@ -3,9 +3,19 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
   applyVersionGovernanceChange,
   createReleaseRecord,
+  getSession,
   getVersionDetail,
   listGovernanceChanges,
 } from '../api/client';
+import { normalizeThrownRegistryError } from '../api/httpClient';
+import { canPerformAction } from '../api/session';
+import {
+  inferMutationFailureOutcome,
+  MutationResultPanel,
+  readMutationResultSearchParams,
+  writeMutationResultSearchParams,
+} from '../components/MutationResultPanel';
+import { PermissionGate } from '../components/PermissionGate';
 import { SectionHeading } from '../components/SectionHeading';
 import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
@@ -22,7 +32,7 @@ type VersionLogEntry = {
 
 export function VersionDetailPage() {
   const { packageName = '', version = '' } = useParams();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const decodedPackage = decodeURIComponent(packageName);
   const handoff = readReleaseHandoff(searchParams, {
     packageName: decodedPackage,
@@ -35,6 +45,7 @@ export function VersionDetailPage() {
   const [governanceAction, setGovernanceAction] = useState<'deprecate' | 'yank'>('deprecate');
   const [governanceReason, setGovernanceReason] = useState('');
   const [replacementRecommendation, setReplacementRecommendation] = useState('');
+  const [governanceConfirmed, setGovernanceConfirmed] = useState(false);
   const [activityLog, setActivityLog] = useState<VersionLogEntry[]>([]);
   const [actionState, setActionState] = useState<{
     loading: false | 'release' | 'governance';
@@ -47,6 +58,7 @@ export function VersionDetailPage() {
   });
 
   const detail = useAsyncData(() => getVersionDetail(decodedPackage, version), [decodedPackage, version, refreshKey]);
+  const session = useAsyncData(() => getSession(), []);
   const governance = useAsyncData(
     () => listGovernanceChanges({ packageName: decodedPackage, version }),
     [decodedPackage, version, refreshKey]
@@ -65,6 +77,19 @@ export function VersionDetailPage() {
     governanceAction === 'yank'
       ? 'Explicit installs should become blocked and downstream users should move to a replacement.'
       : 'The version remains visible, but consumers should be nudged toward a newer replacement.';
+  const replacementRequired = governanceAction === 'deprecate' || governanceAction === 'yank';
+  const canSubmitGovernance =
+    actionState.loading === false &&
+    governanceReason.trim() !== '' &&
+    governanceConfirmed &&
+    (!replacementRequired || replacementRecommendation.trim() !== '');
+  const releaseWriteEnabled = canPerformAction(session.data, 'catalog.release_record.create', decodedPackage);
+  const governanceWriteEnabled = canPerformAction(session.data, 'catalog.governance.version.apply', decodedPackage);
+  const mutationResult = readMutationResultSearchParams(searchParams, {
+    packageName: decodedPackage,
+    version,
+    actor: session.data?.actor ?? null,
+  });
 
   function appendLog(action: VersionLogEntry['action'], outcome: VersionLogEntry['outcome'], summary: string) {
     setActivityLog((current) => [
@@ -76,6 +101,23 @@ export function VersionDetailPage() {
       },
       ...current,
     ]);
+  }
+
+  function persistMutationResult(result: {
+    action: string;
+    outcome: 'succeeded' | 'failed' | 'forbidden' | 'unauthorized';
+    message: string;
+    requestId?: string | null;
+  }) {
+    setSearchParams(
+      writeMutationResultSearchParams(searchParams, {
+        ...result,
+        actor: session.data?.actor ?? null,
+        packageName: decodedPackage,
+        version,
+      }),
+      { replace: true }
+    );
   }
 
   async function handleReleaseRecord() {
@@ -97,6 +139,13 @@ export function VersionDetailPage() {
           ? '已创建新的 release record。'
           : 'release record 已存在，后端返回幂等重放结果。',
       });
+      persistMutationResult({
+        action: 'release-record',
+        outcome: 'succeeded',
+        message: response.created
+          ? '已创建新的 release record。'
+          : 'release record 已存在，后端返回幂等重放结果。',
+      });
       appendLog(
         'release-record',
         'succeeded',
@@ -104,11 +153,19 @@ export function VersionDetailPage() {
       );
       setRefreshKey((current) => current + 1);
     } catch (error: unknown) {
-      appendLog('release-record', 'failed', error instanceof Error ? error.message : String(error));
+      const outcome = inferMutationFailureOutcome(error);
+      const normalizedError = normalizeThrownRegistryError(error);
+      appendLog('release-record', 'failed', normalizedError.message);
       setActionState({
         loading: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: normalizedError.message,
         success: null,
+      });
+      persistMutationResult({
+        action: 'release-record',
+        outcome,
+        message: normalizedError.message,
+        requestId: normalizedError.requestId,
       });
     }
   }
@@ -133,14 +190,29 @@ export function VersionDetailPage() {
           response.resultingState.versionStatus || response.record.action
         }`,
       });
+      persistMutationResult({
+        action: response.record.action,
+        outcome: 'succeeded',
+        message: `已提交 ${response.record.action}。当前 version state：${
+          response.resultingState.versionStatus || response.record.action
+        }`,
+      });
       appendLog('governance', 'succeeded', `Applied ${response.record.action} governance change.`);
       setRefreshKey((current) => current + 1);
     } catch (error: unknown) {
-      appendLog('governance', 'failed', error instanceof Error ? error.message : String(error));
+      const outcome = inferMutationFailureOutcome(error);
+      const normalizedError = normalizeThrownRegistryError(error);
+      appendLog('governance', 'failed', normalizedError.message);
       setActionState({
         loading: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: normalizedError.message,
         success: null,
+      });
+      persistMutationResult({
+        action: governanceAction,
+        outcome,
+        message: normalizedError.message,
+        requestId: normalizedError.requestId,
       });
     }
   }
@@ -175,6 +247,9 @@ export function VersionDetailPage() {
         {detail.data?.installPolicy ? <StatusPill tone={detail.data.installPolicy === 'resolvable' ? 'good' : detail.data.installPolicy === 'catalog_only' ? 'warn' : 'bad'}>{detail.data.installPolicy}</StatusPill> : null}
         {detail.data?.registry.npmRegistry ? <StatusPill>{detail.data.registry.npmRegistry}</StatusPill> : null}
         <StatusPill tone={hasHandoff ? 'accent' : undefined}>{hasHandoff ? 'handoff attached' : 'direct open'}</StatusPill>
+        <StatusPill tone={releaseWriteEnabled ? 'accent' : 'default'}>
+          {session.loading ? 'session loading' : session.error ? 'session unavailable' : releaseWriteEnabled ? 'release enabled' : 'release read-only'}
+        </StatusPill>
       </div>
 
       {hasHandoff ? (
@@ -324,93 +399,121 @@ export function VersionDetailPage() {
           </dl>
         </SurfaceCard>
 
+        <MutationResultPanel result={mutationResult} />
+      </div>
+
+      <div className="two-column">
         <SurfaceCard className="surface-card--sticky" title="Release Action Center" description="把 release-record 做成独立控制面动作，而不是附带按钮。" variant="console">
-          <div className="stack-column">
-            <label className="field">
-              <span>publish registry</span>
-              <input
-                onChange={(event) => setPublishRegistry(event.target.value)}
-                placeholder={detail.data?.registry.npmRegistry || 'https://npm.internal.example.com'}
-                value={publishRegistry}
-              />
-            </label>
-            <label className="field">
-              <span>manifest digest</span>
-              <input
-                onChange={(event) => setManifestDigest(event.target.value)}
-                placeholder={detail.data?.bundle.skillManifestDigest || 'sha256:...'}
-                value={manifestDigest}
-              />
-            </label>
-            <label className="field">
-              <span>components</span>
-              <input
-                onChange={(event) => setComponents(event.target.value)}
-                placeholder={detail.data?.bundle.components.join(', ') || 'commands, scripts'}
-                value={components}
-              />
-            </label>
-            {actionState.error ? <div className="error-box">{actionState.error}</div> : null}
-            {actionState.success ? <div className="empty-box empty-box--success">{actionState.success}</div> : null}
-            <div className="action-row">
-              <div className="action-row__copy">
-                <strong>Register this bundle into Catalog</strong>
-                <p>只有这里提交成功，版本才正式进入 Catalog 的 release-tracked 状态。</p>
+          <PermissionGate
+            fallback={<div className="empty-box">Current session is read-only for catalog.release_record.create.</div>}
+            packageName={decodedPackage}
+            requiredAction="catalog.release_record.create"
+            session={session.data}
+            sessionError={session.error}
+            sessionLoading={session.loading}
+          >
+            <div className="stack-column">
+              <label className="field">
+                <span>publish registry</span>
+                <input
+                  onChange={(event) => setPublishRegistry(event.target.value)}
+                  placeholder={detail.data?.registry.npmRegistry || 'https://npm.internal.example.com'}
+                  value={publishRegistry}
+                />
+              </label>
+              <label className="field">
+                <span>manifest digest</span>
+                <input
+                  onChange={(event) => setManifestDigest(event.target.value)}
+                  placeholder={detail.data?.bundle.skillManifestDigest || 'sha256:...'}
+                  value={manifestDigest}
+                />
+              </label>
+              <label className="field">
+                <span>components</span>
+                <input
+                  onChange={(event) => setComponents(event.target.value)}
+                  placeholder={detail.data?.bundle.components.join(', ') || 'commands, scripts'}
+                  value={components}
+                />
+              </label>
+              <div className="action-row">
+                <div className="action-row__copy">
+                  <strong>Register this bundle into Catalog</strong>
+                  <p>只有这里提交成功，版本才正式进入 Catalog 的 release-tracked 状态。</p>
+                </div>
               </div>
+              <button
+                className="button button--primary"
+                disabled={actionState.loading !== false}
+                onClick={() => void handleReleaseRecord()}
+                type="button"
+              >
+                {actionState.loading === 'release' ? 'Submitting…' : 'Create release record'}
+              </button>
             </div>
-            <button
-              className="button button--primary"
-              disabled={actionState.loading !== false}
-              onClick={() => void handleReleaseRecord()}
-              type="button"
-            >
-              {actionState.loading === 'release' ? 'Submitting…' : 'Create release record'}
-            </button>
-          </div>
+          </PermissionGate>
         </SurfaceCard>
       </div>
 
       <div className="two-column">
         <SurfaceCard title="Version Governance" description="当前支持 deprecate / yank，并允许带 replacement recommendation。" variant="console">
-          <div className="stack-column">
-            <label className="field">
-              <span>Action</span>
-              <select value={governanceAction} onChange={(event) => setGovernanceAction(event.target.value as 'deprecate' | 'yank')}>
-                <option value="deprecate">deprecate</option>
-                <option value="yank">yank</option>
-              </select>
-            </label>
-            <label className="field">
-              <span>Reason</span>
-              <textarea
-                onChange={(event) => setGovernanceReason(event.target.value)}
-                placeholder="replacement available / security issue / incompatible behavior"
-                value={governanceReason}
-              />
-            </label>
-            <label className="field">
-              <span>Replacement recommendation</span>
-              <input
-                onChange={(event) => setReplacementRecommendation(event.target.value)}
-                placeholder="1.2.1"
-                value={replacementRecommendation}
-              />
-            </label>
-            <div className="action-row">
-              <div className="action-row__copy">
-                <strong>Change downstream install behavior</strong>
-                <p>这里不是备注区，而是真正会影响 install target 解析和消费侧行为的治理入口。</p>
+          <PermissionGate
+            fallback={<div className="empty-box">Current session is read-only for catalog.governance.version.apply.</div>}
+            packageName={decodedPackage}
+            requiredAction="catalog.governance.version.apply"
+            session={session.data}
+            sessionError={session.error}
+            sessionLoading={session.loading}
+          >
+            <div className="stack-column">
+              <label className="field">
+                <span>Action</span>
+                <select value={governanceAction} onChange={(event) => setGovernanceAction(event.target.value as 'deprecate' | 'yank')}>
+                  <option value="deprecate">deprecate</option>
+                  <option value="yank">yank</option>
+                </select>
+              </label>
+              <label className="field">
+                <span>Reason</span>
+                <textarea
+                  onChange={(event) => setGovernanceReason(event.target.value)}
+                  placeholder="replacement available / security issue / incompatible behavior"
+                  value={governanceReason}
+                />
+              </label>
+              <label className="field">
+                <span>Replacement recommendation</span>
+                <input
+                  onChange={(event) => setReplacementRecommendation(event.target.value)}
+                  placeholder="1.2.1"
+                  value={replacementRecommendation}
+                />
+              </label>
+              <label className="checkbox-row">
+                <input
+                  checked={governanceConfirmed}
+                  onChange={(event) => setGovernanceConfirmed(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>I understand this changes installability for downstream consumers.</span>
+              </label>
+              <div className="action-row">
+                <div className="action-row__copy">
+                  <strong>Change downstream install behavior</strong>
+                  <p>这里不是备注区，而是真正会影响 install target 解析和消费侧行为的治理入口。</p>
+                </div>
               </div>
+              <button
+                className="button button--secondary"
+                disabled={!canSubmitGovernance}
+                onClick={() => void handleVersionGovernance()}
+                type="button"
+              >
+                {actionState.loading === 'governance' ? 'Submitting…' : 'Submit governance change'}
+              </button>
             </div>
-            <button
-              className="button button--secondary"
-              disabled={actionState.loading !== false || governanceReason.trim() === ''}
-              onClick={() => void handleVersionGovernance()}
-              type="button"
-            >
-              {actionState.loading === 'governance' ? 'Submitting…' : 'Submit governance change'}
-            </button>
-          </div>
+          </PermissionGate>
         </SurfaceCard>
 
         <SurfaceCard title="Applied Governance" description="写入后直接在右侧回看当前版本治理记录。">

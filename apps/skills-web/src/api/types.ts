@@ -2,10 +2,18 @@ export type SkillStatus = 'active' | 'retired';
 export type VersionStatus = 'published' | 'deprecated' | 'yanked';
 export type InstallPolicy = 'catalog_only' | 'resolvable' | 'blocked';
 export type CatalogSourceType = 'native' | 'imported' | 'platform_created';
-export type PackagingSourceType = 'git' | 'local' | 'platform_authoring';
+export type PackagingSourceType = 'git' | 'upload_archive' | 'platform_authoring';
 export type GovernanceTargetType = 'skill' | 'version';
 export type GovernanceAction = 'retire' | 'deprecate' | 'yank';
 export type WarningSeverity = 'info' | 'warning' | 'high-risk';
+export type RegistryRuntimeMode = 'mock' | 'real';
+export type RegistryRequestErrorKind = 'auth' | 'network' | 'not_found' | 'server' | 'unknown';
+
+export interface RegistryRequestError {
+  kind: RegistryRequestErrorKind;
+  message: string;
+  requestId?: string;
+}
 
 export interface PageInfo {
   nextCursor?: string | null;
@@ -138,6 +146,7 @@ export interface PackagingSource {
   location?: string;
   ref?: string;
   files?: Record<string, string>;
+  archiveBase64?: string;
 }
 
 export interface PackagingTarget {
@@ -277,8 +286,16 @@ export interface ListAuditFilters {
   pageSize?: number;
 }
 
+export interface RegistrySession {
+  role: 'reader' | 'authoring' | 'publisher';
+  actor: string;
+  authMechanism: string;
+  allowedActions: string[];
+  allowedPackages: string[];
+}
+
 export interface RegistryClientConfig {
-  mode: 'mock' | 'real';
+  mode: RegistryRuntimeMode;
   baseUrl: string | null;
   role: string | null;
   actor: string | null;
@@ -287,6 +304,7 @@ export interface RegistryClientConfig {
 
 export interface RegistryApiClient {
   getConfig(): RegistryClientConfig;
+  getSession(): Promise<RegistrySession | null>;
   listSkills(filters?: ListSkillsFilters): Promise<SkillsPage<SkillSummary>>;
   listCuratedSkills(): Promise<CuratedSkillSummary[]>;
   getSkillDetail(packageName: string): Promise<SkillDetail>;

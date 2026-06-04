@@ -28,17 +28,10 @@ describe('init command', () => {
         my-test-skill/package.json
         my-test-skill/commands/
 
-      Next steps:
-        1. Edit my-test-skill/SKILL.md to define your skill instructions
-        2. Update the name and description in the frontmatter
-        3. Add capability files under my-test-skill/commands/ or other supported directories
-
-      Publishing:
-        1. Run npx skills inspect
-        2. Run npx skills publish
-        3. Install with npx skills add <package_name>
-
-      Browse existing skills for inspiration at https://skills.sh/
+      Next:
+        - Edit my-test-skill/SKILL.md
+        - Run skills inspect
+        - Run skills publish
 
       "
     `);
@@ -75,7 +68,7 @@ describe('init command', () => {
 
     const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
     expect(packageJson).toEqual({
-      name: '@platform.skill/my-test-skill',
+      name: '@company.skill/my-test-skill',
       version: '0.1.0',
     });
   });
@@ -94,21 +87,22 @@ describe('init command', () => {
     expect(output).toContain('Initialized skill:');
     expect(output).toContain('Created:\n  SKILL.md'); // directly in cwd, not in a subfolder
     expect(output).toContain('package.json');
-    expect(output).toContain('Publishing:');
-    expect(output).toContain('Run npx skills inspect');
-    expect(output).toContain('Run npx skills publish');
-    expect(output).toContain('npx skills add <package_name>');
+    expect(output).toContain('Next:');
+    expect(output).toContain('Run skills inspect');
+    expect(output).toContain('Run skills publish');
+    expect(output).not.toContain('npx skills');
     expect(existsSync(join(testDir, 'SKILL.md'))).toBe(true);
     expect(existsSync(join(testDir, 'package.json'))).toBe(true);
   });
 
-  it('should show publishing hints with skill path', () => {
+  it('should show concise next steps with skill path', () => {
     const output = stripLogo(runCliOutput(['init', 'my-skill'], testDir));
 
-    expect(output).toContain('Publishing:');
-    expect(output).toContain('1. Run npx skills inspect');
-    expect(output).toContain('2. Run npx skills publish');
-    expect(output).toContain('3. Install with npx skills add <package_name>');
+    expect(output).toContain('Next:');
+    expect(output).toContain('- Edit my-skill/SKILL.md');
+    expect(output).toContain('- Run skills inspect');
+    expect(output).toContain('- Run skills publish');
+    expect(output).not.toContain('npx skills');
   });
 
   it('should show error if skill already exists', () => {
@@ -125,6 +119,6 @@ describe('init command', () => {
     expect(output).toContain('Usage: skills init [name]');
     expect(output).toContain('Initialize a skill scaffold');
     expect(output).toContain('skills init my-skill');
-    expect(output).toContain('@platform.skill/my-skill');
+    expect(output).toContain('@company.skill/my-skill');
   });
 });

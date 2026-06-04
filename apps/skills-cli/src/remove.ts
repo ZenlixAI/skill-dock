@@ -9,9 +9,11 @@ import { getAllLockedSkills, removeSkillFromLock, getSkillFromLock } from './ski
 import { readLocalLock, removeSkillFromLocalLock } from './local-lock.ts';
 import type { AgentType } from './types.ts';
 import {
+  deriveInstallName,
   getInstallPath,
   getCanonicalPath,
   getCanonicalSkillsDir,
+  getInstalledDirectoryNames,
   sanitizeName,
 } from './installer.ts';
 
@@ -20,6 +22,22 @@ export interface RemoveOptions {
   agent?: string[];
   yes?: boolean;
   all?: boolean;
+}
+
+function matchesInstalledSkillReference(installedSkill: string, requestedSkill: string): boolean {
+  const installedNormalized = installedSkill.toLowerCase();
+  const requestedNormalized = requestedSkill.toLowerCase();
+
+  if (installedNormalized === requestedNormalized) {
+    return true;
+  }
+
+  const installedAliases = getInstalledDirectoryNames(installedSkill).map((value) => value.toLowerCase());
+  const requestedAliases = getInstalledDirectoryNames(requestedSkill).map((value) => value.toLowerCase());
+
+  return requestedAliases.some(
+    (alias) => alias === installedNormalized || installedAliases.includes(alias)
+  );
 }
 
 export async function removeCommand(skillNames: string[], options: RemoveOptions) {
@@ -76,12 +94,18 @@ export async function removeCommand(skillNames: string[], options: RemoveOptions
 
   if (isGlobal) {
     const globalLock = await getAllLockedSkills();
-    for (const key of Object.keys(globalLock)) {
+    for (const [key, entry] of Object.entries(globalLock)) {
+      for (const installDirName of getInstalledDirectoryNames(key, entry.installName)) {
+        displayNameBySanitized.set(installDirName, key);
+      }
       displayNameBySanitized.set(sanitizeName(key), key);
     }
   } else {
     projectLock = await readLocalLock(cwd);
-    for (const key of Object.keys(projectLock.skills)) {
+    for (const [key, entry] of Object.entries(projectLock.skills)) {
+      for (const installDirName of getInstalledDirectoryNames(key, entry.installName)) {
+        displayNameBySanitized.set(installDirName, key);
+      }
       displayNameBySanitized.set(sanitizeName(key), key);
     }
   }
@@ -114,7 +138,7 @@ export async function removeCommand(skillNames: string[], options: RemoveOptions
     selectedSkills = installedSkills;
   } else if (skillNames.length > 0) {
     selectedSkills = installedSkills.filter((s) =>
-      skillNames.some((name) => name.toLowerCase() === s.toLowerCase())
+      skillNames.some((name) => matchesInstalledSkillReference(s, name))
     );
 
     if (selectedSkills.length === 0) {
@@ -181,21 +205,28 @@ export async function removeCommand(skillNames: string[], options: RemoveOptions
 
   for (const skillName of selectedSkills) {
     try {
-      const canonicalPath = getCanonicalPath(skillName, { global: isGlobal, cwd });
+      const lockEntry = isGlobal
+        ? await getSkillFromLock(skillName)
+        : projectLock?.skills[skillName] || null;
+      const installDirNames = getInstalledDirectoryNames(
+        skillName,
+        lockEntry?.installName || deriveInstallName(lockEntry?.packageName || skillName)
+      );
+      const canonicalPath = getCanonicalPath(lockEntry?.installName || skillName, {
+        global: isGlobal,
+        cwd,
+      });
 
       for (const agentKey of targetAgents) {
         const agent = agents[agentKey];
-        const skillPath = getInstallPath(skillName, agentKey, { global: isGlobal, cwd });
-
-        // Determine potential paths to cleanup. For universal agents, getInstallPath
-        // now returns the canonical path, so we also need to check their 'native'
-        // directory to clean up any legacy symlinks.
-        const pathsToCleanup = new Set([skillPath]);
-        const sanitizedName = sanitizeName(skillName);
-        if (isGlobal && agent.globalSkillsDir) {
-          pathsToCleanup.add(join(agent.globalSkillsDir, sanitizedName));
-        } else {
-          pathsToCleanup.add(join(cwd, agent.skillsDir, sanitizedName));
+        const pathsToCleanup = new Set<string>();
+        for (const installDirName of installDirNames) {
+          pathsToCleanup.add(getInstallPath(installDirName, agentKey, { global: isGlobal, cwd }));
+          if (isGlobal && agent.globalSkillsDir) {
+            pathsToCleanup.add(join(agent.globalSkillsDir, installDirName));
+          } else {
+            pathsToCleanup.add(join(cwd, agent.skillsDir, installDirName));
+          }
         }
 
         for (const pathToCleanup of pathsToCleanup) {
@@ -226,10 +257,15 @@ export async function removeCommand(skillNames: string[], options: RemoveOptions
 
       let isStillUsed = false;
       for (const agentKey of remainingAgents) {
-        const path = getInstallPath(skillName, agentKey, { global: isGlobal, cwd });
-        const exists = await lstat(path).catch(() => null);
-        if (exists) {
-          isStillUsed = true;
+        for (const installDirName of installDirNames) {
+          const path = getInstallPath(installDirName, agentKey, { global: isGlobal, cwd });
+          const exists = await lstat(path).catch(() => null);
+          if (exists) {
+            isStillUsed = true;
+            break;
+          }
+        }
+        if (isStillUsed) {
           break;
         }
       }
@@ -238,10 +274,13 @@ export async function removeCommand(skillNames: string[], options: RemoveOptions
         await rm(canonicalPath, { recursive: true, force: true });
       }
 
-      const lockEntry = isGlobal ? await getSkillFromLock(skillName) : projectLock?.skills[skillName];
-      const effectiveSource = lockEntry?.packageName || lockEntry?.legacy?.source || 'local';
+      const resultLockEntry = isGlobal
+        ? await getSkillFromLock(skillName)
+        : projectLock?.skills[skillName];
+      const effectiveSource =
+        resultLockEntry?.packageName || resultLockEntry?.legacy?.source || 'local';
       const effectiveSourceType =
-        lockEntry?.sourceType || (lockEntry?.packageName ? 'registry' : 'local');
+        resultLockEntry?.sourceType || (resultLockEntry?.packageName ? 'registry' : 'local');
 
       if (isGlobal) {
         await removeSkillFromLock(skillName);

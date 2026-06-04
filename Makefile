@@ -7,52 +7,81 @@ WEB_DIR := apps/skills-web
 GO_CACHE ?= /private/tmp/go-cache
 UV_CACHE_DIR ?= /private/tmp/uv-cache
 CLI_HOME ?= /private/tmp/skills-cli-home
+HOST_HOME ?= $(HOME)
+HOST_XDG_STATE_HOME ?= $(XDG_STATE_HOME)
 CLI_CACHE ?= /private/tmp/skills-cli-cache
 CLI_STATE ?= $(CLI_HOME)/state
 
 REGISTRY_ADDR ?= 127.0.0.1:18080
 REGISTRY_URL ?= http://$(REGISTRY_ADDR)
-REGISTRY_DB ?= file:/private/tmp/skill-registry.db
-VERDACCIO_ADDR ?= 127.0.0.1:4873
-VERDACCIO_URL ?= http://$(VERDACCIO_ADDR)
-VERDACCIO_STATE_DIR ?= /private/tmp/skill-registry-verdaccio
-VERDACCIO_AUTH_ADDR ?= 127.0.0.1:4874
-VERDACCIO_AUTH_URL ?= http://$(VERDACCIO_AUTH_ADDR)
-VERDACCIO_AUTH_STATE_DIR ?= /private/tmp/skill-registry-verdaccio-auth
-VERDACCIO_AUTH_NPMRC ?= $(VERDACCIO_AUTH_STATE_DIR)/.npmrc
-NEXUS_IMAGE ?= sonatype/nexus3:latest
 NEXUS_ADDR ?= 127.0.0.1:8081
 NEXUS_URL ?= http://$(NEXUS_ADDR)
 NEXUS_STATE_DIR ?= /private/tmp/skill-registry-nexus
 NEXUS_REPOSITORY_NAME ?= skills-npm
 NEXUS_REPOSITORY_URL ?= $(NEXUS_URL)/repository/$(NEXUS_REPOSITORY_NAME)
+NEXUS_NPM_REGISTRY ?= $(NEXUS_REPOSITORY_URL)/
 NEXUS_ADMIN_PASSWORD ?= admin123456
 NEXUS_NPMRC ?= $(NEXUS_STATE_DIR)/.npmrc
+NEXUS_INITIAL_PASSWORD_FILE ?= $(NEXUS_STATE_DIR)/admin.password
 NEXUS_ENABLE_ANONYMOUS_READ ?= true
 
 READER_TOKEN ?= reader-secret
 AUTHORING_TOKEN ?= authoring-secret
 PUBLISHER_TOKEN ?= publisher-secret
 
-PACKAGE ?= @platform.skill/pdf-skill
+PACKAGE ?= @company.skill/pdf-skill
+VERSION ?=
 QUERY ?= pdf
 SKILL_PATH ?=
 MANIFEST ?=
-STRICT ?=
-REGISTRY_BACKEND ?= sample
-RESET_DB ?=
 OUTPUT ?= text
-NPM_BACKEND ?= direct
-COMPOSE_STACK ?= production
-VERDACCIO_MODE ?= public
+NPM_BACKEND ?= default
+NPM_USERCONFIG ?=
+STRICT ?=
+CLI_ARGS ?=
+NAME ?=
 
-.PHONY: help verify verify-full test test-go test-go-packaging python-sync test-cli test-cli-dist test-cli-packaging typecheck-cli build-cli web-install typecheck-web build-web web-dev docker-build compose-up compose-down registry-reset registry-run verdaccio-run verdaccio-reset verdaccio-login verdaccio-auth-reset nexus-run nexus-reset nexus-bootstrap cli-find cli-add cli-publish batch-import clean-dev
+NPM_BACKENDS := default|nexus
+OUTPUT_FORMATS := text|json
+CLI_PUBLISH_EXAMPLE ?= /abs/path/to/skill
+CLI_IMPORT_EXAMPLE_PACKAGE ?= @company.skill/your-skill
+CLI_IMPORT_EXAMPLE_VERSION ?= 0.1.0
+BATCH_IMPORT_MANIFEST_EXAMPLE ?= /abs/path/to/import.json
+KIND_IMAGE ?= kindest/node:v1.33.1
+KIND_CLUSTER ?= skill-registry
+K8S_NAMESPACE ?= skill-registry
+CATALOG_IMAGE ?= skill-registry-catalog:dev
+WEB_IMAGE ?= skill-registry-web:dev
+DEV_KIND_CONFIG ?= zarf/k8s/dev/kind-config.yaml
+DEV_K8S_MANIFEST ?= zarf/k8s/dev/kind-stack.yaml
+DEV_POSTGRES_IMAGE ?= postgres:17
+DEV_NEXUS_IMAGE ?= sonatype/nexus3:latest
+
+VERIFY_FAST_TARGETS := test-go typecheck-cli test-cli
+VERIFY_FULL_TARGETS := $(VERIFY_FAST_TARGETS) test-cli-dist
+STRICT_FLAG = $(if $(STRICT),--strict)
+WEB_E2E_ENV = env CI=1 VITE_SKILL_REGISTRY_URL=$(REGISTRY_URL) VITE_SKILL_REGISTRY_TOKEN=$(PUBLISHER_TOKEN)
+BATCH_IMPORT_ENV = env SKILLS_REGISTRY_URL=$(REGISTRY_URL) SKILLS_REGISTRY_TOKEN=$(PUBLISHER_TOKEN) UV_CACHE_DIR=$(UV_CACHE_DIR)
+CLI_TOKEN ?=
+MAKE_CLI = $(MAKE) --no-print-directory cli
+
+define resolve_npm_backend
+npm_registry=""; \
+userconfig="$(NPM_USERCONFIG)"; \
+case "$(NPM_BACKEND)" in \
+	""|default) ;; \
+	nexus) npm_registry="$(NEXUS_NPM_REGISTRY)"; [ -n "$$userconfig" ] || userconfig="$(NEXUS_NPMRC)" ;; \
+	*) echo "Unsupported NPM_BACKEND='$(NPM_BACKEND)'. Use default or nexus."; exit 1 ;; \
+esac
+endef
+
+.PHONY: help verify verify-full test-go test-go-packaging python-sync test-cli test-cli-dist test-cli-packaging typecheck-cli build-cli web-install typecheck-web test-web build-web test-web-e2e web-dev build-catalog-image build-web-image build-images docker-build compose-up compose-down dev-prepull dev-up dev-down dev-load dev-apply dev-delete dev-bootstrap dev-ready dev-run dev-reset dev-update dev-update-apply dev-status cli cli-find cli-add cli-publish cli-import-local cli-init cli-inspect cli-list cli-remove cli-update batch-import clean-dev
 
 help:
 	@printf "skill_registry make targets\n\n"
 	@printf "Verification:\n"
-	@printf "  make verify            Run the fast default suite: Go tests, CLI type-check, and CLI tests (excludes dist smoke)\n"
-	@printf "  make verify-full       Run verify plus the CLI dist build smoke test\n"
+	@printf "  make verify            Fast local-dev gate: %s\n" "$(VERIFY_FAST_TARGETS)"
+	@printf "  make verify-full       Extended gate: %s\n" "$(VERIFY_FULL_TARGETS)"
 	@printf "  make test-go           Run go test ./...\n"
 	@printf "  make test-go-packaging Run focused Go tests for packaging + packaging HTTP handlers\n"
 	@printf "  make python-sync       Create/update the uv-managed Python environment\n"
@@ -64,41 +93,49 @@ help:
 	@printf "Web UI:\n"
 	@printf "  make web-install       Install npm dependencies in %s\n" "$(WEB_DIR)"
 	@printf "  make typecheck-web     Run npm type-check in %s\n" "$(WEB_DIR)"
+	@printf "  make test-web          Run npm test in %s\n" "$(WEB_DIR)"
 	@printf "  make build-web         Run npm build in %s\n" "$(WEB_DIR)"
+	@printf "  make test-web-e2e      Build %s for real-mode smoke tests, then run Playwright against local Catalog on %s\n" "$(WEB_DIR)" "$(REGISTRY_URL)"
 	@printf "  make web-dev           Start Vite dev server for %s\n\n" "$(WEB_DIR)"
-	@printf "Local Catalog:\n"
-	@printf "  make registry-reset    Remove the local Catalog sqlite files\n"
-	@printf "  make registry-run REGISTRY_BACKEND=sample|mock|verdaccio|verdaccio-auth|nexus [RESET_DB=1]\n\n"
-	@printf "Local Verdaccio:\n"
-	@printf "  make verdaccio-run VERDACCIO_MODE=public|auth|strict\n"
-	@printf "  make verdaccio-reset   Remove local Verdaccio state under %s\n" "$(VERDACCIO_STATE_DIR)"
-	@printf "  make verdaccio-auth-reset Remove authenticated Verdaccio state under %s\n" "$(VERDACCIO_AUTH_STATE_DIR)"
-	@printf "  make verdaccio-login   Run npm adduser against authenticated Verdaccio\n\n"
-	@printf "Authenticated Verdaccio:\n"
-	@printf "  use VERDACCIO_MODE=auth|strict together with registry-run REGISTRY_BACKEND=verdaccio-auth\n\n"
-	@printf "Local Nexus:\n"
-	@printf "  make nexus-run         Start local Nexus 3 on %s\n" "$(NEXUS_URL)"
-	@printf "  make nexus-bootstrap [STRICT=1]   Configure Nexus and write %s\n" "$(NEXUS_NPMRC)"
-	@printf "  make nexus-reset       Remove local Nexus state under %s\n" "$(NEXUS_STATE_DIR)"
-	@printf "  use registry-run REGISTRY_BACKEND=nexus for Catalog against %s\n\n" "$(NEXUS_REPOSITORY_URL)"
-	@printf "Containers:\n"
-	@printf "  make docker-build      Build the production Catalog image\n"
-	@printf "  make compose-up COMPOSE_STACK=production|local|nexus\n"
-	@printf "  make compose-down COMPOSE_STACK=production|local|nexus\n\n"
-	@printf "CLI against local registry:\n"
-	@printf "  make cli-find QUERY=pdf [OUTPUT=json]\n"
-	@printf "  make cli-add PACKAGE=@platform.skill/pdf-skill [NPM_BACKEND=direct|verdaccio|verdaccio-auth|nexus]\n"
-	@printf "  make cli-publish SKILL_PATH=/abs/path/to/skill [NPM_BACKEND=direct|verdaccio|verdaccio-auth|nexus]\n\n"
+	@printf "Local KIND Development:\n"
+	@printf "  make build-images      Build local dev images: %s and %s\n" "$(CATALOG_IMAGE)" "$(WEB_IMAGE)"
+	@printf "  make dev-prepull       Pull external runtime images needed by the kind stack\n"
+	@printf "  make dev-up            Create kind cluster %s using %s\n" "$(KIND_CLUSTER)" "$(DEV_KIND_CONFIG)"
+	@printf "  make dev-load          Load %s and %s into kind\n" "$(CATALOG_IMAGE)" "$(WEB_IMAGE)"
+	@printf "  make dev-apply         Apply %s into namespace %s\n" "$(DEV_K8S_MANIFEST)" "$(K8S_NAMESPACE)"
+	@printf "  make dev-bootstrap     Bootstrap in-kind Nexus and write %s\n" "$(NEXUS_NPMRC)"
+	@printf "  make dev-ready         Wait until postgres, nexus, catalog, and skills-web are Ready\n"
+	@printf "  make dev-run           Build images, create kind, load images, apply manifests, bootstrap Nexus\n"
+	@printf "  make dev-reset         Delete kind cluster, wipe local dev state, then run dev-run\n"
+	@printf "  make dev-update        Rebuild images, reload them, and rollout-restart deployments\n"
+	@printf "  make dev-update-apply  Rebuild images, reload them, and re-apply manifests\n"
+	@printf "  make dev-status        Show pods and services in namespace %s\n" "$(K8S_NAMESPACE)"
+	@printf "  make dev-down          Delete kind cluster %s\n\n" "$(KIND_CLUSTER)"
+	@printf "Deploy / Packaging Assets:\n"
+	@printf "  make build-catalog-image  Build %s\n" "$(CATALOG_IMAGE)"
+	@printf "  make build-web-image      Build %s\n" "$(WEB_IMAGE)"
+	@printf "  make docker-build         Build the production Catalog image\n"
+	@printf "  make compose-up           Start production compose assets only\n"
+	@printf "  make compose-down         Stop production compose assets only\n\n"
+	@printf "CLI against local kind stack:\n"
+	@printf "  make cli ARGS=\"find pdf\" [CLI_TOKEN=auto] [NPM_BACKEND=%s] [NPM_USERCONFIG=/abs/path/.npmrc]\n" "$(NPM_BACKENDS)"
+	@printf "  make cli-find QUERY=%s [OUTPUT=%s]  # compatibility alias over make cli\n" "$(QUERY)" "$(OUTPUT_FORMATS)"
+	@printf "  make cli-add PACKAGE=%s [NPM_BACKEND=%s] [NPM_USERCONFIG=/abs/path/.npmrc]  # compatibility alias\n" "$(PACKAGE)" "$(NPM_BACKENDS)"
+	@printf "  make cli-publish SKILL_PATH=%s [NPM_BACKEND=%s] [NPM_USERCONFIG=/abs/path/.npmrc]  # compatibility alias\n" "$(CLI_PUBLISH_EXAMPLE)" "$(NPM_BACKENDS)"
+	@printf "  make cli-import-local SKILL_PATH=%s PACKAGE=%s VERSION=%s [NPM_BACKEND=%s] [NPM_USERCONFIG=/abs/path/.npmrc]  # compatibility alias\n" "$(CLI_PUBLISH_EXAMPLE)" "$(CLI_IMPORT_EXAMPLE_PACKAGE)" "$(CLI_IMPORT_EXAMPLE_VERSION)" "$(NPM_BACKENDS)"
+	@printf "  make cli-list [CLI_ARGS=\"--json\"]\n"
+	@printf "  make cli-remove CLI_ARGS=\"my-skill -y\"\n"
+	@printf "  make cli-update [CLI_ARGS=\"my-skill -g\"]\n"
+	@printf "  make cli-init NAME=my-skill\n"
+	@printf "  make cli-inspect SKILL_PATH=%s\n\n" "$(CLI_PUBLISH_EXAMPLE)"
 	@printf "Batch import:\n"
-	@printf "  make batch-import MANIFEST=/abs/path/to/import.json [NPM_BACKEND=direct|verdaccio|verdaccio-auth|nexus] [STRICT=1]\n\n"
+	@printf "  make batch-import MANIFEST=%s [NPM_BACKEND=%s] [NPM_USERCONFIG=/abs/path/.npmrc] [STRICT=1]\n\n" "$(BATCH_IMPORT_MANIFEST_EXAMPLE)" "$(NPM_BACKENDS)"
 	@printf "Cleanup:\n"
-	@printf "  make clean-dev         Remove temp CLI, Catalog, Verdaccio, Nexus, uv cache, and .venv state\n"
+	@printf "  make clean-dev         Remove temp CLI, Nexus bootstrap artifacts, uv cache, and .venv state\n"
 
-verify: test-go typecheck-cli test-cli
+verify: $(VERIFY_FAST_TARGETS)
 
-verify-full: verify test-cli-dist
-
-test: verify
+verify-full: $(VERIFY_FULL_TARGETS)
 
 test-go:
 	env GOCACHE=$(GO_CACHE) go test ./...
@@ -130,8 +167,23 @@ web-install:
 typecheck-web:
 	npm --prefix $(WEB_DIR) run type-check
 
+test-web:
+	npm --prefix $(WEB_DIR) test
+
 build-web:
 	npm --prefix $(WEB_DIR) run build
+
+build-catalog-image:
+	docker build -f zarf/docker/Dockerfile -t $(CATALOG_IMAGE) .
+
+build-web-image:
+	docker build -f zarf/docker/skills-web.Dockerfile -t $(WEB_IMAGE) .
+
+build-images: build-catalog-image build-web-image
+
+test-web-e2e:
+	$(WEB_E2E_ENV) npm --prefix $(WEB_DIR) run build
+	$(WEB_E2E_ENV) npm --prefix $(WEB_DIR) run test:e2e
 
 web-dev:
 	npm --prefix $(WEB_DIR) run dev
@@ -139,250 +191,202 @@ web-dev:
 docker-build:
 	docker build -f zarf/docker/Dockerfile -t skill-registry:latest .
 
-compose-up:
-	@compose_file=""; \
-	case "$(COMPOSE_STACK)" in \
-		production) compose_file="zarf/compose/production.yml" ;; \
-		local) compose_file="zarf/compose/local.yml" ;; \
-		nexus) compose_file="zarf/compose/nexus.yml" ;; \
-		*) echo "Unsupported COMPOSE_STACK: $(COMPOSE_STACK). Use production, local, or nexus." >&2; exit 1 ;; \
-	esac; \
-	docker compose -f "$$compose_file" up --build
+dev-prepull:
+	docker pull $(DEV_POSTGRES_IMAGE)
+	docker pull $(DEV_NEXUS_IMAGE)
 
-compose-down:
-	@compose_file=""; \
-	case "$(COMPOSE_STACK)" in \
-		production) compose_file="zarf/compose/production.yml" ;; \
-		local) compose_file="zarf/compose/local.yml" ;; \
-		nexus) compose_file="zarf/compose/nexus.yml" ;; \
-		*) echo "Unsupported COMPOSE_STACK: $(COMPOSE_STACK). Use production, local, or nexus." >&2; exit 1 ;; \
-	esac; \
-	docker compose -f "$$compose_file" down
+dev-up:
+	kind create cluster \
+		--image $(KIND_IMAGE) \
+		--name $(KIND_CLUSTER) \
+		--config $(DEV_KIND_CONFIG)
 
-registry-reset:
-	rm -f /private/tmp/skill-registry.db /private/tmp/skill-registry.db-shm /private/tmp/skill-registry.db-wal
+dev-down:
+	kind delete cluster --name $(KIND_CLUSTER)
 
-registry-run:
-	@if [ -n "$(RESET_DB)" ]; then \
-		$(MAKE) registry-reset; \
-	fi
-	@sample_base_url="$(REGISTRY_URL)/mock-npm"; \
-	npm_registry_url=""; \
-	case "$(REGISTRY_BACKEND)" in \
-		sample) ;; \
-		mock) npm_registry_url="$(REGISTRY_URL)/mock-npm" ;; \
-		verdaccio) sample_base_url="$(VERDACCIO_URL)"; npm_registry_url="$(VERDACCIO_URL)" ;; \
-		verdaccio-auth) sample_base_url="$(VERDACCIO_AUTH_URL)"; npm_registry_url="$(VERDACCIO_AUTH_URL)" ;; \
-		nexus) sample_base_url="$(NEXUS_REPOSITORY_URL)"; npm_registry_url="$(NEXUS_REPOSITORY_URL)" ;; \
-		*) echo "Unsupported REGISTRY_BACKEND: $(REGISTRY_BACKEND). Use sample, mock, verdaccio, verdaccio-auth, or nexus." >&2; exit 1 ;; \
-	esac; \
-	if [ -n "$$npm_registry_url" ]; then \
-		env \
-			GOCACHE=$(GO_CACHE) \
-			SKILL_REGISTRY_ADDR=$(REGISTRY_ADDR) \
-			SKILL_REGISTRY_DATABASE_URL=$(REGISTRY_DB) \
-			SKILL_REGISTRY_SAMPLE_NPM_BASE_URL="$$sample_base_url" \
-			SKILL_REGISTRY_NPM_REGISTRY_URL="$$npm_registry_url" \
-			SKILL_REGISTRY_READER_TOKEN=$(READER_TOKEN) \
-			SKILL_REGISTRY_AUTHORING_TOKEN=$(AUTHORING_TOKEN) \
-			SKILL_REGISTRY_PUBLISHER_TOKEN=$(PUBLISHER_TOKEN) \
-			go run ./cmd/skill-registry; \
-	else \
-		env \
-			GOCACHE=$(GO_CACHE) \
-			SKILL_REGISTRY_ADDR=$(REGISTRY_ADDR) \
-			SKILL_REGISTRY_DATABASE_URL=$(REGISTRY_DB) \
-			SKILL_REGISTRY_SAMPLE_NPM_BASE_URL="$$sample_base_url" \
-			SKILL_REGISTRY_READER_TOKEN=$(READER_TOKEN) \
-			SKILL_REGISTRY_AUTHORING_TOKEN=$(AUTHORING_TOKEN) \
-			SKILL_REGISTRY_PUBLISHER_TOKEN=$(PUBLISHER_TOKEN) \
-			go run ./cmd/skill-registry; \
-	fi
+dev-load:
+	docker image inspect $(DEV_POSTGRES_IMAGE) >/dev/null
+	docker image inspect $(DEV_NEXUS_IMAGE) >/dev/null
+	kind load docker-image $(CATALOG_IMAGE) --name $(KIND_CLUSTER)
+	kind load docker-image $(WEB_IMAGE) --name $(KIND_CLUSTER)
+	@platform="$$(docker image inspect $(DEV_POSTGRES_IMAGE) --format '{{.Os}}/{{.Architecture}}{{if .Variant}}/{{.Variant}}{{end}}')"; \
+	archive="$$(mktemp -t skill-registry-postgres-archive)"; \
+	docker save --platform "$$platform" -o "$$archive" $(DEV_POSTGRES_IMAGE); \
+	kind load image-archive "$$archive" --name $(KIND_CLUSTER); \
+	rm -f "$$archive"
+	@platform="$$(docker image inspect $(DEV_NEXUS_IMAGE) --format '{{.Os}}/{{.Architecture}}{{if .Variant}}/{{.Variant}}{{end}}')"; \
+	archive="$$(mktemp -t skill-registry-nexus-archive)"; \
+	docker save --platform "$$platform" -o "$$archive" $(DEV_NEXUS_IMAGE); \
+	kind load image-archive "$$archive" --name $(KIND_CLUSTER); \
+	rm -f "$$archive"
 
-verdaccio-run:
-	@verdaccio_addr="$(VERDACCIO_ADDR)"; \
-	verdaccio_state_dir="$(VERDACCIO_STATE_DIR)"; \
-	verdaccio_config="$(PWD)/zarf/docker/verdaccio/public.yaml"; \
-	case "$(VERDACCIO_MODE)" in \
-		public) ;; \
-		auth) verdaccio_addr="$(VERDACCIO_AUTH_ADDR)"; verdaccio_state_dir="$(VERDACCIO_AUTH_STATE_DIR)"; verdaccio_config="$(PWD)/zarf/docker/verdaccio/auth.yaml" ;; \
-		strict) verdaccio_addr="$(VERDACCIO_AUTH_ADDR)"; verdaccio_state_dir="$(VERDACCIO_AUTH_STATE_DIR)"; verdaccio_config="$(PWD)/zarf/docker/verdaccio/strict-auth.yaml" ;; \
-		*) echo "Unsupported VERDACCIO_MODE: $(VERDACCIO_MODE). Use public, auth, or strict." >&2; exit 1 ;; \
-	esac; \
-	env \
-		VERDACCIO_ADDR="$$verdaccio_addr" \
-		VERDACCIO_STATE_DIR="$$verdaccio_state_dir" \
-		VERDACCIO_CONFIG="$$verdaccio_config" \
-		./zarf/scripts/run-verdaccio.sh
+dev-apply:
+	kubectl apply -f $(DEV_K8S_MANIFEST)
 
-verdaccio-reset:
-	rm -rf $(VERDACCIO_STATE_DIR)
+dev-delete:
+	kubectl delete -f $(DEV_K8S_MANIFEST) --ignore-not-found
 
-verdaccio-login:
-	env \
-		VERDACCIO_URL=$(VERDACCIO_AUTH_URL) \
-		VERDACCIO_STATE_DIR=$(VERDACCIO_AUTH_STATE_DIR) \
-		VERDACCIO_NPMRC_PATH=$(VERDACCIO_AUTH_NPMRC) \
-		./zarf/scripts/verdaccio-login.sh
-
-verdaccio-auth-reset:
-	rm -rf $(VERDACCIO_AUTH_STATE_DIR)
-
-nexus-run:
-	env \
-		NEXUS_IMAGE=$(NEXUS_IMAGE) \
-		NEXUS_ADDR=$(NEXUS_ADDR) \
-		NEXUS_STATE_DIR=$(NEXUS_STATE_DIR) \
-		./zarf/scripts/run-nexus.sh
-
-nexus-bootstrap:
+dev-bootstrap:
+	@mkdir -p $(NEXUS_STATE_DIR)
+	@kubectl -n $(K8S_NAMESPACE) rollout status deployment/nexus
+	@pod_name="$$(kubectl -n $(K8S_NAMESPACE) get pods -l app=nexus -o jsonpath='{.items[0].metadata.name}')"; \
+	test -n "$$pod_name" || (echo "Nexus pod not found in namespace $(K8S_NAMESPACE)" && exit 1); \
+	kubectl -n $(K8S_NAMESPACE) exec "$$pod_name" -- sh -c 'until [ -f /nexus-data/admin.password ]; do sleep 2; done; cat /nexus-data/admin.password' > $(NEXUS_INITIAL_PASSWORD_FILE); \
+	anonymous_read="$(NEXUS_ENABLE_ANONYMOUS_READ)"; \
+	if [ -n "$(STRICT)" ] && [ "$(STRICT)" != "0" ]; then \
+		anonymous_read="false"; \
+	fi; \
 	env \
 		NEXUS_URL=$(NEXUS_URL) \
 		NEXUS_STATE_DIR=$(NEXUS_STATE_DIR) \
+		NEXUS_INITIAL_PASSWORD_FILE=$(NEXUS_INITIAL_PASSWORD_FILE) \
 		NEXUS_REPOSITORY_NAME=$(NEXUS_REPOSITORY_NAME) \
 		NEXUS_REPOSITORY_URL=$(NEXUS_REPOSITORY_URL) \
 		NEXUS_ADMIN_PASSWORD=$(NEXUS_ADMIN_PASSWORD) \
-		NEXUS_ENABLE_ANONYMOUS_READ=$(if $(STRICT),false,$(NEXUS_ENABLE_ANONYMOUS_READ)) \
+		NEXUS_ENABLE_ANONYMOUS_READ="$$anonymous_read" \
 		NEXUS_NPMRC_PATH=$(NEXUS_NPMRC) \
 		./zarf/scripts/nexus-bootstrap.sh
 
-nexus-reset:
-	rm -rf $(NEXUS_STATE_DIR)
+dev-ready:
+	kubectl -n $(K8S_NAMESPACE) rollout status deployment/postgres
+	kubectl -n $(K8S_NAMESPACE) rollout status deployment/nexus
+	kubectl -n $(K8S_NAMESPACE) rollout status deployment/catalog
+	kubectl -n $(K8S_NAMESPACE) rollout status deployment/skills-web
 
-cli-find:
-	@find_output_arg=""; \
-	case "$(OUTPUT)" in \
-		text|"") ;; \
-		json) find_output_arg="--json" ;; \
-		*) echo "Unsupported OUTPUT: $(OUTPUT). Use text or json." >&2; exit 1 ;; \
+dev-run: build-images dev-prepull dev-up dev-load dev-apply dev-bootstrap dev-ready
+
+dev-reset:
+	$(MAKE) --no-print-directory dev-down
+	$(MAKE) --no-print-directory clean-dev
+	$(MAKE) --no-print-directory dev-run
+
+dev-update: build-images dev-load
+	kubectl -n $(K8S_NAMESPACE) rollout restart deployment/nexus deployment/catalog deployment/skills-web
+
+dev-update-apply: build-images dev-load dev-apply
+
+dev-status:
+	kubectl -n $(K8S_NAMESPACE) get pods,svc -o wide
+
+compose-up:
+	docker compose -f zarf/compose/production.yml up --build
+
+compose-down:
+	docker compose -f zarf/compose/production.yml down
+
+cli:
+	@test -n '$(strip $(ARGS))' || (echo "ARGS is required, e.g. make cli ARGS=\"find pdf\"" && exit 1)
+	@eval "set -- $(ARGS)"; \
+	command="$$1"; \
+	cli_token="$(CLI_TOKEN)"; \
+	runtime_home="$(CLI_HOME)"; \
+	runtime_state="$(CLI_STATE)"; \
+	case "$$command" in \
+		add|a|list|ls|remove|rm|update) runtime_home="$(HOST_HOME)"; runtime_state="$(HOST_XDG_STATE_HOME)" ;; \
 	esac; \
+	if [ -z "$$cli_token" ]; then \
+		case "$$command" in \
+			find|add|a|list|ls|remove|rm|update) cli_token="$(READER_TOKEN)" ;; \
+			init|inspect) cli_token="$(AUTHORING_TOKEN)" ;; \
+			publish|import-local) cli_token="$(PUBLISHER_TOKEN)" ;; \
+			*) cli_token="$(PUBLISHER_TOKEN)" ;; \
+		esac; \
+	fi; \
+	needs_registry=0; \
+	case "$$command" in \
+		find|add|a|inspect|publish|import-local) needs_registry=1 ;; \
+	esac; \
+	if [ "$$needs_registry" = "1" ]; then \
+		has_registry=0; \
+		for arg in "$$@"; do \
+			if [ "$$arg" = "--registry" ]; then has_registry=1; fi; \
+		done; \
+		if [ "$$has_registry" = "0" ]; then \
+			set -- "$$@" --registry "$(REGISTRY_URL)"; \
+		fi; \
+	fi; \
+	if [ "$$command" = "import-local" ] && [ "$(NPM_BACKEND)" = "nexus" ]; then \
+		has_npm_registry=0; \
+		for arg in "$$@"; do \
+			if [ "$$arg" = "--npm-registry" ]; then has_npm_registry=1; fi; \
+		done; \
+		if [ "$$has_npm_registry" = "0" ]; then \
+			set -- "$$@" --npm-registry "$(NEXUS_NPM_REGISTRY)"; \
+		fi; \
+	fi; \
+	$(resolve_npm_backend); \
+	state_env=""; \
+	if [ -n "$$runtime_state" ]; then state_env="XDG_STATE_HOME=$$runtime_state"; fi; \
 	env \
 		SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
-		SKILLS_REGISTRY_TOKEN=$(READER_TOKEN) \
-		node $(CLI_ENTRY) find "$(QUERY)" --registry $(REGISTRY_URL) $$find_output_arg
+		SKILLS_REGISTRY_TOKEN="$$cli_token" \
+		HOME="$$runtime_home" \
+		XDG_CACHE_HOME=$(CLI_CACHE) \
+		$$state_env \
+		NPM_CONFIG_USERCONFIG="$$userconfig" \
+		npm_config_registry="$$npm_registry" \
+		node $(CLI_ENTRY) "$$@"
+
+cli-find:
+	@case "$(OUTPUT)" in \
+		""|text) output_flag="" ;; \
+		json) output_flag="--json" ;; \
+		*) echo "Unsupported OUTPUT='$(OUTPUT)'. Use text or json."; exit 1 ;; \
+	esac; \
+	$(MAKE_CLI) CLI_TOKEN=$(READER_TOKEN) ARGS="find \"$(QUERY)\" $$output_flag $(CLI_ARGS)"
 
 cli-add:
-	@npm_userconfig=""; \
-	npm_registry=""; \
-	case "$(NPM_BACKEND)" in \
-		direct|"") ;; \
-		verdaccio) npm_registry="$(VERDACCIO_URL)" ;; \
-		verdaccio-auth) npm_userconfig="$(VERDACCIO_AUTH_NPMRC)"; npm_registry="$(VERDACCIO_AUTH_URL)" ;; \
-		nexus) npm_userconfig="$(NEXUS_NPMRC)" ;; \
-		*) echo "Unsupported NPM_BACKEND: $(NPM_BACKEND). Use direct, verdaccio, verdaccio-auth, or nexus." >&2; exit 1 ;; \
-	esac; \
-	if [ -n "$$npm_userconfig" ] && [ -n "$$npm_registry" ]; then \
-		env \
-			SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
-			SKILLS_REGISTRY_TOKEN=$(READER_TOKEN) \
-			HOME=$(CLI_HOME) \
-			XDG_CACHE_HOME=$(CLI_CACHE) \
-			XDG_STATE_HOME=$(CLI_STATE) \
-			NPM_CONFIG_USERCONFIG="$$npm_userconfig" \
-			npm_config_registry="$$npm_registry" \
-			node $(CLI_ENTRY) add $(PACKAGE) -y --registry $(REGISTRY_URL); \
-	elif [ -n "$$npm_userconfig" ]; then \
-		env \
-			SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
-			SKILLS_REGISTRY_TOKEN=$(READER_TOKEN) \
-			HOME=$(CLI_HOME) \
-			XDG_CACHE_HOME=$(CLI_CACHE) \
-			XDG_STATE_HOME=$(CLI_STATE) \
-			NPM_CONFIG_USERCONFIG="$$npm_userconfig" \
-			node $(CLI_ENTRY) add $(PACKAGE) -y --registry $(REGISTRY_URL); \
-	elif [ -n "$$npm_registry" ]; then \
-		env \
-			SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
-			SKILLS_REGISTRY_TOKEN=$(READER_TOKEN) \
-			HOME=$(CLI_HOME) \
-			XDG_CACHE_HOME=$(CLI_CACHE) \
-			XDG_STATE_HOME=$(CLI_STATE) \
-			npm_config_registry="$$npm_registry" \
-			node $(CLI_ENTRY) add $(PACKAGE) -y --registry $(REGISTRY_URL); \
-	else \
-		env \
-			SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
-			SKILLS_REGISTRY_TOKEN=$(READER_TOKEN) \
-			HOME=$(CLI_HOME) \
-			XDG_CACHE_HOME=$(CLI_CACHE) \
-			XDG_STATE_HOME=$(CLI_STATE) \
-			node $(CLI_ENTRY) add $(PACKAGE) -y --registry $(REGISTRY_URL); \
-	fi
+	@$(MAKE_CLI) \
+		CLI_TOKEN=$(READER_TOKEN) \
+		NPM_BACKEND=$(NPM_BACKEND) \
+		NPM_USERCONFIG="$(NPM_USERCONFIG)" \
+		ARGS="add $(PACKAGE) -y $(CLI_ARGS)"
 
 cli-publish:
-	@test -n "$(SKILL_PATH)" || (echo "SKILL_PATH is required, e.g. make cli-publish SKILL_PATH=/abs/path/to/skill [NPM_BACKEND=verdaccio|verdaccio-auth|nexus]" && exit 1)
-	@npm_userconfig=""; \
-	npm_registry=""; \
-	case "$(NPM_BACKEND)" in \
-		direct|"") ;; \
-		verdaccio) npm_registry="$(VERDACCIO_URL)" ;; \
-		verdaccio-auth) npm_userconfig="$(VERDACCIO_AUTH_NPMRC)"; npm_registry="$(VERDACCIO_AUTH_URL)" ;; \
-		nexus) npm_userconfig="$(NEXUS_NPMRC)"; npm_registry="$(NEXUS_REPOSITORY_URL)/" ;; \
-		*) echo "Unsupported NPM_BACKEND: $(NPM_BACKEND). Use direct, verdaccio, verdaccio-auth, or nexus." >&2; exit 1 ;; \
-	esac; \
-	if [ -n "$$npm_userconfig" ] && [ -n "$$npm_registry" ]; then \
-		env \
-			SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
-			SKILLS_REGISTRY_TOKEN=$(PUBLISHER_TOKEN) \
-			HOME=$(CLI_HOME) \
-			XDG_CACHE_HOME=$(CLI_CACHE) \
-			XDG_STATE_HOME=$(CLI_STATE) \
-			NPM_CONFIG_USERCONFIG="$$npm_userconfig" \
-			npm_config_registry="$$npm_registry" \
-			node $(CLI_ENTRY) publish $(SKILL_PATH) --registry $(REGISTRY_URL); \
-	elif [ -n "$$npm_userconfig" ]; then \
-		env \
-			SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
-			SKILLS_REGISTRY_TOKEN=$(PUBLISHER_TOKEN) \
-			HOME=$(CLI_HOME) \
-			XDG_CACHE_HOME=$(CLI_CACHE) \
-			XDG_STATE_HOME=$(CLI_STATE) \
-			NPM_CONFIG_USERCONFIG="$$npm_userconfig" \
-			node $(CLI_ENTRY) publish $(SKILL_PATH) --registry $(REGISTRY_URL); \
-	elif [ -n "$$npm_registry" ]; then \
-		env \
-			SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
-			SKILLS_REGISTRY_TOKEN=$(PUBLISHER_TOKEN) \
-			HOME=$(CLI_HOME) \
-			XDG_CACHE_HOME=$(CLI_CACHE) \
-			XDG_STATE_HOME=$(CLI_STATE) \
-			npm_config_registry="$$npm_registry" \
-			node $(CLI_ENTRY) publish $(SKILL_PATH) --registry $(REGISTRY_URL); \
-	else \
-		env \
-			SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
-			SKILLS_REGISTRY_TOKEN=$(PUBLISHER_TOKEN) \
-			HOME=$(CLI_HOME) \
-			XDG_CACHE_HOME=$(CLI_CACHE) \
-			XDG_STATE_HOME=$(CLI_STATE) \
-			node $(CLI_ENTRY) publish $(SKILL_PATH) --registry $(REGISTRY_URL); \
-	fi
+	@test -n "$(SKILL_PATH)" || (echo "SKILL_PATH is required, e.g. make cli-publish SKILL_PATH=/abs/path/to/skill" && exit 1)
+	@$(MAKE_CLI) \
+		NPM_BACKEND=$(NPM_BACKEND) \
+		NPM_USERCONFIG="$(NPM_USERCONFIG)" \
+		ARGS="publish $(SKILL_PATH) $(CLI_ARGS)"
+
+cli-import-local:
+	@test -n "$(SKILL_PATH)" || (echo "SKILL_PATH is required, e.g. make cli-import-local SKILL_PATH=/abs/path/to/skill PACKAGE=@company.skill/your-skill VERSION=0.1.0" && exit 1)
+	@test -n "$(PACKAGE)" || (echo "PACKAGE is required" && exit 1)
+	@test -n "$(VERSION)" || (echo "VERSION is required" && exit 1)
+	@args="import-local $(SKILL_PATH) --package-name $(PACKAGE) --version $(VERSION)"; \
+	if [ -n "$(STRICT)" ]; then args="$$args --strict"; fi; \
+	$(MAKE_CLI) \
+		NPM_BACKEND=$(NPM_BACKEND) \
+		NPM_USERCONFIG="$(NPM_USERCONFIG)" \
+		ARGS="$$args $(CLI_ARGS)"
+
+cli-init:
+	@args="init"; \
+	if [ -n "$(NAME)" ]; then args="$$args $(NAME)"; fi; \
+	$(MAKE_CLI) CLI_TOKEN=$(AUTHORING_TOKEN) ARGS="$$args $(CLI_ARGS)"
+
+cli-inspect:
+	@test -n "$(SKILL_PATH)" || (echo "SKILL_PATH is required, e.g. make cli-inspect SKILL_PATH=/abs/path/to/skill" && exit 1)
+	@$(MAKE_CLI) CLI_TOKEN=$(AUTHORING_TOKEN) ARGS="inspect $(SKILL_PATH) $(CLI_ARGS)"
+
+cli-list:
+	@$(MAKE_CLI) CLI_TOKEN=$(READER_TOKEN) ARGS="list $(CLI_ARGS)"
+
+cli-remove:
+	@$(MAKE_CLI) CLI_TOKEN=$(READER_TOKEN) ARGS="remove $(CLI_ARGS)"
+
+cli-update:
+	@$(MAKE_CLI) CLI_TOKEN=$(READER_TOKEN) ARGS="update $(CLI_ARGS)"
 
 batch-import:
-	@test -n "$(MANIFEST)" || (echo "MANIFEST is required, e.g. make batch-import MANIFEST=/abs/path/to/import.json [NPM_BACKEND=verdaccio|verdaccio-auth|nexus]" && exit 1)
-	@npm_userconfig=""; \
-	npm_registry_arg=""; \
-	case "$(NPM_BACKEND)" in \
-		direct|"") ;; \
-		verdaccio) npm_registry_arg="--npm-registry $(VERDACCIO_URL)" ;; \
-		verdaccio-auth) npm_userconfig="$(VERDACCIO_AUTH_NPMRC)"; npm_registry_arg="--npm-registry $(VERDACCIO_AUTH_URL)" ;; \
-		nexus) npm_userconfig="$(NEXUS_NPMRC)"; npm_registry_arg="--npm-registry $(NEXUS_REPOSITORY_URL)/" ;; \
-		*) echo "Unsupported NPM_BACKEND: $(NPM_BACKEND). Use direct, verdaccio, verdaccio-auth, or nexus." >&2; exit 1 ;; \
-	esac; \
-	if [ -n "$$npm_userconfig" ]; then \
-		env \
-			SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
-			SKILLS_REGISTRY_TOKEN=$(PUBLISHER_TOKEN) \
-			NPM_CONFIG_USERCONFIG="$$npm_userconfig" \
-			UV_CACHE_DIR=$(UV_CACHE_DIR) \
-			uv run python tools/batch-import/batch_import_skills.py --manifest $(MANIFEST) --catalog-url $(REGISTRY_URL) $$npm_registry_arg $(if $(STRICT),--strict); \
-	else \
-		env \
-			SKILLS_REGISTRY_URL=$(REGISTRY_URL) \
-			SKILLS_REGISTRY_TOKEN=$(PUBLISHER_TOKEN) \
-			UV_CACHE_DIR=$(UV_CACHE_DIR) \
-			uv run python tools/batch-import/batch_import_skills.py --manifest $(MANIFEST) --catalog-url $(REGISTRY_URL) $$npm_registry_arg $(if $(STRICT),--strict); \
-	fi
+	@test -n "$(MANIFEST)" || (echo "MANIFEST is required, e.g. make batch-import MANIFEST=/abs/path/to/import.json" && exit 1)
+	@$(resolve_npm_backend); \
+	args="uv run python tools/batch-import/batch_import_skills.py --manifest $(MANIFEST) --catalog-url $(REGISTRY_URL)"; \
+	if [ -n "$$npm_registry" ]; then args="$$args --npm-registry $$npm_registry"; fi; \
+	if [ -n "$(STRICT_FLAG)" ]; then args="$$args $(STRICT_FLAG)"; fi; \
+	extra_env=""; \
+	if [ -n "$$userconfig" ]; then extra_env="NPM_CONFIG_USERCONFIG=$$userconfig"; fi; \
+	$(BATCH_IMPORT_ENV) $$extra_env $$args
 
 clean-dev:
-	rm -rf $(CLI_HOME) $(CLI_CACHE) $(UV_CACHE_DIR) .venv /private/tmp/skill-registry.db /private/tmp/skill-registry.db-shm /private/tmp/skill-registry.db-wal $(VERDACCIO_STATE_DIR) $(VERDACCIO_AUTH_STATE_DIR) $(NEXUS_STATE_DIR)
+	rm -rf $(CLI_HOME) $(CLI_CACHE) $(UV_CACHE_DIR) .venv $(NEXUS_STATE_DIR)

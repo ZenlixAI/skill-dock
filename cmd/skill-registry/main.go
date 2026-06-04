@@ -19,8 +19,8 @@ import (
 
 func main() {
 	addr := envOrDefault("SKILL_REGISTRY_ADDR", ":8080")
-	enableSampleData := envBoolOrDefault("SKILL_REGISTRY_ENABLE_SAMPLE_DATA", true)
-	enableMockRegistry := envBoolOrDefault("SKILL_REGISTRY_ENABLE_MOCK_REGISTRY", true)
+	enableSampleData := envBoolOrDefault("SKILL_REGISTRY_ENABLE_SAMPLE_DATA", false)
+	enableMockRegistry := envBoolOrDefault("SKILL_REGISTRY_ENABLE_MOCK_REGISTRY", false)
 	sampleData := configuredSampleData(enableSampleData)
 
 	artifactSource := configuredArtifactSource(sampleData, enableSampleData)
@@ -42,17 +42,18 @@ func main() {
 	}
 
 	server := catalogapi.NewServer(catalogapi.ServerConfig{
-		ReaderToken:         os.Getenv("SKILL_REGISTRY_READER_TOKEN"),
-		AuthoringToken:      os.Getenv("SKILL_REGISTRY_AUTHORING_TOKEN"),
-		PublisherToken:      os.Getenv("SKILL_REGISTRY_PUBLISHER_TOKEN"),
-		AuthTokens:          configuredAuthTokens(),
-		MockRegistry:        configuredMockRegistry(sampleData, enableMockRegistry),
-		DisableMockRegistry: !enableMockRegistry,
-		Packaging:           packaging.NewService(""),
-		Repository:          repository,
-		Idempotency:         idempotencyStore,
-		Audit:               auditStore,
-		Logger:              log.New(os.Stderr, "", 0),
+		ReaderToken:          os.Getenv("SKILL_REGISTRY_READER_TOKEN"),
+		AuthoringToken:       os.Getenv("SKILL_REGISTRY_AUTHORING_TOKEN"),
+		PublisherToken:       os.Getenv("SKILL_REGISTRY_PUBLISHER_TOKEN"),
+		PublicNPMRegistryURL: os.Getenv("SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL"),
+		AuthTokens:           configuredAuthTokens(),
+		MockRegistry:         configuredMockRegistry(sampleData, enableMockRegistry),
+		DisableMockRegistry:  !enableMockRegistry,
+		Packaging:            packaging.NewService(""),
+		Repository:           repository,
+		Idempotency:          idempotencyStore,
+		Audit:                auditStore,
+		Logger:               log.New(os.Stderr, "", 0),
 	})
 
 	log.Printf("skill registry listening on %s", addr)

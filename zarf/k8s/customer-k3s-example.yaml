@@ -1,0 +1,188 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: skill-registry
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: catalog-secrets
+  namespace: skill-registry
+type: Opaque
+stringData:
+  skill_registry_database_url: postgres://skill_registry:change-me@postgresql.database.svc.cluster.local:5432/skill_registry?sslmode=disable
+  skill_registry_reader_token: replace-reader-token
+  skill_registry_authoring_token: replace-authoring-token
+  skill_registry_publisher_token: replace-publisher-token
+  # Address used by the Catalog process itself to read registry metadata/tarballs.
+  skill_registry_npm_registry_url: https://nexus.example.com/repository/skills-npm
+  # Address returned to external CLI clients in install-target responses.
+  # If Catalog runs in-cluster and CLI runs on operator/dev machines, this must be CLI-reachable.
+  skill_registry_public_npm_registry_url: https://nexus.example.com/repository/skills-npm
+  skill_registry_auth_tokens_json: ""
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog
+  namespace: skill-registry
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: catalog
+  template:
+    metadata:
+      labels:
+        app: catalog
+    spec:
+      containers:
+        - name: catalog
+          image: registry.example.com/skill-registry-catalog:1.0.0
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: SKILL_REGISTRY_ADDR
+              value: ":8080"
+            - name: SKILL_REGISTRY_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: catalog-secrets
+                  key: skill_registry_database_url
+            - name: SKILL_REGISTRY_READER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: catalog-secrets
+                  key: skill_registry_reader_token
+            - name: SKILL_REGISTRY_AUTHORING_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: catalog-secrets
+                  key: skill_registry_authoring_token
+            - name: SKILL_REGISTRY_PUBLISHER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: catalog-secrets
+                  key: skill_registry_publisher_token
+            - name: SKILL_REGISTRY_NPM_REGISTRY_URL
+              valueFrom:
+                secretKeyRef:
+                  name: catalog-secrets
+                  key: skill_registry_npm_registry_url
+            - name: SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL
+              valueFrom:
+                secretKeyRef:
+                  name: catalog-secrets
+                  key: skill_registry_public_npm_registry_url
+            - name: SKILL_REGISTRY_AUTH_TOKENS_JSON
+              valueFrom:
+                secretKeyRef:
+                  name: catalog-secrets
+                  key: skill_registry_auth_tokens_json
+            - name: SKILL_REGISTRY_ENABLE_SAMPLE_DATA
+              value: "false"
+            - name: SKILL_REGISTRY_ENABLE_MOCK_REGISTRY
+              value: "false"
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalog
+  namespace: skill-registry
+spec:
+  selector:
+    app: catalog
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: web-secrets
+  namespace: skill-registry
+type: Opaque
+stringData:
+  # Recommended: inject a low-privilege read token only.
+  catalog_authorization_header: Bearer replace-reader-token
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: skills-web
+  namespace: skill-registry
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: skills-web
+  template:
+    metadata:
+      labels:
+        app: skills-web
+    spec:
+      containers:
+        - name: skills-web
+          image: registry.example.com/skill-registry-web:1.0.0
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: CATALOG_UPSTREAM
+              value: http://catalog.skill-registry.svc.cluster.local:8080
+            - name: CATALOG_AUTHORIZATION_HEADER
+              valueFrom:
+                secretKeyRef:
+                  name: web-secrets
+                  key: catalog_authorization_header
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: skills-web
+  namespace: skill-registry
+spec:
+  selector:
+    app: skills-web
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: skills-web
+  namespace: skill-registry
+  annotations:
+    kubernetes.io/ingress.class: traefik
+spec:
+  rules:
+    - host: skills.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: skills-web
+                port:
+                  number: 8080

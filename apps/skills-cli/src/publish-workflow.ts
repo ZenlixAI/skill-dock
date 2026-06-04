@@ -1,18 +1,15 @@
 import { spawnSync } from 'child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'fs';
-import { tmpdir } from 'os';
-import { basename, join, resolve } from 'path';
+import { resolve } from 'path';
 import {
-  downloadPackedBundle,
   getRegistryBaseUrl,
-  packSkillPackaging,
-  type PackagingImportReport,
   putReleaseRecord,
   type PackagingWarningDetail,
-  type PackPackagingResponse,
 } from './catalog.ts';
+import type { PackagingImportReport } from './catalog.ts';
+import { packLocalSkillDirectory } from './local-packaging.ts';
 import { resolveNpmUserConfigPath } from './npm-auth.ts';
 import { runPackagingSession } from './packaging-session.ts';
+import { normalizeRegistryUrl } from './registry-url.ts';
 
 export interface PublishWorkflowOptions {
   path?: string;
@@ -39,53 +36,27 @@ export type PublishWorkflowResult = PublishWorkflowSuccessResult | PublishWorkfl
 
 interface PackedSkill {
   bundlePath: string;
+  manifestDigest: string;
   cleanup: () => void;
 }
 
-function writePackedBundleToTemp(packed: PackPackagingResponse, bundleContent: Buffer): PackedSkill {
-  const tempDir = mkdtempSync(join(tmpdir(), 'skills-publish-'));
-  const bundleName =
-    basename(packed.bundlePath) ||
-    `${packed.packageName.replace(/^@/, '').replace(/\//g, '-')}-${packed.version}.tgz`;
-  const bundlePath = join(tempDir, bundleName);
-
-  writeFileSync(bundlePath, bundleContent);
-
-  return {
-    bundlePath,
-    cleanup: () => rmSync(tempDir, { recursive: true, force: true }),
-  };
+function resolvePublishUserConfigPath(directory: string): string | undefined {
+  return process.env.NPM_CONFIG_USERCONFIG || resolveNpmUserConfigPath({ cwd: directory });
 }
 
-async function materializePackedBundle(
-  packed: PackPackagingResponse,
-  registry: string
-): Promise<PackedSkill> {
-  if (packed.bundleBase64) {
-    return writePackedBundleToTemp(packed, Buffer.from(packed.bundleBase64, 'base64'));
+function publishBundle(directory: string, bundlePath: string, npmRegistry?: string): void {
+  const args = ['publish', bundlePath];
+  if (typeof npmRegistry === 'string' && npmRegistry.trim() !== '') {
+    args.push('--registry', npmRegistry.trim());
   }
-
-  const bundleContent = await downloadPackedBundle({
-    registry,
-    workspacePath: packed.workspacePath,
-    target: {
-      packageName: packed.packageName,
-      version: packed.version,
-    },
-  });
-  return writePackedBundleToTemp(packed, bundleContent);
-}
-
-function publishBundle(directory: string, bundlePath: string): void {
-  const result = spawnSync('npm', ['publish', bundlePath], {
+  const userConfigPath = resolvePublishUserConfigPath(directory);
+  const result = spawnSync('npm', args, {
     cwd: directory,
     stdio: ['inherit', 'pipe', 'pipe'],
     encoding: 'utf-8',
     env: {
       ...process.env,
-      ...(resolveNpmUserConfigPath({ cwd: directory })
-        ? { NPM_CONFIG_USERCONFIG: resolveNpmUserConfigPath({ cwd: directory }) }
-        : {}),
+      ...(userConfigPath ? { NPM_CONFIG_USERCONFIG: userConfigPath } : {}),
     },
     shell: process.platform === 'win32',
   });
@@ -106,39 +77,31 @@ export async function runPublishWorkflow(
   const registry = getRegistryBaseUrl(options.registry);
   const session = await runPackagingSession({
     path: options.path,
-    registry,
     strict: options.strict,
   });
 
-  if (!session.ok || session.sessionKind !== 'registry' || !session.packageName || !session.version) {
+  if (!session.ok || !session.packageName || !session.version) {
     return failure(session.errors);
   }
 
   try {
-    const packed = await packSkillPackaging({
-      registry,
-      idempotencyKey: session.idempotencyKey,
-      workspacePath: session.workspacePath,
-      target: {
-        packageName: session.packageName,
-        version: session.version,
-      },
-      includeBundle: false,
+    const npmPublishRegistry =
+      session.publishRegistry?.trim() ||
+      process.env.npm_config_registry ||
+      process.env.NPM_CONFIG_REGISTRY ||
+      undefined;
+    const bundle: PackedSkill = await packLocalSkillDirectory({
+      directory,
     });
-    if (packed.errors.length > 0) {
-      return failure(packed.errors);
-    }
-
-    const bundle = await materializePackedBundle(packed, registry);
     let retainBundleUntilExit = false;
     try {
-      publishBundle(directory, bundle.bundlePath);
+      publishBundle(directory, bundle.bundlePath, npmPublishRegistry);
 
       await putReleaseRecord(session.packageName, session.version, {
         registry,
-        publishRegistry: session.publishRegistry,
-        manifestDigest: packed.manifestDigest,
-        components: packed.components,
+        publishRegistry: normalizeRegistryUrl(session.publishRegistry),
+        manifestDigest: bundle.manifestDigest,
+        components: session.components,
       });
 
       retainBundleUntilExit = true;
@@ -149,9 +112,6 @@ export async function runPublishWorkflow(
         packageName: session.packageName,
         version: session.version,
         bundlePath: bundle.bundlePath,
-        ...(session.warnings ? { warnings: session.warnings } : {}),
-        ...(session.warningDetails ? { warningDetails: session.warningDetails } : {}),
-        ...(session.importReport ? { importReport: session.importReport } : {}),
       };
     } finally {
       if (!retainBundleUntilExit) {

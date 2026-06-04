@@ -2,11 +2,13 @@ package packaging
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/url"
 	"os"
 	"os/exec"
@@ -24,8 +26,12 @@ var (
 	exactVersionRE = regexp.MustCompile(`^\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
 )
 
-const requiredPackageScope = "@platform.skill/"
 const importReportPath = ".skill-packaging-import-report.json"
+
+var packagingIgnoredDirectories = map[string]struct{}{
+	".dist": {},
+	".git":  {},
+}
 
 type Service struct {
 	tempRoot     string
@@ -59,11 +65,13 @@ func (s *Service) Prepare(input PrepareRequest) (PrepareResponse, error) {
 
 	switch input.Source.Type {
 	case "local":
-		if err := copySourceDirectory(input.Source.Location, workspacePath); err != nil {
-			return PrepareResponse{}, err
-		}
+		return PrepareResponse{}, catalog.NewError(422, "unsupported_source_type", "source.type=local has been removed. Upload the source archive content instead of sending a local filesystem path.", map[string]any{"sourceType": input.Source.Type})
 	case "git":
 		if err := prepareGitSource(s.tempRoot, input.Source, workspacePath); err != nil {
+			return PrepareResponse{}, err
+		}
+	case "upload_archive":
+		if err := extractUploadedArchive(input.Source.ArchiveBase64, workspacePath); err != nil {
 			return PrepareResponse{}, err
 		}
 	case "platform_authoring":
@@ -99,7 +107,13 @@ func (s *Service) Prepare(input PrepareRequest) (PrepareResponse, error) {
 	if _, err := os.Stat(filepath.Join(workspacePath, "SKILL.md")); err != nil {
 		return PrepareResponse{}, catalog.NewError(422, "missing_skill_md", "Root SKILL.md is required.", nil)
 	}
-	if err := writePackageJSON(workspacePath, input.Target, input.Metadata, input.Options, len(warnings) > 0); err != nil {
+	if err := writePackageJSON(
+		workspacePath,
+		input.Target,
+		input.Metadata,
+		input.Options,
+		shouldMarkNormalizedFromImport(warnings),
+	); err != nil {
 		return PrepareResponse{}, catalog.NewError(500, "internal_error", "Failed to write package.json.", nil)
 	}
 	report := buildImportReport(input.Metadata.SourceType, input.Options.Strict, warnings)
@@ -299,6 +313,7 @@ func scanWorkspaceComponents(workspacePath string) ([]string, bool, bool, error)
 	componentSet := map[string]struct{}{}
 	lowercasePaths := map[string]string{}
 	nestedSkill := false
+	hasCapability := false
 
 	err := filepath.WalkDir(workspacePath, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -326,18 +341,24 @@ func scanWorkspaceComponents(workspacePath string) ([]string, bool, bool, error)
 			switch strings.Split(relativePath, "/")[0] {
 			case "commands", "agents", "hooks", "scripts", "docs":
 				componentSet[strings.Split(relativePath, "/")[0]] = struct{}{}
+				hasCapability = true
 			}
 			return nil
 		}
 
+		if relativePath == "SKILL.md" {
+			hasCapability = true
+		}
 		if strings.HasSuffix(relativePath, "/SKILL.md") {
 			nestedSkill = true
 		}
 		switch relativePath {
 		case ".mcp.json":
 			componentSet["mcp"] = struct{}{}
+			hasCapability = true
 		case "plugin.json":
 			componentSet["plugin"] = struct{}{}
+			hasCapability = true
 		}
 		return nil
 	})
@@ -350,7 +371,7 @@ func scanWorkspaceComponents(workspacePath string) ([]string, bool, bool, error)
 		components = append(components, component)
 	}
 	sort.Strings(components)
-	return components, nestedSkill, len(componentSet) > 0, nil
+	return components, nestedSkill, hasCapability, nil
 }
 
 func createBundleArchive(workspacePath string, bundlePath string) error {
@@ -370,19 +391,25 @@ func createBundleArchive(workspacePath string, bundlePath string) error {
 		if walkErr != nil {
 			return walkErr
 		}
-		if path == workspacePath || entry.IsDir() {
+		if path == workspacePath {
 			return nil
-		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			return catalog.NewError(422, "unsafe_path_entry", "workspace must not contain symbolic links.", map[string]any{"path": path})
 		}
 
 		relativePath, err := filepath.Rel(workspacePath, path)
 		if err != nil {
 			return err
 		}
-		if filepath.ToSlash(relativePath) == importReportPath {
+		if shouldIgnorePackagingPath(relativePath) {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
 			return nil
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return catalog.NewError(422, "unsafe_path_entry", "workspace must not contain symbolic links.", map[string]any{"path": path})
 		}
 		content, err := os.ReadFile(path)
 		if err != nil {
@@ -422,8 +449,11 @@ func copySourceDirectory(sourcePath string, workspacePath string) error {
 		if err != nil {
 			return err
 		}
-		if entry.IsDir() && entry.Name() == ".git" {
-			return filepath.SkipDir
+		if shouldIgnorePackagingPath(relativePath) {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 		targetPath := filepath.Join(workspacePath, relativePath)
 		if entry.IsDir() {
@@ -443,6 +473,22 @@ func copySourceDirectory(sourcePath string, workspacePath string) error {
 	})
 }
 
+func shouldIgnorePackagingPath(relativePath string) bool {
+	cleanPath := filepath.ToSlash(filepath.Clean(strings.TrimSpace(relativePath)))
+	if cleanPath == "." || cleanPath == "" {
+		return false
+	}
+	if cleanPath == importReportPath {
+		return true
+	}
+	for _, segment := range strings.Split(cleanPath, "/") {
+		if _, ok := packagingIgnoredDirectories[segment]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 func materializeInlineFiles(workspacePath string, files map[string]string) error {
 	for name, content := range files {
 		targetPath, err := resolveWorkspacePath(workspacePath, name)
@@ -456,6 +502,72 @@ func materializeInlineFiles(workspacePath string, files map[string]string) error
 			return err
 		}
 	}
+	return nil
+}
+
+func extractUploadedArchive(archiveBase64 string, workspacePath string) error {
+	trimmed := strings.TrimSpace(archiveBase64)
+	if trimmed == "" {
+		return catalog.NewError(422, "invalid_request", "source.archiveBase64 is required for source.type=upload_archive.", nil)
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(trimmed)
+	if err != nil {
+		return catalog.NewError(422, "invalid_request", "source.archiveBase64 must be valid base64.", nil)
+	}
+
+	gzipReader, err := gzip.NewReader(bytes.NewReader(decoded))
+	if err != nil {
+		return catalog.NewError(422, "invalid_request", "source archive must be a valid gzip stream.", nil)
+	}
+	defer gzipReader.Close()
+
+	tarReader := tar.NewReader(gzipReader)
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return catalog.NewError(422, "invalid_request", "source archive must be a valid tar stream.", nil)
+		}
+
+		relativePath := filepath.ToSlash(filepath.Clean(strings.TrimSpace(header.Name)))
+		if relativePath == "." || relativePath == "" {
+			continue
+		}
+		if shouldIgnorePackagingPath(relativePath) {
+			continue
+		}
+
+		targetPath, resolveErr := resolveWorkspacePath(workspacePath, relativePath)
+		if resolveErr != nil {
+			return resolveErr
+		}
+
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(targetPath, 0o755); err != nil {
+				return catalog.NewError(500, "internal_error", "Failed to materialize source archive directory.", nil)
+			}
+		case tar.TypeReg, tar.TypeRegA:
+			if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+				return catalog.NewError(500, "internal_error", "Failed to materialize source archive file.", nil)
+			}
+			content, readErr := io.ReadAll(tarReader)
+			if readErr != nil {
+				return catalog.NewError(422, "invalid_request", "source archive contains unreadable file content.", map[string]any{"path": relativePath})
+			}
+			if err := os.WriteFile(targetPath, content, 0o644); err != nil {
+				return catalog.NewError(500, "internal_error", "Failed to write extracted source archive file.", nil)
+			}
+		case tar.TypeSymlink, tar.TypeLink:
+			return catalog.NewError(422, "unsafe_path_entry", "source archive must not contain symbolic links.", map[string]any{"path": relativePath})
+		default:
+			return catalog.NewError(422, "unsafe_path_entry", "source archive contains unsupported entry types.", map[string]any{"path": relativePath, "typeflag": header.Typeflag})
+		}
+	}
+
 	return nil
 }
 
@@ -479,19 +591,7 @@ func normalizeImportedWorkspace(workspacePath string) ([]string, error) {
 		return nil, err
 	}
 	if !hasCapability {
-		readmePath := filepath.Join(workspacePath, "docs", "README.md")
-		if err := os.MkdirAll(filepath.Dir(readmePath), 0o755); err != nil {
-			return nil, catalog.NewError(500, "internal_error", "Failed to create placeholder capability content.", nil)
-		}
-		placeholder := `# Imported Skill Placeholder
-
-This file was generated during packaging normalization because the imported skill
-did not include any capability directories or compatibility manifests.
-`
-		if err := os.WriteFile(readmePath, []byte(placeholder), 0o644); err != nil {
-			return nil, catalog.NewError(500, "internal_error", "Failed to create placeholder capability content.", nil)
-		}
-		warnings = append(warnings, "normalized_missing_capability_content")
+		warnings = append(warnings, "missing_capability_content")
 	}
 
 	return warnings, nil
@@ -537,10 +637,6 @@ func buildImportReport(sourceType string, strictMode bool, warnings []string) *I
 			report.Normalized = true
 			report.GeneratedPackageJSON = true
 			report.GeneratedPaths = append(report.GeneratedPaths, "package.json")
-		case "normalized_missing_capability_content":
-			report.Normalized = true
-			report.GeneratedCapabilityPlaceholder = true
-			report.GeneratedPaths = append(report.GeneratedPaths, "docs/README.md")
 		case "normalized_rewrote_package_json_identity":
 			report.Normalized = true
 			report.RewrotePackageIdentity = true
@@ -648,6 +744,16 @@ func uniqueStrings(values []string) []string {
 	return result
 }
 
+func shouldMarkNormalizedFromImport(warnings []string) bool {
+	for _, warning := range warnings {
+		switch warning {
+		case "normalized_missing_package_json", "normalized_rewrote_package_json_identity":
+			return true
+		}
+	}
+	return false
+}
+
 func writePackageJSON(workspacePath string, target Target, metadata Metadata, options Options, normalizedFromImport bool) error {
 	payload := map[string]any{
 		"name":    target.PackageName,
@@ -684,13 +790,25 @@ func validateTarget(target Target) error {
 	switch {
 	case !packageNameRE.MatchString(target.PackageName):
 		return catalog.NewError(422, "invalid_package_name", "packageName must be a valid package name.", map[string]any{"packageName": target.PackageName})
-	case !strings.HasPrefix(target.PackageName, requiredPackageScope):
-		return catalog.NewError(422, "invalid_package_name", "packageName must use the reserved @platform.skill/ scope.", map[string]any{"packageName": target.PackageName})
+	case !hasSkillPackageScope(target.PackageName):
+		return catalog.NewError(422, "invalid_package_name", "packageName must use a scoped @<company>.skill/<skill-name> package name.", map[string]any{"packageName": target.PackageName})
 	case !exactVersionRE.MatchString(target.Version):
 		return catalog.NewError(422, "invalid_version", "version must be an exact semver string.", map[string]any{"version": target.Version})
 	default:
 		return nil
 	}
+}
+
+func hasSkillPackageScope(packageName string) bool {
+	if !strings.HasPrefix(packageName, "@") {
+		return false
+	}
+	slashIndex := strings.Index(packageName, "/")
+	if slashIndex <= 1 {
+		return false
+	}
+	scope := packageName[1:slashIndex]
+	return strings.HasSuffix(scope, ".skill")
 }
 
 func validatePackageJSON(content []byte, expectedPackageName string, expectedVersion string) string {

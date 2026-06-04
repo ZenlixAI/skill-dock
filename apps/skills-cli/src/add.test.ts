@@ -69,7 +69,7 @@ describe('add command', () => {
     expect(output).toContain('Usage: skills add <package_name> [options]');
     expect(output).toContain('Add a skill package from the registry');
     expect(output).toContain('--version <version>');
-    expect(output).toContain('skills add @platform.skill/pdf-skill');
+    expect(output).toContain('skills add @company.skill/pdf-skill');
   });
 
   it('should parse registry add options', () => {

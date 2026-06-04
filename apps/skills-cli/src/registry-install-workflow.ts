@@ -1,8 +1,13 @@
-import { addSkillToLocalLock, computeSkillFolderHash } from './local-lock.ts';
-import { addSkillToLock } from './skill-lock.ts';
+import { addSkillToLocalLock, computeSkillFolderHash, readLocalLock } from './local-lock.ts';
+import { addSkillToLock, readSkillLock } from './skill-lock.ts';
 import { getRegistryBaseUrl, resolveInstallTarget, type InstallTarget } from './catalog.ts';
 import { downloadRegistrySkillBundle } from './registry-bundle.ts';
-import { installSkillForAgent, type InstallMode } from './installer.ts';
+import {
+  deriveInstallName,
+  installSkillForAgent,
+  sanitizeName,
+  type InstallMode,
+} from './installer.ts';
 import type { AgentType } from './types.ts';
 
 export interface RegistryInstallWorkflowOptions {
@@ -42,6 +47,41 @@ export interface RegistryInstallWorkflowResult {
   }>;
 }
 
+function buildFallbackInstallName(packageName: string): string {
+  return sanitizeName(packageName);
+}
+
+async function resolveRegistryInstallName(
+  packageName: string,
+  installGlobally: boolean,
+  cwd: string
+): Promise<string> {
+  const preferredInstallName = deriveInstallName(packageName);
+  const preferredSanitized = sanitizeName(preferredInstallName);
+  const fallbackInstallName = buildFallbackInstallName(packageName);
+  const lock = installGlobally ? await readSkillLock() : await readLocalLock(cwd);
+  const existingEntry = lock.skills[packageName];
+
+  if (existingEntry?.installName && existingEntry.installName.trim().length > 0) {
+    return existingEntry.installName;
+  }
+
+  const hasConflict = Object.entries(lock.skills).some(([lockedPackageName, entry]) => {
+    if (lockedPackageName === packageName) {
+      return false;
+    }
+    const candidateInstallName =
+      entry.installName || deriveInstallName(entry.packageName || lockedPackageName);
+    return sanitizeName(candidateInstallName) === preferredSanitized;
+  });
+
+  if (hasConflict) {
+    return fallbackInstallName;
+  }
+
+  return preferredInstallName;
+}
+
 export async function runRegistryInstallWorkflow(
   options: RegistryInstallWorkflowOptions
 ): Promise<RegistryInstallWorkflowResult> {
@@ -53,6 +93,12 @@ export async function runRegistryInstallWorkflow(
   const bundle = await downloadRegistrySkillBundle(target, { cwd });
 
   try {
+    bundle.skill.installName = await resolveRegistryInstallName(
+      options.packageName,
+      options.installGlobally,
+      cwd
+    );
+
     const results = await Promise.all(
       options.targetAgents.map(async (agent) => ({
         agent,
@@ -79,12 +125,14 @@ export async function runRegistryInstallWorkflow(
     }
 
     const installedSkillFolderHash = await computeSkillFolderHash(bundle.extractedPath);
+    const installName = bundle.skill.installName || deriveInstallName(options.packageName);
 
     if (options.installGlobally) {
       await addSkillToLock(options.packageName, {
         sourceType: 'registry',
         skillFolderHash: installedSkillFolderHash,
         packageName: options.packageName,
+        installName,
         version: target.version,
         registry: getRegistryBaseUrl(options.registry),
         integrity: target.integrity,
@@ -97,6 +145,7 @@ export async function runRegistryInstallWorkflow(
           sourceType: 'registry',
           computedHash: installedSkillFolderHash,
           packageName: options.packageName,
+          installName,
           version: target.version,
           registry: getRegistryBaseUrl(options.registry),
           integrity: target.integrity,

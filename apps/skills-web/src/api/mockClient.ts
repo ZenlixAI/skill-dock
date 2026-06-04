@@ -382,6 +382,10 @@ export const mockClient: RegistryApiClient = {
     return config;
   },
 
+  async getSession() {
+    return delay(null);
+  },
+
   async listSkills(filters?: ListSkillsFilters) {
     const query = filters?.query?.trim().toLowerCase() || '';
     const filtered = skills.filter((skill) => {

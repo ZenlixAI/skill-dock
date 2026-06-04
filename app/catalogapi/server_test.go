@@ -107,6 +107,199 @@ func TestBearerTokenAuthRejectsXRoleOverrideWhenMappingConfigured(t *testing.T) 
 	assertErrorCode(t, recorder, "forbidden")
 }
 
+func TestSessionEndpointReturnsCurrentPrincipal(t *testing.T) {
+	server := NewServer(ServerConfig{
+		Repository:     catalog.NewMemoryRepository(catalog.SampleData()),
+		ReaderToken:    "reader-secret",
+		PublisherToken: "publisher-secret",
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/session", nil)
+	request.Header.Set("Authorization", "Bearer publisher-secret")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+
+	var raw map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("decode raw response: %v", err)
+	}
+	allowedPackagesRaw, ok := raw["allowedPackages"]
+	if !ok {
+		t.Fatalf("expected allowedPackages field in response body: %s", recorder.Body.String())
+	}
+	allowedPackagesArray, ok := allowedPackagesRaw.([]any)
+	if !ok {
+		t.Fatalf("expected allowedPackages to be a JSON array, got %T", allowedPackagesRaw)
+	}
+
+	var response struct {
+		Role            string   `json:"role"`
+		Actor           string   `json:"actor"`
+		AuthMechanism   string   `json:"authMechanism"`
+		AllowedActions  []string `json:"allowedActions"`
+		AllowedPackages []string `json:"allowedPackages"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if response.Role != "publisher" {
+		t.Fatalf("expected role publisher, got %q", response.Role)
+	}
+	if response.Actor != "publisher" {
+		t.Fatalf("expected actor publisher, got %q", response.Actor)
+	}
+	if response.AuthMechanism != "legacy_token" {
+		t.Fatalf("expected auth mechanism legacy_token, got %q", response.AuthMechanism)
+	}
+	if len(response.AllowedActions) == 0 {
+		t.Fatal("expected allowed actions to be returned")
+	}
+	if len(response.AllowedPackages) != 0 {
+		t.Fatalf("expected no package restrictions, got %v", response.AllowedPackages)
+	}
+	if len(allowedPackagesArray) != 0 {
+		t.Fatalf("expected allowedPackages JSON array to be empty, got %v", allowedPackagesArray)
+	}
+}
+
+func TestSessionEndpointRequiresAuthentication(t *testing.T) {
+	server := NewServer(ServerConfig{
+		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/session", nil)
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusUnauthorized, recorder.Code, recorder.Body.String())
+	}
+
+	assertErrorCode(t, recorder, "unauthorized")
+}
+
+func TestSessionEndpointAllowsAuthoringPrincipal(t *testing.T) {
+	server := NewServer(ServerConfig{
+		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+		AuthTokens: map[string]auth.TokenConfig{
+			"authoring-secret": {
+				Role:  "authoring",
+				Actor: "svc-authoring",
+			},
+		},
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/session", nil)
+	request.Header.Set("Authorization", "Bearer authoring-secret")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+
+	var response struct {
+		Role           string   `json:"role"`
+		AllowedActions []string `json:"allowedActions"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if response.Role != "authoring" {
+		t.Fatalf("expected role authoring, got %q", response.Role)
+	}
+	if !reflect.DeepEqual(response.AllowedActions, []string{"packaging.pack", "packaging.prepare", "packaging.validate", "session.read"}) {
+		t.Fatalf("unexpected allowed actions: %v", response.AllowedActions)
+	}
+}
+
+func TestSessionEndpointHandlesLocalOperatorPreflight(t *testing.T) {
+	server := NewServer(ServerConfig{
+		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+	})
+
+	request := httptest.NewRequest(http.MethodOptions, "/api/v1/session", nil)
+	request.Header.Set("Origin", "http://127.0.0.1:4174")
+	request.Header.Set("Access-Control-Request-Method", http.MethodGet)
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusNoContent, recorder.Code, recorder.Body.String())
+	}
+	if got := recorder.Header().Get("Access-Control-Allow-Origin"); got != "http://127.0.0.1:4174" {
+		t.Fatalf("expected allow origin header, got %q", got)
+	}
+	if got := recorder.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(got, "Authorization") {
+		t.Fatalf("expected Authorization in allow headers, got %q", got)
+	}
+}
+
+func TestSessionEndpointAddsCORSHeadersForLocalOperatorOrigin(t *testing.T) {
+	server := NewServer(ServerConfig{
+		Repository:     catalog.NewMemoryRepository(catalog.SampleData()),
+		PublisherToken: "publisher-secret",
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/session", nil)
+	request.Header.Set("Origin", "http://localhost:4174")
+	request.Header.Set("Authorization", "Bearer publisher-secret")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+	if got := recorder.Header().Get("Access-Control-Allow-Origin"); got != "http://localhost:4174" {
+		t.Fatalf("expected allow origin header, got %q", got)
+	}
+}
+
+func TestSessionEndpointReturnsAllowedPackagesForScopedPrincipal(t *testing.T) {
+	server := NewServer(ServerConfig{
+		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+		AuthTokens: map[string]auth.TokenConfig{
+			"publisher-secret": {
+				Role:            "publisher",
+				Actor:           "svc-publisher",
+				AllowedPackages: []string{"@platform.skill/code-review", "@platform.skill/agent-notes"},
+			},
+		},
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/session", nil)
+	request.Header.Set("Authorization", "Bearer publisher-secret")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+
+	var response struct {
+		AllowedPackages []string `json:"allowedPackages"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if !reflect.DeepEqual(response.AllowedPackages, []string{"@platform.skill/code-review", "@platform.skill/agent-notes"}) {
+		t.Fatalf("unexpected allowed packages: %v", response.AllowedPackages)
+	}
+}
+
 func TestPackageLevelAuthzRejectsUnauthorizedReleaseRecord(t *testing.T) {
 	server := NewServer(ServerConfig{
 		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
@@ -502,7 +695,7 @@ func TestSkillPackagingPrepareValidateAndPack(t *testing.T) {
 	fixtureDir := createPackagingFixture(t)
 
 	prepareRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
-		"source":{"type":"local","location":"`+fixtureDir+`"},
+		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
 		"target":{"packageName":"@platform.skill/fixture-skill","version":"0.2.0"},
 		"metadata":{"displayName":"Fixture Skill","description":"Fixture packaging flow","sourceType":"imported"},
 		"options":{"publishRegistry":"https://registry.example.com"}
@@ -622,7 +815,7 @@ func TestSkillPackagingCleanupRemovesWorkspaceAndBundle(t *testing.T) {
 	fixtureDir := createPackagingFixture(t)
 
 	prepareRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
-		"source":{"type":"local","location":"`+fixtureDir+`"},
+		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
 		"target":{"packageName":"@platform.skill/fixture-skill","version":"0.2.0"},
 		"metadata":{"displayName":"Fixture Skill","description":"Fixture packaging flow","sourceType":"imported"}
 	}`)
@@ -681,7 +874,7 @@ func TestSkillPackagingPackMetadataAndBundleDownload(t *testing.T) {
 	fixtureDir := createPackagingFixture(t)
 
 	prepareRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
-		"source":{"type":"local","location":"`+fixtureDir+`"},
+		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
 		"target":{"packageName":"@platform.skill/fixture-skill","version":"0.2.0"},
 		"metadata":{"displayName":"Fixture Skill","description":"Fixture packaging flow","sourceType":"imported"}
 	}`)
@@ -855,7 +1048,7 @@ func TestSkillPackagingAllowsAuthoringRole(t *testing.T) {
 	fixtureDir := createPackagingFixture(t)
 
 	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
-		"source":{"type":"local","location":"`+fixtureDir+`"},
+		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
 		"target":{"packageName":"@platform.skill/authoring-fixture","version":"0.6.0"}
 	}`)
 	request.Header.Set("X-Role", "authoring")
@@ -882,7 +1075,7 @@ Prompt body.
 	}
 
 	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
-		"source":{"type":"local","location":"`+sourceDir+`"},
+		"source":`+uploadArchiveSourceJSON(t, sourceDir)+`,
 		"target":{"packageName":"@platform.skill/zoom-out","version":"1.0.0"},
 		"metadata":{"displayName":"Zoom Out","description":"Broader context","sourceType":"imported"}
 	}`)
@@ -911,14 +1104,14 @@ Prompt body.
 		t.Fatalf("decode response: %v", err)
 	}
 
-	wantWarnings := []string{"normalized_missing_package_json", "normalized_missing_capability_content"}
+	wantWarnings := []string{"normalized_missing_package_json"}
 	if !reflect.DeepEqual(wantWarnings, payload.Warnings) {
 		t.Fatalf("unexpected warnings (-want +got):\nwant: %#v\ngot:  %#v", wantWarnings, payload.Warnings)
 	}
-	if len(payload.WarningDetails) != 2 || payload.WarningDetails[0].Code != "normalized_missing_package_json" {
+	if len(payload.WarningDetails) != 1 || payload.WarningDetails[0].Code != "normalized_missing_package_json" {
 		t.Fatalf("unexpected warningDetails: %#v", payload.WarningDetails)
 	}
-	if !payload.ImportReport.Normalized || !payload.ImportReport.GeneratedPackageJSON || !payload.ImportReport.GeneratedCapabilityPlaceholder {
+	if !payload.ImportReport.Normalized || !payload.ImportReport.GeneratedPackageJSON || payload.ImportReport.GeneratedCapabilityPlaceholder {
 		t.Fatalf("unexpected importReport: %#v", payload.ImportReport)
 	}
 }
@@ -937,7 +1130,7 @@ Prompt body.
 	}
 
 	prepareRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
-		"source":{"type":"local","location":"`+sourceDir+`"},
+		"source":`+uploadArchiveSourceJSON(t, sourceDir)+`,
 		"target":{"packageName":"@platform.skill/zoom-out","version":"1.0.0"},
 		"metadata":{"displayName":"Zoom Out","description":"Broader context","sourceType":"imported"},
 		"options":{"strict":true}
@@ -980,13 +1173,11 @@ Prompt body.
 	if err := json.Unmarshal(validateRecorder.Body.Bytes(), &validatePayload); err != nil {
 		t.Fatalf("decode validate response: %v", err)
 	}
-	if validatePayload.OK {
-		t.Fatal("expected validate to fail in strict mode")
+	if !validatePayload.OK {
+		t.Fatalf("expected validate to succeed in strict mode, got errors %#v", validatePayload.Errors)
 	}
-
-	wantErrors := []string{"missing_capability_content"}
-	if !reflect.DeepEqual(wantErrors, validatePayload.Errors) {
-		t.Fatalf("unexpected validate errors (-want +got):\nwant: %#v\ngot:  %#v", wantErrors, validatePayload.Errors)
+	if len(validatePayload.Errors) != 0 {
+		t.Fatalf("expected no validate errors in strict mode, got %#v", validatePayload.Errors)
 	}
 }
 
@@ -1013,7 +1204,7 @@ Prompt body.
 	}
 
 	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
-		"source":{"type":"local","location":"`+sourceDir+`"},
+		"source":`+uploadArchiveSourceJSON(t, sourceDir)+`,
 		"target":{"packageName":"@platform.skill/zoom-out","version":"1.0.0"},
 		"metadata":{"displayName":"Zoom Out","description":"Broader context","sourceType":"imported"},
 		"options":{"strict":true}
@@ -1082,7 +1273,7 @@ func TestSkillPackagingRejectsUnreservedPackageScope(t *testing.T) {
 	fixtureDir := createPackagingFixture(t)
 
 	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
-		"source":{"type":"local","location":"`+fixtureDir+`"},
+		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
 		"target":{"packageName":"@other.scope/fixture-skill","version":"0.8.0"}
 	}`)
 	request.Header.Set("X-Role", "publisher")
@@ -1102,7 +1293,7 @@ func TestSkillPackagingPrepareIsIdempotentByKey(t *testing.T) {
 
 	requestBody := `{
 		"idempotencyKey":"prepare-same-request",
-		"source":{"type":"local","location":"` + fixtureDir + `"},
+		"source":` + uploadArchiveSourceJSON(t, fixtureDir) + `,
 		"target":{"packageName":"@platform.skill/idempotent-fixture","version":"0.9.0"}
 	}`
 
@@ -1143,7 +1334,7 @@ func TestSkillPackagingPrepareRejectsIdempotencyKeyReuseWithDifferentBody(t *tes
 
 	firstRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
 		"idempotencyKey":"prepare-conflict",
-		"source":{"type":"local","location":"`+fixtureDir+`"},
+		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
 		"target":{"packageName":"@platform.skill/idempotent-fixture","version":"0.9.0"}
 	}`)
 	firstRequest.Header.Set("X-Role", "publisher")
@@ -1152,7 +1343,7 @@ func TestSkillPackagingPrepareRejectsIdempotencyKeyReuseWithDifferentBody(t *tes
 
 	secondRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
 		"idempotencyKey":"prepare-conflict",
-		"source":{"type":"local","location":"`+fixtureDir+`"},
+		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
 		"target":{"packageName":"@platform.skill/idempotent-fixture","version":"1.0.0"}
 	}`)
 	secondRequest.Header.Set("X-Role", "publisher")
@@ -1174,7 +1365,7 @@ func TestSkillPackagingPrepareIdempotencyIgnoresJSONFieldOrder(t *testing.T) {
 
 	firstRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
 		"idempotencyKey":"prepare-field-order",
-		"source":{"type":"local","location":"`+fixtureDir+`"},
+		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
 		"target":{"packageName":"@platform.skill/idempotent-fixture","version":"0.9.0"}
 	}`)
 	firstRequest.Header.Set("X-Role", "publisher")
@@ -1183,7 +1374,7 @@ func TestSkillPackagingPrepareIdempotencyIgnoresJSONFieldOrder(t *testing.T) {
 
 	secondRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
 		"target":{"version":"0.9.0","packageName":"@platform.skill/idempotent-fixture"},
-		"source":{"location":"`+fixtureDir+`","type":"local"},
+		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
 		"idempotencyKey":"prepare-field-order"
 	}`)
 	secondRequest.Header.Set("X-Role", "publisher")
@@ -1227,7 +1418,7 @@ func TestSkillPackagingPrepareIdempotencyPersistsAcrossServerInstances(t *testin
 
 	requestBody := `{
 		"idempotencyKey":"prepare-persisted",
-		"source":{"type":"local","location":"` + fixtureDir + `"},
+		"source":` + uploadArchiveSourceJSON(t, fixtureDir) + `,
 		"target":{"packageName":"@platform.skill/persisted-fixture","version":"0.9.1"}
 	}`
 	firstRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", requestBody)
@@ -1288,7 +1479,7 @@ func TestSkillPackagingPackWithInlineBundleSkipsIdempotencyPersistence(t *testin
 	})
 
 	prepareRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
-		"source":{"type":"local","location":"`+fixtureDir+`"},
+		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
 		"target":{"packageName":"@platform.skill/inline-bundle","version":"0.9.2"}
 	}`)
 	prepareRequest.Header.Set("X-Role", "publisher")
@@ -1347,7 +1538,7 @@ func TestSkillPackagingPrepareWritesAuditEvent(t *testing.T) {
 	})
 
 	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
-		"source":{"type":"local","location":"`+fixtureDir+`"},
+		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
 		"target":{"packageName":"@platform.skill/audited-fixture","version":"0.9.0"}
 	}`)
 	request.Header.Set("Authorization", "Bearer publisher-secret")
@@ -1422,7 +1613,29 @@ func TestSkillPackagingPrepareRejectsMultipleJSONObjects(t *testing.T) {
 	assertErrorMessage(t, recorder, "request body must contain a single JSON object.")
 }
 
+func TestSkillPackagingPrepareRejectsRemovedLocalSourceType(t *testing.T) {
+	server := NewServer(ServerConfig{
+		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+		Packaging:  packaging.NewService(""),
+	})
+	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
+		"source":{"type":"local","location":"/tmp"},
+		"target":{"packageName":"@platform.skill/test","version":"0.1.0"}
+	}`)
+	request.Header.Set("X-Role", "publisher")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusUnprocessableEntity, recorder.Code, recorder.Body.String())
+	}
+	assertErrorCode(t, recorder, "unsupported_source_type")
+	assertErrorDetailContains(t, recorder, "suggestedAction", "upload_archive")
+}
+
 func TestSkillPackagingPrepareReturnsInternalErrorWhenIdempotencyLookupFails(t *testing.T) {
+	fixtureDir := createPackagingFixture(t)
 	server := NewServer(ServerConfig{
 		Repository:  catalog.NewMemoryRepository(catalog.SampleData()),
 		Packaging:   packaging.NewService(""),
@@ -1430,7 +1643,7 @@ func TestSkillPackagingPrepareReturnsInternalErrorWhenIdempotencyLookupFails(t *
 	})
 	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
 		"idempotencyKey":"prepare-error",
-		"source":{"type":"local","location":"/tmp"},
+		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
 		"target":{"packageName":"@platform.skill/test","version":"0.1.0"}
 	}`)
 	request.Header.Set("X-Role", "publisher")
@@ -1918,6 +2131,40 @@ func TestInstallTargetResolvesLatestPublishedVersion(t *testing.T) {
 
 	if response.Version != "1.2.0" {
 		t.Fatalf("expected resolved version 1.2.0, got %s", response.Version)
+	}
+}
+
+func TestInstallTargetUsesPublicRegistryURLWhenConfigured(t *testing.T) {
+	internalRegistry := "http://nexus.skill-registry.svc.cluster.local:8081/repository/skills-npm"
+	publicRegistry := "http://127.0.0.1:8081/repository/skills-npm"
+	server := NewServer(ServerConfig{
+		Repository:           catalog.NewMemoryRepository(catalog.SampleDataWithRegistryBase(internalRegistry)),
+		Packaging:            packaging.NewService(""),
+		PublicNPMRegistryURL: publicRegistry,
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills/%40platform.skill%2Fpdf-skill/install-target", nil)
+	request.Header.Set("X-Role", "reader")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+
+	var response catalog.InstallResolution
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if response.NPMRegistry != publicRegistry {
+		t.Fatalf("expected npmRegistry %q, got %q", publicRegistry, response.NPMRegistry)
+	}
+
+	wantTarballURL := publicRegistry + "/platform.skill/pdf-skill/-/pdf-skill-1.2.0.tgz"
+	if response.TarballURL != wantTarballURL {
+		t.Fatalf("expected tarballUrl %q, got %q", wantTarballURL, response.TarballURL)
 	}
 }
 
@@ -3498,6 +3745,76 @@ func createPackagingFixture(t *testing.T) string {
 		t.Fatalf("write command: %v", err)
 	}
 	return dir
+}
+
+func uploadArchiveSourceJSON(t *testing.T, root string) string {
+	t.Helper()
+
+	payload, err := json.Marshal(packaging.Source{
+		Type:          "upload_archive",
+		ArchiveBase64: buildSourceArchiveBase64FromDirectory(t, root),
+	})
+	if err != nil {
+		t.Fatalf("marshal upload archive source: %v", err)
+	}
+	return string(payload)
+}
+
+func buildSourceArchiveBase64FromDirectory(t *testing.T, root string) string {
+	t.Helper()
+
+	var archive bytes.Buffer
+	gzipWriter := gzip.NewWriter(&archive)
+	tarWriter := tar.NewWriter(gzipWriter)
+	err := filepath.Walk(root, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if path == root {
+			return nil
+		}
+		relativePath, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		relativePath = filepath.ToSlash(relativePath)
+		if relativePath == ".dist" || strings.HasPrefix(relativePath, ".dist/") || relativePath == ".git" || strings.HasPrefix(relativePath, ".git/") || relativePath == ".skill-packaging-import-report.json" {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil
+		}
+		header, err := tar.FileInfoHeader(info, "")
+		if err != nil {
+			return err
+		}
+		header.Name = relativePath
+		if err := tarWriter.WriteHeader(header); err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		_, err = tarWriter.Write(content)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("build source archive: %v", err)
+	}
+	if err := tarWriter.Close(); err != nil {
+		t.Fatalf("close tar writer: %v", err)
+	}
+	if err := gzipWriter.Close(); err != nil {
+		t.Fatalf("close gzip writer: %v", err)
+	}
+	return base64.StdEncoding.EncodeToString(archive.Bytes())
 }
 
 func createPackagingGitRemote(t *testing.T) string {

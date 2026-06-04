@@ -31,9 +31,14 @@ tools/batch-import/example.json
 
 重要限制：
 
-- 当 entry 使用本地 `path` 时，脚本会调用 `source.type=local`
-- 这要求 Catalog 服务器能看到同一份文件系统路径
-- 如果 Catalog 不在同一台机器，改用 manifest 里的 `source.type=git`
+- 当 entry 使用本地 `path` 时，脚本会先在调用方本地把目录打成源码归档，再调用 `source.type=upload_archive`
+- 所以 Catalog 不需要直接看到调用方的本地文件系统路径
+- 如果你更希望由服务端自行拉源码，再改用 manifest 里的 `source.type=git`
+
+也就是说：
+
+- 本地 `path` 现在属于**正式可运输输入**
+- 正式 CI / 多机环境可以二选一：`path -> upload_archive`，或 `source.type=git`
 
 默认导入行为：
 
@@ -42,6 +47,16 @@ tools/batch-import/example.json
 - 这些重写和合成都只发生在打包会话的临时目录，不会回写原始源目录
 
 如果你不想接受这种规范化，而是要显式拒绝还不满足 publishable bundle 契约的源目录，请传 `--strict`。
+
+## 推荐运行方式
+
+如果你要配合本地 Nexus 做真实导入，直接用 `kind` 本地栈：
+
+```bash
+make dev-run
+```
+
+这样 `publish`、`import-local`、`batch-import` 都能直接打到 `kind` 里的 Catalog 和 Nexus。
 
 ## 方式一：显式 manifest
 
@@ -55,19 +70,10 @@ uv run python tools/batch-import/batch_import_skills.py \
   --continue-on-error
 ```
 
-如果你已经按 [docs/local-verdaccio-e2e.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/local-verdaccio-e2e.zh-CN.md) 启动了本地 Verdaccio，也可以直接用：
+也可以直接走 Make 入口：
 
 ```bash
-uv run python tools/batch-import/batch_import_skills.py \
-  --manifest tools/batch-import/example.json \
-  --npm-registry http://127.0.0.1:4873 \
-  --continue-on-error
-```
-
-或直接：
-
-```bash
-make batch-import MANIFEST=/abs/path/to/import.json NPM_BACKEND=verdaccio
+make batch-import MANIFEST=/abs/path/to/import.json NPM_BACKEND=nexus
 ```
 
 严格模式示例：
@@ -75,14 +81,14 @@ make batch-import MANIFEST=/abs/path/to/import.json NPM_BACKEND=verdaccio
 ```bash
 uv run python tools/batch-import/batch_import_skills.py \
   --manifest tools/batch-import/example.json \
-  --npm-registry http://127.0.0.1:4873 \
+  --npm-registry http://127.0.0.1:8081/repository/skills-npm \
   --strict
 ```
 
 或：
 
 ```bash
-make batch-import MANIFEST=/abs/path/to/import.json NPM_BACKEND=verdaccio STRICT=1
+make batch-import MANIFEST=/abs/path/to/import.json NPM_BACKEND=nexus STRICT=1
 ```
 
 manifest 最小格式：
@@ -92,7 +98,7 @@ manifest 最小格式：
   "skills": [
     {
       "path": "/abs/path/to/pdf-skill",
-      "packageName": "@platform.skill/pdf-skill",
+      "packageName": "@company.skill/pdf-skill",
       "version": "1.2.0",
       "displayName": "PDF Skill",
       "description": "PDF processing workflow"
@@ -130,7 +136,7 @@ uv run python tools/batch-import/batch_import_skills.py \
 - `displayName` / `description` 从 `SKILL.md` frontmatter 读取
 - 若本地已有 `package.json`，优先使用其中的 `name` / `version`
 - 若没有 `package.json`，脚本会推导
-  - `packageName`: `@platform.skill/<目录名slug>`
+  - `packageName`: `@company.skill/<目录名slug>`
   - `version`: `--default-version`，默认 `0.1.0`
 - 默认模式下，后续 packaging `prepare` 仍会在临时 workspace 内重写 bundle 用的 `package.json`，并在需要时合成缺失的 capability 占位内容
 - 若加 `--strict`，则不会接受需要这类规范化的源目录；prepare / validate 会直接暴露缺失项
@@ -141,20 +147,12 @@ uv run python tools/batch-import/batch_import_skills.py \
 uv run python tools/batch-import/batch_import_skills.py --root-dir /abs/path/to/skills --dry-run
 ```
 
-## 和真实 local npm registry 配合
+## 和真实 npm registry 配合
 
 脚本不依赖某个特定 npm 实现，只要满足下面两点即可：
 
 1. `npm publish` 能成功推送 bundle
 2. Catalog `release-record` 能从同一个 registry 读到 package metadata
-
-因此可以接：
-
-- Nexus
-- Verdaccio
-- Artifactory
-- GitLab Package Registry
-- 其他 npm-compatible registry
 
 通常要保证两处一致：
 
@@ -165,6 +163,6 @@ uv run python tools/batch-import/batch_import_skills.py --root-dir /abs/path/to/
 
 补充：
 
-- 本地 Verdaccio 默认地址是 `http://127.0.0.1:4873`
-- `http://127.0.0.1:8081/repository/skills-npm` 这类地址更适合 Nexus 一类仓库示例
+- 本地 Nexus 默认地址是 `http://127.0.0.1:8081/repository/skills-npm`
+- Make 入口现在统一通过 `NPM_BACKEND=nexus` 切场景
 - 如果你想先显式准备 Python 环境，可以先执行 `make python-sync`

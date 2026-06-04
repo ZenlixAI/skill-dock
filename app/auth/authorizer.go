@@ -3,6 +3,7 @@ package auth
 import (
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 
 	"skill_registry/business/catalog"
@@ -33,6 +34,7 @@ type Action string
 const (
 	ActionReadCatalog            Action = "catalog.read"
 	ActionReadAuditEvents        Action = "audit.read"
+	ActionReadSession            Action = "session.read"
 	ActionReadHealthz            Action = "system.healthz.read"
 	ActionReadReadyz             Action = "system.readyz.read"
 	ActionReadMetrics            Action = "system.metrics.read"
@@ -204,6 +206,17 @@ func (p Principal) CanAccessPackage(packageName string) bool {
 	return false
 }
 
+func (a *Authorizer) AllowedActionsForRole(role string) []string {
+	allowed := make([]string, 0)
+	for action, roles := range a.capabilities {
+		if _, ok := roles[role]; ok {
+			allowed = append(allowed, string(action))
+		}
+	}
+	sort.Strings(allowed)
+	return allowed
+}
+
 func FilterSkillSummariesByPrincipal(items []catalog.SkillSummary, current Principal) []catalog.SkillSummary {
 	if len(current.AllowedPackages) == 0 {
 		return items
@@ -262,6 +275,11 @@ func defaultCapabilities() map[Action]map[string]struct{} {
 		},
 		ActionReadAuditEvents: {
 			"reader":    {},
+			"publisher": {},
+		},
+		ActionReadSession: {
+			"reader":    {},
+			"authoring": {},
 			"publisher": {},
 		},
 		ActionPackagingPrepare: {

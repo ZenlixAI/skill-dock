@@ -2,7 +2,12 @@ import { basename } from 'path';
 import { homedir } from 'os';
 import type { AgentType } from './types.ts';
 import { agents } from './agents.ts';
-import { listInstalledSkills, sanitizeName, type InstalledSkill } from './installer.ts';
+import {
+  deriveInstallName,
+  listInstalledSkills,
+  sanitizeName,
+  type InstalledSkill,
+} from './installer.ts';
 import { sanitizeMetadata } from './sanitize.ts';
 import { getAllLockedSkills } from './skill-lock.ts';
 import { readLocalLock } from './local-lock.ts';
@@ -70,19 +75,29 @@ async function getDisplayMetadataByScope(global: boolean): Promise<Map<string, D
   if (global) {
     const lockedSkills = await getAllLockedSkills();
     for (const [key, value] of Object.entries(lockedSkills)) {
-      displayMetadataBySanitized.set(sanitizeName(key), {
+      const metadata = {
         name: key,
         version: value.version,
         pluginName: value.pluginName,
-      });
+      };
+      displayMetadataBySanitized.set(sanitizeName(key), metadata);
+      displayMetadataBySanitized.set(
+        sanitizeName(value.installName || deriveInstallName(key)),
+        metadata
+      );
     }
   } else {
     const localLock = await readLocalLock();
     for (const [key, value] of Object.entries(localLock.skills)) {
-      displayMetadataBySanitized.set(sanitizeName(key), {
+      const metadata = {
         name: key,
         version: value.version,
-      });
+      };
+      displayMetadataBySanitized.set(sanitizeName(key), metadata);
+      displayMetadataBySanitized.set(
+        sanitizeName(value.installName || deriveInstallName(key)),
+        metadata
+      );
     }
   }
 
@@ -206,13 +221,16 @@ export async function runList(args: string[]): Promise<void> {
     console.log();
 
     for (const item of values) {
-      console.log(`${CYAN}${sanitizeMetadata(item.name)}${RESET} ${DIM}(winner: ${item.winner})${RESET}`);
+      console.log(
+        `${CYAN}${sanitizeMetadata(item.name)}${RESET} ${DIM}(winner: ${item.winner})${RESET}`
+      );
       for (const scopeEntry of item.scopes.sort((a, b) => a.scope.localeCompare(b.scope))) {
         const version = scopeEntry.version ? ` v${scopeEntry.version}` : '';
         console.log(
           `  ${TEXT}${scopeEntry.scope}${RESET}${DIM}${version}${RESET} ${DIM}${shortenPath(scopeEntry.path, process.cwd())}${RESET}`
         );
-        const agentInfo = scopeEntry.agents.length > 0 ? formatList(scopeEntry.agents) : 'not linked';
+        const agentInfo =
+          scopeEntry.agents.length > 0 ? formatList(scopeEntry.agents) : 'not linked';
         console.log(`    ${DIM}Agents:${RESET} ${agentInfo}`);
       }
       console.log();
@@ -261,7 +279,9 @@ export async function runList(args: string[]): Promise<void> {
       skill.agents.length > 0 ? formatList(agentNames) : `${YELLOW}not linked${RESET}`;
     const displayMetadata = getDisplayMetadataForSkill(skill, displayMetadataBySanitized);
     const displayName = displayMetadata?.name || skill.name;
-    const versionSuffix = displayMetadata?.version ? ` ${DIM}v${displayMetadata.version}${RESET}` : '';
+    const versionSuffix = displayMetadata?.version
+      ? ` ${DIM}v${displayMetadata.version}${RESET}`
+      : '';
     console.log(
       `${prefix}${CYAN}${sanitizeMetadata(displayName)}${RESET}${versionSuffix} ${DIM}${shortPath}${RESET}`
     );

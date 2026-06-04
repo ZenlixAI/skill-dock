@@ -26,6 +26,8 @@ export interface SkillLockLegacyMetadata {
 export interface SkillLockEntry {
   /** Registry identity for registry-installed skills. */
   packageName?: string;
+  /** Actual local install directory name used for the installed skill. */
+  installName?: string;
   /** Resolved installed version for registry-installed skills. */
   version?: string;
   /** Catalog base URL used for resolution. */
@@ -348,6 +350,7 @@ function normalizeSkillLockEntry(rawEntry: unknown): SkillLockEntry {
     installedAt: entry.installedAt || '',
     updatedAt: entry.updatedAt || '',
     packageName: entry.packageName,
+    installName: entry.installName,
     version: entry.version,
     registry: entry.registry,
     integrity: entry.integrity,
@@ -388,6 +391,7 @@ function serializeSkillLockEntry(entry: SkillLockEntry): Record<string, unknown>
     installedAt: entry.installedAt,
     updatedAt: entry.updatedAt,
     ...(entry.packageName ? { packageName: entry.packageName } : {}),
+    ...(entry.installName ? { installName: entry.installName } : {}),
     ...(entry.version ? { version: entry.version } : {}),
     ...(entry.registry ? { registry: entry.registry } : {}),
     ...(entry.integrity ? { integrity: entry.integrity } : {}),
