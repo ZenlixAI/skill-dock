@@ -1,4 +1,4 @@
-FROM truth-ai-registry.cn-hangzhou.cr.aliyuncs.com/base/node:22-trixie AS build
+FROM truth-ai-registry.cn-hangzhou.cr.aliyuncs.com/base/node:22-alpine AS build
 
 WORKDIR /src/apps/skills-web
 
