@@ -64,12 +64,23 @@ function formatDisplayName(record: InstalledSkillView): string {
   return record.orphaned ? `${name} ${DIM}(orphaned)${RESET}` : name;
 }
 
-function matchesAllScopeIdentity(left: InstalledSkillView, right: InstalledSkillView): boolean {
-  if (left.packageName && right.packageName) {
-    return left.packageName === right.packageName;
+function getStableAllScopeIdentity(record: InstalledSkillView): string | null {
+  if (record.packageName) {
+    return record.packageName;
   }
 
-  return left.installName === right.installName;
+  if (record.sourceType === 'registry' && record.lockKey) {
+    return record.lockKey;
+  }
+
+  return null;
+}
+
+function matchesAllScopeIdentity(left: InstalledSkillView, right: InstalledSkillView): boolean {
+  const leftIdentity = getStableAllScopeIdentity(left);
+  const rightIdentity = getStableAllScopeIdentity(right);
+
+  return leftIdentity !== null && leftIdentity === rightIdentity;
 }
 
 export function parseListOptions(args: string[]): ListOptions {

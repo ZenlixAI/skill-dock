@@ -633,6 +633,71 @@ description: Global review helper
         ])
       );
     });
+
+    it('keeps same installName records separate across scopes when package identity is missing', () => {
+      const projectDir = join(testDir, '.agents', 'skills', 'review');
+      mkdirSync(projectDir, { recursive: true });
+      writeFileSync(
+        join(projectDir, 'SKILL.md'),
+        `---
+name: Project Review
+description: Project-local review skill
+---
+# Project Review
+`
+      );
+
+      const globalBase = join(testDir, 'fake-home');
+      const globalDir = join(globalBase, '.agents', 'skills', 'review');
+      mkdirSync(globalDir, { recursive: true });
+      writeFileSync(
+        join(globalDir, 'SKILL.md'),
+        `---
+name: Global Review
+description: Global-local review skill
+---
+# Global Review
+`
+      );
+
+      const jsonResult = runCli(['list', '--all-scopes', '--json'], testDir, {
+        HOME: globalBase,
+        XDG_STATE_HOME: globalBase,
+      });
+      const parsed = JSON.parse(jsonResult.stdout.trim());
+
+      expect(parsed).toHaveLength(2);
+      expect(parsed).toEqual(
+        expect.arrayContaining([
+          {
+            name: 'Project Review',
+            winner: 'project',
+            scopes: [
+              {
+                scope: 'project',
+                version: null,
+                path: expect.stringContaining('.agents/skills/review'),
+                agents: expect.any(Array),
+                orphaned: true,
+              },
+            ],
+          },
+          {
+            name: 'Global Review',
+            winner: 'global',
+            scopes: [
+              {
+                scope: 'global',
+                version: null,
+                path: expect.stringContaining('.agents/skills/review'),
+                agents: expect.any(Array),
+                orphaned: true,
+              },
+            ],
+          },
+        ])
+      );
+    });
   });
 
   describe('help output', () => {

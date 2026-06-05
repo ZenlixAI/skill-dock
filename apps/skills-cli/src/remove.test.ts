@@ -18,11 +18,15 @@ const {
 } = vi.hoisted(() => ({
   rmMock: vi.fn(() => Promise.resolve()),
   listInstalledViewMock: vi.fn<() => Promise<InstalledSkillView[]>>(() => Promise.resolve([])),
-  removeSkillFromLockMock: vi.fn(() => Promise.resolve(true)),
+  removeSkillFromLockMock: vi.fn<(skillName: string) => Promise<boolean>>(() =>
+    Promise.resolve(true)
+  ),
   getSkillFromLockMock: vi.fn(() => Promise.resolve(null)),
   getAllLockedSkillsMock: vi.fn(() => Promise.resolve({})),
   readLocalLockMock: vi.fn(() => Promise.resolve({ version: 1, skills: {} })),
-  removeSkillFromLocalLockMock: vi.fn(() => Promise.resolve(true)),
+  removeSkillFromLocalLockMock: vi.fn<(skillName: string, cwd?: string) => Promise<boolean>>(() =>
+    Promise.resolve(true)
+  ),
   trackMock: vi.fn(),
 }));
 
@@ -540,6 +544,54 @@ description: Demo skill
       }
 
       expect(rmMock).not.toHaveBeenCalled();
+      expect(removeSkillFromLocalLockMock).not.toHaveBeenCalled();
+    });
+
+    it('does not delete another lock entry when removing an orphaned conflicting record', async () => {
+      const oldCwd = process.cwd();
+      process.chdir(testDir);
+
+      const records: InstalledSkillView[] = [
+        {
+          displayName: 'pdf skill',
+          installName: 'pdf-skill',
+          aliases: ['pdf skill', 'pdf-skill'],
+          scope: 'project',
+          canonicalPath: '/tmp/project/.agents/skills/pdf skill',
+          agentLinks: [],
+          sourceType: 'local',
+          orphaned: true,
+          orphanReasons: ['missing_lock_entry'],
+        },
+        {
+          displayName: 'pdf-skill',
+          installName: 'pdf-skill',
+          aliases: ['pdf-skill'],
+          scope: 'project',
+          canonicalPath: '/tmp/project/.agents/skills/pdf-skill',
+          agentLinks: [],
+          sourceType: 'local',
+          orphaned: false,
+          orphanReasons: [],
+          lockEntry: {
+            sourceType: 'local',
+            computedHash: 'tracked-hash',
+          },
+        },
+      ];
+      listInstalledViewMock.mockResolvedValue(records);
+      removeSkillFromLocalLockMock.mockImplementation(async (skillName) => skillName === 'pdf-skill');
+
+      try {
+        await removeCommand(['pdf skill'], { yes: true });
+      } finally {
+        process.chdir(oldCwd);
+      }
+
+      expect(rmMock).toHaveBeenCalledWith(
+        '/tmp/project/.agents/skills/pdf skill',
+        expect.objectContaining({ recursive: true, force: true })
+      );
       expect(removeSkillFromLocalLockMock).not.toHaveBeenCalled();
     });
   });

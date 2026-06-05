@@ -58,27 +58,16 @@ async function removeRecordFromLock(
   isGlobal: boolean,
   cwd: string
 ): Promise<void> {
-  const candidates = [
-    record.packageName,
-    record.displayName,
-    record.installName,
-    ...record.aliases,
-  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
-
-  const attempted = new Set<string>();
-  for (const candidate of candidates) {
-    if (attempted.has(candidate)) {
-      continue;
-    }
-    attempted.add(candidate);
-
-    const removed = isGlobal
-      ? await removeSkillFromLock(candidate)
-      : await removeSkillFromLocalLock(candidate, cwd);
-    if (removed) {
-      return;
-    }
+  if (!record.lockKey) {
+    return;
   }
+
+  if (isGlobal) {
+    await removeSkillFromLock(record.lockKey);
+    return;
+  }
+
+  await removeSkillFromLocalLock(record.lockKey, cwd);
 }
 
 export async function removeCommand(skillNames: string[], options: RemoveOptions) {
