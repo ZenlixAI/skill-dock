@@ -1,27 +1,42 @@
-FROM truth-ai-registry.cn-hangzhou.cr.aliyuncs.com/base/golang:1.26-trixie AS build
+FROM --platform=$BUILDPLATFORM truth-ai-registry.cn-hangzhou.cr.aliyuncs.com/base/golang:1.26-trixie AS builder
+
+ARG TARGETOS
+ARG TARGETARCH
+ARG GOPROXY=https://goproxy.cn,direct
 
 WORKDIR /src
 
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 COPY app ./app
 COPY business ./business
 COPY cmd ./cmd
-COPY zarf/data ./data
 COPY foundation ./foundation
+COPY zarf/data ./zarf/data
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/skill-registry ./cmd/skill-registry
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /usr/local/bin/skill-registry ./cmd/skill-registry
 
 FROM truth-ai-registry.cn-hangzhou.cr.aliyuncs.com/base/debian:trixie-slim AS runtime
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates git \
+ARG APT_MIRROR=https://mirrors.aliyun.com/debian
+ARG APT_SECURITY_MIRROR=https://mirrors.aliyun.com/debian-security
+
+RUN sed -i \
+      -e "s|^\(URIs: \)https://deb.debian.org/debian-security$|\1${APT_SECURITY_MIRROR}|" \
+      -e "s|^\(URIs: \)https://deb.debian.org/debian$|\1${APT_MIRROR}|" \
+      /etc/apt/sources.list.d/debian.sources \
+    && rm -f /etc/apt/apt.conf.d/docker-clean \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates git tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-COPY --from=build /out/skill-registry /usr/local/bin/skill-registry
+COPY --from=builder /usr/local/bin/skill-registry /usr/local/bin/skill-registry
 COPY zarf/data ./data
 
 RUN mkdir -p /var/lib/skill-registry \
