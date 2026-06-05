@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM truth-ai-registry.cn-hangzhou.cr.aliyuncs.com/base/node:22-alpine AS build
+FROM --platform=$BUILDPLATFORM truth-ai-registry.cn-hangzhou.cr.aliyuncs.com/base/node:22 AS build
 
 WORKDIR /src/apps/skills-web
 
@@ -9,7 +9,7 @@ RUN --mount=type=cache,target=/root/.npm \
 COPY apps/skills-web/ ./
 RUN npm run build
 
-FROM truth-ai-registry.cn-hangzhou.cr.aliyuncs.com/base/nginx:1.27-alpine AS runtime
+FROM truth-ai-registry.cn-hangzhou.cr.aliyuncs.com/base/nginx:1.27 AS runtime
 
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories \
     && apk add --no-cache ca-certificates tzdata
