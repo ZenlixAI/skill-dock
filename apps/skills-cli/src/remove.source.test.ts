@@ -15,6 +15,7 @@ vi.mock('./agents.ts', () => ({
     },
   },
   detectInstalledAgents: vi.fn(() => Promise.resolve([])),
+  isUniversalAgent: vi.fn(() => false),
 }));
 
 vi.mock('./telemetry.ts', () => ({
@@ -30,6 +31,32 @@ vi.mock('./skill-lock.ts', () => ({
 vi.mock('./local-lock.ts', () => ({
   readLocalLock: vi.fn(),
   removeSkillFromLocalLock: vi.fn(() => Promise.resolve(true)),
+}));
+
+vi.mock('./installed-view.ts', () => ({
+  listInstalledView: vi.fn(() =>
+    Promise.resolve([
+      {
+        packageName: '@platform.skill/pdf-skill',
+        displayName: 'PDF Skill',
+        installName: 'pdf-skill',
+        aliases: ['@platform.skill/pdf-skill', 'pdf-skill'],
+        scope: 'project',
+        canonicalPath: '/tmp/project/.agents/skills/platform.skill-pdf-skill',
+        agentLinks: [
+          {
+            agent: 'claude-code',
+            path: '/tmp/project/.claude/skills/platform.skill-pdf-skill',
+            kind: 'symlink',
+          },
+        ],
+        sourceType: 'registry',
+        version: '1.2.0',
+        orphaned: false,
+        orphanReasons: [],
+      },
+    ])
+  ),
 }));
 
 vi.mock('./installer.ts', () => ({
