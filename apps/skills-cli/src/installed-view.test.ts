@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import * as agentsModule from './agents.ts';
@@ -125,6 +125,84 @@ describe('installed view projection', () => {
         }),
       ])
     );
+  });
+
+  it('projects a canonical skill directory when the canonical entry is a symlink', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'installed-view-canonical-symlink-'));
+    roots.push(root);
+
+    const realSkillDir = join(root, 'shared', 'linked-skill');
+    mkdirSync(realSkillDir, { recursive: true });
+    writeFileSync(
+      join(realSkillDir, 'SKILL.md'),
+      `---\nname: Linked Skill\ndescription: Canonical symlink target\n---\n`
+    );
+
+    const canonicalBase = join(root, '.agents', 'skills');
+    mkdirSync(canonicalBase, { recursive: true });
+    symlinkSync(realSkillDir, join(canonicalBase, 'linked-skill'), 'dir');
+
+    writeFileSync(
+      join(root, 'skills-lock.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          skills: {
+            '@platform.skill/linked-skill': {
+              sourceType: 'registry',
+              computedHash: 'linked-hash',
+              packageName: '@platform.skill/linked-skill',
+              installName: 'linked-skill',
+              version: '1.0.0',
+            },
+          },
+        },
+        null,
+        2
+      )
+    );
+
+    const records = await listInstalledView({ scope: 'project', cwd: root });
+
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          packageName: '@platform.skill/linked-skill',
+          displayName: 'Linked Skill',
+          canonicalPath: join(root, '.agents', 'skills', 'linked-skill'),
+          orphaned: false,
+        }),
+      ])
+    );
+  });
+
+  it('ignores dangling canonical directory symlinks', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'installed-view-dangling-symlink-'));
+    roots.push(root);
+
+    const canonicalBase = join(root, '.agents', 'skills');
+    mkdirSync(canonicalBase, { recursive: true });
+    symlinkSync(join(root, 'does-not-exist'), join(canonicalBase, 'broken-skill'), 'dir');
+
+    const records = await listInstalledView({ scope: 'project', cwd: root });
+
+    expect(records).toEqual([]);
+  });
+
+  it('ignores canonical symlinks that point to regular files', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'installed-view-file-symlink-'));
+    roots.push(root);
+
+    const canonicalBase = join(root, '.agents', 'skills');
+    mkdirSync(canonicalBase, { recursive: true });
+
+    const filePath = join(root, 'not-a-skill.md');
+    writeFileSync(filePath, '# not a skill');
+    symlinkSync(filePath, join(canonicalBase, 'file-link'));
+
+    const records = await listInstalledView({ scope: 'project', cwd: root });
+
+    expect(records).toEqual([]);
   });
 
   it('marks a canonical disk install orphaned when no lock entry exists', async () => {

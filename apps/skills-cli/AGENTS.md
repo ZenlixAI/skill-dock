@@ -40,6 +40,7 @@ src/
 ├── agents.ts        # Agent definitions and detection
 ├── installer.ts     # Skill installation logic (symlink/copy)
 ├── installed-view.ts # Installed-skill read model for list/remove/update
+├── installed-view.test.ts # Seam-level installed view projection tests
 ├── skills.ts        # Skill discovery and parsing
 ├── skill-lock.ts    # Global lock file management (~/.agents/.skill-lock.json)
 ├── local-lock.ts    # Local lock file management (skills-lock.json, checked in)

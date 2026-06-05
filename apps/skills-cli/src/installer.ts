@@ -8,7 +8,6 @@ import {
   rm,
   readlink,
   writeFile,
-  stat,
   realpath,
 } from 'fs/promises';
 import { existsSync } from 'fs';
@@ -96,20 +95,6 @@ function isPathSafe(basePath: string, targetPath: string): boolean {
   const normalizedTarget = normalize(resolve(targetPath));
 
   return normalizedTarget.startsWith(normalizedBase + sep) || normalizedTarget === normalizedBase;
-}
-
-// Dirent.isDirectory() is false for symlinks; follow and verify the target is a directory.
-async function isDirEntryOrSymlinkToDir(
-  entry: { isDirectory(): boolean; isSymbolicLink(): boolean },
-  entryPath: string
-): Promise<boolean> {
-  if (entry.isDirectory()) return true;
-  if (!entry.isSymbolicLink()) return false;
-  try {
-    return (await stat(entryPath)).isDirectory();
-  } catch {
-    return false;
-  }
 }
 
 export function getCanonicalSkillsDir(global: boolean, cwd?: string): string {
