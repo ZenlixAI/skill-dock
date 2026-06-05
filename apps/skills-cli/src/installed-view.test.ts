@@ -139,6 +139,19 @@ describe('installed view projection', () => {
 
     const records = await listInstalledView({ scope: 'project', cwd: root });
 
-    expect(records.some((record) => record.orphanReasons.includes('alias_conflict'))).toBe(true);
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          displayName: 'pdf-skill',
+          orphaned: true,
+          orphanReasons: expect.arrayContaining(['alias_conflict']),
+        }),
+        expect.objectContaining({
+          displayName: 'pdf skill',
+          orphaned: true,
+          orphanReasons: expect.arrayContaining(['alias_conflict']),
+        }),
+      ])
+    );
   });
 });
