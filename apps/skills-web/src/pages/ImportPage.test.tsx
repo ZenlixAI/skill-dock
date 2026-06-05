@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import * as client from '../api/client';
+import { RegistryHttpError } from '../api/httpClient';
 import { SessionProvider } from '../session/SessionProvider';
 import { ImportPage } from './ImportPage';
 
@@ -277,5 +278,54 @@ describe('ImportPage', () => {
       '/api/v1/skill-packaging/bundle?workspacePath=%2Ftmp%2Fskill-packaging%2Fworkspace&packageName=%40company.skill%2Fzoom-out&version=1.2.0'
     );
     expect(screen.getByText('这里还没有替你执行 npm publish，下载 bundle 并发布到目标 registry 后，再进入 release record。')).toBeInTheDocument();
+  });
+
+  it('shows the validated stage after validate succeeds', async () => {
+    vi.mocked(client.preparePackaging).mockResolvedValue({
+      workspacePath: '/tmp/skill-packaging/workspace',
+      packageName: '@company.skill/zoom-out',
+      version: '1.2.0',
+      warnings: [],
+      warningDetails: [],
+      errors: [],
+    });
+    vi.mocked(client.validatePackaging).mockResolvedValue({
+      ok: true,
+      workspacePath: '/tmp/skill-packaging/workspace',
+      packageName: '@company.skill/zoom-out',
+      version: '1.2.0',
+      manifestDigest: 'sha256:manifest',
+      components: ['commands'],
+      warnings: [],
+      warningDetails: [],
+      errors: [],
+    });
+
+    renderImportPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Prepare' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Validate' }));
+
+    expect(await screen.findByText('阶段 validated')).toBeInTheDocument();
+  });
+
+  it('preserves the enriched prepare failure message in the mutation panel', async () => {
+    vi.mocked(client.preparePackaging).mockRejectedValue(
+      new RegistryHttpError('forbidden', 403, {
+        error: {
+          requestId: 'req_123',
+        },
+      })
+    );
+
+    renderImportPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Prepare' }));
+
+    expect(
+      await screen.findByText(
+        'Current session is not allowed to perform this action. 这次导入操作需要具备 packaging 权限的会话后再重试。'
+      )
+    ).toBeInTheDocument();
   });
 });

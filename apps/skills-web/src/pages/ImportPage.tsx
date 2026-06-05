@@ -21,7 +21,6 @@ import {
   inferMutationFailureOutcome,
   MutationResultPanel,
   readMutationResultSearchParams,
-  writeMutationResultSearchParams,
 } from '../components/MutationResultPanel';
 import { PermissionGate } from '../components/PermissionGate';
 import { SectionHeading } from '../components/SectionHeading';
@@ -29,7 +28,6 @@ import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
 import { WarningStack } from '../components/WarningStack';
 import { buildReleaseHandoffPath } from '../lib/releaseHandoff';
-import { useAsyncData } from '../lib/useAsyncData';
 import {
   createAuthoringEditorState,
   getDefaultAuthoringPath,
@@ -41,6 +39,11 @@ import {
   type AuthoringTemplateId,
   validateAuthoringPath,
 } from '../features/packaging/useAuthoringDraft';
+import {
+  derivePackagingViewState,
+  persistPackagingMutationResult,
+  toMutationResult,
+} from '../features/packaging/usePackagingWorkflow';
 import { useRegistrySession } from '../session/SessionProvider';
 
 const steps = [
@@ -172,22 +175,22 @@ export function ImportPage() {
   const [packResult, setPackResult] = useState<PackagingPackResponse | null>(null);
   const [activityLog, setActivityLog] = useState<ImportLogEntry[]>([]);
 
+  const workflow = derivePackagingViewState({
+    prepareResult,
+    validateResult,
+    packResult,
+    publishRegistry,
+  });
   const reviewData: ReviewData | null = packResult || validateResult || prepareResult;
-  const activeStepIndex = packResult ? 3 : validateResult ? 2 : prepareResult ? 1 : 0;
-  const currentStage = packResult ? 'pack_complete' : validateResult ? 'validated' : prepareResult ? 'prepared' : 'draft';
   const stageTone =
-    currentStage === 'pack_complete' ? 'good' : currentStage === 'validated' ? 'accent' : currentStage === 'prepared' ? 'warn' : undefined;
-  const releaseHandoffPath = packResult
-    ? buildReleaseHandoffPath({
-        packageName: packResult.packageName,
-        version: packResult.version,
-        publishRegistry: publishRegistry.trim() || undefined,
-        manifestDigest: packResult.manifestDigest,
-        components: packResult.components,
-        workspacePath: packResult.workspacePath,
-        bundlePath: packResult.bundlePath,
-      })
-    : null;
+    workflow.currentStage === 'pack_complete'
+      ? 'good'
+      : workflow.currentStage === 'validated'
+        ? 'accent'
+        : workflow.currentStage === 'prepared'
+          ? 'warn'
+          : undefined;
+  const releaseHandoffPath = workflow.releaseHandoffPath;
   const authoringHandoffPath = packResult
     ? buildReleaseHandoffPath(
         {
@@ -202,9 +205,6 @@ export function ImportPage() {
         '/workbench/authoring'
       )
     : null;
-  const canValidate = Boolean(prepareResult?.workspacePath) && operationState.loading === false;
-  const canPack = Boolean(validateResult?.ok) && operationState.loading === false;
-  const canCleanup = Boolean(prepareResult?.workspacePath) && operationState.loading === false;
   const normalizedPackageName = packageName.trim();
   const cleanupPackageName =
     packResult?.packageName || validateResult?.packageName || prepareResult?.packageName || normalizedPackageName;
@@ -252,7 +252,7 @@ export function ImportPage() {
     version?: string | null;
   }) {
     setSearchParams(
-      writeMutationResultSearchParams(searchParams, {
+      persistPackagingMutationResult(searchParams, {
         ...result,
         actor: session.data?.actor ?? null,
       }),
@@ -422,14 +422,14 @@ export function ImportPage() {
         errorDetail: normalizedError,
         success: null,
       });
-      persistMutationResult({
-        action: 'prepare',
-        outcome,
-        message,
-        requestId: normalizedError.requestId,
-        packageName: normalizedPackageName || null,
-        version: version.trim() || null,
-      });
+      persistMutationResult(
+        toMutationResult('prepare', normalizedError, outcome, {
+          packageName: normalizedPackageName || null,
+          version: version.trim() || null,
+          actor: session.data?.actor ?? null,
+          message,
+        })
+      );
     }
   }
 
@@ -493,14 +493,14 @@ export function ImportPage() {
         errorDetail: normalizedError,
         success: null,
       });
-      persistMutationResult({
-        action: 'validate',
-        outcome,
-        message,
-        requestId: normalizedError.requestId,
-        packageName: prepareResult.packageName || normalizedPackageName || null,
-        version: prepareResult.version || version.trim() || null,
-      });
+      persistMutationResult(
+        toMutationResult('validate', normalizedError, outcome, {
+          packageName: prepareResult.packageName || normalizedPackageName || null,
+          version: prepareResult.version || version.trim() || null,
+          actor: session.data?.actor ?? null,
+          message,
+        })
+      );
     }
   }
 
@@ -564,14 +564,14 @@ export function ImportPage() {
         errorDetail: normalizedError,
         success: null,
       });
-      persistMutationResult({
-        action: 'pack',
-        outcome,
-        message,
-        requestId: normalizedError.requestId,
-        packageName: validateResult?.packageName || prepareResult?.packageName || normalizedPackageName || null,
-        version: validateResult?.version || prepareResult?.version || version.trim() || null,
-      });
+      persistMutationResult(
+        toMutationResult('pack', normalizedError, outcome, {
+          packageName: validateResult?.packageName || prepareResult?.packageName || normalizedPackageName || null,
+          version: validateResult?.version || prepareResult?.version || version.trim() || null,
+          actor: session.data?.actor ?? null,
+          message,
+        })
+      );
     }
   }
 
@@ -631,14 +631,14 @@ export function ImportPage() {
         errorDetail: normalizedError,
         success: null,
       });
-      persistMutationResult({
-        action: 'cleanup',
-        outcome,
-        message,
-        requestId: normalizedError.requestId,
-        packageName: null,
-        version: null,
-      });
+      persistMutationResult(
+        toMutationResult('cleanup', normalizedError, outcome, {
+          packageName: null,
+          version: null,
+          actor: session.data?.actor ?? null,
+          message,
+        })
+      );
     }
   }
 
@@ -656,7 +656,7 @@ export function ImportPage() {
         <StatusPill>{packageName}</StatusPill>
         <StatusPill>{version}</StatusPill>
         <StatusPill tone={strictMode ? 'warn' : 'good'}>{strictMode ? '严格' : '宽松'}</StatusPill>
-        <StatusPill tone={stageTone}>阶段 {currentStage}</StatusPill>
+        <StatusPill tone={stageTone}>阶段 {workflow.currentStage}</StatusPill>
         <StatusPill tone={packagingPosture === 'write_enabled' ? 'accent' : packagingPosture === 'package_filter_required' ? 'warn' : 'default'}>
           {packagingPostureLabel}
         </StatusPill>
@@ -666,7 +666,7 @@ export function ImportPage() {
         <SurfaceCard title="工作流" description="按当前同步的 packaging API 合同拆成 4 步。" variant="console">
           <div className="step-list">
             {steps.map((step, index) => (
-              <article className={index === activeStepIndex ? 'step-card step-card--active' : 'step-card'} key={step.title}>
+              <article className={index === workflow.activeStepIndex ? 'step-card step-card--active' : 'step-card'} key={step.title}>
                 <strong>{step.title}</strong>
                 <p>{step.description}</p>
               </article>
@@ -676,18 +676,18 @@ export function ImportPage() {
           <div className="console-strip">
             <article className="console-signal">
               <span>当前阶段</span>
-              <strong>{currentStage}</strong>
-              <p>{packResult ? 'bundle 已可交接到 release review。' : validateResult ? '校验完成，等待打包。' : prepareResult ? 'workspace 已准备，建议继续 validate。' : '先填写 source 和 target。'}</p>
+              <strong>{workflow.currentStage}</strong>
+              <p>{workflow.currentStageSummary}</p>
             </article>
             <article className="console-signal">
               <span>工作目录</span>
-              <strong>{prepareResult?.workspacePath ? 'ready' : 'pending'}</strong>
+              <strong>{workflow.workspaceStatus}</strong>
               <p>{prepareResult?.workspacePath || 'prepare 之后这里会出现临时工作目录。'}</p>
             </article>
             <article className="console-signal">
               <span>发布交接</span>
-              <strong>{releaseHandoffPath ? 'armed' : 'idle'}</strong>
-              <p>{releaseHandoffPath ? 'pack 结果已就绪，下一步是下载 bundle、发布到 registry，再写 release record。' : '完成 pack 后才会开放下游 handoff。'}</p>
+              <strong>{workflow.releaseStatus}</strong>
+              <p>{workflow.releaseSummary}</p>
             </article>
           </div>
 
@@ -924,7 +924,7 @@ export function ImportPage() {
               >
                 <button
                   className="button button--secondary"
-                  disabled={!canValidate}
+                  disabled={!workflow.canValidate || operationState.loading !== false}
                   onClick={() => void handleValidate()}
                   type="button"
                 >
@@ -938,7 +938,7 @@ export function ImportPage() {
               >
                 <button
                   className="button button--secondary"
-                  disabled={!canPack}
+                  disabled={!workflow.canPack || operationState.loading !== false}
                   onClick={() => void handlePack()}
                   type="button"
                 >
@@ -952,7 +952,7 @@ export function ImportPage() {
               >
                 <button
                   className="button button--secondary"
-                  disabled={!canCleanup}
+                  disabled={!workflow.canCleanup || operationState.loading !== false}
                   onClick={() => void handleCleanup()}
                   type="button"
                 >
@@ -970,7 +970,7 @@ export function ImportPage() {
               <div className="console-strip console-strip--compact">
                 <article className="console-signal console-signal--compact">
                   <span>最近动作</span>
-                  <strong>{operationState.loading || currentStage}</strong>
+                  <strong>{operationState.loading || workflow.currentStage}</strong>
                 </article>
                 <article className="console-signal console-signal--compact">
                   <span>告警</span>
@@ -1053,27 +1053,27 @@ export function ImportPage() {
                     <div className="list-card__head">
                       <div>
                         <strong>Prepare</strong>
-                        <span>{prepareResult?.workspacePath || '等待工作目录'}</span>
+                        <span>{workflow.prepareReadiness.detail}</span>
                       </div>
-                      <StatusPill tone={prepareResult ? 'good' : 'warn'}>{prepareResult ? '就绪' : '等待中'}</StatusPill>
+                      <StatusPill tone={workflow.prepareReadiness.tone}>{workflow.prepareReadiness.label}</StatusPill>
                     </div>
                   </article>
                   <article className="list-card">
                     <div className="list-card__head">
                       <div>
                         <strong>Validate</strong>
-                        <span>{validateResult?.ok ? '可以进入 pack' : '必须先通过再 pack'}</span>
+                        <span>{workflow.validateReadiness.detail}</span>
                       </div>
-                      <StatusPill tone={validateResult?.ok ? 'good' : 'warn'}>{validateResult?.ok ? '已通过' : '等待中'}</StatusPill>
+                      <StatusPill tone={workflow.validateReadiness.tone}>{workflow.validateReadiness.label}</StatusPill>
                     </div>
                   </article>
                   <article className="list-card">
                     <div className="list-card__head">
                       <div>
                         <strong>发布交接</strong>
-                        <span>{releaseHandoffPath ? 'bundle 下载与 release handoff 已就绪' : 'pack 还没完成'}</span>
+                        <span>{workflow.releaseReadiness.detail}</span>
                       </div>
-                      <StatusPill tone={releaseHandoffPath ? 'good' : 'warn'}>{releaseHandoffPath ? '已就绪' : '空闲'}</StatusPill>
+                      <StatusPill tone={workflow.releaseReadiness.tone}>{workflow.releaseReadiness.label}</StatusPill>
                     </div>
                   </article>
                 </div>
