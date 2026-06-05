@@ -58,7 +58,7 @@ async function removeRecordFromLock(
   isGlobal: boolean,
   cwd: string
 ): Promise<void> {
-  if (!record.lockKey) {
+  if (record.orphaned || !record.lockKey) {
     return;
   }
 
