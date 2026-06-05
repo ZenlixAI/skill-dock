@@ -41,7 +41,8 @@ export function getSessionPosture(
   }
   if (
     options.requiredAction &&
-    options.packageName?.trim() === '' &&
+    session.allowedActions.includes(options.requiredAction) &&
+    !options.packageName?.trim() &&
     session.allowedPackages.length > 0
   ) {
     return 'package_filter_required';

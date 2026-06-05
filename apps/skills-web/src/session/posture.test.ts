@@ -36,6 +36,17 @@ describe('session posture', () => {
     ).toBe(true);
   });
 
+  it('does not require a package filter when the session lacks the required action', () => {
+    const session = createSession(['session.read'], ['@platform.skill/*']);
+
+    expect(
+      getSessionPosture(session, {
+        packageName: '',
+        requiredAction: 'catalog.governance.skill.apply',
+      })
+    ).toBe('read_only');
+  });
+
   it('marks an errored session load as unavailable', () => {
     expect(isSessionUnavailable(false, 'network down')).toBe(true);
     expect(isSessionUnavailable(true, 'network down')).toBe(false);

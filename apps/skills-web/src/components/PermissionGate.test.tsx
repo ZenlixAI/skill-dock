@@ -100,4 +100,22 @@ describe('PermissionGate', () => {
     expect(screen.getByText('正在加载会话权限…')).toBeInTheDocument();
     expect(screen.queryByText('当前没有可用于 packaging.prepare 的已登录 Catalog 会话。')).toBeNull();
   });
+
+  it('resolves missing session state props from the provider when overrides are partial', () => {
+    vi.mocked(client.getSession).mockImplementation(() => new Promise(() => undefined));
+
+    render(
+      <SessionProvider>
+        <PermissionGate
+          requiredAction="packaging.prepare"
+          session={createSession(['session.read', 'packaging.prepare'])}
+        >
+          <button type="button">Prepare packaging</button>
+        </PermissionGate>
+      </SessionProvider>
+    );
+
+    expect(screen.getByText('正在加载会话权限…')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Prepare packaging' })).toBeNull();
+  });
 });

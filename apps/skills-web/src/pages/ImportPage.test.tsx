@@ -2,10 +2,18 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import * as client from '../api/client';
+import { SessionProvider } from '../session/SessionProvider';
 import { ImportPage } from './ImportPage';
 
 vi.mock('../api/client', () => ({
   cleanupPackagingWorkspace: vi.fn(),
+  getRegistryClientConfig: vi.fn(() => ({
+    mode: 'real',
+    baseUrl: null,
+    role: null,
+    actor: null,
+    hasToken: false,
+  })),
   getSession: vi.fn().mockResolvedValue({
     role: 'operator',
     actor: 'operator',
@@ -27,13 +35,19 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('ImportPage', () => {
-  it('starts with a working git import example instead of a broken placeholder path', async () => {
-    render(
+function renderImportPage() {
+  return render(
+    <SessionProvider>
       <MemoryRouter>
         <ImportPage />
       </MemoryRouter>
-    );
+    </SessionProvider>
+  );
+}
+
+describe('ImportPage', () => {
+  it('starts with a working git import example instead of a broken placeholder path', async () => {
+    renderImportPage();
 
     expect(await screen.findByDisplayValue('https://github.com/mattpocock/skills?path=skills/engineering/zoom-out')).toBeInTheDocument();
     expect(screen.getByText('4. 打包与交接')).toBeInTheDocument();
@@ -43,11 +57,7 @@ describe('ImportPage', () => {
   });
 
   it('shows a template-driven authoring editor for platform_authoring', async () => {
-    render(
-      <MemoryRouter>
-        <ImportPage />
-      </MemoryRouter>
-    );
+    renderImportPage();
 
     fireEvent.change(await screen.findByLabelText('来源类型'), {
       target: { value: 'platform_authoring' },
@@ -59,11 +69,7 @@ describe('ImportPage', () => {
   });
 
   it('allows adding and deleting non-locked authoring files', async () => {
-    render(
-      <MemoryRouter>
-        <ImportPage />
-      </MemoryRouter>
-    );
+    renderImportPage();
 
     fireEvent.change(await screen.findByLabelText('来源类型'), {
       target: { value: 'platform_authoring' },
@@ -91,11 +97,7 @@ describe('ImportPage', () => {
       errors: [],
     });
 
-    render(
-      <MemoryRouter>
-        <ImportPage />
-      </MemoryRouter>
-    );
+    renderImportPage();
 
     fireEvent.change(await screen.findByLabelText('来源类型'), {
       target: { value: 'platform_authoring' },
@@ -154,11 +156,7 @@ describe('ImportPage', () => {
       errors: [],
     });
 
-    render(
-      <MemoryRouter>
-        <ImportPage />
-      </MemoryRouter>
-    );
+    renderImportPage();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Prepare' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Validate' }));

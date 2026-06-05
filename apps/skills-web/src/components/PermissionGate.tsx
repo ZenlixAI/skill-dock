@@ -27,20 +27,15 @@ export function PermissionGate({
   children,
 }: PermissionGateProps) {
   const registrySession = useOptionalRegistrySession();
-  const hasImplicitSessionState =
-    session === undefined &&
-    sessionLoading === undefined &&
-    sessionError === undefined;
-  const useProviderState = Boolean(registrySession) && hasImplicitSessionState;
-  const resolvedSession = session === undefined ? (registrySession?.session.data ?? null) : session;
-  const posture = useProviderState
-    ? registrySession.getPosture({ packageName, requiredAction })
-    : getSessionPosture(resolvedSession, {
-        loading: sessionLoading ?? false,
-        error: sessionError ?? null,
-        packageName,
-        requiredAction,
-      });
+  const resolvedSession = session ?? registrySession?.session.data ?? null;
+  const resolvedLoading = sessionLoading ?? registrySession?.session.loading ?? false;
+  const resolvedError = sessionError ?? registrySession?.session.error ?? null;
+  const posture = getSessionPosture(resolvedSession, {
+    loading: resolvedLoading,
+    error: resolvedError,
+    packageName,
+    requiredAction,
+  });
 
   if (posture === 'loading') {
     return <>{unavailableFallback ?? <div className="empty-box">正在加载会话权限…</div>}</>;
@@ -60,9 +55,7 @@ export function PermissionGate({
     return <>{unavailableFallback ?? <div className="empty-box">当前没有可用于 {requiredAction} 的已登录 Catalog 会话。</div>}</>;
   }
 
-  const allowed = useProviderState
-    ? registrySession.hasCapability(requiredAction, packageName)
-    : sessionHasCapability(resolvedSession, requiredAction, packageName);
+  const allowed = sessionHasCapability(resolvedSession, requiredAction, packageName);
 
   if (!allowed) {
     return (

@@ -284,9 +284,6 @@ export function SkillDetailPage() {
               fallback={<div className="empty-box">当前会话对 `catalog.governance.skill.apply` 只有只读权限。</div>}
               packageName={decodedPackage}
               requiredAction="catalog.governance.skill.apply"
-              session={session.data}
-              sessionError={session.error}
-              sessionLoading={session.loading}
             >
               <label className="field">
                 <span>原因</span>

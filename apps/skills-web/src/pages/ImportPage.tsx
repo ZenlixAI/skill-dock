@@ -992,9 +992,6 @@ export function ImportPage() {
                 fallback={<div className="empty-box">当前会话对 `packaging.prepare` 只有只读权限。</div>}
                 packageName={normalizedPackageName}
                 requiredAction="packaging.prepare"
-                session={session.data}
-                sessionError={session.error}
-                sessionLoading={session.loading}
               >
                 <button
                   className="button button--primary"
@@ -1009,9 +1006,6 @@ export function ImportPage() {
                 fallback={<div className="empty-box">当前会话对 `packaging.validate` 只有只读权限。</div>}
                 packageName={normalizedPackageName}
                 requiredAction="packaging.validate"
-                session={session.data}
-                sessionError={session.error}
-                sessionLoading={session.loading}
               >
                 <button
                   className="button button--secondary"
@@ -1026,9 +1020,6 @@ export function ImportPage() {
                 fallback={<div className="empty-box">当前会话对 `packaging.pack` 只有只读权限。</div>}
                 packageName={normalizedPackageName}
                 requiredAction="packaging.pack"
-                session={session.data}
-                sessionError={session.error}
-                sessionLoading={session.loading}
               >
                 <button
                   className="button button--secondary"
@@ -1043,9 +1034,6 @@ export function ImportPage() {
                 fallback={<div className="empty-box">当前会话对 `packaging.pack` 只有只读权限。</div>}
                 packageName={cleanupPackageName}
                 requiredAction="packaging.pack"
-                session={session.data}
-                sessionError={session.error}
-                sessionLoading={session.loading}
               >
                 <button
                   className="button button--secondary"

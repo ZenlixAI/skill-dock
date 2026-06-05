@@ -403,9 +403,6 @@ export function VersionDetailPage() {
             fallback={<div className="empty-box">当前会话对 `catalog.release_record.create` 只有只读权限。</div>}
             packageName={decodedPackage}
             requiredAction="catalog.release_record.create"
-            session={session.data}
-            sessionError={session.error}
-            sessionLoading={session.loading}
           >
             <div className="stack-column">
               <label className="field">
@@ -457,9 +454,6 @@ export function VersionDetailPage() {
             fallback={<div className="empty-box">当前会话对 `catalog.governance.version.apply` 只有只读权限。</div>}
             packageName={decodedPackage}
             requiredAction="catalog.governance.version.apply"
-            session={session.data}
-            sessionError={session.error}
-            sessionLoading={session.loading}
           >
             <div className="stack-column">
               <label className="field">
