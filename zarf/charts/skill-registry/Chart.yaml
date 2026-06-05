@@ -1,0 +1,6 @@
+apiVersion: v2
+name: skill-registry
+description: Skill Registry deployment for k3s with nexus, catalog, skills-web, and optional embedded postgres.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

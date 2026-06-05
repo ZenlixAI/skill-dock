@@ -31,12 +31,12 @@ describe('MutationResultPanel', () => {
     );
 
     expect(screen.getByText('pack')).toBeInTheDocument();
-    expect(screen.getByText('failure')).toBeInTheDocument();
+    expect(screen.getByText('失败')).toBeInTheDocument();
     expect(screen.getByText('bundle digest mismatched the uploaded archive')).toBeInTheDocument();
-    expect(screen.getByText('Request ID: req_pack_123')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Open audit trail' })).toHaveAttribute(
+    expect(screen.getByText('请求 ID：req_pack_123')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '打开审计线索' })).toHaveAttribute(
       'href',
-      '/audit?package=%40platform.skill%2Fpdf-skill&version=1.2.0&outcome=failed&actor=svc-publisher'
+      '/workbench/audit?package=%40platform.skill%2Fpdf-skill&version=1.2.0&outcome=failed&actor=svc-publisher'
     );
   });
 

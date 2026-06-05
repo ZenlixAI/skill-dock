@@ -139,6 +139,7 @@ export async function requestJSON<T>(path: string, init?: RequestInit): Promise<
   const requestUrl = registryClientConfig.baseUrl ? `${registryClientConfig.baseUrl}${path}` : path;
   const response = await fetch(requestUrl, {
     ...init,
+    credentials: 'include',
     headers: buildHeaders(hasBody),
   });
 

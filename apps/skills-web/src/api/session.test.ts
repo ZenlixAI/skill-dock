@@ -27,6 +27,8 @@ function createMockApiClient(
   return {
     getConfig: () => config,
     getSession,
+    loginSession: notUsed,
+    logoutSession: notUsed,
     listSkills: notUsed,
     listCuratedSkills: notUsed,
     getSkillDetail: notUsed,
@@ -237,6 +239,42 @@ describe('session client seam', () => {
       allowedActions: ['session.read'],
       allowedPackages: [],
     });
+    expect(requestJSON).toHaveBeenCalledWith('/api/v1/session');
+  });
+
+  it('treats an unauthenticated real-mode session response as null', async () => {
+    const requestJSON = vi.fn().mockResolvedValue(null);
+    const mockConfig: RegistryClientConfig = {
+      mode: 'real',
+      baseUrl: null,
+      role: null,
+      actor: null,
+      hasToken: false,
+    };
+
+    vi.doMock('./config', () => ({
+      registryClientConfig: mockConfig,
+    }));
+    vi.doMock('./httpClient', () => ({
+      requestJSON,
+      RegistryHttpError: class RegistryHttpError extends Error {},
+    }));
+    vi.doMock('./mockClient', () => ({
+      mockClient: createMockApiClient(
+        {
+          mode: 'mock',
+          baseUrl: null,
+          role: null,
+          actor: null,
+          hasToken: false,
+        },
+        vi.fn()
+      ),
+    }));
+
+    const clientModule = await import('./client');
+
+    await expect(clientModule.getSession()).resolves.toBeNull();
     expect(requestJSON).toHaveBeenCalledWith('/api/v1/session');
   });
 });

@@ -21,7 +21,7 @@ describe('PermissionGate', () => {
   it('renders the fallback posture when the session lacks the required action', () => {
     render(
       <PermissionGate
-        fallback={<div>Current session is read-only for packaging.prepare.</div>}
+        fallback={<div>当前会话对 packaging.prepare 只有只读权限。</div>}
         requiredAction="packaging.prepare"
         session={createSession(['catalog.read', 'session.read'])}
       >
@@ -29,7 +29,7 @@ describe('PermissionGate', () => {
       </PermissionGate>
     );
 
-    expect(screen.getByText('Current session is read-only for packaging.prepare.')).toBeInTheDocument();
+    expect(screen.getByText('当前会话对 packaging.prepare 只有只读权限。')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Prepare packaging' })).toBeNull();
   });
 
@@ -57,7 +57,7 @@ describe('PermissionGate', () => {
       </PermissionGate>
     );
 
-    expect(screen.getByText('Current session cannot perform catalog.governance.skill.apply for @platform.skill/agent-notes.')).toBeInTheDocument();
+    expect(screen.getByText('当前会话没有执行 catalog.governance.skill.apply（@platform.skill/agent-notes）的权限。')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Retire skill' })).toBeNull();
   });
 
@@ -68,7 +68,7 @@ describe('PermissionGate', () => {
       </PermissionGate>
     );
 
-    expect(screen.getByText('Session unavailable. Unable to verify packaging.prepare right now.')).toBeInTheDocument();
+    expect(screen.getByText('当前会话不可用，暂时无法校验 packaging.prepare。')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Prepare packaging' })).toBeNull();
   });
 });

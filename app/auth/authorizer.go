@@ -272,36 +272,45 @@ func defaultCapabilities() map[Action]map[string]struct{} {
 		ActionReadCatalog: {
 			"reader":    {},
 			"publisher": {},
+			"operator":  {},
 		},
 		ActionReadAuditEvents: {
 			"reader":    {},
 			"publisher": {},
+			"operator":  {},
 		},
 		ActionReadSession: {
 			"reader":    {},
 			"authoring": {},
 			"publisher": {},
+			"operator":  {},
 		},
 		ActionPackagingPrepare: {
 			"authoring": {},
 			"publisher": {},
+			"operator":  {},
 		},
 		ActionPackagingValidate: {
 			"authoring": {},
 			"publisher": {},
+			"operator":  {},
 		},
 		ActionPackagingPack: {
 			"authoring": {},
 			"publisher": {},
+			"operator":  {},
 		},
 		ActionCreateReleaseRecord: {
 			"publisher": {},
+			"operator":  {},
 		},
 		ActionApplySkillGovernance: {
 			"publisher": {},
+			"operator":  {},
 		},
 		ActionApplyVersionGovernance: {
 			"publisher": {},
+			"operator":  {},
 		},
 	}
 }

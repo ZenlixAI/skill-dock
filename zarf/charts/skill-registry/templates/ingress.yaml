@@ -1,0 +1,107 @@
+{{- if eq .Values.ingress.kind "ingress" }}
+{{- if .Values.ingress.web.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "skill-registry.webName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "skill-registry.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - host: {{ .Values.ingress.web.host }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.web.path }}
+            pathType: {{ .Values.ingress.web.pathType }}
+            backend:
+              service:
+                name: {{ include "skill-registry.webName" . }}
+                port:
+                  number: {{ .Values.web.service.port }}
+{{- end }}
+{{- if .Values.ingress.nexus.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "skill-registry.nexusName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "skill-registry.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - host: {{ .Values.ingress.nexus.host }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.nexus.path }}
+            pathType: {{ .Values.ingress.nexus.pathType }}
+            backend:
+              service:
+                name: {{ include "skill-registry.nexusName" . }}
+                port:
+                  number: 8081
+{{- end }}
+{{- else if eq .Values.ingress.kind "ingressRoute" }}
+{{- if .Values.ingress.web.enabled }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ include "skill-registry.webName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "skill-registry.labels" . | nindent 4 }}
+  {{- with .Values.traefik.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  entryPoints:
+    - {{ .Values.traefik.web.entrypoint | quote }}
+  routes:
+    - match: {{ include "skill-registry.traefikWebMatch" . | quote }}
+      kind: Rule
+      services:
+        - name: {{ include "skill-registry.webName" . }}
+          port: {{ .Values.web.service.port }}
+  {{- if .Values.traefik.web.tls }}
+  tls: {}
+  {{- end }}
+{{- end }}
+{{- if .Values.ingress.nexus.enabled }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ include "skill-registry.nexusName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "skill-registry.labels" . | nindent 4 }}
+  {{- with .Values.traefik.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  entryPoints:
+    - {{ .Values.traefik.nexus.entrypoint | quote }}
+  routes:
+    - match: {{ include "skill-registry.traefikNexusMatch" . | quote }}
+      kind: Rule
+      services:
+        - name: {{ include "skill-registry.nexusName" . }}
+          port: 8081
+  {{- if .Values.traefik.nexus.tls }}
+  tls: {}
+  {{- end }}
+{{- end }}
+{{- end }}

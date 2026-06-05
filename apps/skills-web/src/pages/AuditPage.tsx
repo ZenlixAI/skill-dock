@@ -6,6 +6,7 @@ import { SectionHeading } from '../components/SectionHeading';
 import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
 import { formatDate } from '../lib/format';
+import { formatAuditEndpoint } from '../lib/formatAuditEndpoint';
 import { usePaginatedCollection } from '../lib/usePaginatedCollection';
 
 type AuditLayer = {
@@ -89,7 +90,7 @@ export function AuditPage() {
       <SectionHeading
         eyebrow="Audit"
         title="让人追溯‘谁在什么时候对哪个 skill/version 做了哪一步’，并先看真正重要的失败面。"
-        description="Audit 页现在不只堆 feed，而是把 denied / failed / mutating / read-side trace 拆开看。"
+        description="审计页不再只是堆 feed，而是把 denied / failed / mutating / read-side trace 分层展开。"
         tone="backstage"
       />
 
@@ -120,9 +121,9 @@ export function AuditPage() {
       </div>
 
       <div className="two-column two-column--wide-right">
-        <SurfaceCard title="Filters" description="先缩小 actor / outcome / package 再读时间轴。" variant="console">
+        <SurfaceCard title="筛选" description="先缩小 actor / outcome / package，再读时间轴。" variant="console">
           <label className="field">
-            <span>Package name</span>
+            <span>包名</span>
             <input
               onChange={(event) => updateFilter('package', event.target.value)}
               placeholder="@company.skill/pdf-skill"
@@ -130,7 +131,7 @@ export function AuditPage() {
             />
           </label>
           <label className="field">
-            <span>Version</span>
+            <span>版本</span>
             <input onChange={(event) => updateFilter('version', event.target.value)} placeholder="1.2.0" value={version} />
           </label>
           <label className="field">
@@ -142,9 +143,9 @@ export function AuditPage() {
             />
           </label>
           <label className="field">
-            <span>Outcome</span>
+            <span>结果</span>
             <select value={outcome} onChange={(event) => updateFilter('outcome', event.target.value)}>
-              <option value="">All</option>
+              <option value="">全部</option>
               <option value="succeeded">succeeded</option>
               <option value="failed">failed</option>
               <option value="forbidden">forbidden</option>
@@ -152,26 +153,26 @@ export function AuditPage() {
             </select>
           </label>
           <label className="field">
-            <span>Auth decision</span>
+            <span>鉴权结果</span>
             <select value={authDecision} onChange={(event) => updateFilter('authDecision', event.target.value)}>
-              <option value="">All</option>
+              <option value="">全部</option>
               <option value="allowed">allowed</option>
               <option value="denied">denied</option>
             </select>
           </label>
           <div className="action-row">
             <div className="action-row__copy">
-              <strong>How to read this console</strong>
-              <p>先看 failures / denied，再看 mutating operations，最后再回头看 reads；不要把所有请求当同一种追溯粒度。</p>
-            </div>
-          </div>
+                  <strong>阅读建议</strong>
+                  <p>先看 failures / denied，再看 mutating operations，最后再回头看 reads；不要把所有请求当同一种追溯粒度。</p>
+                </div>
+              </div>
         </SurfaceCard>
 
         <div className="stack-column">
-          {audit.loading ? <div className="empty-box">Loading audit records…</div> : null}
+          {audit.loading ? <div className="empty-box">正在加载审计记录…</div> : null}
           {audit.error ? <div className="error-box">{audit.error}</div> : null}
           {!audit.loading && !audit.error && items.length === 0 ? (
-            <div className="empty-box">No audit records matched the current filters.</div>
+            <div className="empty-box">当前筛选条件下没有审计记录。</div>
           ) : null}
 
           {layers.map((layer) => (
@@ -195,7 +196,7 @@ export function AuditPage() {
                         <StatusPill>{item.method}</StatusPill>
                       </div>
                     </div>
-                    <p>{item.endpoint}</p>
+                    <p title={item.endpoint}>{formatAuditEndpoint(item.endpoint)}</p>
                     <div className="pill-row">
                       <StatusPill>{item.requestId}</StatusPill>
                       <StatusPill tone="accent">{item.statusCode.toString()}</StatusPill>
@@ -215,12 +216,12 @@ export function AuditPage() {
                   ? `当前只展示前 ${items.length} 条审计记录，后面还有更多 trace。`
                   : `当前审计结果集已完整展示，共 ${items.length} 条。`
               }
-              title="Pagination"
+              title="分页"
               variant="rail"
             >
               {audit.pageInfo.hasNextPage ? (
                 <button className="button button--secondary" disabled={audit.loadingMore} onClick={audit.loadMore} type="button">
-                  {audit.loadingMore ? 'Loading…' : 'Load more'}
+                  {audit.loadingMore ? '加载中…' : '继续加载'}
                 </button>
               ) : null}
             </SurfaceCard>

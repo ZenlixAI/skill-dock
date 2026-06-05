@@ -11,6 +11,8 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        # Leave this empty when browser login/session-cookie mode is enabled.
+        # Set a fixed bearer token only for legacy read-only deployments.
         proxy_set_header Authorization "${CATALOG_AUTHORIZATION_HEADER}";
     }
 

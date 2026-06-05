@@ -7,9 +7,10 @@ describe('getRouteTheme', () => {
     expect(getRouteTheme('/catalog').tone).toBe('frontstage');
   });
 
-  it('marks import and audit as backstage routes', () => {
-    expect(getRouteTheme('/import').tone).toBe('backstage');
-    expect(getRouteTheme('/audit').tone).toBe('backstage');
+  it('marks workbench routes as backstage routes', () => {
+    expect(getRouteTheme('/workbench').tone).toBe('backstage');
+    expect(getRouteTheme('/workbench/import').tone).toBe('backstage');
+    expect(getRouteTheme('/workbench/audit').tone).toBe('backstage');
   });
 
   it('treats skill detail routes as frontstage detail routes', () => {

@@ -1,29 +1,48 @@
 import type { PropsWithChildren } from 'react';
 import { motion } from 'framer-motion';
 import { Activity, AppWindow, BookOpenText, Boxes, ScanSearch, ShieldAlert } from 'lucide-react';
-import { NavLink, useLocation } from 'react-router-dom';
-import { getRegistryClientConfig, getSession } from '../api/client';
-import { canMutateCatalog, describeSessionPosture, describeSessionScope } from '../api/session';
-import { useAsyncData } from '../lib/useAsyncData';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { getRegistryClientConfig, logoutSession } from '../api/client';
+import { canMutateCatalog, describeSessionPosture, describeSessionScope, hasAction } from '../api/session';
 import { getRouteTheme } from '../lib/routeTheme';
+import { useRegistrySession } from '../session/SessionProvider';
 import clsx from '../vendor/clsx';
 import { EnvironmentGuard } from './EnvironmentGuard';
 import { StatusPill } from './StatusPill';
 
 const navItems = [
-  { to: '/', label: 'Overview', icon: AppWindow },
-  { to: '/catalog', label: 'Catalog', icon: ScanSearch },
-  { to: '/authoring', label: 'Authoring', icon: BookOpenText },
-  { to: '/import', label: 'Import', icon: Boxes },
-  { to: '/governance', label: 'Governance', icon: ShieldAlert },
-  { to: '/audit', label: 'Audit', icon: Activity },
+  { to: '/', label: '首页', icon: AppWindow },
+  { to: '/catalog', label: '目录', icon: ScanSearch },
+  { to: '/workbench', label: '工作台', icon: AppWindow },
+  { to: '/workbench/authoring', label: '作者台', icon: BookOpenText, requiredAction: 'packaging.prepare' },
+  { to: '/workbench/import', label: '导入', icon: Boxes, requiredAction: 'packaging.prepare' },
+  { to: '/workbench/governance', label: '治理', icon: ShieldAlert, requiredAction: 'catalog.governance.skill.apply' },
+  { to: '/workbench/audit', label: '审计', icon: Activity },
 ];
 
 export function AppShell({ children }: PropsWithChildren) {
   const config = getRegistryClientConfig();
   const location = useLocation();
+  const navigate = useNavigate();
   const routeTheme = getRouteTheme(location.pathname);
-  const session = useAsyncData(() => getSession(), [config.mode, config.baseUrl]);
+  const { session, refreshSession } = useRegistrySession();
+  const runtimeUsesLogin = config.mode === 'real' && !config.hasToken && !config.role;
+  const visibleNavItems = navItems.filter((item) =>
+    item.requiredAction ? hasAction(session.data, item.requiredAction) : true
+  );
+
+  async function handleLogout() {
+    await logoutSession();
+    refreshSession();
+    navigate('/login', { replace: true });
+  }
+
+  async function handleSwitchAccount() {
+    const next = `${location.pathname}${location.search}`;
+    await logoutSession();
+    refreshSession();
+    navigate(`/login?next=${encodeURIComponent(next)}`, { replace: true });
+  }
 
   return (
     <div className={clsx('app-shell', `app-shell--${routeTheme.tone}`, `app-shell--${routeTheme.accent}`)}>
@@ -36,26 +55,33 @@ export function AppShell({ children }: PropsWithChildren) {
           <div className="brand-lockup">
             <div className="brand-lockup__mark">SR</div>
             <div className="brand-lockup__copy">
-              <div className="brand-lockup__eyebrow">Registry Core MVP</div>
+              <div className="brand-lockup__eyebrow">Skill Registry</div>
               <h1>Skill Registry Web</h1>
-              <p>Catalog, packaging, release review, and governance in one registry-first operating surface.</p>
+              <p>发现、审阅和发布技能。</p>
             </div>
           </div>
 
           <div className="shell-header__meta">
-            <StatusPill tone={routeTheme.tone === 'frontstage' ? 'accent' : 'default'}>
-              {routeTheme.tone === 'frontstage' ? 'Frontstage' : 'Backstage'}
-            </StatusPill>
             <Status mode={config.mode} />
             <StatusPill tone={canMutateCatalog(session.data) ? 'accent' : 'default'}>
-              {session.loading ? 'Loading session…' : describeSessionPosture(session.data)}
+              {session.loading ? '正在加载会话…' : describeSessionPosture(session.data)}
             </StatusPill>
+            {runtimeUsesLogin && session.data ? (
+              <>
+                <button className="button button--secondary" onClick={handleSwitchAccount} type="button">
+                  切换账号
+                </button>
+                <button className="button button--secondary" onClick={handleLogout} type="button">
+                  退出登录
+                </button>
+              </>
+            ) : null}
           </div>
         </div>
 
         <div className="shell-nav">
           <nav className="shell-nav__rail" aria-label="Primary">
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const Icon = item.icon;
 
               return (
@@ -103,5 +129,5 @@ export function AppShell({ children }: PropsWithChildren) {
 }
 
 function Status({ mode }: { mode: 'mock' | 'real' }) {
-  return <StatusPill tone={mode === 'real' ? 'good' : 'warn'}>{mode === 'real' ? 'Real API mode' : 'Mock mode'}</StatusPill>;
+  return <StatusPill tone={mode === 'real' ? 'good' : 'warn'}>{mode === 'real' ? '真实接口模式' : '模拟模式'}</StatusPill>;
 }

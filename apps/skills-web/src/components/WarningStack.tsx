@@ -9,8 +9,8 @@ export function WarningStack({ warnings }: WarningStackProps) {
   if (warnings.length === 0) {
     return (
       <div className="empty-box">
-        <strong>No warnings</strong>
-        <p>This import path is structurally clean in the current preview.</p>
+        <strong>暂无告警</strong>
+        <p>当前预览下，这条导入链路没有结构性告警。</p>
       </div>
     );
   }
@@ -29,7 +29,7 @@ export function WarningStack({ warnings }: WarningStackProps) {
           <p>{warning.message}</p>
           {warning.suggestedAction ? (
             <p className="warning-card__action">
-              <strong>Suggested action</strong> {warning.suggestedAction}
+              <strong>建议动作</strong> {warning.suggestedAction}
             </p>
           ) : null}
         </article>

@@ -61,6 +61,7 @@ VERIFY_FAST_TARGETS := test-go typecheck-cli test-cli
 VERIFY_FULL_TARGETS := $(VERIFY_FAST_TARGETS) test-cli-dist
 STRICT_FLAG = $(if $(STRICT),--strict)
 WEB_E2E_ENV = env CI=1 VITE_SKILL_REGISTRY_URL=$(REGISTRY_URL) VITE_SKILL_REGISTRY_TOKEN=$(PUBLISHER_TOKEN)
+SESSION_E2E_CATALOG_COMMAND := $(abspath zarf/tools/start-session-e2e-catalog.sh)
 BATCH_IMPORT_ENV = env SKILLS_REGISTRY_URL=$(REGISTRY_URL) SKILLS_REGISTRY_TOKEN=$(PUBLISHER_TOKEN) UV_CACHE_DIR=$(UV_CACHE_DIR)
 CLI_TOKEN ?=
 MAKE_CLI = $(MAKE) --no-print-directory cli
@@ -75,7 +76,7 @@ case "$(NPM_BACKEND)" in \
 esac
 endef
 
-.PHONY: help verify verify-full test-go test-go-packaging python-sync test-cli test-cli-dist test-cli-packaging typecheck-cli build-cli web-install typecheck-web test-web build-web test-web-e2e web-dev build-catalog-image build-web-image build-images docker-build compose-up compose-down dev-prepull dev-up dev-down dev-load dev-apply dev-delete dev-bootstrap dev-ready dev-run dev-reset dev-update dev-update-apply dev-status cli cli-find cli-add cli-publish cli-import-local cli-init cli-inspect cli-list cli-remove cli-update batch-import clean-dev
+.PHONY: help verify verify-full test-go test-go-packaging python-sync test-cli test-cli-dist test-cli-packaging typecheck-cli build-cli web-install typecheck-web test-web build-web test-web-e2e test-web-e2e-login web-dev build-catalog-image build-web-image build-images docker-build compose-up compose-down dev-prepull dev-up dev-down dev-load dev-apply dev-delete dev-bootstrap dev-ready dev-run dev-reset dev-update dev-update-apply dev-status cli cli-find cli-add cli-publish cli-import-local cli-init cli-inspect cli-list cli-remove cli-update batch-import clean-dev
 
 help:
 	@printf "skill_registry make targets\n\n"
@@ -96,6 +97,7 @@ help:
 	@printf "  make test-web          Run npm test in %s\n" "$(WEB_DIR)"
 	@printf "  make build-web         Run npm build in %s\n" "$(WEB_DIR)"
 	@printf "  make test-web-e2e      Build %s for real-mode smoke tests, then run Playwright against local Catalog on %s\n" "$(WEB_DIR)" "$(REGISTRY_URL)"
+	@printf "  make test-web-e2e-login Build %s for session-login E2E, then run Playwright against a local session-enabled Catalog on 127.0.0.1:18081\n" "$(WEB_DIR)"
 	@printf "  make web-dev           Start Vite dev server for %s\n\n" "$(WEB_DIR)"
 	@printf "Local KIND Development:\n"
 	@printf "  make build-images      Build local dev images: %s and %s\n" "$(CATALOG_IMAGE)" "$(WEB_IMAGE)"
@@ -184,6 +186,26 @@ build-images: build-catalog-image build-web-image
 test-web-e2e:
 	$(WEB_E2E_ENV) npm --prefix $(WEB_DIR) run build
 	$(WEB_E2E_ENV) npm --prefix $(WEB_DIR) run test:e2e
+
+test-web-e2e-login:
+	env \
+		CI=1 \
+		VITE_SKILL_REGISTRY_URL=http://127.0.0.1:18081 \
+		VITE_SKILL_REGISTRY_TOKEN= \
+		VITE_SKILL_REGISTRY_ROLE= \
+		VITE_SKILL_REGISTRY_ACTOR= \
+		PLAYWRIGHT_CATALOG_COMMAND=$(SESSION_E2E_CATALOG_COMMAND) \
+		PLAYWRIGHT_CATALOG_PORT=18081 \
+		npm --prefix $(WEB_DIR) run build
+	env \
+		CI=1 \
+		VITE_SKILL_REGISTRY_URL=http://127.0.0.1:18081 \
+		VITE_SKILL_REGISTRY_TOKEN= \
+		VITE_SKILL_REGISTRY_ROLE= \
+		VITE_SKILL_REGISTRY_ACTOR= \
+		PLAYWRIGHT_CATALOG_COMMAND=$(SESSION_E2E_CATALOG_COMMAND) \
+		PLAYWRIGHT_CATALOG_PORT=18081 \
+		npm --prefix $(WEB_DIR) run test:e2e -- tests/e2e/session-login.spec.ts
 
 web-dev:
 	npm --prefix $(WEB_DIR) run dev
@@ -381,7 +403,7 @@ cli-update:
 batch-import:
 	@test -n "$(MANIFEST)" || (echo "MANIFEST is required, e.g. make batch-import MANIFEST=/abs/path/to/import.json" && exit 1)
 	@$(resolve_npm_backend); \
-	args="uv run python tools/batch-import/batch_import_skills.py --manifest $(MANIFEST) --catalog-url $(REGISTRY_URL)"; \
+	args="uv run python zarf/tools/batch-import/batch_import_skills.py --manifest $(MANIFEST) --catalog-url $(REGISTRY_URL)"; \
 	if [ -n "$$npm_registry" ]; then args="$$args --npm-registry $$npm_registry"; fi; \
 	if [ -n "$(STRICT_FLAG)" ]; then args="$$args $(STRICT_FLAG)"; fi; \
 	extra_env=""; \

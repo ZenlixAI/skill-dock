@@ -37,89 +37,81 @@ export function CatalogPage() {
   return (
     <div className="page-grid">
       <SectionHeading
-        eyebrow="Catalog"
-        title="让搜索、筛选和下一步动作在同一屏里变得明确。"
-        description="这页不只是列结果，而是把 package 状态、来源、最新版本和去向一起做成一个高信号 discovery surface。"
+        eyebrow="目录"
+        title="查找技能"
         tone="frontstage"
       />
 
-      <SurfaceCard description="把搜索条抬到页面主节奏里，先收窄意图，再决定是否进入 skill 或 version detail。" title="Command Band" variant="hero">
+      <SurfaceCard title="搜索" variant="hero">
         <div className="catalog-command">
           <label className="field catalog-command__search">
-            <span>Search</span>
+            <span>搜索</span>
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="pdf / review / scrape / governance" />
           </label>
           <div className="catalog-command__status">
-            <StatusPill tone="accent">query {deferredQuery || 'all'}</StatusPill>
-            <StatusPill>{sourceType || 'all sources'}</StatusPill>
-            <StatusPill tone={status === 'retired' ? 'bad' : status === 'active' ? 'good' : undefined}>{status || 'all states'}</StatusPill>
-            <StatusPill tone="good">{resultItems.length} shown</StatusPill>
+            <StatusPill tone="accent">查询 {deferredQuery || '全部'}</StatusPill>
+            <StatusPill>{sourceType || '全部来源'}</StatusPill>
+            <StatusPill tone={status === 'retired' ? 'bad' : status === 'active' ? 'good' : undefined}>{status || '全部状态'}</StatusPill>
+            <StatusPill tone="good">已显示 {resultItems.length}</StatusPill>
           </div>
         </div>
       </SurfaceCard>
 
       <div className="console-strip">
         <article className="console-signal">
-          <span>Discovery posture</span>
-          <strong>{deferredQuery ? 'targeted' : 'broad'}</strong>
-          <p>{deferredQuery ? '当前已经在按具体意图缩小结果。' : '更适合先从 curated 和 source type 开始筛。'}</p>
+          <span>查询</span>
+          <strong>{deferredQuery ? '已收窄' : '全量'}</strong>
+          <p>{deferredQuery ? '当前正在展示过滤后的结果。' : '当前展示全部结果。'}</p>
         </article>
         <article className="console-signal">
-          <span>Active vs retired</span>
+          <span>活跃 / 退役</span>
           <strong>{activeCount} / {retiredCount}</strong>
-          <p>active 仍可继续演进；retired 更适合做历史追溯或迁移判断。</p>
+          <p>当前生命周期分布。</p>
         </article>
         <article className="console-signal">
-          <span>Imported footprint</span>
+          <span>导入来源</span>
           <strong>{importedCount}</strong>
-          <p>结果里外部导入越多，越值得继续检查 normalization 与 governance 风险。</p>
+          <p>当前结果中的导入技能数量。</p>
         </article>
       </div>
 
       <div className="two-column two-column--wide-right">
-        <SurfaceCard description="前端只组织查询条件，不替后端重建治理判断。" title="Filters" variant="rail">
+        <SurfaceCard title="筛选" variant="rail">
           <label className="field">
-            <span>Source type</span>
+            <span>来源类型</span>
             <select value={sourceType} onChange={(event) => setSourceType(event.target.value as CatalogSourceType | '')}>
-              <option value="">All</option>
+              <option value="">全部</option>
               <option value="native">native</option>
               <option value="imported">imported</option>
               <option value="platform_created">platform_created</option>
             </select>
           </label>
           <label className="field">
-            <span>Status</span>
+            <span>状态</span>
             <select value={status} onChange={(event) => setStatus(event.target.value as SkillStatus | '')}>
-              <option value="">All</option>
+              <option value="">全部</option>
               <option value="active">active</option>
               <option value="retired">retired</option>
             </select>
           </label>
-
-          <div className="action-row">
-            <div className="action-row__copy">
-              <strong>Reading posture</strong>
-              <p>先缩小结果集，再决定是进入 skill summary 还是直接看最新 version review，不要在列表页反复横跳。</p>
-            </div>
-          </div>
         </SurfaceCard>
 
-        <SurfaceCard description="映射 `GET /api/v1/skills`，但把结果组织成更接近产品面搜索体验的卡片流。" title="Results" variant="spotlight">
-          {skills.loading && resultItems.length === 0 ? <div className="empty-box">Loading catalog…</div> : null}
-          {skills.refreshing ? <div className="empty-box">Refreshing catalog results while keeping the last successful page visible…</div> : null}
+        <SurfaceCard title="结果" variant="spotlight">
+          {skills.loading && resultItems.length === 0 ? <div className="empty-box">正在加载目录…</div> : null}
+          {skills.refreshing ? <div className="empty-box">正在刷新目录结果，同时保留上一次成功结果…</div> : null}
           {catalogErrorMessage ? <div className="error-box">{catalogErrorMessage}</div> : null}
 
           <div className="console-strip console-strip--compact">
             <article className="console-signal console-signal--compact">
-              <span>Results</span>
+              <span>结果</span>
               <strong>{resultItems.length}</strong>
             </article>
             <article className="console-signal console-signal--compact">
-              <span>Active</span>
+              <span>活跃</span>
               <strong>{activeCount}</strong>
             </article>
             <article className="console-signal console-signal--compact">
-              <span>Retired</span>
+              <span>退役</span>
               <strong>{retiredCount}</strong>
             </article>
           </div>
@@ -144,37 +136,33 @@ export function CatalogPage() {
                 </div>
                 <div className="list-card__actions">
                   <Link className="button button--secondary" to={`/skills/${encodeURIComponent(skill.packageName)}`}>
-                    Open skill
+                    打开
                   </Link>
                   {skill.latestVersion ? (
                     <Link
                       className="button button--secondary"
                       to={`/skills/${encodeURIComponent(skill.packageName)}/versions/${skill.latestVersion}`}
                     >
-                      Open latest version
+                      最新版本
                     </Link>
                   ) : null}
                 </div>
               </article>
             ))}
             {!skills.loading && !skills.errorDetail && resultItems.length === 0 ? (
-              <div className="empty-box">No skills matched the current filters.</div>
+              <div className="empty-box">当前筛选条件下没有匹配的技能。</div>
             ) : null}
           </div>
 
           {!skills.loading && !(skills.errorDetail && resultItems.length === 0) ? (
             <div className="action-row">
               <div className="action-row__copy">
-                <strong>Pagination</strong>
-                <p>
-                  {skills.pageInfo.hasNextPage
-                    ? `当前只展示前 ${resultItems.length} 条结果，后面还有更多。`
-                    : `当前结果集已完整展示，共 ${resultItems.length} 条。`}
-                </p>
+                <strong>分页</strong>
+                <p>{skills.pageInfo.hasNextPage ? `当前显示 ${resultItems.length} 条结果。` : `当前共有 ${resultItems.length} 条结果。`}</p>
               </div>
               {skills.pageInfo.hasNextPage ? (
                 <button className="button button--secondary" disabled={skills.loadingMore} onClick={skills.loadMore} type="button">
-                  {skills.loadingMore ? 'Loading…' : 'Load more'}
+                  {skills.loadingMore ? '加载中…' : '加载更多'}
                 </button>
               ) : null}
             </div>
@@ -188,25 +176,25 @@ export function CatalogPage() {
 function describeCatalogError(error: RegistryRequestError, hasStaleResults: boolean) {
   if (error.kind === 'auth') {
     return hasStaleResults
-      ? `${error.message} Keeping the last successful catalog results visible.`
-      : `${error.message} The current session cannot read catalog results from the real backend.`;
+      ? `${error.message} 当前保留上一次成功的目录结果。`
+      : `${error.message} 当前会话无法读取真实后端的目录结果。`;
   }
 
   if (error.kind === 'network') {
     return hasStaleResults
-      ? `${error.message} Showing the last successful catalog page while refresh failed.`
-      : `${error.message} The real backend is unavailable, so catalog results could not be loaded.`;
+      ? `${error.message} 刷新失败，当前保留上一次成功的目录页。`
+      : `${error.message} 真实后端不可用，目录结果未能加载。`;
   }
 
   if (error.kind === 'server') {
     return hasStaleResults
-      ? `${error.message} Showing the last successful catalog page while the backend returned an error.`
+      ? `${error.message} 后端返回错误，当前保留上一次成功的目录页。`
       : error.message;
   }
 
   if (error.kind === 'not_found') {
     return hasStaleResults
-      ? `${error.message} Keeping the previous results visible until the next successful refresh.`
+      ? `${error.message} 下一次刷新成功前，当前保留之前的结果。`
       : error.message;
   }
 

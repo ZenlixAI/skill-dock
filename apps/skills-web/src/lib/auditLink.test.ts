@@ -3,7 +3,7 @@ import { buildAuditLink } from './auditLink';
 
 describe('buildAuditLink', () => {
   it('returns the audit page without query params when no filters are provided', () => {
-    expect(buildAuditLink({})).toBe('/audit');
+    expect(buildAuditLink({})).toBe('/workbench/audit');
   });
 
   it('includes only the provided filters in a stable order', () => {
@@ -15,7 +15,7 @@ describe('buildAuditLink', () => {
         actor: 'svc-publisher',
       })
     ).toBe(
-      '/audit?package=%40platform.skill%2Fpdf-skill&version=1.2.0&outcome=failed&actor=svc-publisher'
+      '/workbench/audit?package=%40platform.skill%2Fpdf-skill&version=1.2.0&outcome=failed&actor=svc-publisher'
     );
   });
 
@@ -26,6 +26,6 @@ describe('buildAuditLink', () => {
         version: '1.2.0',
         outcome: '',
       })
-    ).toBe('/audit?version=1.2.0');
+    ).toBe('/workbench/audit?version=1.2.0');
   });
 });

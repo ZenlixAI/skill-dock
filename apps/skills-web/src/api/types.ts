@@ -287,7 +287,7 @@ export interface ListAuditFilters {
 }
 
 export interface RegistrySession {
-  role: 'reader' | 'authoring' | 'publisher';
+  role: 'reader' | 'authoring' | 'publisher' | 'operator';
   actor: string;
   authMechanism: string;
   allowedActions: string[];
@@ -305,6 +305,8 @@ export interface RegistryClientConfig {
 export interface RegistryApiClient {
   getConfig(): RegistryClientConfig;
   getSession(): Promise<RegistrySession | null>;
+  loginSession(username: string, password: string): Promise<RegistrySession>;
+  logoutSession(): Promise<void>;
   listSkills(filters?: ListSkillsFilters): Promise<SkillsPage<SkillSummary>>;
   listCuratedSkills(): Promise<CuratedSkillSummary[]>;
   getSkillDetail(packageName: string): Promise<SkillDetail>;

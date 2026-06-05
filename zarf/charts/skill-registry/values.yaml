@@ -1,0 +1,126 @@
+nameOverride: ""
+fullnameOverride: ""
+
+namespace:
+  create: false
+
+imagePullSecrets: []
+
+database:
+  host: postgresql.postgresql.svc.cluster.local
+  port: 5432
+  sslmode: disable
+
+catalog:
+  replicaCount: 2
+  image:
+    repository: registry.example.com/skill-registry-catalog
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  service:
+    port: 8080
+  auth:
+    readerToken: replace-reader-token
+    authoringToken: replace-authoring-token
+    publisherToken: replace-publisher-token
+    authTokensJson: ""
+  session:
+    secret: replace-session-secret
+    usersJson: |
+      {
+        "reader": {
+          "password": "replace-reader-password",
+          "role": "reader",
+          "actor": "reader"
+        },
+        "operator": {
+          "password": "replace-operator-password",
+          "role": "operator",
+          "actor": "operator"
+        }
+      }
+  env:
+    enableSampleData: "false"
+    enableMockRegistry: "false"
+  resources: {}
+
+web:
+  replicaCount: 2
+  image:
+    repository: registry.example.com/skill-registry-web
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  service:
+    port: 8080
+  # Leave empty when browser login/session-cookie mode is enabled.
+  # Set a static Bearer token only for fixed-token read-only web deployments.
+  catalogAuthorizationHeader: ""
+  resources: {}
+
+postgres:
+  enabled: false
+  image:
+    repository: postgres
+    tag: "17"
+    pullPolicy: IfNotPresent
+  auth:
+    database: skill_registry
+    user: postgres
+    password: password
+  persistence:
+    size: 20Gi
+    accessModes:
+      - ReadWriteOnce
+  resources: {}
+
+nexus:
+  image:
+    repository: sonatype/nexus3
+    tag: latest
+    pullPolicy: IfNotPresent
+  bootstrapImage:
+    repository: node
+    tag: 22-bookworm
+    pullPolicy: IfNotPresent
+  admin:
+    user: admin
+    password: change-me
+  repositoryName: skills-npm
+  publicRepositoryUrl: ""
+  enableAnonymousRead: "true"
+  persistence:
+    size: 50Gi
+    accessModes:
+      - ReadWriteOnce
+  resources: {}
+
+ingress:
+  kind: ingress
+  className: traefik
+  annotations: {}
+  web:
+    enabled: true
+    scheme: https
+    host: skills.example.com
+    path: /
+    pathType: Prefix
+  nexus:
+    enabled: true
+    scheme: https
+    host: nexus.example.com
+    path: /
+    pathType: Prefix
+
+traefik:
+  annotations:
+    kubernetes.io/ingress.class: traefik
+  web:
+    entrypoint: web
+    # Leave empty to auto-generate Host(...) && PathPrefix(...) from ingress.web.*.
+    match: ""
+    tls: false
+  nexus:
+    entrypoint: amber
+    # Leave empty to auto-generate Host(...) && PathPrefix(...) from ingress.nexus.*.
+    match: ""
+    tls: false

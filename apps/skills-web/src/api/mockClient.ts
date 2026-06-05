@@ -386,6 +386,30 @@ export const mockClient: RegistryApiClient = {
     return delay(null);
   },
 
+  async loginSession() {
+    return delay({
+      role: 'operator',
+      actor: 'mock-operator',
+      authMechanism: 'mock',
+      allowedActions: [
+        'session.read',
+        'catalog.read',
+        'audit.read',
+        'packaging.prepare',
+        'packaging.validate',
+        'packaging.pack',
+        'catalog.release_record.create',
+        'catalog.governance.skill.apply',
+        'catalog.governance.version.apply',
+      ],
+      allowedPackages: [],
+    });
+  },
+
+  async logoutSession() {
+    await delay(undefined);
+  },
+
   async listSkills(filters?: ListSkillsFilters) {
     const query = filters?.query?.trim().toLowerCase() || '';
     const filtered = skills.filter((skill) => {

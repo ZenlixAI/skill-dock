@@ -24,6 +24,13 @@ export function getRouteTheme(pathname: string): RouteTheme {
     };
   }
 
+  if (pathname === '/workbench') {
+    return {
+      tone: 'backstage',
+      accent: 'detail',
+    };
+  }
+
   return {
     tone: 'backstage',
     accent: 'console',

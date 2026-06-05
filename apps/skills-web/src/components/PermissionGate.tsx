@@ -23,21 +23,21 @@ export function PermissionGate({
   children,
 }: PermissionGateProps) {
   if (sessionLoading) {
-    return <>{unavailableFallback ?? <div className="empty-box">Loading session permissions…</div>}</>;
+    return <>{unavailableFallback ?? <div className="empty-box">正在加载会话权限…</div>}</>;
   }
 
   if (sessionError) {
     return (
       <>
         {unavailableFallback ?? (
-          <div className="empty-box">Session unavailable. Unable to verify {requiredAction} right now.</div>
+          <div className="empty-box">当前会话不可用，暂时无法校验 {requiredAction}。</div>
         )}
       </>
     );
   }
 
   if (!session) {
-    return <>{unavailableFallback ?? <div className="empty-box">No authenticated Catalog session for {requiredAction}.</div>}</>;
+    return <>{unavailableFallback ?? <div className="empty-box">当前没有可用于 {requiredAction} 的已登录 Catalog 会话。</div>}</>;
   }
 
   const allowed = canPerformAction(session, requiredAction, packageName);
@@ -47,8 +47,9 @@ export function PermissionGate({
       <>
         {fallback ?? (
           <div className="empty-box">
-            Current session cannot perform {requiredAction}
-            {packageName?.trim() ? ` for ${packageName.trim()}` : ''}.
+            当前会话没有执行 {requiredAction}
+            {packageName?.trim() ? `（${packageName.trim()}）` : ''}
+            的权限。
           </div>
         )}
       </>

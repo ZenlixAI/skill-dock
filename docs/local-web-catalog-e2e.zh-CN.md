@@ -45,6 +45,25 @@ npm run build
 VITE_SKILL_REGISTRY_URL=http://127.0.0.1:18080 VITE_SKILL_REGISTRY_TOKEN=publisher-secret npm run test:e2e
 ```
 
+## 浏览器登录流 E2E
+
+如果你要验证 session-cookie 登录而不是固定 bearer token，直接跑：
+
+```bash
+make test-web-e2e-login
+```
+
+这条命令会：
+
+1. 用 `VITE_SKILL_REGISTRY_URL=http://127.0.0.1:18081` 构建 `skills-web`
+2. 自动拉起一个本地 session-enabled Catalog
+3. 运行 `tests/e2e/session-login.spec.ts`
+
+默认登录凭据：
+
+- `reader / reader-secret`
+- `operator / op-secret`
+
 ## 推荐做法
 
 - 想验证“构建产物 + preview”时，先停掉第 2 步的 dev server，再执行第 5 步

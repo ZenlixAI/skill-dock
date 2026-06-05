@@ -1,5 +1,5 @@
 import { registryClientConfig } from './config';
-import { requestJSON } from './httpClient';
+import { RegistryHttpError, requestJSON } from './httpClient';
 import { mockClient } from './mockClient';
 import type {
   AuditEventRecord,
@@ -82,7 +82,26 @@ const realClient: RegistryApiClient = {
   },
 
   getSession() {
-    return requestJSON<RegistrySession>('/api/v1/session');
+    return requestJSON<RegistrySession | null>('/api/v1/session').catch((error: unknown) => {
+      if (error instanceof RegistryHttpError && error.status === 401) {
+        return null;
+      }
+      throw error;
+    });
+  },
+
+  loginSession(username: string, password: string) {
+    return requestJSON<RegistrySession>('/api/v1/session/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    });
+  },
+
+  async logoutSession() {
+    await requestJSON<{ ok: boolean }>('/api/v1/session/logout', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
   },
 
   async listSkills(filters?: ListSkillsFilters) {
@@ -246,6 +265,8 @@ export const apiClient: RegistryApiClient = registryClientConfig.mode === 'real'
 
 export const getRegistryClientConfig = () => apiClient.getConfig();
 export const getSession = apiClient.getSession.bind(apiClient);
+export const loginSession = apiClient.loginSession.bind(apiClient);
+export const logoutSession = apiClient.logoutSession.bind(apiClient);
 
 export const listSkills = apiClient.listSkills.bind(apiClient);
 export const listCuratedSkills = apiClient.listCuratedSkills.bind(apiClient);

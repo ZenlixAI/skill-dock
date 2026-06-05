@@ -178,11 +178,12 @@ func TestSessionEndpointRequiresAuthentication(t *testing.T) {
 
 	server.Handler().ServeHTTP(recorder, request)
 
-	if recorder.Code != http.StatusUnauthorized {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusUnauthorized, recorder.Code, recorder.Body.String())
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
 	}
-
-	assertErrorCode(t, recorder, "unauthorized")
+	if strings.TrimSpace(recorder.Body.String()) != "null" {
+		t.Fatalf("expected null session body, got %s", recorder.Body.String())
+	}
 }
 
 func TestSessionEndpointAllowsAuthoringPrincipal(t *testing.T) {
@@ -297,6 +298,124 @@ func TestSessionEndpointReturnsAllowedPackagesForScopedPrincipal(t *testing.T) {
 
 	if !reflect.DeepEqual(response.AllowedPackages, []string{"@platform.skill/code-review", "@platform.skill/agent-notes"}) {
 		t.Fatalf("unexpected allowed packages: %v", response.AllowedPackages)
+	}
+}
+
+func TestSessionLoginSetsCookieAndReturnsOperatorSession(t *testing.T) {
+	server := NewServer(ServerConfig{
+		Repository:    catalog.NewMemoryRepository(catalog.SampleData()),
+		SessionSecret: "session-secret",
+		SessionUsers: map[string]auth.SessionUserConfig{
+			"operator": {
+				Password: "op-secret",
+				Role:     "operator",
+			},
+		},
+	})
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/session/login", strings.NewReader(`{"username":"operator","password":"op-secret"}`))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+	cookies := recorder.Result().Cookies()
+	if len(cookies) == 0 {
+		t.Fatal("expected session cookie to be set")
+	}
+
+	var response struct {
+		Role string `json:"role"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Role != "operator" {
+		t.Fatalf("expected role operator, got %q", response.Role)
+	}
+}
+
+func TestSessionEndpointAcceptsCookieAuthentication(t *testing.T) {
+	server := NewServer(ServerConfig{
+		Repository:    catalog.NewMemoryRepository(catalog.SampleData()),
+		SessionSecret: "session-secret",
+		SessionUsers: map[string]auth.SessionUserConfig{
+			"reader": {
+				Password: "reader-secret",
+				Role:     "reader",
+			},
+		},
+	})
+
+	loginRequest := httptest.NewRequest(http.MethodPost, "/api/v1/session/login", strings.NewReader(`{"username":"reader","password":"reader-secret"}`))
+	loginRequest.Header.Set("Content-Type", "application/json")
+	loginRecorder := httptest.NewRecorder()
+	server.Handler().ServeHTTP(loginRecorder, loginRequest)
+	if loginRecorder.Code != http.StatusOK {
+		t.Fatalf("expected login status %d, got %d body=%s", http.StatusOK, loginRecorder.Code, loginRecorder.Body.String())
+	}
+	cookies := loginRecorder.Result().Cookies()
+	if len(cookies) == 0 {
+		t.Fatal("expected session cookie after login")
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/session", nil)
+	request.AddCookie(cookies[0])
+	recorder := httptest.NewRecorder()
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+
+	var response struct {
+		Role          string   `json:"role"`
+		AuthMechanism string   `json:"authMechanism"`
+		AllowedActions []string `json:"allowedActions"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Role != "reader" {
+		t.Fatalf("expected role reader, got %q", response.Role)
+	}
+	if response.AuthMechanism != "session_cookie" {
+		t.Fatalf("expected session_cookie auth, got %q", response.AuthMechanism)
+	}
+	if !reflect.DeepEqual(response.AllowedActions, []string{"audit.read", "catalog.read", "session.read"}) {
+		t.Fatalf("unexpected allowed actions: %v", response.AllowedActions)
+	}
+}
+
+func TestSessionLogoutClearsCookie(t *testing.T) {
+	server := NewServer(ServerConfig{
+		Repository:    catalog.NewMemoryRepository(catalog.SampleData()),
+		SessionSecret: "session-secret",
+		SessionUsers: map[string]auth.SessionUserConfig{
+			"reader": {
+				Password: "reader-secret",
+				Role:     "reader",
+			},
+		},
+	})
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/session/logout", strings.NewReader(`{}`))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+	cookies := recorder.Result().Cookies()
+	if len(cookies) == 0 {
+		t.Fatal("expected logout cookie to be written")
+	}
+	if cookies[0].MaxAge != -1 {
+		t.Fatalf("expected logout cookie max age -1, got %d", cookies[0].MaxAge)
 	}
 }
 

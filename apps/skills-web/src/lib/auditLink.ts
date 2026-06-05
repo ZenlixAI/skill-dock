@@ -31,5 +31,5 @@ export function buildAuditLink({ packageName, version, outcome, actor }: AuditLi
   }
 
   const query = searchParams.toString();
-  return query ? `/audit?${query}` : '/audit';
+  return query ? `/workbench/audit?${query}` : '/workbench/audit';
 }

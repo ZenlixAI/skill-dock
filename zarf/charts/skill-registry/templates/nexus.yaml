@@ -1,0 +1,118 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "skill-registry.nexusName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "skill-registry.labels" . | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/component: nexus
+    {{- include "skill-registry.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: 8081
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "skill-registry.nexusName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: nexus
+    {{- include "skill-registry.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "skill-registry.nexusName" . }}
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: nexus
+      {{- include "skill-registry.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: nexus
+        {{- include "skill-registry.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        fsGroup: 200
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: nexus
+          image: "{{ .Values.nexus.image.repository }}:{{ .Values.nexus.image.tag }}"
+          imagePullPolicy: {{ .Values.nexus.image.pullPolicy }}
+          ports:
+            - containerPort: 8081
+              name: http
+          env:
+            - name: INSTALL4J_ADD_VM_PARAMS
+              value: >-
+                -Xms1024m -Xmx1024m -XX:MaxDirectMemorySize=1024m
+                -Djava.util.prefs.userRoot=/nexus-data/javaprefs
+          volumeMounts:
+            - name: nexus-data
+              mountPath: /nexus-data
+          readinessProbe:
+            httpGet:
+              path: /service/rest/v1/status
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+          resources:
+            {{- toYaml .Values.nexus.resources | nindent 12 }}
+        - name: nexus-bootstrap
+          image: "{{ .Values.nexus.bootstrapImage.repository }}:{{ .Values.nexus.bootstrapImage.tag }}"
+          imagePullPolicy: {{ .Values.nexus.bootstrapImage.pullPolicy }}
+          command:
+            - /bin/bash
+            - /bootstrap/bootstrap.sh
+          env:
+            - name: NEXUS_URL
+              value: http://127.0.0.1:8081
+            - name: NEXUS_DATA_DIR
+              value: /nexus-data
+            - name: NEXUS_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "skill-registry.nexusName" . }}-secrets
+                  key: nexus_admin_user
+            - name: NEXUS_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "skill-registry.nexusName" . }}-secrets
+                  key: nexus_admin_password
+            - name: NEXUS_REPOSITORY_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "skill-registry.nexusName" . }}-secrets
+                  key: nexus_repository_name
+            - name: NEXUS_ENABLE_ANONYMOUS_READ
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "skill-registry.nexusName" . }}-secrets
+                  key: nexus_enable_anonymous_read
+          volumeMounts:
+            - name: nexus-data
+              mountPath: /nexus-data
+            - name: nexus-bootstrap
+              mountPath: /bootstrap
+      volumes:
+        - name: nexus-bootstrap
+          configMap:
+            name: {{ include "skill-registry.nexusName" . }}-bootstrap
+            defaultMode: 0755
+  volumeClaimTemplates:
+    - metadata:
+        name: nexus-data
+      spec:
+        accessModes:
+          {{- toYaml .Values.nexus.persistence.accessModes | nindent 10 }}
+        resources:
+          requests:
+            storage: {{ .Values.nexus.persistence.size }}

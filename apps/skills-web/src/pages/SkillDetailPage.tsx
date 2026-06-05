@@ -116,7 +116,7 @@ export function SkillDetailPage() {
         outcome: 'succeeded',
         message: `已提交 skill retire。当前状态：${response.resultingState.status || 'retired'}`,
       });
-      appendLog('succeeded', `Retired ${decodedPackage}.`);
+      appendLog('succeeded', `已退役 ${decodedPackage}。`);
       setRefreshKey((current) => current + 1);
     } catch (error: unknown) {
       const outcome = inferMutationFailureOutcome(error);
@@ -142,78 +142,78 @@ export function SkillDetailPage() {
         actions={
           <div className="authoring-actions">
             <Link className="button button--secondary" to="/catalog">
-              Back to catalog
+              返回目录
             </Link>
             {latestVersionItem ? (
               <Link
                 className="button button--primary"
                 to={`/skills/${encodeURIComponent(decodedPackage)}/versions/${latestVersionItem.version}`}
               >
-                Inspect latest version
+                查看最新版本
               </Link>
             ) : null}
           </div>
         }
-        eyebrow="Skill Detail"
+        eyebrow="技能详情"
         title={detail.data?.displayName || decodedPackage}
-        description={detail.data?.description || 'Loading skill detail…'}
+        description={detail.data?.description || '正在加载技能详情…'}
         tone="detail"
       />
 
       <div className="context-strip">
         <StatusPill tone={statusTone}>{detail.data?.status || 'unknown'}</StatusPill>
         {detail.data?.sourceType ? <StatusPill tone="accent">{detail.data.sourceType}</StatusPill> : null}
-        {detail.data?.latestVersion ? <StatusPill>latest {detail.data.latestVersion}</StatusPill> : null}
-        {installTarget.data?.version ? <StatusPill tone="good">install target {installTarget.data.version}</StatusPill> : null}
+        {detail.data?.latestVersion ? <StatusPill>最新 {detail.data.latestVersion}</StatusPill> : null}
+        {installTarget.data?.version ? <StatusPill tone="good">安装目标 {installTarget.data.version}</StatusPill> : null}
         <StatusPill tone={governanceWriteEnabled ? 'accent' : 'default'}>
-          {session.loading ? 'session loading' : session.error ? 'session unavailable' : governanceWriteEnabled ? 'retire enabled' : 'read-only'}
+          {session.loading ? '会话加载中' : session.error ? '会话不可用' : governanceWriteEnabled ? '允许退役' : '只读'}
         </StatusPill>
       </div>
 
       <div className="console-strip">
         <article className="console-signal">
-          <span>Discovery handoff</span>
-          <strong>{detail.data?.status === 'active' ? 'actionable' : 'historical'}</strong>
-          <p>{detail.data?.status === 'active' ? '这个 skill 仍然适合继续深入到 version review 或 install 预览。' : '这个 skill 更像历史对象，下一步重点应该是替代或追溯。'}</p>
-        </article>
-        <article className="console-signal">
-          <span>Version surface</span>
-          <strong>{versionList.data?.items.length || 0}</strong>
-          <p>这里有多少个可检查版本，决定了后续是去 latest review 还是回看历史治理。</p>
-        </article>
-        <article className="console-signal">
-          <span>Governance pressure</span>
-          <strong>{governance.data?.items.length || 0}</strong>
-          <p>治理事件越多，说明这个 skill 越应该用控制台视角去看，而不是只看 README 式详情。</p>
-        </article>
+              <span>状态</span>
+              <strong>{detail.data?.status === 'active' ? '可继续操作' : '仅历史查看'}</strong>
+              <p>{detail.data?.status === 'active' ? '当前可继续审阅和治理。' : '当前只保留历史信息。'}</p>
+            </article>
+            <article className="console-signal">
+              <span>版本数</span>
+              <strong>{versionList.data?.items.length || 0}</strong>
+              <p>已记录的版本数量。</p>
+            </article>
+            <article className="console-signal">
+              <span>治理记录</span>
+              <strong>{governance.data?.items.length || 0}</strong>
+              <p>已经落库的治理动作。</p>
+            </article>
       </div>
 
       <div className="two-column">
-        <SurfaceCard title="Identity" description="这是用户判断‘这个 skill 是什么’的第一屏。" variant="spotlight">
+        <SurfaceCard title="身份信息" variant="spotlight">
           <dl className="property-list">
             <div>
-              <dt>package name</dt>
+              <dt>包名</dt>
               <dd>{decodedPackage}</dd>
             </div>
             <div>
-              <dt>source type</dt>
+              <dt>来源类型</dt>
               <dd>{detail.data?.sourceType || '—'}</dd>
             </div>
             <div>
-              <dt>skill status</dt>
+              <dt>技能状态</dt>
               <dd>{detail.data ? <StatusPill tone={detail.data.status === 'active' ? 'good' : 'bad'}>{detail.data.status}</StatusPill> : '—'}</dd>
             </div>
             <div>
-              <dt>latest version</dt>
+              <dt>最新版本</dt>
               <dd>{detail.data?.latestVersion || '—'}</dd>
             </div>
           </dl>
         </SurfaceCard>
 
-        <SurfaceCard title="Install target preview" description="Reader 最关心的不是对象理论，而是怎么装。" variant="rail">
+        <SurfaceCard title="安装目标" variant="rail">
           <dl className="property-list">
             <div>
-              <dt>registry</dt>
+              <dt>仓地址</dt>
               <dd>{installTarget.data?.npmRegistry || '—'}</dd>
             </div>
             <div>
@@ -235,18 +235,18 @@ export function SkillDetailPage() {
                 className="button button--secondary"
                 to={`/skills/${encodeURIComponent(decodedPackage)}/versions/${latestVersionItem.version}`}
               >
-                Inspect latest version
+                查看最新版本
               </Link>
             ) : null}
             <Link className="button button--secondary" to="/catalog">
-              Back to catalog
+              返回目录
             </Link>
           </div>
         </SurfaceCard>
       </div>
 
       <div className="two-column">
-        <SurfaceCard title="Versions" description="这里不是纯列表，而是从 skill 进入 version review 的分发台。">
+        <SurfaceCard title="版本列表">
           <div className="list-stack">
             {versionList.data?.items.map((item) => (
               <article className="list-card" key={item.version}>
@@ -269,7 +269,7 @@ export function SkillDetailPage() {
                     className="button button--secondary"
                     to={`/skills/${encodeURIComponent(decodedPackage)}/versions/${item.version}`}
                   >
-                    Open version
+                    打开版本
                   </Link>
                 </div>
               </article>
@@ -278,10 +278,10 @@ export function SkillDetailPage() {
         </SurfaceCard>
 
         <div className="stack-column">
-          <SurfaceCard className="surface-card--sticky" title="Skill Governance" description="skill 级治理写接口：当前先接 retire。" variant="console">
+          <SurfaceCard className="surface-card--sticky" title="技能治理" variant="console">
             <MutationResultPanel result={mutationResult} />
             <PermissionGate
-              fallback={<div className="empty-box">Current session is read-only for catalog.governance.skill.apply.</div>}
+              fallback={<div className="empty-box">当前会话对 `catalog.governance.skill.apply` 只有只读权限。</div>}
               packageName={decodedPackage}
               requiredAction="catalog.governance.skill.apply"
               session={session.data}
@@ -289,7 +289,7 @@ export function SkillDetailPage() {
               sessionLoading={session.loading}
             >
               <label className="field">
-                <span>Reason</span>
+                <span>原因</span>
                 <textarea
                   value={retireReason}
                   onChange={(event) => setRetireReason(event.target.value)}
@@ -302,12 +302,12 @@ export function SkillDetailPage() {
                   onChange={(event) => setRetireConfirmed(event.target.checked)}
                   type="checkbox"
                 />
-                <span>I understand this changes installability for the whole skill line.</span>
+                <span>我理解这会改变整条 skill 线的可安装性。</span>
               </label>
               <div className="action-row">
                 <div className="action-row__copy">
-                  <strong>Retire the whole skill line</strong>
-                  <p>这是 package 级动作，不只是某个版本下线。它会把这个 skill 从继续演进的对象变成历史对象。</p>
+                  <strong>退役整条技能线</strong>
+                  <p>这是包级治理动作。</p>
                 </div>
               </div>
               <button
@@ -316,41 +316,41 @@ export function SkillDetailPage() {
                 onClick={() => void handleRetireSkill()}
                 type="button"
               >
-                {submitState.loading ? 'Submitting…' : 'Retire skill'}
+                {submitState.loading ? '提交中…' : '退役技能'}
               </button>
             </PermissionGate>
           </SurfaceCard>
 
-          <SurfaceCard title="Selection Path" description="把这个 skill 当前最合理的下一步动作说清楚。">
+          <SurfaceCard title="下一步">
             <div className="list-stack">
               <article className="list-card">
                 <div className="list-card__head">
                   <div>
-                    <strong>Inspect latest version</strong>
-                    <span>{latestVersionItem?.version || 'no version found'}</span>
+                    <strong>查看最新版本</strong>
+                    <span>{latestVersionItem?.version || '未找到版本'}</span>
                   </div>
                   <StatusPill tone={latestVersionItem?.versionStatus === 'published' ? 'good' : latestVersionItem?.versionStatus === 'deprecated' ? 'warn' : 'bad'}>
                     {latestVersionItem?.versionStatus || 'unknown'}
                   </StatusPill>
                 </div>
-                <p>如果你要继续走发布、release-record、governance，下一站应该是 version detail，而不是停留在 skill summary。</p>
+                <p>继续查看最新版本的详细状态。</p>
               </article>
               <article className="list-card">
                 <div className="list-card__head">
                   <div>
-                    <strong>Catalog install posture</strong>
-                    <span>{installTarget.data?.version || 'unresolved'}</span>
+                    <strong>Catalog 安装态势</strong>
+                    <span>{installTarget.data?.version || '未解析'}</span>
                   </div>
                   <StatusPill tone={detail.data?.status === 'active' ? 'good' : 'bad'}>
                     {detail.data?.status || 'unknown'}
                   </StatusPill>
                 </div>
-                <p>如果 install target 都不值得继续给下游，就应该优先治理，而不是继续宣传这个 skill。</p>
+                <p>检查当前安装解析是否正常。</p>
               </article>
             </div>
           </SurfaceCard>
 
-          <SurfaceCard title="Recent Governance" description="只展示当前 skill 的治理记录，方便和写动作闭环。">
+          <SurfaceCard title="最近治理">
             <div className="list-stack">
               {governance.data?.items.length ? (
                 governance.data.items.map((item) => (
@@ -366,15 +366,12 @@ export function SkillDetailPage() {
                   </article>
                 ))
               ) : (
-                <div className="empty-box">No governance events for this skill yet.</div>
+                <div className="empty-box">这个技能还没有治理记录。</div>
               )}
             </div>
-            {governance.data?.pageInfo.hasNextPage ? (
-              <p className="support-copy">这里只展示第一页治理记录；更长时间线请到 Governance 页面继续翻页。</p>
-            ) : null}
           </SurfaceCard>
 
-          <SurfaceCard title="Execution Log" description="记录这次会话里对这个 skill 做过的治理动作。">
+          <SurfaceCard title="执行日志">
             <div className="list-stack">
               {activityLog.length ? (
                 activityLog.map((entry) => (
@@ -389,7 +386,7 @@ export function SkillDetailPage() {
                   </article>
                 ))
               ) : (
-                <div className="empty-box">No skill-level actions run yet in this session.</div>
+                <div className="empty-box">这个会话里还没有执行过技能级动作。</div>
               )}
             </div>
           </SurfaceCard>

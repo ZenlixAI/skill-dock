@@ -13,13 +13,13 @@
 脚本入口：
 
 ```bash
-uv run python tools/batch-import/batch_import_skills.py --help
+uv run python zarf/tools/batch-import/batch_import_skills.py --help
 ```
 
 示例 manifest：
 
 ```bash
-tools/batch-import/example.json
+zarf/tools/batch-import/example.json
 ```
 
 ## 前提
@@ -64,8 +64,8 @@ make dev-run
 export SKILLS_REGISTRY_URL=http://127.0.0.1:18080
 export SKILLS_REGISTRY_TOKEN=publisher-secret
 
-uv run python tools/batch-import/batch_import_skills.py \
-  --manifest tools/batch-import/example.json \
+uv run python zarf/tools/batch-import/batch_import_skills.py \
+  --manifest zarf/tools/batch-import/example.json \
   --npm-registry http://127.0.0.1:8081/repository/skills-npm \
   --continue-on-error
 ```
@@ -79,8 +79,8 @@ make batch-import MANIFEST=/abs/path/to/import.json NPM_BACKEND=nexus
 严格模式示例：
 
 ```bash
-uv run python tools/batch-import/batch_import_skills.py \
-  --manifest tools/batch-import/example.json \
+uv run python zarf/tools/batch-import/batch_import_skills.py \
+  --manifest zarf/tools/batch-import/example.json \
   --npm-registry http://127.0.0.1:8081/repository/skills-npm \
   --strict
 ```
@@ -124,7 +124,7 @@ manifest 最小格式：
 如果一批 skill 已经放在某个目录下，而且每个 skill 至少有根级 `SKILL.md`，可以直接扫目录：
 
 ```bash
-uv run python tools/batch-import/batch_import_skills.py \
+uv run python zarf/tools/batch-import/batch_import_skills.py \
   --root-dir /abs/path/to/skills \
   --recursive \
   --default-version 0.1.0 \
@@ -144,7 +144,7 @@ uv run python tools/batch-import/batch_import_skills.py \
 导入前建议先看计划：
 
 ```bash
-uv run python tools/batch-import/batch_import_skills.py --root-dir /abs/path/to/skills --dry-run
+uv run python zarf/tools/batch-import/batch_import_skills.py --root-dir /abs/path/to/skills --dry-run
 ```
 
 ## 和真实 npm registry 配合

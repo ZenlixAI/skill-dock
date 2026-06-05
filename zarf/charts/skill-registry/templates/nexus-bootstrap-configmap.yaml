@@ -1,0 +1,83 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "skill-registry.nexusName" . }}-bootstrap
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "skill-registry.labels" . | nindent 4 }}
+data:
+  bootstrap.sh: |
+    #!/bin/bash
+    set -euo pipefail
+
+    NEXUS_URL="${NEXUS_URL:-http://127.0.0.1:8081}"
+    NEXUS_DATA_DIR="${NEXUS_DATA_DIR:-/nexus-data}"
+    ADMIN_USER="${NEXUS_ADMIN_USER:-admin}"
+    ADMIN_PASSWORD="${NEXUS_ADMIN_PASSWORD:-admin123456}"
+    REPOSITORY_NAME="${NEXUS_REPOSITORY_NAME:-skills-npm}"
+    ENABLE_ANONYMOUS_READ="${NEXUS_ENABLE_ANONYMOUS_READ:-true}"
+    BOOTSTRAP_MARKER="${NEXUS_DATA_DIR}/.skills-registry-bootstrap-complete"
+
+    apt-get update >/dev/null
+    apt-get install -y curl jq >/dev/null
+
+    until curl -fsS "${NEXUS_URL}/service/rest/v1/status" >/dev/null 2>&1; do
+      sleep 5
+    done
+
+    current_auth="${ADMIN_USER}:${ADMIN_PASSWORD}"
+    if ! curl -fsS -u "${current_auth}" "${NEXUS_URL}/service/rest/v1/repositories" >/dev/null 2>&1; then
+      if [[ ! -f "${NEXUS_DATA_DIR}/admin.password" ]]; then
+        echo "Missing Nexus initial admin password file at ${NEXUS_DATA_DIR}/admin.password" >&2
+        exit 1
+      fi
+      initial_password="$(tr -d '\r\n' < "${NEXUS_DATA_DIR}/admin.password")"
+      initial_auth="${ADMIN_USER}:${initial_password}"
+      curl -fsS -u "${initial_auth}" \
+        -X PUT \
+        -H 'Content-Type: text/plain' \
+        --data "${ADMIN_PASSWORD}" \
+        "${NEXUS_URL}/service/rest/v1/security/users/${ADMIN_USER}/change-password" >/dev/null
+      current_auth="${ADMIN_USER}:${ADMIN_PASSWORD}"
+    fi
+
+    active_realms="$(curl -fsS -u "${current_auth}" "${NEXUS_URL}/service/rest/v1/security/realms/active")"
+    if ! printf '%s' "${active_realms}" | jq -e '.[] | select(. == "NpmToken")' >/dev/null; then
+      updated_realms="$(printf '%s' "${active_realms}" | jq -c '["NpmToken"] + .')"
+      curl -fsS -u "${current_auth}" \
+        -X PUT \
+        -H 'Content-Type: application/json' \
+        --data "${updated_realms}" \
+        "${NEXUS_URL}/service/rest/v1/security/realms/active" >/dev/null
+    fi
+
+    curl -fsS -u "${current_auth}" \
+      -X POST \
+      -H 'Content-Type: application/json' \
+      --data '{"accepted":true}' \
+      "${NEXUS_URL}/service/rest/v1/system/eula" >/dev/null || true
+
+    anonymous_payload="$(jq -nc \
+      --argjson enabled "$([[ "${ENABLE_ANONYMOUS_READ}" == "true" ]] && echo true || echo false)" \
+      '{enabled:$enabled,userId:"anonymous",realmName:"NexusAuthorizingRealm"}')"
+    curl -fsS -u "${current_auth}" \
+      -X PUT \
+      -H 'Content-Type: application/json' \
+      --data "${anonymous_payload}" \
+      "${NEXUS_URL}/service/rest/v1/security/anonymous" >/dev/null
+
+    repositories="$(curl -fsS -u "${current_auth}" "${NEXUS_URL}/service/rest/v1/repositories")"
+    if ! printf '%s' "${repositories}" | jq -e --arg name "${REPOSITORY_NAME}" '.[] | select(.name == $name)' >/dev/null; then
+      repository_payload="$(jq -nc \
+        --arg name "${REPOSITORY_NAME}" \
+        '{name:$name,online:true,storage:{blobStoreName:"default",strictContentTypeValidation:true,writePolicy:"ALLOW_ONCE"}}')"
+      curl -fsS -u "${current_auth}" \
+        -X POST \
+        -H 'Content-Type: application/json' \
+        --data "${repository_payload}" \
+        "${NEXUS_URL}/service/rest/v1/repositories/npm/hosted" >/dev/null
+    fi
+
+    touch "${BOOTSTRAP_MARKER}"
+    echo "Nexus bootstrap complete for repository ${REPOSITORY_NAME}"
+    exec tail -f /dev/null

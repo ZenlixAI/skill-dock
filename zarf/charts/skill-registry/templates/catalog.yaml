@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "skill-registry.catalogName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: catalog
+    {{- include "skill-registry.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.catalog.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: catalog
+      {{- include "skill-registry.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: catalog
+        {{- include "skill-registry.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: catalog
+          image: "{{ .Values.catalog.image.repository }}:{{ .Values.catalog.image.tag }}"
+          imagePullPolicy: {{ .Values.catalog.image.pullPolicy }}
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: SKILL_REGISTRY_ADDR
+              value: ":8080"
+            - name: SKILL_REGISTRY_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "skill-registry.catalogName" . }}-secrets
+                  key: skill_registry_database_url
+            - name: SKILL_REGISTRY_READER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "skill-registry.catalogName" . }}-secrets
+                  key: skill_registry_reader_token
+            - name: SKILL_REGISTRY_AUTHORING_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "skill-registry.catalogName" . }}-secrets
+                  key: skill_registry_authoring_token
+            - name: SKILL_REGISTRY_PUBLISHER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "skill-registry.catalogName" . }}-secrets
+                  key: skill_registry_publisher_token
+            - name: SKILL_REGISTRY_NPM_REGISTRY_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "skill-registry.catalogName" . }}-secrets
+                  key: skill_registry_npm_registry_url
+            - name: SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "skill-registry.catalogName" . }}-secrets
+                  key: skill_registry_public_npm_registry_url
+            - name: SKILL_REGISTRY_AUTH_TOKENS_JSON
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "skill-registry.catalogName" . }}-secrets
+                  key: skill_registry_auth_tokens_json
+            - name: SKILL_REGISTRY_SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "skill-registry.catalogName" . }}-secrets
+                  key: skill_registry_session_secret
+            - name: SKILL_REGISTRY_SESSION_USERS_JSON
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "skill-registry.catalogName" . }}-secrets
+                  key: skill_registry_session_users_json
+            - name: SKILL_REGISTRY_ENABLE_SAMPLE_DATA
+              value: {{ .Values.catalog.env.enableSampleData | quote }}
+            - name: SKILL_REGISTRY_ENABLE_MOCK_REGISTRY
+              value: {{ .Values.catalog.env.enableMockRegistry | quote }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          resources:
+            {{- toYaml .Values.catalog.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "skill-registry.catalogName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "skill-registry.labels" . | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/component: catalog
+    {{- include "skill-registry.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.catalog.service.port }}
+      targetPort: http

@@ -13,7 +13,17 @@
 - 集群外下发：
   - `skills` CLI
 
-如果客户没有外部 Nexus，或者你想把浏览器写操作、多用户认证、Helm chart 一起交付，这份文档不够，需要单独补方案。
+如果客户没有外部 Nexus，这份文档不够，需要单独补方案。
+
+如果客户现场是“**复用集群内 Postgres，但 Nexus 跟业务一起部署**”，现在可以直接用 Helm chart：
+
+- [zarf/charts/skill-registry](../zarf/charts/skill-registry)
+
+它当前默认就是这条边界：
+
+1. 外部 / 集群内已有 Postgres
+2. Chart 内部署 `nexus + catalog + skills-web`
+3. `skills` CLI 仍然部署在集群外机器
 
 ## 2. 最小生产边界
 
@@ -70,7 +80,7 @@
 - `catalog` 镜像
 - `skills-web` 镜像
 - k3s 清单
-  - 参考 [zarf/k8s/customer-k3s-example.yaml](/Users/ultraman/workspace/skill_registry/zarf/k8s/customer-k3s-example.yaml)
+  - 参考 [zarf/k8s/customer-k3s-example.yaml](../zarf/k8s/customer-k3s-example.yaml)
 
 ### 4.2 CLI 交付物
 
@@ -106,6 +116,28 @@
 - `SKILL_REGISTRY_ENABLE_SAMPLE_DATA=false`
 - `SKILL_REGISTRY_ENABLE_MOCK_REGISTRY=false`
 
+如果要启用浏览器登录，再补：
+
+- `SKILL_REGISTRY_SESSION_SECRET`
+- `SKILL_REGISTRY_SESSION_USERS_JSON`
+
+`SKILL_REGISTRY_SESSION_USERS_JSON` 最小示例：
+
+```json
+{
+  "reader": {
+    "password": "replace-reader-password",
+    "role": "reader",
+    "actor": "reader"
+  },
+  "operator": {
+    "password": "replace-operator-password",
+    "role": "operator",
+    "actor": "operator"
+  }
+}
+```
+
 ### 5.2 两个 Nexus 地址的区别
 
 - `SKILL_REGISTRY_NPM_REGISTRY_URL`
@@ -135,7 +167,10 @@
 - 浏览器访问 `https://skills.example.com`
 - `skills-web` 用 Nginx 提供静态资源
 - `Nginx` 反代 `/api/...` 到 `catalog`
-- `Nginx` 在服务端注入低权限 `reader token`
+- 登录模式下，不注入固定 `Authorization`
+- 让浏览器通过 session cookie 调同域 `/api/...`
+
+只有在旧的只读固定 token 部署里，才继续注入 `reader token`。
 
 不要把 `publisher token` 编进前端静态资源。
 
@@ -144,7 +179,7 @@
 ### 6.1 Catalog 镜像
 
 - Dockerfile：
-  - [zarf/docker/Dockerfile](/Users/ultraman/workspace/skill_registry/zarf/docker/Dockerfile)
+  - [zarf/docker/Dockerfile](../zarf/docker/Dockerfile)
 
 构建示例：
 
@@ -155,9 +190,9 @@ docker build -f zarf/docker/Dockerfile -t registry.example.com/skill-registry-ca
 ### 6.2 Web 镜像
 
 - Dockerfile：
-  - [zarf/docker/skills-web.Dockerfile](/Users/ultraman/workspace/skill_registry/zarf/docker/skills-web.Dockerfile)
+  - [zarf/docker/skills-web.Dockerfile](../zarf/docker/skills-web.Dockerfile)
 - Nginx 模板：
-  - [zarf/docker/nginx/skills-web.conf.template](/Users/ultraman/workspace/skill_registry/zarf/docker/nginx/skills-web.conf.template)
+  - [zarf/docker/nginx/skills-web.conf.template](../zarf/docker/nginx/skills-web.conf.template)
 
 构建示例：
 
@@ -167,7 +202,7 @@ docker build -f zarf/docker/skills-web.Dockerfile -t registry.example.com/skill-
 
 ### 6.3 K3s 示例清单
 
-- [zarf/k8s/customer-k3s-example.yaml](/Users/ultraman/workspace/skill_registry/zarf/k8s/customer-k3s-example.yaml)
+- [zarf/k8s/customer-k3s-example.yaml](../zarf/k8s/customer-k3s-example.yaml)
 
 这份示例假设：
 
@@ -178,6 +213,28 @@ docker build -f zarf/docker/skills-web.Dockerfile -t registry.example.com/skill-
   - 域名
   - Secret 值
   - ingressClass / annotation
+
+### 6.4 Helm chart
+
+- [zarf/charts/skill-registry](../zarf/charts/skill-registry)
+
+默认边界：
+
+1. 复用集群内已有 Postgres
+2. Chart 内部署 `nexus + catalog + skills-web`
+3. 如需 full all-in-one，再显式设置 `postgres.enabled=true`
+
+按你当前集群口径的最小安装示例：
+
+```bash
+helm upgrade --install skill-registry ./zarf/charts/skill-registry \
+  -n skill-registry \
+  --create-namespace \
+  --set database.host=postgresql.postgresql.svc.cluster.local \
+  --set database.port=5432 \
+  --set postgres.auth.user=postgres \
+  --set postgres.auth.password=password
+```
 
 ## 7. Skills CLI 下发方式
 
@@ -194,8 +251,9 @@ docker build -f zarf/docker/skills-web.Dockerfile -t registry.example.com/skill-
 
 ```bash
 cd apps/skills-cli
-npm ci
-npm run build
+corepack enable
+pnpm install --frozen-lockfile
+pnpm run build
 npm publish --registry https://nexus.example.com/repository/npm-hosted
 ```
 
@@ -213,8 +271,9 @@ npm install -g skills --registry https://nexus.example.com/repository/npm-hosted
 
 ```bash
 cd apps/skills-cli
-npm ci
-npm run build
+corepack enable
+pnpm install --frozen-lockfile
+pnpm run build
 npm pack
 ```
 
@@ -329,7 +388,7 @@ docker build -f zarf/docker/skills-web.Dockerfile -t registry.example.com/skill-
 
 ### Step 4. 改 k3s 清单
 
-基于 [zarf/k8s/customer-k3s-example.yaml](/Users/ultraman/workspace/skill_registry/zarf/k8s/customer-k3s-example.yaml) 替换：
+基于 [zarf/k8s/customer-k3s-example.yaml](../zarf/k8s/customer-k3s-example.yaml) 替换：
 
 - image
 - namespace
@@ -539,6 +598,6 @@ skills publish /abs/path/to/skill
 
 ## 15. 关联文档
 
-- [README.md](/Users/ultraman/workspace/skill_registry/README.md)
-- [docs/local-nexus-e2e.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/local-nexus-e2e.zh-CN.md)
-- [docs/batch-import-skills.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/batch-import-skills.zh-CN.md)
+- [README.md](../README.md)
+- [docs/local-nexus-e2e.zh-CN.md](local-nexus-e2e.zh-CN.md)
+- [docs/batch-import-skills.zh-CN.md](batch-import-skills.zh-CN.md)

@@ -1,6 +1,6 @@
 # K3s All-in-One Runbook
 
-这份清单对应一套“全部进 k3s”的交付形态：
+这份静态 YAML 清单对应一套“全部进 k3s”的交付形态：
 
 - `postgres`
 - `nexus`
@@ -11,7 +11,11 @@
 
 主清单：
 
-- [zarf/k8s/k3s-all-in-one.yaml](/Users/ultraman/workspace/skill_registry/zarf/k8s/k3s-all-in-one.yaml)
+- [zarf/k8s/k3s-all-in-one.yaml](../zarf/k8s/k3s-all-in-one.yaml)
+- Helm chart：
+  - [zarf/charts/skill-registry](../zarf/charts/skill-registry)
+  - 当前默认更贴近客户现场：`外部 Postgres + 内置 Nexus + catalog + skills-web`
+  - 如果你仍要用 Helm 跑 full all-in-one，再显式设置 `postgres.enabled=true`
 
 ## 1. 部署前要改的值
 
@@ -46,8 +50,99 @@
 
 ## 2. 部署命令
 
+### 2.1 直接 apply 静态 YAML
+
 ```bash
 kubectl apply -f zarf/k8s/k3s-all-in-one.yaml
+```
+
+### 2.2 用 Helm 安装
+
+当前 chart 默认 **不创建 Postgres**，而是直接复用集群里已有的 PG。
+
+如果你的集群和当前客户现场一样，至少覆盖：
+
+```yaml
+database:
+  host: postgresql.postgresql.svc.cluster.local
+  port: 5432
+
+postgres:
+  enabled: false
+  auth:
+    database: skill_registry
+    user: postgres
+    password: password
+```
+
+推荐先复制一份 values 再改：
+
+```bash
+cp zarf/charts/skill-registry/values.yaml /tmp/skill-registry-values.yaml
+```
+
+安装示例：
+
+```bash
+helm upgrade --install skill-registry ./zarf/charts/skill-registry \
+  -n skill-registry \
+  --create-namespace \
+  -f /tmp/skill-registry-values.yaml
+```
+
+如果你不想给 Nexus 单独开 Ingress，而是已经有现成外部地址，至少覆盖：
+
+```yaml
+nexus:
+  publicRepositoryUrl: https://nexus.example.com/repository/skills-npm/
+
+ingress:
+  nexus:
+    enabled: false
+```
+
+如果你的 k3s 现场不是走标准 `Ingress`，而是走 Traefik `IngressRoute + entrypoint`，可以改成：
+
+```yaml
+ingress:
+  kind: ingressRoute
+  web:
+    scheme: http
+  nexus:
+    scheme: http
+
+traefik:
+  web:
+    entrypoint: web
+  nexus:
+    entrypoint: amber
+
+nexus:
+  publicRepositoryUrl: http://<cluster-ip>:31081/repository/skills-npm/
+```
+
+补充：
+
+- `traefik.web.match` / `traefik.nexus.match` 现在默认会自动按 `Host(...) && PathPrefix(...)` 生成
+- 只有你想自定义更复杂规则时，才需要手动覆盖这两个 `match`
+- 如果你的入口不是 TLS，记得把 `ingress.web.scheme` / `ingress.nexus.scheme` 改成 `http`
+
+说明：
+
+- 这版仓库已经把 Helm chart 收到 `zarf/charts/`，和 Dockerfile、K8s 清单、脚本放在一起管理
+- 这里的 `Nginx` 目前仍然需要保留在 `skills-web` 容器内
+  - Traefik 负责集群入口
+  - `Nginx` 负责 Pod 内静态资源和同域 `/api` 反代
+
+如果你确实要把 Postgres 也一起打进 Helm，再补：
+
+```yaml
+postgres:
+  enabled: true
+  auth:
+    database: skill_registry
+    user: skill_registry
+    password: change-me
 ```
 
 检查资源：
@@ -56,14 +151,15 @@ kubectl apply -f zarf/k8s/k3s-all-in-one.yaml
 kubectl -n skill-registry get pods
 kubectl -n skill-registry get svc
 kubectl -n skill-registry get ingress
+kubectl -n skill-registry get ingressroute
 ```
 
 建议等待这几个组件 Ready：
 
-- `postgres-0`
 - `nexus-0`
 - `catalog-*`
 - `skills-web-*`
+- 如果 `postgres.enabled=true`，再额外等 `postgres-0`
 
 ## 3. Nexus 自动初始化说明
 
@@ -130,8 +226,9 @@ skills import-local /abs/path/to/legacy-skill \
 这份清单已经够你做“一体化 k3s 交付”的第一版，但还有几个明确边界：
 
 - `nexus-bootstrap` sidecar 运行时会在容器内安装 `curl` / `jq`
-- `postgres` / `nexus` 目前都是单副本
-- 还没有 Helm chart
+- `nexus` 目前是单副本
+- 如果启用内置 Postgres，`postgres` 也是单副本
+- Helm chart 现在已经提供，但还没有拆成独立子 chart
 - 还没有把 Nexus 运维流程完全收敛成独立 image
 
 如果你下一步要把它再推进成正式客户交付，我建议继续做两件事：

@@ -10,19 +10,19 @@ interface EnvironmentGuardProps {
 
 export function EnvironmentGuard({ mode, baseUrl, session, sessionError }: EnvironmentGuardProps) {
   if (mode === 'mock') {
-    return <div className="env-banner">Mock mode: current writes do not touch the real Catalog.</div>;
+    return <div className="env-banner">模拟模式：当前写操作不会落到真实 Catalog。</div>;
   }
 
   if (sessionError) {
-    return <div className="env-banner">Real mode warning: failed to load session posture. {sessionError}</div>;
+    return <div className="env-banner">真实模式告警：会话态加载失败。{sessionError}</div>;
   }
 
   return (
     <div className="env-banner">
-      <span>{baseUrl ? `connected to ${baseUrl}` : 'connected to Catalog API'}</span>
+      <span>{baseUrl ? `已连接 ${baseUrl}` : '已连接 Catalog API'}</span>
       <span>{describeSessionPosture(session)}</span>
       {describeSessionScope(session) ? <span>{describeSessionScope(session)}</span> : null}
-      {canMutateCatalog(session) ? <span>mutations enabled</span> : <span>mutations restricted</span>}
+      {canMutateCatalog(session) ? <span>允许写操作</span> : <span>仅可只读</span>}
     </div>
   );
 }

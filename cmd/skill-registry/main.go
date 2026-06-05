@@ -47,6 +47,8 @@ func main() {
 		PublisherToken:       os.Getenv("SKILL_REGISTRY_PUBLISHER_TOKEN"),
 		PublicNPMRegistryURL: os.Getenv("SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL"),
 		AuthTokens:           configuredAuthTokens(),
+		SessionSecret:        os.Getenv("SKILL_REGISTRY_SESSION_SECRET"),
+		SessionUsers:         configuredSessionUsers(),
 		MockRegistry:         configuredMockRegistry(sampleData, enableMockRegistry),
 		DisableMockRegistry:  !enableMockRegistry,
 		Packaging:            packaging.NewService(""),
@@ -117,6 +119,19 @@ func configuredAuthTokens() map[string]auth.TokenConfig {
 		log.Fatalf("parse SKILL_REGISTRY_AUTH_TOKENS_JSON: %v", err)
 	}
 	return authTokens
+}
+
+func configuredSessionUsers() map[string]auth.SessionUserConfig {
+	raw := os.Getenv("SKILL_REGISTRY_SESSION_USERS_JSON")
+	if raw == "" {
+		return nil
+	}
+
+	var sessionUsers map[string]auth.SessionUserConfig
+	if err := json.Unmarshal([]byte(raw), &sessionUsers); err != nil {
+		log.Fatalf("parse SKILL_REGISTRY_SESSION_USERS_JSON: %v", err)
+	}
+	return sessionUsers
 }
 
 func envBoolOrDefault(key string, fallback bool) bool {

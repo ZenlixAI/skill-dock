@@ -1,11 +1,15 @@
 .git
 .agents
+.venv
 dist
 /private
 /tmp
 node_modules
+apps/skills-web/node_modules
+apps/skills-web/dist
 apps/skills-cli/node_modules
 apps/skills-cli/dist
+test-results
 *.db
 *.db-shm
 *.db-wal

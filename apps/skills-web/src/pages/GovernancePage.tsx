@@ -36,7 +36,7 @@ function buildGovernanceLayers(records: GovernanceRecord[]): GovernanceLayer[] {
     },
     {
       key: 'package-wide',
-      title: 'Package-wide governance',
+      title: '整包级治理',
       description: '这些动作影响的是整个 skill 线，而不是单个版本。',
       items: packageWide,
     },
@@ -93,7 +93,7 @@ export function GovernancePage() {
       <SectionHeading
         eyebrow="Governance"
         title="把 retire / deprecate / yank 从后端状态机翻译成可操作的治理控制台。"
-        description="这页现在不只是一条时间线，而是先回答影响面，再让人按 target / action / package 缩小范围。"
+        description="这页不只是一条时间线，而是先回答影响面，再让人按 target / action / package 缩小范围。"
         tone="backstage"
       />
 
@@ -173,9 +173,9 @@ export function GovernancePage() {
       </div>
 
       <div className="two-column two-column--wide-right">
-        <SurfaceCard title="Filters" description="先缩小治理面，再读时间线。" variant="console">
+        <SurfaceCard title="筛选" description="先缩小治理面，再读时间线。" variant="console">
           <label className="field">
-            <span>Package name</span>
+            <span>包名</span>
             <input
               onChange={(event) => setPackageName(event.target.value)}
               placeholder="@company.skill/pdf-skill"
@@ -183,17 +183,17 @@ export function GovernancePage() {
             />
           </label>
           <label className="field">
-            <span>Target type</span>
+            <span>目标类型</span>
             <select value={targetType} onChange={(event) => setTargetType(event.target.value as GovernanceTargetType | '')}>
-              <option value="">All</option>
+              <option value="">全部</option>
               <option value="skill">skill</option>
               <option value="version">version</option>
             </select>
           </label>
           <label className="field">
-            <span>Action</span>
+            <span>动作</span>
             <select value={action} onChange={(event) => setAction(event.target.value as GovernanceAction | '')}>
-              <option value="">All</option>
+              <option value="">全部</option>
               <option value="retire">retire</option>
               <option value="deprecate">deprecate</option>
               <option value="yank">yank</option>
@@ -201,17 +201,17 @@ export function GovernancePage() {
           </label>
           <div className="action-row">
             <div className="action-row__copy">
-              <strong>How to read this console</strong>
-              <p>先看 blocking / replacement 影响面，再看具体 timeline；不要把所有治理事件都当成同一种严重度。</p>
-            </div>
-          </div>
+                  <strong>阅读建议</strong>
+                  <p>先看 blocking / replacement 影响面，再看具体 timeline；不要把所有治理事件都当成同一种严重度。</p>
+                </div>
+              </div>
         </SurfaceCard>
 
         <div className="stack-column">
-          {governance.loading ? <div className="empty-box">Loading governance records…</div> : null}
+          {governance.loading ? <div className="empty-box">正在加载治理记录…</div> : null}
           {governance.error ? <div className="error-box">{governance.error}</div> : null}
           {!governance.loading && !governance.error && filteredItems.length === 0 ? (
-            <div className="empty-box">No governance records matched the current filters.</div>
+            <div className="empty-box">当前筛选条件下没有治理记录。</div>
           ) : null}
 
           {layers.map((layer) => (
@@ -253,12 +253,12 @@ export function GovernancePage() {
                   ? `当前只展示前 ${filteredItems.length} 条治理记录，后面仍有更多事件。`
                   : `当前治理结果集已完整展示，共 ${filteredItems.length} 条。`
               }
-              title="Pagination"
+              title="分页"
               variant="rail"
             >
               {governance.pageInfo.hasNextPage ? (
                 <button className="button button--secondary" disabled={governance.loadingMore} onClick={governance.loadMore} type="button">
-                  {governance.loadingMore ? 'Loading…' : 'Load more'}
+                  {governance.loadingMore ? '加载中…' : '继续加载'}
                 </button>
               ) : null}
             </SurfaceCard>

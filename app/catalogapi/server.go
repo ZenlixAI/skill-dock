@@ -33,6 +33,8 @@ type ServerConfig struct {
 	PublisherToken       string
 	PublicNPMRegistryURL string
 	AuthTokens           map[string]auth.TokenConfig
+	SessionSecret        string
+	SessionUsers         map[string]auth.SessionUserConfig
 	MockRegistry         *artifactadapter.MockRegistry
 	DisableMockRegistry  bool
 	Packaging            *packaging.Service
@@ -44,6 +46,7 @@ type ServerConfig struct {
 type Server struct {
 	repo                 catalog.Repository
 	authorizer           *auth.Authorizer
+	sessionManager       *auth.SessionManager
 	publicNPMRegistryURL string
 	mockRegistry         *artifactadapter.MockRegistry
 	disableMockRegistry  bool
@@ -87,6 +90,7 @@ func NewServer(config ServerConfig) *Server {
 			PublisherToken: config.PublisherToken,
 			Tokens:         config.AuthTokens,
 		}),
+		sessionManager:       auth.NewSessionManager(config.SessionSecret, config.SessionUsers, 12*time.Hour),
 		publicNPMRegistryURL: strings.TrimRight(strings.TrimSpace(config.PublicNPMRegistryURL), "/"),
 		mockRegistry:         config.MockRegistry,
 		disableMockRegistry:  config.DisableMockRegistry,
@@ -107,7 +111,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/readyz", http.HandlerFunc(s.handleReadyz))
 	mux.Handle("/metrics", http.HandlerFunc(s.handleMetrics))
 	mux.Handle("/api/v1/audit-events", s.requireAction(s.handleAuditEvents, auth.ActionReadAuditEvents))
-	mux.Handle("/api/v1/session", s.requireAction(s.handleSession, auth.ActionReadSession))
+	mux.Handle("/api/v1/session", http.HandlerFunc(s.handleSession))
+	mux.Handle("/api/v1/session/login", http.HandlerFunc(s.handleSessionLogin))
+	mux.Handle("/api/v1/session/logout", http.HandlerFunc(s.handleSessionLogout))
 	mux.Handle("/api/v1/skills", s.requireAction(s.handleSkills, auth.ActionReadCatalog))
 	mux.Handle("/api/v1/skills/search", s.requireAction(s.handleSkills, auth.ActionReadCatalog))
 	mux.Handle("/api/v1/skills/curated", s.requireAction(s.handleCuratedSkills, auth.ActionReadCatalog))
@@ -132,6 +138,7 @@ func (s *Server) withCORS(next http.Handler) http.Handler {
 			writer.Header().Set("Vary", "Origin")
 			writer.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Actor, X-Role, X-Trace-Id")
 			writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
+			writer.Header().Set("Access-Control-Allow-Credentials", "true")
 			writer.Header().Set("Access-Control-Max-Age", "600")
 		}
 
@@ -190,7 +197,7 @@ func (s *Server) withObservability(next http.Handler) http.Handler {
 func (s *Server) requireAction(next http.HandlerFunc, action auth.Action) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		observability.SetObservedAction(writer, string(action))
-		authPrincipal, ok := s.authorizer.Authenticate(request)
+		authPrincipal, ok := s.authenticateRequest(request)
 		if !ok {
 			observability.SetObservedAuthDecision(writer, observability.AuthDecisionDenied)
 			observability.SetObservedOutcome(writer, "unauthorized")
@@ -207,6 +214,16 @@ func (s *Server) requireAction(next http.HandlerFunc, action auth.Action) http.H
 		}
 		next.ServeHTTP(writer, request)
 	})
+}
+
+func (s *Server) authenticateRequest(request *http.Request) (auth.Principal, bool) {
+	if current, ok := s.authorizer.Authenticate(request); ok {
+		return current, true
+	}
+	if current, ok := s.sessionManager.Authenticate(request); ok {
+		return current, true
+	}
+	return auth.Principal{}, false
 }
 
 func (s *Server) handleSkills(writer http.ResponseWriter, request *http.Request) {

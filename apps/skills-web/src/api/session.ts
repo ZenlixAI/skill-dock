@@ -13,6 +13,10 @@ export function canMutateCatalog(session: RegistrySession | null) {
   return Boolean(session?.allowedActions.some((action) => MUTATION_ACTIONS.has(action)));
 }
 
+export function hasAction(session: RegistrySession | null, action: string) {
+  return Boolean(session?.allowedActions.includes(action));
+}
+
 export function hasPackageScope(session: RegistrySession | null) {
   return Boolean(session && session.allowedPackages.length > 0);
 }
@@ -34,7 +38,7 @@ export function canAccessPackage(session: RegistrySession | null, packageName?: 
 }
 
 export function canPerformAction(session: RegistrySession | null, action: string, packageName?: string | null) {
-  return Boolean(session?.allowedActions.includes(action)) && canAccessPackage(session, packageName);
+  return hasAction(session, action) && canAccessPackage(session, packageName);
 }
 
 function matchesPackagePattern(pattern: string, packageName: string) {

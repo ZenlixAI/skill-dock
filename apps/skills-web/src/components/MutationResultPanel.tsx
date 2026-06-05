@@ -126,10 +126,12 @@ export function MutationResultPanel({ result }: MutationResultPanelProps) {
   const isSuccess = result.outcome === 'succeeded';
   const statusLabel =
     result.outcome === 'succeeded'
-      ? 'success'
+      ? '成功'
       : result.outcome === 'failed'
-        ? 'failure'
-        : result.outcome;
+        ? '失败'
+        : result.outcome === 'forbidden'
+          ? '禁止'
+          : '未登录';
 
   const auditLink = buildAuditLink({
     packageName: result.packageName,
@@ -141,8 +143,8 @@ export function MutationResultPanel({ result }: MutationResultPanelProps) {
   return (
     <SurfaceCard
       className={!isSuccess ? 'surface-card--cool' : undefined}
-      description="Latest write attempt on this page, persisted in the URL for refresh-safe follow-up."
-      title="Mutation Result"
+      description="当前页面最近一次写操作结果，会保存在 URL 中，刷新后仍可继续追查。"
+      title="操作结果"
       variant="rail"
     >
       <div className="pill-row">
@@ -156,10 +158,10 @@ export function MutationResultPanel({ result }: MutationResultPanelProps) {
       ) : (
         <div className="error-box">{result.message}</div>
       )}
-      {result.requestId ? <p className="support-copy">Request ID: {result.requestId}</p> : null}
+      {result.requestId ? <p className="support-copy">请求 ID：{result.requestId}</p> : null}
       <div className="list-card__actions">
         <Link className="button button--secondary" to={auditLink}>
-          Open audit trail
+          打开审计线索
         </Link>
       </div>
     </SurfaceCard>

@@ -16,8 +16,8 @@
 
 如果你现在关心的是**客户现场交付 / k3s 部署 / CLI 下发方式**，直接看：
 
-- [docs/customer-k3s-deployment.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/customer-k3s-deployment.zh-CN.md)
-- [docs/k3s-all-in-one.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/k3s-all-in-one.zh-CN.md)
+- [docs/customer-k3s-deployment.zh-CN.md](docs/customer-k3s-deployment.zh-CN.md)
+- [docs/k3s-all-in-one.zh-CN.md](docs/k3s-all-in-one.zh-CN.md)
 
 ## 本地开发
 
@@ -67,8 +67,8 @@ make dev-bootstrap
 
 相关清单：
 
-- [zarf/k8s/dev/kind-config.yaml](/Users/ultraman/workspace/skill_registry/zarf/k8s/dev/kind-config.yaml)
-- [zarf/k8s/dev/kind-stack.yaml](/Users/ultraman/workspace/skill_registry/zarf/k8s/dev/kind-stack.yaml)
+- [zarf/k8s/dev/kind-config.yaml](zarf/k8s/dev/kind-config.yaml)
+- [zarf/k8s/dev/kind-stack.yaml](zarf/k8s/dev/kind-stack.yaml)
 
 ### 3. 本地真实 Nexus E2E
 
@@ -96,7 +96,7 @@ make cli ARGS="publish /abs/path/to/skill" NPM_BACKEND=nexus
 make cli ARGS="add @company.skill/your-skill -y" NPM_BACKEND=nexus
 ```
 
-详细步骤看 [docs/local-nexus-e2e.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/local-nexus-e2e.zh-CN.md)。
+详细步骤看 [docs/local-nexus-e2e.zh-CN.md](docs/local-nexus-e2e.zh-CN.md)。
 
 ### 4. CLI 使用
 
@@ -258,15 +258,15 @@ make build-web
 make test-web
 ```
 
-Web E2E 见 [docs/local-web-catalog-e2e.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/local-web-catalog-e2e.zh-CN.md)。
+Web E2E 见 [docs/local-web-catalog-e2e.zh-CN.md](docs/local-web-catalog-e2e.zh-CN.md)。
 
 ### 6. 批量导入
 
 dry-run：
 
 ```bash
-uv run python tools/batch-import/batch_import_skills.py \
-  --manifest tools/batch-import/example.json \
+uv run python zarf/tools/batch-import/batch_import_skills.py \
+  --manifest zarf/tools/batch-import/example.json \
   --dry-run
 ```
 
@@ -276,7 +276,7 @@ uv run python tools/batch-import/batch_import_skills.py \
 make batch-import MANIFEST=/abs/path/to/import.json NPM_BACKEND=nexus
 ```
 
-详细说明看 [docs/batch-import-skills.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/batch-import-skills.zh-CN.md)。
+详细说明看 [docs/batch-import-skills.zh-CN.md](./docs/batch-import-skills.zh-CN.md)。
 
 ### 7. Docker / k3s 交付
 
@@ -292,17 +292,18 @@ make docker-build
 make compose-up
 ```
 
-部署说明统一看 [docs/customer-k3s-deployment.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/customer-k3s-deployment.zh-CN.md)。
+部署说明统一看 [docs/customer-k3s-deployment.zh-CN.md](docs/customer-k3s-deployment.zh-CN.md)。
 
 如果目标是客户现场 k3s 交付，补充看：
 
-- [docs/customer-k3s-deployment.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/customer-k3s-deployment.zh-CN.md)
-- [zarf/k8s/customer-k3s-example.yaml](/Users/ultraman/workspace/skill_registry/zarf/k8s/customer-k3s-example.yaml)
+- [docs/customer-k3s-deployment.zh-CN.md](docs/customer-k3s-deployment.zh-CN.md)
+- [zarf/k8s/customer-k3s-example.yaml](zarf/k8s/customer-k3s-example.yaml)
 
-如果目标是**整套系统都打进 k3s，包括 Nexus 和 Postgres**，直接看：
+如果目标是 k3s 上的 Helm / YAML 交付，直接看：
 
-- [docs/k3s-all-in-one.zh-CN.md](/Users/ultraman/workspace/skill_registry/docs/k3s-all-in-one.zh-CN.md)
-- [zarf/k8s/k3s-all-in-one.yaml](/Users/ultraman/workspace/skill_registry/zarf/k8s/k3s-all-in-one.yaml)
+- [docs/k3s-all-in-one.zh-CN.md](docs/k3s-all-in-one.zh-CN.md)
+- [zarf/k8s/k3s-all-in-one.yaml](zarf/k8s/k3s-all-in-one.yaml)
+- [zarf/charts/skill-registry](zarf/charts/skill-registry)
 
 ### 8. 重置与清理
 

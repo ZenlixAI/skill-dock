@@ -68,15 +68,15 @@ export function VersionDetailPage() {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean);
-  const authoringPath = buildReleaseHandoffPath(handoff, '/authoring');
+  const authoringPath = buildReleaseHandoffPath(handoff, '/workbench/authoring');
   const hasHandoff = Boolean(handoff.manifestDigest || handoff.bundlePath || handoff.workspacePath || handoff.components?.length);
   const currentVersionStatus = detail.data?.versionStatus || 'unknown';
   const versionTone =
     currentVersionStatus === 'published' ? 'good' : currentVersionStatus === 'deprecated' ? 'warn' : 'bad';
   const governanceImpact =
     governanceAction === 'yank'
-      ? 'Explicit installs should become blocked and downstream users should move to a replacement.'
-      : 'The version remains visible, but consumers should be nudged toward a newer replacement.';
+      ? '显式安装应被阻断，下游用户需要迁移到替代版本。'
+      : '当前版本仍可见，但应明确引导消费方迁移到更新版本。';
   const replacementRequired = governanceAction === 'deprecate' || governanceAction === 'yank';
   const canSubmitGovernance =
     actionState.loading === false &&
@@ -149,7 +149,7 @@ export function VersionDetailPage() {
       appendLog(
         'release-record',
         'succeeded',
-        response.created ? 'Created a new release record.' : 'Release record returned idempotent replay.'
+        response.created ? '已创建新的 release record。' : 'release record 返回幂等重放结果。'
       );
       setRefreshKey((current) => current + 1);
     } catch (error: unknown) {
@@ -197,7 +197,7 @@ export function VersionDetailPage() {
           response.resultingState.versionStatus || response.record.action
         }`,
       });
-      appendLog('governance', 'succeeded', `Applied ${response.record.action} governance change.`);
+      appendLog('governance', 'succeeded', `已应用 ${response.record.action} 治理动作。`);
       setRefreshKey((current) => current + 1);
     } catch (error: unknown) {
       const outcome = inferMutationFailureOutcome(error);
@@ -223,22 +223,18 @@ export function VersionDetailPage() {
         actions={
           <div className="authoring-actions">
             <Link className="button button--secondary" to={`/skills/${encodeURIComponent(decodedPackage)}`}>
-              Back to skill
+              返回技能
             </Link>
             {hasHandoff ? (
               <Link className="button button--primary" to={authoringPath}>
-                Return to authoring
+                返回作者台
               </Link>
             ) : null}
           </div>
         }
-        eyebrow="Version Detail"
+        eyebrow="版本详情"
         title={`${decodedPackage} · ${version}`}
-        description={
-          hasHandoff
-            ? '这个页面已经承接上一步 pack 结果，release-record 表单会自动预填。'
-            : '这个页面专门回答某个精确版本的 registry、bundle 和治理状态。'
-        }
+        description={hasHandoff ? '已附带发布交接信息。' : '查看版本状态和发布数据。'}
         tone="detail"
       />
 
@@ -246,34 +242,33 @@ export function VersionDetailPage() {
         <StatusPill tone={versionTone}>{currentVersionStatus}</StatusPill>
         {detail.data?.installPolicy ? <StatusPill tone={detail.data.installPolicy === 'resolvable' ? 'good' : detail.data.installPolicy === 'catalog_only' ? 'warn' : 'bad'}>{detail.data.installPolicy}</StatusPill> : null}
         {detail.data?.registry.npmRegistry ? <StatusPill>{detail.data.registry.npmRegistry}</StatusPill> : null}
-        <StatusPill tone={hasHandoff ? 'accent' : undefined}>{hasHandoff ? 'handoff attached' : 'direct open'}</StatusPill>
+        <StatusPill tone={hasHandoff ? 'accent' : undefined}>{hasHandoff ? '已附带交接' : '直接打开'}</StatusPill>
         <StatusPill tone={releaseWriteEnabled ? 'accent' : 'default'}>
-          {session.loading ? 'session loading' : session.error ? 'session unavailable' : releaseWriteEnabled ? 'release enabled' : 'release read-only'}
+          {session.loading ? '会话加载中' : session.error ? '会话不可用' : releaseWriteEnabled ? '允许发布登记' : '发布登记只读'}
         </StatusPill>
       </div>
 
       {hasHandoff ? (
         <SurfaceCard
-          title="Release Handoff"
-          description="这些字段来自上一步 `pack`，用于减少作者在 release review 阶段的重复录入。"
+          title="发布交接"
           variant="spotlight"
           action={
             <Link className="button button--secondary" to={authoringPath}>
-              Back to authoring flow
+              返回作者流程
             </Link>
           }
         >
           <dl className="property-list">
             <div>
-              <dt>workspace path</dt>
+              <dt>工作目录</dt>
               <dd>{handoff.workspacePath || '—'}</dd>
             </div>
             <div>
-              <dt>bundle path</dt>
+              <dt>bundle 路径</dt>
               <dd>{handoff.bundlePath || '—'}</dd>
             </div>
             <div>
-              <dt>manifest digest</dt>
+              <dt>manifest 摘要</dt>
               <dd>{handoff.manifestDigest || '—'}</dd>
             </div>
             <div>
@@ -286,34 +281,34 @@ export function VersionDetailPage() {
 
       <div className="console-strip">
         <article className="console-signal">
-          <span>Release action</span>
-          <strong>{actionState.loading === 'release' ? 'running' : 'ready'}</strong>
-          <p>这里负责把 registry 里已有 bundle 显式登记成 Catalog release record。</p>
+          <span>发布登记</span>
+          <strong>{actionState.loading === 'release' ? '执行中' : '就绪'}</strong>
+          <p>用于写入 release record。</p>
         </article>
         <article className="console-signal">
-          <span>Governance action</span>
-          <strong>{actionState.loading === 'governance' ? 'running' : 'ready'}</strong>
-          <p>如果版本需要 deprecate / yank，应该从这里触发而不是靠隐式状态。</p>
+          <span>治理动作</span>
+          <strong>{actionState.loading === 'governance' ? '执行中' : '就绪'}</strong>
+          <p>可执行 deprecate 或 yank。</p>
         </article>
         <article className="console-signal">
-          <span>Failure semantics</span>
-          <strong>strict</strong>
-          <p>后端返回的 immutable conflict、digest mismatch、policy block 都应该原样暴露，不要被 UI 吃掉。</p>
+          <span>校验视角</span>
+          <strong>严格</strong>
+          <p>直接显示后端错误。</p>
         </article>
       </div>
 
       <div className="two-column">
-        <SurfaceCard title="Install Impact Preview" description="这个版本当前的发布状态会如何影响下游消费。">
+        <SurfaceCard title="安装影响">
           <div className="list-stack">
             <article className="list-card">
               <div className="list-card__head">
                 <div>
-                  <strong>Current resolver posture</strong>
-                  <span>{detail.data?.installPolicy || 'unknown'}</span>
+                  <strong>当前解析态势</strong>
+                  <span>{detail.data?.installPolicy || '未知'}</span>
                 </div>
                 <StatusPill tone={detail.data?.installPolicy === 'resolvable' ? 'good' : detail.data?.installPolicy === 'catalog_only' ? 'warn' : 'bad'}>
-                  {detail.data?.installPolicy || 'unknown'}
-                </StatusPill>
+                    {detail.data?.installPolicy || '未知'}
+                  </StatusPill>
               </div>
               <p>
                 {detail.data?.installPolicy === 'blocked'
@@ -326,7 +321,7 @@ export function VersionDetailPage() {
             <article className="list-card">
               <div className="list-card__head">
                 <div>
-                  <strong>Selected governance impact</strong>
+                  <strong>当前治理影响</strong>
                   <span>{governanceAction}</span>
                 </div>
                 <StatusPill tone={governanceAction === 'yank' ? 'bad' : 'warn'}>{governanceAction}</StatusPill>
@@ -336,7 +331,7 @@ export function VersionDetailPage() {
           </div>
         </SurfaceCard>
 
-        <SurfaceCard title="Execution Log" description="记录这次页面会话中触发过的 release / governance 动作。">
+        <SurfaceCard title="执行日志">
           <div className="list-stack">
             {activityLog.length ? (
               activityLog.map((entry) => (
@@ -351,17 +346,17 @@ export function VersionDetailPage() {
                 </article>
               ))
             ) : (
-              <div className="empty-box">No actions run yet in this session.</div>
+              <div className="empty-box">这个会话里还没有执行过动作。</div>
             )}
           </div>
         </SurfaceCard>
       </div>
 
       <div className="two-column">
-        <SurfaceCard title="Registry & Bundle" description="映射 `GET /api/v1/skills/{packageName}/versions/{version}`。">
+        <SurfaceCard title="仓信息与 Bundle">
           <dl className="property-list">
             <div>
-              <dt>version status</dt>
+              <dt>版本状态</dt>
               <dd>
                 {detail.data ? (
                   <StatusPill tone={detail.data.versionStatus === 'published' ? 'good' : detail.data.versionStatus === 'deprecated' ? 'warn' : 'bad'}>
@@ -373,11 +368,11 @@ export function VersionDetailPage() {
               </dd>
             </div>
             <div>
-              <dt>install policy</dt>
+              <dt>安装策略</dt>
               <dd>{detail.data?.installPolicy || '—'}</dd>
             </div>
             <div>
-              <dt>npm registry</dt>
+              <dt>npm 仓地址</dt>
               <dd>{detail.data?.registry.npmRegistry || '—'}</dd>
             </div>
             <div>
@@ -389,7 +384,7 @@ export function VersionDetailPage() {
               <dd>{detail.data?.registry.shasum || '—'}</dd>
             </div>
             <div>
-              <dt>manifest digest</dt>
+              <dt>manifest 摘要</dt>
               <dd>{detail.data?.bundle.skillManifestDigest || '—'}</dd>
             </div>
             <div>
@@ -403,9 +398,9 @@ export function VersionDetailPage() {
       </div>
 
       <div className="two-column">
-        <SurfaceCard className="surface-card--sticky" title="Release Action Center" description="把 release-record 做成独立控制面动作，而不是附带按钮。" variant="console">
+        <SurfaceCard className="surface-card--sticky" title="发布登记" variant="console">
           <PermissionGate
-            fallback={<div className="empty-box">Current session is read-only for catalog.release_record.create.</div>}
+            fallback={<div className="empty-box">当前会话对 `catalog.release_record.create` 只有只读权限。</div>}
             packageName={decodedPackage}
             requiredAction="catalog.release_record.create"
             session={session.data}
@@ -414,7 +409,7 @@ export function VersionDetailPage() {
           >
             <div className="stack-column">
               <label className="field">
-                <span>publish registry</span>
+                <span>发布仓地址</span>
                 <input
                   onChange={(event) => setPublishRegistry(event.target.value)}
                   placeholder={detail.data?.registry.npmRegistry || 'https://npm.internal.example.com'}
@@ -422,7 +417,7 @@ export function VersionDetailPage() {
                 />
               </label>
               <label className="field">
-                <span>manifest digest</span>
+                <span>manifest 摘要</span>
                 <input
                   onChange={(event) => setManifestDigest(event.target.value)}
                   placeholder={detail.data?.bundle.skillManifestDigest || 'sha256:...'}
@@ -439,8 +434,8 @@ export function VersionDetailPage() {
               </label>
               <div className="action-row">
                 <div className="action-row__copy">
-                  <strong>Register this bundle into Catalog</strong>
-                  <p>只有这里提交成功，版本才正式进入 Catalog 的 release-tracked 状态。</p>
+                  <strong>Register this bundle</strong>
+                  <p>为这个 bundle 写入 catalog release record。</p>
                 </div>
               </div>
               <button
@@ -449,7 +444,7 @@ export function VersionDetailPage() {
                 onClick={() => void handleReleaseRecord()}
                 type="button"
               >
-                {actionState.loading === 'release' ? 'Submitting…' : 'Create release record'}
+                {actionState.loading === 'release' ? '提交中…' : '创建 release record'}
               </button>
             </div>
           </PermissionGate>
@@ -457,9 +452,9 @@ export function VersionDetailPage() {
       </div>
 
       <div className="two-column">
-        <SurfaceCard title="Version Governance" description="当前支持 deprecate / yank，并允许带 replacement recommendation。" variant="console">
+        <SurfaceCard title="版本治理" variant="console">
           <PermissionGate
-            fallback={<div className="empty-box">Current session is read-only for catalog.governance.version.apply.</div>}
+            fallback={<div className="empty-box">当前会话对 `catalog.governance.version.apply` 只有只读权限。</div>}
             packageName={decodedPackage}
             requiredAction="catalog.governance.version.apply"
             session={session.data}
@@ -468,22 +463,22 @@ export function VersionDetailPage() {
           >
             <div className="stack-column">
               <label className="field">
-                <span>Action</span>
+                <span>动作</span>
                 <select value={governanceAction} onChange={(event) => setGovernanceAction(event.target.value as 'deprecate' | 'yank')}>
                   <option value="deprecate">deprecate</option>
                   <option value="yank">yank</option>
                 </select>
               </label>
               <label className="field">
-                <span>Reason</span>
+                <span>原因</span>
                 <textarea
                   onChange={(event) => setGovernanceReason(event.target.value)}
-                  placeholder="replacement available / security issue / incompatible behavior"
+                  placeholder="已有替代版本 / 安全问题 / 行为不兼容"
                   value={governanceReason}
                 />
               </label>
               <label className="field">
-                <span>Replacement recommendation</span>
+                <span>替代版本建议</span>
                 <input
                   onChange={(event) => setReplacementRecommendation(event.target.value)}
                   placeholder="1.2.1"
@@ -496,12 +491,12 @@ export function VersionDetailPage() {
                   onChange={(event) => setGovernanceConfirmed(event.target.checked)}
                   type="checkbox"
                 />
-                <span>I understand this changes installability for downstream consumers.</span>
+                <span>我理解这会改变下游消费者的可安装性。</span>
               </label>
               <div className="action-row">
                 <div className="action-row__copy">
-                  <strong>Change downstream install behavior</strong>
-                  <p>这里不是备注区，而是真正会影响 install target 解析和消费侧行为的治理入口。</p>
+                  <strong>变更安装行为</strong>
+                  <p>更新下游解析结果。</p>
                 </div>
               </div>
               <button
@@ -510,13 +505,13 @@ export function VersionDetailPage() {
                 onClick={() => void handleVersionGovernance()}
                 type="button"
               >
-                {actionState.loading === 'governance' ? 'Submitting…' : 'Submit governance change'}
+                {actionState.loading === 'governance' ? '提交中…' : '提交治理变更'}
               </button>
             </div>
           </PermissionGate>
         </SurfaceCard>
 
-        <SurfaceCard title="Applied Governance" description="写入后直接在右侧回看当前版本治理记录。">
+        <SurfaceCard title="已应用治理">
           <div className="list-stack">
             {governance.data?.items.length ? (
               governance.data.items.map((item) => (
@@ -532,17 +527,16 @@ export function VersionDetailPage() {
                   {item.replacementRecommendation ? (
                     <div className="pill-row">
                       <StatusPill tone="accent">replacement {item.replacementRecommendation}</StatusPill>
+                      
                     </div>
                   ) : null}
                 </article>
               ))
             ) : (
-              <div className="empty-box">No governance events for this version yet.</div>
+              <div className="empty-box">这个版本还没有治理记录。</div>
             )}
           </div>
-          {governance.data?.pageInfo.hasNextPage ? (
-            <p className="support-copy">这里只展示第一页 version governance；完整时间线请到 Governance 页面继续翻页。</p>
-          ) : null}
+          {governance.data?.pageInfo.hasNextPage ? <p className="support-copy">这里只展示第一页版本治理；完整时间线请到治理页继续翻页。</p> : null}
         </SurfaceCard>
       </div>
     </div>

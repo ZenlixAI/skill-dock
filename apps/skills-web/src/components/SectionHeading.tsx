@@ -4,7 +4,7 @@ import clsx from '../vendor/clsx';
 interface SectionHeadingProps {
   eyebrow?: string;
   title: string;
-  description: string;
+  description?: string;
   tone?: 'frontstage' | 'backstage' | 'detail';
   actions?: ReactNode;
 }
@@ -15,7 +15,7 @@ export function SectionHeading({ eyebrow, title, description, tone = 'frontstage
       <div>
         {eyebrow ? <span className="eyebrow">{eyebrow}</span> : null}
         <h1>{title}</h1>
-        <p>{description}</p>
+        {description ? <p>{description}</p> : null}
       </div>
       {actions ? <div className="section-heading__actions">{actions}</div> : null}
     </section>

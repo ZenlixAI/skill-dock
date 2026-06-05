@@ -544,3 +544,9 @@ Reader 的核心需求不是“理解底层对象模型”，而是“我现在�
 2. `Skill Detail + Version Detail`
 3. `Import & Package Wizard`
 4. `Governance / Audit`
+
+## 补充参考
+
+如果要继续把当前单壳控制台重排成更接近 `skills.sh` 的 discovery-first 信息架构，见：
+
+- [2026-06-05-registry-web-skills-sh-style-ia.zh-CN.md](./2026-06-05-registry-web-skills-sh-style-ia.zh-CN.md)

@@ -8,7 +8,7 @@ RUN go mod download
 COPY app ./app
 COPY business ./business
 COPY cmd ./cmd
-COPY data ./data
+COPY zarf/data ./data
 COPY foundation ./foundation
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/skill-registry ./cmd/skill-registry
@@ -22,7 +22,7 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY --from=build /out/skill-registry /usr/local/bin/skill-registry
-COPY data ./data
+COPY zarf/data ./data
 
 RUN mkdir -p /var/lib/skill-registry \
     && useradd --system --create-home --uid 10001 skill-registry \

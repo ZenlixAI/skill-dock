@@ -24,7 +24,7 @@
 ## 启动方式
 
 ```bash
-cd /Users/ultraman/workspace/skill_registry
+cd <repo-root>/skill_registry
 make dev-run
 ```
 
