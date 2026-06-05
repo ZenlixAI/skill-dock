@@ -1,16 +1,8 @@
-import { basename } from 'path';
 import { homedir } from 'os';
 import type { AgentType } from './types.ts';
 import { agents } from './agents.ts';
-import {
-  deriveInstallName,
-  listInstalledSkills,
-  sanitizeName,
-  type InstalledSkill,
-} from './installer.ts';
+import { listInstalledView, type InstalledSkillView } from './installed-view.ts';
 import { sanitizeMetadata } from './sanitize.ts';
-import { getAllLockedSkills } from './skill-lock.ts';
-import { readLocalLock } from './local-lock.ts';
 
 const RESET = '\x1b[0m';
 const BOLD = '\x1b[1m';
@@ -25,12 +17,6 @@ interface ListOptions {
   allScopes?: boolean;
   agent?: string[];
   json?: boolean;
-}
-
-interface DisplayMetadata {
-  name: string;
-  version?: string;
-  pluginName?: string;
 }
 
 /**
@@ -59,49 +45,33 @@ function formatList(items: string[], maxShow: number = 5): string {
   return `${shown.join(', ')} +${remaining} more`;
 }
 
-function getDisplayMetadataForSkill(
-  skill: InstalledSkill,
-  displayMetadataBySanitized: Map<string, DisplayMetadata>
-): DisplayMetadata | undefined {
-  return (
-    displayMetadataBySanitized.get(sanitizeName(skill.name)) ||
-    displayMetadataBySanitized.get(basename(skill.canonicalPath))
+function getDisplayName(record: InstalledSkillView): string {
+  return record.packageName || record.displayName;
+}
+
+function getAgentNames(record: InstalledSkillView): string[] {
+  return Array.from(
+    new Set(
+      record.agentLinks
+        .filter((link) => link.kind !== 'missing')
+        .map((link) => agents[link.agent].displayName)
+    )
   );
 }
 
-async function getDisplayMetadataByScope(global: boolean): Promise<Map<string, DisplayMetadata>> {
-  const displayMetadataBySanitized = new Map<string, DisplayMetadata>();
+function formatDisplayName(record: InstalledSkillView): string {
+  const name = sanitizeMetadata(getDisplayName(record));
+  return record.orphaned ? `${name} ${DIM}(orphaned)${RESET}` : name;
+}
 
-  if (global) {
-    const lockedSkills = await getAllLockedSkills();
-    for (const [key, value] of Object.entries(lockedSkills)) {
-      const metadata = {
-        name: key,
-        version: value.version,
-        pluginName: value.pluginName,
-      };
-      displayMetadataBySanitized.set(sanitizeName(key), metadata);
-      displayMetadataBySanitized.set(
-        sanitizeName(value.installName || deriveInstallName(key)),
-        metadata
-      );
-    }
-  } else {
-    const localLock = await readLocalLock();
-    for (const [key, value] of Object.entries(localLock.skills)) {
-      const metadata = {
-        name: key,
-        version: value.version,
-      };
-      displayMetadataBySanitized.set(sanitizeName(key), metadata);
-      displayMetadataBySanitized.set(
-        sanitizeName(value.installName || deriveInstallName(key)),
-        metadata
-      );
+function aliasesOverlap(left: Iterable<string>, right: Iterable<string>): boolean {
+  const rightSet = new Set(right);
+  for (const alias of left) {
+    if (rightSet.has(alias)) {
+      return true;
     }
   }
-
-  return displayMetadataBySanitized;
+  return false;
 }
 
 export function parseListOptions(args: string[]): ListOptions {
@@ -133,7 +103,7 @@ export async function runList(args: string[]): Promise<void> {
   const options = parseListOptions(args);
 
   const allScopes = options.allScopes || (options.global === true && options.project === true);
-  const scope = allScopes ? undefined : options.global === true ? true : false;
+  const globalScope = options.global === true;
 
   // Validate agent filter if provided
   let agentFilter: AgentType[] | undefined;
@@ -150,65 +120,70 @@ export async function runList(args: string[]): Promise<void> {
     agentFilter = options.agent as AgentType[];
   }
 
-  const installedSkills = await listInstalledSkills({
-    global: scope,
+  const installedSkills = await listInstalledView({
+    scope: allScopes ? undefined : globalScope ? 'global' : 'project',
     agentFilter,
   });
 
-  const projectDisplayMetadata = await getDisplayMetadataByScope(false);
-  const globalDisplayMetadata = await getDisplayMetadataByScope(true);
-  const displayMetadataBySanitized = scope ? globalDisplayMetadata : projectDisplayMetadata;
-
   if (allScopes) {
     const entries = installedSkills.map((skill) => {
-      const metadata = getDisplayMetadataForSkill(
-        skill,
-        skill.scope === 'global' ? globalDisplayMetadata : projectDisplayMetadata
-      );
-
       return {
-        name: metadata?.name || skill.name,
-        version: metadata?.version || null,
+        name: getDisplayName(skill),
+        aliases: skill.aliases,
+        version: skill.version || null,
         scope: skill.scope,
         path: skill.canonicalPath,
-        agents: skill.agents.map((a) => agents[a].displayName),
+        agents: getAgentNames(skill),
+        orphaned: skill.orphaned,
       };
     });
 
-    const grouped = new Map<
-      string,
-      {
-        name: string;
-        winner: 'project' | 'global';
-        scopes: Array<{
-          scope: 'project' | 'global';
-          version: string | null;
-          path: string;
-          agents: string[];
-        }>;
-      }
-    >();
+    const grouped: Array<{
+      name: string;
+      aliases: Set<string>;
+      winner: 'project' | 'global';
+      scopes: Array<{
+        scope: 'project' | 'global';
+        version: string | null;
+        path: string;
+        agents: string[];
+        orphaned: boolean;
+      }>;
+    }> = [];
 
     for (const entry of entries) {
-      const existing = grouped.get(entry.name);
+      const existing = grouped.find((group) => aliasesOverlap(group.aliases, entry.aliases));
       if (existing) {
         existing.scopes.push(entry);
+        for (const alias of entry.aliases) {
+          existing.aliases.add(alias);
+        }
+        if (entry.name.includes('/') && !existing.name.includes('/')) {
+          existing.name = entry.name;
+        }
         if (entry.scope === 'project') {
           existing.winner = 'project';
         }
       } else {
-        grouped.set(entry.name, {
+        grouped.push({
           name: entry.name,
+          aliases: new Set(entry.aliases),
           winner: entry.scope,
           scopes: [entry],
         });
       }
     }
 
-    const values = Array.from(grouped.values()).sort((a, b) => a.name.localeCompare(b.name));
+    const values = grouped.sort((a, b) => a.name.localeCompare(b.name));
 
     if (options.json) {
-      console.log(JSON.stringify(values, null, 2));
+      console.log(
+        JSON.stringify(
+          values.map(({ aliases: _, ...item }) => item),
+          null,
+          2
+        )
+      );
       return;
     }
 
@@ -221,13 +196,12 @@ export async function runList(args: string[]): Promise<void> {
     console.log();
 
     for (const item of values) {
-      console.log(
-        `${CYAN}${sanitizeMetadata(item.name)}${RESET} ${DIM}(winner: ${item.winner})${RESET}`
-      );
+      console.log(`${CYAN}${sanitizeMetadata(item.name)}${RESET} ${DIM}(winner: ${item.winner})${RESET}`);
       for (const scopeEntry of item.scopes.sort((a, b) => a.scope.localeCompare(b.scope))) {
         const version = scopeEntry.version ? ` v${scopeEntry.version}` : '';
+        const orphaned = scopeEntry.orphaned ? ` ${DIM}(orphaned)${RESET}` : '';
         console.log(
-          `  ${TEXT}${scopeEntry.scope}${RESET}${DIM}${version}${RESET} ${DIM}${shortenPath(scopeEntry.path, process.cwd())}${RESET}`
+          `  ${TEXT}${scopeEntry.scope}${RESET}${DIM}${version}${RESET}${orphaned} ${DIM}${shortenPath(scopeEntry.path, process.cwd())}${RESET}`
         );
         const agentInfo =
           scopeEntry.agents.length > 0 ? formatList(scopeEntry.agents) : 'not linked';
@@ -241,21 +215,18 @@ export async function runList(args: string[]): Promise<void> {
   // JSON output mode: structured, no ANSI, untruncated agent lists
   if (options.json) {
     const jsonOutput = installedSkills.map((skill) => ({
-      name: getDisplayMetadataForSkill(skill, displayMetadataBySanitized)?.name || skill.name,
-      version: getDisplayMetadataForSkill(skill, displayMetadataBySanitized)?.version || null,
+      name: getDisplayName(skill),
+      version: skill.version || null,
       path: skill.canonicalPath,
       scope: skill.scope,
-      agents: skill.agents.map((a) => agents[a].displayName),
+      agents: getAgentNames(skill),
     }));
     console.log(JSON.stringify(jsonOutput, null, 2));
     return;
   }
 
-  // Fetch lock entries to get plugin grouping info
-  const lockedSkills = await getAllLockedSkills();
-
   const cwd = process.cwd();
-  const scopeLabel = scope ? 'Global' : 'Project';
+  const scopeLabel = globalScope ? 'Global' : 'Project';
 
   if (installedSkills.length === 0) {
     if (options.json) {
@@ -263,7 +234,7 @@ export async function runList(args: string[]): Promise<void> {
       return;
     }
     console.log(`${DIM}No ${scopeLabel.toLowerCase()} skills found.${RESET}`);
-    if (scope) {
+    if (globalScope) {
       console.log(`${DIM}Try listing project skills without -g.${RESET}`);
     } else {
       console.log(`${DIM}Try listing global skills with -g.${RESET}`);
@@ -271,19 +242,14 @@ export async function runList(args: string[]): Promise<void> {
     return;
   }
 
-  function printSkill(skill: InstalledSkill, indent: boolean = false): void {
+  function printSkill(skill: InstalledSkillView, indent: boolean = false): void {
     const prefix = indent ? '  ' : '';
     const shortPath = shortenPath(skill.canonicalPath, cwd);
-    const agentNames = skill.agents.map((a) => agents[a].displayName);
-    const agentInfo =
-      skill.agents.length > 0 ? formatList(agentNames) : `${YELLOW}not linked${RESET}`;
-    const displayMetadata = getDisplayMetadataForSkill(skill, displayMetadataBySanitized);
-    const displayName = displayMetadata?.name || skill.name;
-    const versionSuffix = displayMetadata?.version
-      ? ` ${DIM}v${displayMetadata.version}${RESET}`
-      : '';
+    const agentNames = getAgentNames(skill);
+    const agentInfo = agentNames.length > 0 ? formatList(agentNames) : `${YELLOW}not linked${RESET}`;
+    const versionSuffix = skill.version ? ` ${DIM}v${skill.version}${RESET}` : '';
     console.log(
-      `${prefix}${CYAN}${sanitizeMetadata(displayName)}${RESET}${versionSuffix} ${DIM}${shortPath}${RESET}`
+      `${prefix}${CYAN}${formatDisplayName(skill)}${RESET}${versionSuffix} ${DIM}${shortPath}${RESET}`
     );
     console.log(`${prefix}  ${DIM}Agents:${RESET} ${agentInfo}`);
   }
@@ -292,13 +258,12 @@ export async function runList(args: string[]): Promise<void> {
   console.log();
 
   // Group skills by plugin
-  const groupedSkills: Record<string, InstalledSkill[]> = {};
-  const ungroupedSkills: InstalledSkill[] = [];
+  const groupedSkills: Record<string, InstalledSkillView[]> = {};
+  const ungroupedSkills: InstalledSkillView[] = [];
 
   for (const skill of installedSkills) {
-    const displayMetadata = getDisplayMetadataForSkill(skill, displayMetadataBySanitized);
-    if (displayMetadata?.pluginName) {
-      const group = displayMetadata.pluginName;
+    if (skill.pluginName) {
+      const group = skill.pluginName;
       if (!groupedSkills[group]) {
         groupedSkills[group] = [];
       }

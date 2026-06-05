@@ -266,6 +266,25 @@ description: Second skill
       expect(result.exitCode).toBe(0);
     });
 
+    it('marks orphaned installed skills in human-readable output', () => {
+      const skillDir = join(testDir, '.agents', 'skills', 'manual-skill');
+      mkdirSync(skillDir, { recursive: true });
+      writeFileSync(
+        join(skillDir, 'SKILL.md'),
+        `---
+name: Manual Skill
+description: Installed outside the lock
+---
+# Manual Skill
+`
+      );
+
+      const result = runCli(['list'], testDir);
+      expect(result.stdout).toContain('Manual Skill');
+      expect(result.stdout).toContain('(orphaned)');
+      expect(result.exitCode).toBe(0);
+    });
+
     it('should respect -g flag for global only', () => {
       const fakeHome = join(testDir, 'fake-home');
       const globalSkillDir = join(fakeHome, '.claude', 'skills', 'global-skill');
