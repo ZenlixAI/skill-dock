@@ -42,7 +42,7 @@ describe('installed view projection', () => {
         2
       )
     );
-    mkdirSync(join(root, '.cursor', 'rules', 'pdf-skill'), { recursive: true });
+    mkdirSync(join(root, '.claude', 'skills', 'pdf-skill'), { recursive: true });
 
     const records = await listInstalledView({ scope: 'project', cwd: root });
 
@@ -52,6 +52,12 @@ describe('installed view projection', () => {
           packageName: '@platform.skill/pdf-skill',
           installName: 'pdf-skill',
           aliases: expect.arrayContaining(['@platform.skill/pdf-skill', 'pdf-skill']),
+          agentLinks: expect.arrayContaining([
+            expect.objectContaining({
+              agent: 'claude-code',
+              path: join(root, '.claude', 'skills', 'pdf-skill'),
+            }),
+          ]),
           scope: 'project',
           orphaned: false,
         }),
@@ -63,19 +69,23 @@ describe('installed view projection', () => {
     const root = mkdtempSync(join(tmpdir(), 'installed-view-agent-only-'));
     roots.push(root);
 
-    mkdirSync(join(root, '.cursor', 'rules', 'pdf-skill'), { recursive: true });
+    mkdirSync(join(root, '.claude', 'skills', 'pdf-skill'), { recursive: true });
     writeFileSync(
-      join(root, '.cursor', 'rules', 'pdf-skill', 'SKILL.md'),
+      join(root, '.claude', 'skills', 'pdf-skill', 'SKILL.md'),
       `---\nname: PDF Skill\ndescription: Read PDFs\n---\n`
     );
 
     const records = await listInstalledView({ scope: 'project', cwd: root });
 
-    expect(records[0]).toMatchObject({
-      displayName: 'PDF Skill',
-      orphaned: true,
-      orphanReasons: expect.arrayContaining(['missing_canonical_path']),
-    });
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          displayName: 'PDF Skill',
+          orphaned: true,
+          orphanReasons: expect.arrayContaining(['missing_canonical_path']),
+        }),
+      ])
+    );
   });
 
   it('marks a lock-only registry entry orphaned when the canonical path is missing', async () => {
@@ -104,18 +114,22 @@ describe('installed view projection', () => {
 
     const records = await listInstalledView({ scope: 'project', cwd: root });
 
-    expect(records[0]).toMatchObject({
-      packageName: '@platform.skill/pdf-skill',
-      orphaned: true,
-      orphanReasons: expect.arrayContaining(['missing_canonical_path']),
-    });
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          packageName: '@platform.skill/pdf-skill',
+          orphaned: true,
+          orphanReasons: expect.arrayContaining(['missing_canonical_path']),
+        }),
+      ])
+    );
   });
 
   it('marks conflicting install aliases as orphaned', async () => {
     const root = mkdtempSync(join(tmpdir(), 'installed-view-conflict-'));
     roots.push(root);
 
-    for (const dir of ['pdf-skill', 'pdf.skill']) {
+    for (const dir of ['pdf-skill', 'pdf skill']) {
       mkdirSync(join(root, '.agents', 'skills', dir), { recursive: true });
       writeFileSync(
         join(root, '.agents', 'skills', dir, 'SKILL.md'),
