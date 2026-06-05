@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM truth-ai-registry.cn-hangzhou.cr.aliyuncs.com/base/node:22 AS build
+FROM --platform=$BUILDPLATFORM truth-ai-registry.cn-hangzhou.cr.aliyuncs.com/base/node:24-bookworm AS build
 
 ARG NPM_REGISTRY=https://registry.npmmirror.com
 
@@ -14,7 +14,7 @@ COPY apps/skills-web/vite.config.ts ./vite.config.ts
 COPY apps/skills-web/src ./src
 RUN npm run build
 
-FROM truth-ai-registry.cn-hangzhou.cr.aliyuncs.com/base/nginx:1.27 AS runtime
+FROM truth-ai-registry.cn-hangzhou.cr.aliyuncs.com/base/nginx:1.29-alpine AS runtime
 
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories \
     && apk add --no-cache ca-certificates tzdata
