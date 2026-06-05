@@ -149,6 +149,17 @@ func (s *MemoryAggregateStateStore) ListCuratedSkills(_ context.Context, pageSiz
 	return CuratedSkillsPage{Items: paged, PageInfo: pageInfo}, nil
 }
 
+func (s *MemoryAggregateStateStore) GetSkill(_ context.Context, packageName string) (SkillDetail, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	aggregate, ok := s.aggregates[packageName]
+	if !ok {
+		return SkillDetail{}, NewError(404, "skill_not_found", "Skill not found.", map[string]any{"packageName": packageName})
+	}
+	return aggregate.Skill.Detail, nil
+}
+
 func (s *MemoryAggregateStateStore) ListVersions(_ context.Context, query VersionQuery) (VersionsPage, error) {
 	if query.PageSize <= 0 {
 		query.PageSize = 20
@@ -183,6 +194,36 @@ func (s *MemoryAggregateStateStore) ListVersions(_ context.Context, query Versio
 		return VersionsPage{}, err
 	}
 	return VersionsPage{Items: paged, PageInfo: pageInfo}, nil
+}
+
+func (s *MemoryAggregateStateStore) GetVersion(_ context.Context, packageName string, version string) (SkillVersionDetail, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	aggregate, ok := s.aggregates[packageName]
+	if !ok {
+		return SkillVersionDetail{}, NewError(404, "skill_not_found", "Skill not found.", map[string]any{"packageName": packageName})
+	}
+	for _, item := range aggregate.Skill.Versions {
+		if item.Version == version {
+			return item, nil
+		}
+	}
+	return SkillVersionDetail{}, NewError(404, "version_not_found", "Version not found.", map[string]any{
+		"packageName": packageName,
+		"version":     version,
+	})
+}
+
+func (s *MemoryAggregateStateStore) ListPackageVersions(_ context.Context, packageName string) ([]SkillVersionDetail, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	aggregate, ok := s.aggregates[packageName]
+	if !ok {
+		return nil, NewError(404, "skill_not_found", "Skill not found.", map[string]any{"packageName": packageName})
+	}
+	return append([]SkillVersionDetail(nil), aggregate.Skill.Versions...), nil
 }
 
 func (s *MemoryAggregateStateStore) ListGovernanceChanges(_ context.Context, query GovernanceQuery) (GovernancePage, error) {
@@ -221,6 +262,36 @@ func (s *MemoryAggregateStateStore) ListGovernanceChanges(_ context.Context, que
 		return GovernancePage{}, err
 	}
 	return GovernancePage{Items: paged, PageInfo: pageInfo}, nil
+}
+
+func (s *MemoryAggregateStateStore) ListPackageGovernance(_ context.Context, packageName string, targetType GovernanceTargetType, version *string) ([]GovernanceRecord, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	aggregate, ok := s.aggregates[packageName]
+	if !ok {
+		return nil, NewError(404, "skill_not_found", "Skill not found.", map[string]any{"packageName": packageName})
+	}
+
+	items := make([]GovernanceRecord, 0, len(aggregate.Governance))
+	for _, record := range aggregate.Governance {
+		if record.TargetType != targetType {
+			continue
+		}
+		switch {
+		case version == nil && record.Version != nil:
+			continue
+		case version != nil:
+			if record.Version == nil || *record.Version != *version {
+				continue
+			}
+		}
+		items = append(items, record)
+	}
+	sort.Slice(items, func(i int, j int) bool {
+		return items[i].ChangedAt.After(items[j].ChangedAt)
+	})
+	return items, nil
 }
 
 func (s *MemoryAggregateStateStore) Ping(context.Context) error {

@@ -324,6 +324,31 @@ ORDER BY updated_at DESC`)
 	return CuratedSkillsPage{Items: paged, PageInfo: pageInfo}, nil
 }
 
+func (s *SQLStateStore) GetSkill(ctx context.Context, packageName string) (SkillDetail, error) {
+	query := bindSQL(s.dialect, `
+SELECT
+	package_name,
+	display_name,
+	description,
+	source_type,
+	status,
+	latest_version,
+	latest_version_status,
+	created_at,
+	updated_at
+FROM skills
+WHERE package_name = ?`)
+
+	detail, err := scanSkillDetail(s.db.QueryRowContext(ctx, query, packageName))
+	if errors.Is(err, sql.ErrNoRows) {
+		return SkillDetail{}, NewError(404, "skill_not_found", "Skill not found.", map[string]any{"packageName": packageName})
+	}
+	if err != nil {
+		return SkillDetail{}, err
+	}
+	return detail, nil
+}
+
 func (s *SQLStateStore) ListVersions(ctx context.Context, query VersionQuery) (VersionsPage, error) {
 	if query.PageSize <= 0 {
 		query.PageSize = 20
@@ -379,6 +404,55 @@ func (s *SQLStateStore) ListVersions(ctx context.Context, query VersionQuery) (V
 	return VersionsPage{Items: paged, PageInfo: pageInfo}, nil
 }
 
+func (s *SQLStateStore) GetVersion(ctx context.Context, packageName string, version string) (SkillVersionDetail, error) {
+	query := bindSQL(s.dialect, `
+SELECT
+	package_name,
+	version,
+	version_status,
+	install_policy,
+	published_at,
+	npm_registry,
+	tarball_url,
+	integrity,
+	shasum,
+	dist_tags_json,
+	skill_manifest_digest,
+	components_json
+FROM skill_versions
+WHERE package_name = ? AND version = ?`)
+
+	detail, err := scanSkillVersionDetail(s.db.QueryRowContext(ctx, query, packageName, version))
+	if errors.Is(err, sql.ErrNoRows) {
+		exists, existsErr := s.skillExists(ctx, packageName)
+		if existsErr != nil {
+			return SkillVersionDetail{}, existsErr
+		}
+		if !exists {
+			return SkillVersionDetail{}, NewError(404, "skill_not_found", "Skill not found.", map[string]any{"packageName": packageName})
+		}
+		return SkillVersionDetail{}, NewError(404, "version_not_found", "Version not found.", map[string]any{
+			"packageName": packageName,
+			"version":     version,
+		})
+	}
+	if err != nil {
+		return SkillVersionDetail{}, err
+	}
+	return detail, nil
+}
+
+func (s *SQLStateStore) ListPackageVersions(ctx context.Context, packageName string) ([]SkillVersionDetail, error) {
+	exists, err := s.skillExists(ctx, packageName)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, NewError(404, "skill_not_found", "Skill not found.", map[string]any{"packageName": packageName})
+	}
+	return s.loadVersionsByPackage(ctx, packageName)
+}
+
 func (s *SQLStateStore) ListGovernanceChanges(ctx context.Context, query GovernanceQuery) (GovernancePage, error) {
 	if query.PageSize <= 0 {
 		query.PageSize = 20
@@ -410,6 +484,43 @@ func (s *SQLStateStore) ListGovernanceChanges(ctx context.Context, query Governa
 		return GovernancePage{}, err
 	}
 	return GovernancePage{Items: paged, PageInfo: pageInfo}, nil
+}
+
+func (s *SQLStateStore) ListPackageGovernance(ctx context.Context, packageName string, targetType GovernanceTargetType, version *string) ([]GovernanceRecord, error) {
+	exists, err := s.skillExists(ctx, packageName)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, NewError(404, "skill_not_found", "Skill not found.", map[string]any{"packageName": packageName})
+	}
+
+	query := GovernanceQuery{
+		PackageName: packageName,
+		TargetType:  string(targetType),
+	}
+	if version != nil {
+		query.Version = *version
+	}
+
+	rows, err := s.db.QueryContext(ctx, bindSQL(s.dialect, s.listGovernanceSQL(query)), s.listGovernanceArgs(query)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]GovernanceRecord, 0)
+	for rows.Next() {
+		record, err := scanGovernanceRecord(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 func (s *SQLStateStore) Ping(ctx context.Context) error {
@@ -775,6 +886,44 @@ func scanSkillSummary(scanner interface {
 	if err != nil {
 		return SkillSummary{}, err
 	}
+	item.LatestVersion = nullStringPtr(latestVersion)
+	item.LatestVersionStatus = nullStringPtr(latestVersionStatus)
+	item.UpdatedAt = updatedAt
+	return item, nil
+}
+
+func scanSkillDetail(scanner interface {
+	Scan(dest ...any) error
+}) (SkillDetail, error) {
+	var (
+		item                SkillDetail
+		latestVersion       sql.NullString
+		latestVersionStatus sql.NullString
+		createdAtRaw        string
+		updatedAtRaw        string
+	)
+	if err := scanner.Scan(
+		&item.PackageName,
+		&item.DisplayName,
+		&item.Description,
+		&item.SourceType,
+		&item.Status,
+		&latestVersion,
+		&latestVersionStatus,
+		&createdAtRaw,
+		&updatedAtRaw,
+	); err != nil {
+		return SkillDetail{}, err
+	}
+	createdAt, err := time.Parse(time.RFC3339, createdAtRaw)
+	if err != nil {
+		return SkillDetail{}, err
+	}
+	updatedAt, err := time.Parse(time.RFC3339, updatedAtRaw)
+	if err != nil {
+		return SkillDetail{}, err
+	}
+	item.CreatedAt = createdAt
 	item.LatestVersion = nullStringPtr(latestVersion)
 	item.LatestVersionStatus = nullStringPtr(latestVersionStatus)
 	item.UpdatedAt = updatedAt

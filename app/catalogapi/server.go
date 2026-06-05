@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -14,7 +13,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -47,6 +45,10 @@ type Server struct {
 	repo                 catalog.Repository
 	authorizer           *auth.Authorizer
 	sessionManager       *auth.SessionManager
+	catalogReadModule    catalogReadWorkflow
+	governanceModule     *governanceModule
+	packagingModule      *packagingModule
+	sessionModule        sessionWorkflow
 	publicNPMRegistryURL string
 	mockRegistry         *artifactadapter.MockRegistry
 	disableMockRegistry  bool
@@ -57,16 +59,6 @@ type Server struct {
 	logger               *log.Logger
 	metrics              *observability.Collector
 	requestID            atomic.Uint64
-	cacheMu              sync.Mutex
-	cacheTTL             time.Duration
-	cacheEntries         map[string]cachedPackagingResponse
-}
-
-type cachedPackagingResponse struct {
-	requestHash string
-	status      int
-	body        []byte
-	createdAt   time.Time
 }
 
 type contextKey string
@@ -82,27 +74,52 @@ func NewServer(config ServerConfig) *Server {
 		logger = log.New(os.Stderr, "", 0)
 	}
 
-	return &Server{
-		repo: config.Repository,
-		authorizer: auth.NewAuthorizer(auth.Config{
-			ReaderToken:    config.ReaderToken,
-			AuthoringToken: config.AuthoringToken,
-			PublisherToken: config.PublisherToken,
-			Tokens:         config.AuthTokens,
-		}),
-		sessionManager:       auth.NewSessionManager(config.SessionSecret, config.SessionUsers, 12*time.Hour),
+	authorizer := auth.NewAuthorizer(auth.Config{
+		ReaderToken:    config.ReaderToken,
+		AuthoringToken: config.AuthoringToken,
+		PublisherToken: config.PublisherToken,
+		Tokens:         config.AuthTokens,
+	})
+	sessionManager := auth.NewSessionManager(config.SessionSecret, config.SessionUsers, 12*time.Hour)
+	auditRecorder := NewAuditRecorder(config.Audit)
+	var packagingSvc packagingService
+	if config.Packaging != nil {
+		packagingSvc = config.Packaging
+	}
+
+	server := &Server{
+		repo:                 config.Repository,
+		authorizer:           authorizer,
+		sessionManager:       sessionManager,
 		publicNPMRegistryURL: strings.TrimRight(strings.TrimSpace(config.PublicNPMRegistryURL), "/"),
 		mockRegistry:         config.MockRegistry,
 		disableMockRegistry:  config.DisableMockRegistry,
 		packaging:            config.Packaging,
 		idempotency:          config.Idempotency,
 		audit:                config.Audit,
-		auditRecorder:        NewAuditRecorder(config.Audit),
+		auditRecorder:        auditRecorder,
 		logger:               logger,
 		metrics:              observability.NewCollector(),
-		cacheTTL:             10 * time.Minute,
-		cacheEntries:         make(map[string]cachedPackagingResponse),
 	}
+	server.catalogReadModule = &catalogReadModule{
+		repo: config.Repository,
+	}
+	server.governanceModule = &governanceModule{
+		repo:       config.Repository,
+		authorizer: authorizer,
+	}
+	server.packagingModule = &packagingModule{
+		service:             packagingSvc,
+		idempotency:         config.Idempotency,
+		audit:               auditRecorder,
+		cache:               newPackagingResponseCache(10 * time.Minute),
+		allowAnonymousCache: false,
+	}
+	server.sessionModule = &sessionModule{
+		authorizer:     authorizer,
+		sessionManager: sessionManager,
+	}
+	return server
 }
 
 func (s *Server) Handler() http.Handler {
@@ -258,7 +275,7 @@ func (s *Server) handleSkills(writer http.ResponseWriter, request *http.Request)
 		return
 	}
 
-	response, repoErr := s.repo.ListSkills(request.Context(), catalog.SkillQuery{
+	response, repoErr := s.catalogReadModule.listSkills(request.Context(), auth.PrincipalFromContext(request.Context()), catalog.SkillQuery{
 		Query:          request.URL.Query().Get("q"),
 		PackageName:    request.URL.Query().Get("package_name"),
 		SourceType:     sourceType,
@@ -271,8 +288,6 @@ func (s *Server) handleSkills(writer http.ResponseWriter, request *http.Request)
 		writeCatalogError(writer, request, repoErr)
 		return
 	}
-	response.Items = auth.FilterSkillSummariesByPrincipal(response.Items, auth.PrincipalFromContext(request.Context()))
-
 	writeJSON(writer, http.StatusOK, response)
 }
 
@@ -288,12 +303,11 @@ func (s *Server) handleCuratedSkills(writer http.ResponseWriter, request *http.R
 		return
 	}
 
-	response, repoErr := s.repo.ListCuratedSkills(request.Context(), pageSize, cursor)
+	response, repoErr := s.catalogReadModule.listCuratedSkills(request.Context(), auth.PrincipalFromContext(request.Context()), pageSize, cursor)
 	if repoErr != nil {
 		writeCatalogError(writer, request, repoErr)
 		return
 	}
-	response.Items = auth.FilterCuratedSkillSummariesByPrincipal(response.Items, auth.PrincipalFromContext(request.Context()))
 	writeJSON(writer, http.StatusOK, response)
 }
 
@@ -424,11 +438,6 @@ func (s *Server) handleGovernanceChanges(writer http.ResponseWriter, request *ht
 			return
 		}
 	}
-	current := auth.PrincipalFromContext(request.Context())
-	if authErr := s.authorizer.RequirePackageFilter(current, request.URL.Query().Get("package_name")); authErr != nil {
-		writeAuthorizationError(writer, request, authErr)
-		return
-	}
 	targetType, targetTypeErr := parseGovernanceTargetTypeFilter(request.URL.Query().Get("target_type"))
 	if targetTypeErr != nil {
 		writeCatalogError(writer, request, targetTypeErr)
@@ -440,7 +449,7 @@ func (s *Server) handleGovernanceChanges(writer http.ResponseWriter, request *ht
 		return
 	}
 
-	response, repoErr := s.repo.ListGovernanceChanges(request.Context(), catalog.GovernanceQuery{
+	response, repoErr := s.governanceModule.listChanges(request.Context(), auth.PrincipalFromContext(request.Context()), catalog.GovernanceQuery{
 		PackageName: request.URL.Query().Get("package_name"),
 		Version:     versionFilter,
 		TargetType:  targetType,
@@ -451,7 +460,6 @@ func (s *Server) handleGovernanceChanges(writer http.ResponseWriter, request *ht
 		writeCatalogError(writer, request, repoErr)
 		return
 	}
-	response.Items = auth.FilterGovernanceRecordsByPrincipal(response.Items, current)
 	writeJSON(writer, http.StatusOK, response)
 }
 
@@ -658,37 +666,15 @@ func rewriteRegistryBaseURL(rawURL string, fromBase string, toBase string) strin
 }
 
 func (s *Server) handlePackagingPrepare(writer http.ResponseWriter, request *http.Request) {
-	handlePackagingRequest(s, writer, request, "prepare", nil, s.validatePackagingPrepareRequest, func(payload packaging.PrepareRequest) (any, error) {
-		return s.packaging.Prepare(payload)
-	})
+	handlePackagingEndpoint(s, writer, request, s.packagingModule.decodePrepareRequest, s.packagingModule.prepare)
 }
 
 func (s *Server) handlePackagingValidate(writer http.ResponseWriter, request *http.Request) {
-	handlePackagingRequest(s, writer, request, "validate", nil, nil, func(payload packaging.ValidateRequest) (any, error) {
-		return s.packaging.Validate(payload)
-	})
+	handlePackagingEndpoint(s, writer, request, s.packagingModule.decodeValidateRequest, s.packagingModule.validate)
 }
 
 func (s *Server) handlePackagingPack(writer http.ResponseWriter, request *http.Request) {
-	if s.packaging == nil {
-		http.NotFound(writer, request)
-		return
-	}
-	handlePackagingRequest(s, writer, request, "pack", func(payload packaging.PackRequest) bool {
-		return !payload.IncludeBundle
-	}, nil, func(payload packaging.PackRequest) (any, error) {
-		return s.packaging.Pack(payload)
-	})
-}
-
-func (s *Server) validatePackagingPrepareRequest(payload packaging.PrepareRequest) *catalog.Error {
-	if !strings.EqualFold(strings.TrimSpace(payload.Source.Type), "local") {
-		return nil
-	}
-	return catalog.NewError(422, "unsupported_source_type", "source.type=local has been removed. Upload source archive content instead of sending a local filesystem path.", map[string]any{
-		"sourceType":      payload.Source.Type,
-		"suggestedAction": "Use source.type=upload_archive, git, or platform_authoring instead.",
-	})
+	handlePackagingEndpoint(s, writer, request, s.packagingModule.decodePackRequest, s.packagingModule.pack)
 }
 
 func (s *Server) handlePackagingCleanup(writer http.ResponseWriter, request *http.Request) {
@@ -1150,8 +1136,11 @@ func mockRegistryBaseURL(request *http.Request) string {
 	return scheme + "://" + host + "/mock-npm"
 }
 
-func handlePackagingRequest[T interface{ GetIdempotencyKey() string }](s *Server, writer http.ResponseWriter, request *http.Request, endpoint string, shouldCache func(T) bool, preflight func(T) *catalog.Error, execute func(T) (any, error)) {
-	if s.packaging == nil {
+func handlePackagingEndpoint[T interface {
+	GetIdempotencyKey() string
+	GetTarget() packaging.Target
+}](s *Server, writer http.ResponseWriter, request *http.Request, decode func(context.Context, auth.Principal, []byte) (T, *catalog.Error), execute func(context.Context, auth.Principal, T) (any, int, *catalog.Error)) {
+	if s.packagingModule == nil || s.packagingModule.service == nil {
 		http.NotFound(writer, request)
 		return
 	}
@@ -1162,167 +1151,23 @@ func handlePackagingRequest[T interface{ GetIdempotencyKey() string }](s *Server
 		return
 	}
 
-	var payload T
-	if err := decodeJSONBytes(rawBody, &payload); err != nil {
-		s.recordMutationAudit(request, "packaging."+endpoint, packageNameFromPayload(payload), versionFromPayload(payload), err.Status, "failed", map[string]any{
-			"errorCode": err.Code,
-		})
+	principal := auth.PrincipalFromContext(request.Context())
+	payload, err := decode(request.Context(), principal, rawBody)
+	if err != nil {
 		writeCatalogError(writer, request, err)
 		return
 	}
-	if packageName := packageNameFromPayload(payload); packageName != "" {
+	if packageName := payload.GetTarget().PackageName; packageName != "" {
 		if !s.authorizePackageAccess(writer, request, packageName) {
 			return
 		}
 	}
-	if preflight != nil {
-		if err := preflight(payload); err != nil {
-			s.recordMutationAudit(request, "packaging."+endpoint, packageNameFromPayload(payload), versionFromPayload(payload), err.Status, "failed", map[string]any{
-				"errorCode": err.Code,
-			})
-			writeCatalogError(writer, request, err)
-			return
-		}
-	}
-
-	idempotencyKey := payload.GetIdempotencyKey()
-	cacheAllowed := shouldCache == nil || shouldCache(payload)
-	requestHash, hashErr := hashRequestPayload(payload)
-	if hashErr != nil {
-		writeCatalogError(writer, request, catalog.NewError(500, "internal_error", "Internal server error.", nil))
-		return
-	}
-	if cacheAllowed {
-		if cachedBody, cachedStatus, cacheErr, found := s.lookupCachedPackagingResponse(endpoint, auth.RoleFromContext(request.Context()), idempotencyKey, requestHash); found {
-			if cacheErr != nil {
-				s.recordMutationAudit(request, "packaging."+endpoint, packageNameFromPayload(payload), versionFromPayload(payload), cacheErr.Status, "failed", map[string]any{
-					"errorCode": cacheErr.Code,
-				})
-				writeCatalogError(writer, request, cacheErr)
-				return
-			}
-			s.recordMutationAudit(request, "packaging."+endpoint, packageNameFromPayload(payload), versionFromPayload(payload), cachedStatus, "succeeded", map[string]any{
-				"idempotentReplay": true,
-			})
-			writeJSONBytes(writer, cachedStatus, cachedBody)
-			return
-		}
-	}
-
-	response, err := execute(payload)
+	response, status, err := execute(request.Context(), principal, payload)
 	if err != nil {
-		s.recordMutationAudit(request, "packaging."+endpoint, packageNameFromPayload(payload), versionFromPayload(payload), statusFromError(err), "failed", map[string]any{
-			"errorCode": errorCodeFromError(err),
-		})
 		writeCatalogError(writer, request, err)
 		return
 	}
-
-	if strings.TrimSpace(idempotencyKey) == "" {
-		s.recordMutationAudit(request, "packaging."+endpoint, packageNameFromPayload(payload), versionFromPayload(payload), http.StatusOK, "succeeded", nil)
-		writeJSON(writer, http.StatusOK, response)
-		return
-	}
-	if !cacheAllowed {
-		s.recordMutationAudit(request, "packaging."+endpoint, packageNameFromPayload(payload), versionFromPayload(payload), http.StatusOK, "succeeded", map[string]any{
-			"idempotencyBypassed": true,
-		})
-		writeJSON(writer, http.StatusOK, response)
-		return
-	}
-
-	responseBody, marshalErr := json.Marshal(response)
-	if marshalErr != nil {
-		writeCatalogError(writer, request, catalog.NewError(500, "internal_error", "Internal server error.", nil))
-		return
-	}
-	responseBody, responseStatus := s.storeCachedPackagingResponse(endpoint, auth.RoleFromContext(request.Context()), idempotencyKey, requestHash, http.StatusOK, responseBody)
-	s.recordMutationAudit(request, "packaging."+endpoint, packageNameFromPayload(payload), versionFromPayload(payload), responseStatus, "succeeded", map[string]any{
-		"idempotencyKey": idempotencyKey,
-	})
-	writeJSONBytes(writer, responseStatus, responseBody)
-}
-
-func (s *Server) lookupCachedPackagingResponse(endpoint string, role string, idempotencyKey string, requestHash string) ([]byte, int, *catalog.Error, bool) {
-	idempotencyKey = strings.TrimSpace(idempotencyKey)
-	if idempotencyKey == "" {
-		return nil, 0, nil, false
-	}
-
-	if s.idempotency != nil {
-		record, err := s.idempotency.Lookup(context.Background(), endpoint, role, idempotencyKey)
-		switch {
-		case err == nil:
-			if record.RequestHash != requestHash {
-				return nil, 0, catalog.NewError(409, "idempotency_key_conflict", "idempotencyKey cannot be reused with a different request body.", map[string]any{
-					"idempotencyKey": idempotencyKey,
-				}), true
-			}
-			return append([]byte(nil), record.ResponseBody...), record.Status, nil, true
-		case !errors.Is(err, persist.ErrIdempotencyRecordNotFound):
-			return nil, 0, catalog.NewError(500, "internal_error", "Internal server error.", nil), true
-		}
-	}
-
-	s.cacheMu.Lock()
-	defer s.cacheMu.Unlock()
-	s.pruneExpiredCacheEntriesLocked()
-
-	record, ok := s.cacheEntries[endpoint+"\x00"+role+"\x00"+idempotencyKey]
-	if !ok {
-		return nil, 0, nil, false
-	}
-	if record.requestHash != requestHash {
-		return nil, 0, catalog.NewError(409, "idempotency_key_conflict", "idempotencyKey cannot be reused with a different request body.", map[string]any{
-			"idempotencyKey": idempotencyKey,
-		}), true
-	}
-	return append([]byte(nil), record.body...), record.status, nil, true
-}
-
-func (s *Server) storeCachedPackagingResponse(endpoint string, role string, idempotencyKey string, requestHash string, status int, body []byte) ([]byte, int) {
-	record := persist.IdempotencyRecord{
-		RequestHash:  requestHash,
-		Status:       status,
-		ResponseBody: append([]byte(nil), body...),
-		CreatedAt:    time.Now().UTC(),
-	}
-	if s.idempotency != nil && strings.TrimSpace(idempotencyKey) != "" {
-		_ = s.idempotency.DeleteExpired(context.Background())
-		saved, err := s.idempotency.Save(context.Background(), endpoint, role, strings.TrimSpace(idempotencyKey), record)
-		if err == nil && saved {
-			return append([]byte(nil), record.ResponseBody...), record.Status
-		}
-		if err == nil {
-			existing, lookupErr := s.idempotency.Lookup(context.Background(), endpoint, role, strings.TrimSpace(idempotencyKey))
-			if lookupErr == nil && existing.RequestHash == requestHash {
-				return append([]byte(nil), existing.ResponseBody...), existing.Status
-			}
-		}
-	}
-
-	s.cacheMu.Lock()
-	defer s.cacheMu.Unlock()
-	s.pruneExpiredCacheEntriesLocked()
-	s.cacheEntries[endpoint+"\x00"+role+"\x00"+strings.TrimSpace(idempotencyKey)] = cachedPackagingResponse{
-		requestHash: record.RequestHash,
-		status:      record.Status,
-		body:        append([]byte(nil), record.ResponseBody...),
-		createdAt:   record.CreatedAt,
-	}
-	return append([]byte(nil), record.ResponseBody...), record.Status
-}
-
-func (s *Server) pruneExpiredCacheEntriesLocked() {
-	if s.cacheTTL <= 0 {
-		return
-	}
-	cutoff := time.Now().UTC().Add(-s.cacheTTL)
-	for key, record := range s.cacheEntries {
-		if record.createdAt.Before(cutoff) {
-			delete(s.cacheEntries, key)
-		}
-	}
+	writeJSON(writer, status, response)
 }
 
 func hashRequestPayload(payload any) (string, error) {
@@ -1332,22 +1177,6 @@ func hashRequestPayload(payload any) (string, error) {
 	}
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:]), nil
-}
-
-func packageNameFromPayload(payload any) string {
-	targetProvider, ok := payload.(interface{ GetTarget() packaging.Target })
-	if !ok {
-		return ""
-	}
-	return targetProvider.GetTarget().PackageName
-}
-
-func versionFromPayload(payload any) string {
-	targetProvider, ok := payload.(interface{ GetTarget() packaging.Target })
-	if !ok {
-		return ""
-	}
-	return targetProvider.GetTarget().Version
 }
 
 func (s *Server) recordMutationAudit(request *http.Request, action string, packageName string, version string, status int, outcome string, details map[string]any) {

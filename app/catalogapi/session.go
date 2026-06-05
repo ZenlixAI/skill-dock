@@ -57,13 +57,7 @@ func (s *Server) handleSession(writer http.ResponseWriter, request *http.Request
 
 	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), current))
 	current = auth.PrincipalFromContext(request.Context())
-	writeJSON(writer, http.StatusOK, buildSessionResponse(
-		current.Role,
-		current.Actor,
-		current.AuthMechanism,
-		s.authorizer.AllowedActionsForRole(current.Role),
-		current.AllowedPackages,
-	))
+	writeJSON(writer, http.StatusOK, s.sessionModule.current(current))
 }
 
 func (s *Server) handleSessionLogin(writer http.ResponseWriter, request *http.Request) {
@@ -72,7 +66,7 @@ func (s *Server) handleSessionLogin(writer http.ResponseWriter, request *http.Re
 		writeCatalogError(writer, request, catalog.NewError(http.StatusMethodNotAllowed, "method_not_allowed", "Only POST is allowed.", nil))
 		return
 	}
-	if !s.sessionManager.Enabled() {
+	if s.sessionModule == nil || !s.sessionModule.enabled() {
 		writeCatalogError(writer, request, catalog.NewError(http.StatusNotFound, "session_login_disabled", "Session login is not enabled for this deployment.", nil))
 		return
 	}
@@ -87,20 +81,14 @@ func (s *Server) handleSessionLogin(writer http.ResponseWriter, request *http.Re
 		return
 	}
 
-	current, cookie, ok := s.sessionManager.Login(request, input.Username, input.Password)
+	current, cookie, ok := s.sessionModule.login(request, input.Username, input.Password)
 	if !ok {
 		writeCatalogError(writer, request, catalog.NewError(http.StatusUnauthorized, "unauthorized", "Invalid username or password.", nil))
 		return
 	}
 
 	http.SetCookie(writer, cookie)
-	writeJSON(writer, http.StatusOK, buildSessionResponse(
-		current.Role,
-		current.Actor,
-		current.AuthMechanism,
-		s.authorizer.AllowedActionsForRole(current.Role),
-		current.AllowedPackages,
-	))
+	writeJSON(writer, http.StatusOK, s.sessionModule.current(current))
 }
 
 func (s *Server) handleSessionLogout(writer http.ResponseWriter, request *http.Request) {
@@ -110,8 +98,10 @@ func (s *Server) handleSessionLogout(writer http.ResponseWriter, request *http.R
 		return
 	}
 
-	if s.sessionManager.Enabled() {
-		http.SetCookie(writer, s.sessionManager.LogoutCookie(request))
+	if s.sessionModule != nil {
+		if cookie := s.sessionModule.logoutCookie(request); cookie != nil {
+			http.SetCookie(writer, cookie)
+		}
 	}
 	writeJSON(writer, http.StatusOK, sessionLogoutResponse{OK: true})
 }

@@ -1,6 +1,7 @@
 package catalogapi
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -18,7 +19,7 @@ func NewAuditRecorder(store persist.AuditStore) *AuditRecorder {
 }
 
 func (r *AuditRecorder) RecordMutation(request *http.Request, action string, packageName string, version string, status int, outcome string, details map[string]any) error {
-	return r.record(request, auth.PrincipalFromContext(request.Context()), persist.AuditEvent{
+	return r.record(request.Context(), auth.PrincipalFromContext(request.Context()), request.Method, request.URL.EscapedPath(), persist.AuditEvent{
 		Action:       action,
 		PackageName:  packageName,
 		Version:      stringPtr(version),
@@ -31,7 +32,7 @@ func (r *AuditRecorder) RecordMutation(request *http.Request, action string, pac
 }
 
 func (r *AuditRecorder) RecordAuthorizationDenied(request *http.Request, current auth.Principal, outcome string, status int, packageName string, version string, details map[string]any) error {
-	return r.record(request, current, persist.AuditEvent{
+	return r.record(request.Context(), current, request.Method, request.URL.EscapedPath(), persist.AuditEvent{
 		Action:       "auth.denied",
 		PackageName:  packageName,
 		Version:      stringPtr(version),
@@ -44,7 +45,7 @@ func (r *AuditRecorder) RecordAuthorizationDenied(request *http.Request, current
 }
 
 func (r *AuditRecorder) RecordAuthenticationDenied(request *http.Request) error {
-	return r.record(request, auth.Principal{}, persist.AuditEvent{
+	return r.record(request.Context(), auth.Principal{}, request.Method, request.URL.EscapedPath(), persist.AuditEvent{
 		Action:       "auth.denied",
 		Outcome:      "unauthorized",
 		StatusCode:   http.StatusUnauthorized,
@@ -53,16 +54,29 @@ func (r *AuditRecorder) RecordAuthenticationDenied(request *http.Request) error 
 	})
 }
 
-func (r *AuditRecorder) record(request *http.Request, current auth.Principal, event persist.AuditEvent) error {
-	if r == nil || r.store == nil || request == nil {
+func (r *AuditRecorder) RecordMutationForEndpoint(ctx context.Context, current auth.Principal, method string, endpoint string, action string, packageName string, version string, status int, outcome string, details map[string]any) error {
+	return r.record(ctx, current, method, endpoint, persist.AuditEvent{
+		Action:       action,
+		PackageName:  packageName,
+		Version:      stringPtr(version),
+		Outcome:      outcome,
+		StatusCode:   status,
+		Details:      details,
+		AuthDecision: observability.AuthDecisionAllowed,
+		CreatedAt:    time.Now().UTC(),
+	})
+}
+
+func (r *AuditRecorder) record(ctx context.Context, current auth.Principal, method string, endpoint string, event persist.AuditEvent) error {
+	if r == nil || r.store == nil || ctx == nil {
 		return nil
 	}
-	event.RequestID = requestIDFromContext(request.Context())
-	event.TraceID = traceIDFromContext(request.Context())
+	event.RequestID = requestIDFromContext(ctx)
+	event.TraceID = traceIDFromContext(ctx)
 	event.Actor = current.Actor
 	event.Role = current.Role
 	event.AuthMechanism = current.AuthMechanism
-	event.Endpoint = request.URL.EscapedPath()
-	event.Method = request.Method
-	return r.store.Append(request.Context(), event)
+	event.Endpoint = endpoint
+	event.Method = method
+	return r.store.Append(ctx, event)
 }

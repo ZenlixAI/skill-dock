@@ -48,6 +48,23 @@ func TestSkillsRequiresAuthentication(t *testing.T) {
 	assertErrorCode(t, recorder, "unauthorized")
 }
 
+func TestServerRoutesSkillsThroughCatalogReadModule(t *testing.T) {
+	module := newCatalogReadModuleStubForTest(t)
+	server := newTestServerWithCatalogReadModule(t, module)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills", nil)
+	request.Header.Set("X-Role", "reader")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+	if got := module.listSkillsCallCount(); got != 1 {
+		t.Fatalf("expected catalog read module to handle one list request, got %d", got)
+	}
+}
+
 func TestBearerTokenAuthUsesConfiguredRoleMapping(t *testing.T) {
 	server := NewServer(ServerConfig{
 		Repository:     catalog.NewMemoryRepository(catalog.SampleData()),
@@ -372,8 +389,8 @@ func TestSessionEndpointAcceptsCookieAuthentication(t *testing.T) {
 	}
 
 	var response struct {
-		Role          string   `json:"role"`
-		AuthMechanism string   `json:"authMechanism"`
+		Role           string   `json:"role"`
+		AuthMechanism  string   `json:"authMechanism"`
 		AllowedActions []string `json:"allowedActions"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
@@ -1631,8 +1648,23 @@ func TestSkillPackagingPackWithInlineBundleSkipsIdempotencyPersistence(t *testin
 	if _, err := store.Lookup(context.Background(), "pack", "publisher", "inline-bundle-pack"); !errors.Is(err, persist.ErrIdempotencyRecordNotFound) {
 		t.Fatalf("expected no persisted idempotency record for inline bundle response, got err=%v", err)
 	}
-	if len(server.cacheEntries) != 0 {
-		t.Fatalf("expected inline bundle response to skip in-memory cache, got %d entries", len(server.cacheEntries))
+
+	if err := os.RemoveAll(preparePayload.WorkspacePath); err != nil {
+		t.Fatalf("remove workspace: %v", err)
+	}
+
+	secondPackRecorder := httptest.NewRecorder()
+	secondPackRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/pack", `{
+		"idempotencyKey":"inline-bundle-pack",
+		"workspacePath":"`+preparePayload.WorkspacePath+`",
+		"target":{"packageName":"@platform.skill/inline-bundle","version":"0.9.2"},
+		"includeBundle":true
+	}`)
+	secondPackRequest.Header.Set("X-Role", "publisher")
+	server.Handler().ServeHTTP(secondPackRecorder, secondPackRequest)
+
+	if secondPackRecorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected uncached inline bundle pack to fail after workspace removal, got %d body=%s", secondPackRecorder.Code, secondPackRecorder.Body.String())
 	}
 }
 

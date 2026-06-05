@@ -16,13 +16,14 @@ type AgentSkillAggregate struct {
 	Governance []GovernanceRecord `json:"governance"`
 }
 
-type CatalogStateStore interface {
+type AggregateStateStore interface {
 	IsEmpty(ctx context.Context) (bool, error)
 	GetAggregate(ctx context.Context, packageName string) (AgentSkillAggregate, error)
 	PutAggregate(ctx context.Context, aggregate AgentSkillAggregate, expectedRevision uint64) error
-	ListSkills(ctx context.Context, query SkillQuery) (SkillsPage, error)
-	ListCuratedSkills(ctx context.Context, pageSize int, cursor int) (CuratedSkillsPage, error)
-	ListVersions(ctx context.Context, query VersionQuery) (VersionsPage, error)
-	ListGovernanceChanges(ctx context.Context, query GovernanceQuery) (GovernancePage, error)
 	Ping(ctx context.Context) error
+}
+
+type CatalogStateStore interface {
+	QueryStore
+	AggregateStateStore
 }
