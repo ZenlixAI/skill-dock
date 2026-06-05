@@ -44,6 +44,14 @@ export function parseAuthoringJson(raw: string) {
   );
 }
 
+export function parseOptionalAuthoringJson(raw: string) {
+  if (raw.trim() === '') {
+    return undefined;
+  }
+
+  return parseAuthoringJson(raw);
+}
+
 export function validateAuthoringPath(path: string, existing: AuthoringFile[]) {
   const trimmed = path.trim();
   if (trimmed === '') return '新文件路径不能为空。';

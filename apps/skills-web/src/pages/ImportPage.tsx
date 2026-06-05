@@ -33,7 +33,7 @@ import { useAsyncData } from '../lib/useAsyncData';
 import {
   createDefaultAuthoringDraft,
   draftFilesToRecord,
-  parseAuthoringJson,
+  parseOptionalAuthoringJson,
   type AuthoringFile,
   type AuthoringTemplateId,
   validateAuthoringPath,
@@ -359,23 +359,8 @@ export function ImportPage() {
   }
 
   function applyRawInlineFiles() {
-    const trimmed = rawInlineFiles.trim();
-    if (trimmed === '') {
-      const nextFiles: AuthoringFile[] = [];
-      setAuthoringFiles(nextFiles);
-      setSelectedAuthoringPath('');
-      setAuthoringError(null);
-      setRawInlineFilesDirty(false);
-      return;
-    }
-
-    const parsed = JSON.parse(trimmed) as unknown;
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      throw new Error('Inline files 必须是 JSON object，例如 {"commands/run.txt":"echo hi"}。');
-    }
-
-    const parsedFiles = parseAuthoringJson(trimmed);
-    const nextFiles = recordToAuthoringFiles(parsedFiles || {}, authoringTemplate);
+    const parsedFiles = parseOptionalAuthoringJson(rawInlineFiles) || {};
+    const nextFiles = recordToAuthoringFiles(parsedFiles, authoringTemplate);
     setAuthoringFiles(nextFiles);
     setSelectedAuthoringPath(nextFiles[0]?.path || '');
     setAuthoringError(null);
@@ -384,8 +369,8 @@ export function ImportPage() {
 
   function buildPrepareRequest(): PackagingPrepareRequest {
     const platformFiles =
-      rawInlineFilesDirty && rawInlineFiles.trim() !== ''
-        ? parseAuthoringJson(rawInlineFiles)
+      rawInlineFilesDirty
+        ? parseOptionalAuthoringJson(rawInlineFiles) ?? draftFilesToRecord(authoringFiles)
         : draftFilesToRecord(authoringFiles);
 
     return {

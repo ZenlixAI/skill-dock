@@ -3,6 +3,7 @@ import {
   createDefaultAuthoringDraft,
   draftFilesToRecord,
   parseAuthoringJson,
+  parseOptionalAuthoringJson,
   validateAuthoringPath,
 } from './useAuthoringDraft';
 
@@ -36,6 +37,10 @@ describe('authoring draft', () => {
     expect(() => parseAuthoringJson('"text"')).toThrow(
       'Inline files 必须是 JSON object，例如 {"commands/run.txt":"echo hi"}。'
     );
+  });
+
+  it('returns undefined for blank optional raw json input', () => {
+    expect(parseOptionalAuthoringJson('   ')).toBeUndefined();
   });
 
   it('serializes files back into the request record shape', () => {
