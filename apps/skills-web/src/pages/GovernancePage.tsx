@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { listGovernanceChanges } from '../api/client';
-import { canPerformAction, hasPackageScope } from '../api/session';
 import type { GovernanceAction, GovernanceRecord, GovernanceTargetType } from '../api/types';
 import { SectionHeading } from '../components/SectionHeading';
 import { StatusPill } from '../components/StatusPill';
@@ -44,7 +43,7 @@ function buildGovernanceLayers(records: GovernanceRecord[]): GovernanceLayer[] {
 }
 
 export function GovernancePage() {
-  const { session } = useRegistrySession();
+  const { session, hasCapability, getPosture } = useRegistrySession();
   const [packageName, setPackageName] = useState('');
   const [targetType, setTargetType] = useState<GovernanceTargetType | ''>('');
   const [action, setAction] = useState<GovernanceAction | ''>('');
@@ -76,17 +75,36 @@ export function GovernancePage() {
   const replacementCount = filteredItems.filter((item) => Boolean(item.replacementRecommendation)).length;
   const versionCount = filteredItems.filter((item) => item.targetType === 'version').length;
   const normalizedPackageName = packageName.trim();
-  const sessionData = session.data;
+  const skillGovernancePosture = getPosture({
+    packageName: normalizedPackageName,
+    requiredAction: 'catalog.governance.skill.apply',
+  });
+  const versionGovernancePosture = getPosture({
+    packageName: normalizedPackageName,
+    requiredAction: 'catalog.governance.version.apply',
+  });
   const packageScopeUnresolved =
-    Boolean(sessionData) &&
-    hasPackageScope(sessionData) &&
-    normalizedPackageName === '' &&
-    (sessionData?.allowedActions.includes('catalog.governance.skill.apply') ||
-      sessionData?.allowedActions.includes('catalog.governance.version.apply'));
+    skillGovernancePosture === 'package_filter_required' ||
+    versionGovernancePosture === 'package_filter_required';
   const governanceMutateEnabled = Boolean(
-    canPerformAction(sessionData, 'catalog.governance.skill.apply', normalizedPackageName) ||
-      canPerformAction(sessionData, 'catalog.governance.version.apply', normalizedPackageName)
+    hasCapability('catalog.governance.skill.apply', normalizedPackageName) ||
+      hasCapability('catalog.governance.version.apply', normalizedPackageName)
   );
+  const governancePosture = packageScopeUnresolved
+    ? 'package_filter_required'
+    : governanceMutateEnabled
+      ? 'write_enabled'
+      : getPosture();
+  const governancePostureLabel =
+    governancePosture === 'loading'
+      ? 'session loading'
+      : governancePosture === 'unavailable'
+        ? 'session unavailable'
+        : governancePosture === 'package_filter_required'
+          ? 'package filter required'
+          : governancePosture === 'write_enabled'
+            ? 'governance write posture'
+            : 'read-only posture';
 
   return (
     <div className="page-grid">
@@ -104,20 +122,12 @@ export function GovernancePage() {
           {action || 'all actions'}
         </StatusPill>
         <StatusPill tone="good">{filteredItems.length} shown</StatusPill>
-        <StatusPill tone={governanceMutateEnabled ? 'accent' : packageScopeUnresolved ? 'warn' : 'default'}>
-          {session.loading
-            ? 'session loading'
-            : session.error
-              ? 'session unavailable'
-              : governanceMutateEnabled
-                ? 'governance write posture'
-                : packageScopeUnresolved
-                  ? 'package filter required'
-                  : 'read-only posture'}
+        <StatusPill tone={governancePosture === 'write_enabled' ? 'accent' : governancePosture === 'package_filter_required' ? 'warn' : 'default'}>
+          {governancePostureLabel}
         </StatusPill>
       </div>
 
-      {!session.loading && !session.error && packageScopeUnresolved ? (
+      {governancePosture === 'package_filter_required' ? (
         <SurfaceCard
           title="Package filter required"
           description="当前 session 具备 package-scoped governance mutation capability，但必须先选定 package，前端才能判断这次 retire / deprecate / yank 是否在授权范围内。"
@@ -129,7 +139,7 @@ export function GovernancePage() {
           </div>
         </SurfaceCard>
       ) : null}
-      {!session.loading && !session.error && !packageScopeUnresolved && !governanceMutateEnabled ? (
+      {governancePosture === 'read_only' ? (
         <SurfaceCard
           title="Read-only governance posture"
           description="当前 session 只能浏览治理时间线；retire / deprecate / yank 需要带 mutation capability 的 session，并且要在 skill / version detail 页面执行。"
@@ -141,7 +151,7 @@ export function GovernancePage() {
           </div>
         </SurfaceCard>
       ) : null}
-      {!session.loading && session.error ? (
+      {governancePosture === 'unavailable' ? (
         <SurfaceCard
           title="Session unavailable"
           description="当前无法确认 governance mutation capability。先把时间线当成只读视图，等 session endpoint 恢复后再判断是否可执行 retire / deprecate / yank。"

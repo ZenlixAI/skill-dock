@@ -1,6 +1,6 @@
 import { Link, useSearchParams } from 'react-router-dom';
 import { getRegistryClientConfig, listAuditEvents, listGovernanceChanges, listSkills } from '../api/client';
-import { canMutateCatalog, describeSessionPosture, describeSessionScope } from '../api/session';
+import { describeSessionScope } from '../api/session';
 import { SectionHeading } from '../components/SectionHeading';
 import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
@@ -14,7 +14,7 @@ export function AuthoringFlowPage() {
   const handoff = readReleaseHandoff(searchParams);
   const hasHandoff = Boolean(handoff.manifestDigest || handoff.bundlePath || handoff.workspacePath);
   const config = getRegistryClientConfig();
-  const { session } = useRegistrySession();
+  const { session, getPosture, getPostureLabel } = useRegistrySession();
 
   const skills = useAsyncData(() => listSkills({ includeRetired: true, pageSize: 8 }), []);
   const governance = useAsyncData(() => listGovernanceChanges({ pageSize: 8 }), []);
@@ -29,6 +29,8 @@ export function AuthoringFlowPage() {
     version: handoff.version,
     actor: session.data?.actor ?? config.actor,
   });
+  const sessionPosture = getPosture();
+  const sessionPostureLabel = getPostureLabel();
 
   return (
     <div className="page-grid">
@@ -59,9 +61,7 @@ export function AuthoringFlowPage() {
 
       <div className="context-strip">
         <StatusPill tone={config.mode === 'real' ? 'good' : 'warn'}>{config.mode === 'real' ? '真实模式' : '模拟模式'}</StatusPill>
-        <StatusPill tone={canMutateCatalog(session.data) ? 'accent' : 'default'}>
-          {session.loading ? '会话加载中' : session.error ? '会话不可用' : describeSessionPosture(session.data)}
-        </StatusPill>
+        <StatusPill tone={sessionPosture === 'write_enabled' ? 'accent' : 'default'}>{sessionPostureLabel}</StatusPill>
         {session.data ? <StatusPill>{session.data.actor}</StatusPill> : null}
         {session.data && describeSessionScope(session.data) ? <StatusPill>{describeSessionScope(session.data)}</StatusPill> : null}
         {hasHandoff && handoff.packageName ? <StatusPill tone="accent">{handoff.packageName}</StatusPill> : null}
@@ -108,7 +108,7 @@ export function AuthoringFlowPage() {
           </div>
           <div>
             <dt>会话态势</dt>
-            <dd>{session.loading ? '正在加载会话…' : session.error ? '会话不可用' : describeSessionPosture(session.data)}</dd>
+            <dd>{sessionPosture === 'loading' ? '正在加载会话…' : sessionPostureLabel}</dd>
           </div>
           <div>
             <dt>actor</dt>
