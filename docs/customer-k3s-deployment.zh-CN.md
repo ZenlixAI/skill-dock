@@ -116,7 +116,7 @@
 - `SKILL_REGISTRY_ENABLE_SAMPLE_DATA=false`
 - `SKILL_REGISTRY_ENABLE_MOCK_REGISTRY=false`
 
-如果要启用浏览器登录，再补：
+如果 Web 端要支持浏览器登录、切换账号、退出登录，这两项必须补：
 
 - `SKILL_REGISTRY_SESSION_SECRET`
 - `SKILL_REGISTRY_SESSION_USERS_JSON`
@@ -223,6 +223,22 @@ docker build -f zarf/docker/skills-web.Dockerfile -t registry.example.com/skill-
 1. 复用集群内已有 Postgres
 2. Chart 内部署 `nexus + catalog + skills-web`
 3. 如需 full all-in-one，再显式设置 `postgres.enabled=true`
+
+当前 chart 还额外支持这些现场常用交付字段：
+
+- `global.registry`
+- `global.imagePullSecrets`
+- `catalog/web/nexus/postgres` 的：
+  - `podAnnotations`
+  - `podLabels`
+  - `nodeSelector`
+  - `tolerations`
+  - `affinity`
+- `catalog.service` / `web.service` / `nexus.service` 的：
+  - `type`
+  - `nodePort`
+- `nexus.persistence.storageClass`
+- `postgres.persistence.storageClass`
 
 按你当前集群口径的最小安装示例：
 

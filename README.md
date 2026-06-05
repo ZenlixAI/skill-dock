@@ -59,6 +59,10 @@ make dev-status
   - Web：<http://127.0.0.1:8080>
   - Nexus：<http://127.0.0.1:8081>
   - Catalog：<http://127.0.0.1:18080>
+- 默认浏览器登录凭据：
+  - `reader / reader-secret`
+  - `operator / op-secret`
+- `kind` 本地 Web 现在默认走浏览器 session 登录，不再注入固定 `reader-secret` 到 web 代理层
 - 如果只想重跑 Nexus 初始化：
 
 ```bash

@@ -42,6 +42,21 @@ stringData:
   # External URL returned to CLI clients for publish/install flows.
   skill_registry_public_npm_registry_url: https://nexus.example.com/repository/skills-npm/
   skill_registry_auth_tokens_json: ""
+  # Required when the web side should support browser login / switch user / logout.
+  skill_registry_session_secret: replace-session-secret
+  skill_registry_session_users_json: |
+    {
+      "reader": {
+        "password": "replace-reader-password",
+        "role": "reader",
+        "actor": "reader"
+      },
+      "operator": {
+        "password": "replace-operator-password",
+        "role": "operator",
+        "actor": "operator"
+      }
+    }
 ---
 apiVersion: v1
 kind: Secret
@@ -50,8 +65,8 @@ metadata:
   namespace: skill-registry
 type: Opaque
 stringData:
-  # Keep the web layer read-only by default.
-  catalog_authorization_header: Bearer replace-reader-token
+  # Leave empty when browser login / session-cookie mode is enabled.
+  catalog_authorization_header: ""
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -375,6 +390,16 @@ spec:
                 secretKeyRef:
                   name: catalog-secrets
                   key: skill_registry_auth_tokens_json
+            - name: SKILL_REGISTRY_SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: catalog-secrets
+                  key: skill_registry_session_secret
+            - name: SKILL_REGISTRY_SESSION_USERS_JSON
+              valueFrom:
+                secretKeyRef:
+                  name: catalog-secrets
+                  key: skill_registry_session_users_json
             - name: SKILL_REGISTRY_ENABLE_SAMPLE_DATA
               value: "false"
             - name: SKILL_REGISTRY_ENABLE_MOCK_REGISTRY

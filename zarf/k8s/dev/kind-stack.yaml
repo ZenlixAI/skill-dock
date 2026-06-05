@@ -17,6 +17,20 @@ stringData:
   skill_registry_npm_registry_url: http://nexus.skill-registry.svc.cluster.local:8081/repository/skills-npm
   skill_registry_public_npm_registry_url: http://127.0.0.1:8081/repository/skills-npm
   skill_registry_auth_tokens_json: ""
+  skill_registry_session_secret: local-kind-session-secret
+  skill_registry_session_users_json: |
+    {
+      "reader": {
+        "password": "reader-secret",
+        "role": "reader",
+        "actor": "reader"
+      },
+      "operator": {
+        "password": "op-secret",
+        "role": "operator",
+        "actor": "operator"
+      }
+    }
 ---
 apiVersion: v1
 kind: Secret
@@ -25,7 +39,7 @@ metadata:
   namespace: skill-registry
 type: Opaque
 stringData:
-  catalog_authorization_header: Bearer reader-secret
+  catalog_authorization_header: ""
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -193,6 +207,16 @@ spec:
                 secretKeyRef:
                   name: catalog-secrets
                   key: skill_registry_auth_tokens_json
+            - name: SKILL_REGISTRY_SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: catalog-secrets
+                  key: skill_registry_session_secret
+            - name: SKILL_REGISTRY_SESSION_USERS_JSON
+              valueFrom:
+                secretKeyRef:
+                  name: catalog-secrets
+                  key: skill_registry_session_users_json
             - name: SKILL_REGISTRY_ENABLE_SAMPLE_DATA
               value: "false"
             - name: SKILL_REGISTRY_ENABLE_MOCK_REGISTRY

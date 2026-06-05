@@ -5,7 +5,6 @@
 ## 目标
 
 - 用本地 `kind` Catalog 验证 `skills-web` 不是 mock-only 页面
-- 先人工确认 header 已进入 `Real API mode`
 - 再运行浏览器冒烟，覆盖 catalog、import、governance、audit 这些主链路
 
 注意：
@@ -27,7 +26,7 @@ make dev-run
 cd apps/skills-web && VITE_SKILL_REGISTRY_URL=http://127.0.0.1:18080 VITE_SKILL_REGISTRY_TOKEN=publisher-secret npm run dev
 ```
 
-3. 打开 <http://127.0.0.1:4174>，确认 header 里出现 `Real API mode`。
+3. 打开 <http://127.0.0.1:4174>，确认能看到真实 catalog 数据，而不是 mock 页面。
 
 4. 在 `apps/skills-web` 目录执行构建。
 说明：如果你要让随后由 Playwright 拉起的 preview 也保持 real mode，请复用同样的 `VITE_SKILL_REGISTRY_URL` / `VITE_SKILL_REGISTRY_TOKEN` 环境变量。

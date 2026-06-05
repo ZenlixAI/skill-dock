@@ -3,11 +3,10 @@ import { motion } from 'framer-motion';
 import { Activity, AppWindow, BookOpenText, Boxes, ScanSearch, ShieldAlert } from 'lucide-react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { getRegistryClientConfig, logoutSession } from '../api/client';
-import { canMutateCatalog, describeSessionPosture, describeSessionScope, hasAction } from '../api/session';
+import { hasAction } from '../api/session';
 import { getRouteTheme } from '../lib/routeTheme';
 import { useRegistrySession } from '../session/SessionProvider';
 import clsx from '../vendor/clsx';
-import { EnvironmentGuard } from './EnvironmentGuard';
 import { StatusPill } from './StatusPill';
 
 const navItems = [
@@ -62,10 +61,7 @@ export function AppShell({ children }: PropsWithChildren) {
           </div>
 
           <div className="shell-header__meta">
-            <Status mode={config.mode} />
-            <StatusPill tone={canMutateCatalog(session.data) ? 'accent' : 'default'}>
-              {session.loading ? '正在加载会话…' : describeSessionPosture(session.data)}
-            </StatusPill>
+            {runtimeUsesLogin && session.data ? <StatusPill tone="accent">当前用户：{session.data.actor}</StatusPill> : null}
             {runtimeUsesLogin && session.data ? (
               <>
                 <button className="button button--secondary" onClick={handleSwitchAccount} type="button">
@@ -96,22 +92,6 @@ export function AppShell({ children }: PropsWithChildren) {
               );
             })}
           </nav>
-
-          <EnvironmentGuard
-            baseUrl={config.baseUrl}
-            mode={config.mode}
-            session={session.data}
-            sessionError={session.error}
-          />
-          <div className="env-banner">
-            {session.data ? <span>role {session.data.role}</span> : null}
-            {session.data ? <span>actor {session.data.actor}</span> : null}
-            {session.data ? <span>auth {session.data.authMechanism}</span> : null}
-            {session.data && describeSessionScope(session.data) ? <span>{describeSessionScope(session.data)}</span> : null}
-            {!session.data && config.role ? <span>runtime role {config.role}</span> : null}
-            {!session.data && config.actor ? <span>runtime actor {config.actor}</span> : null}
-            {config.hasToken ? <span>bearer token</span> : null}
-          </div>
         </div>
       </header>
 
@@ -126,8 +106,4 @@ export function AppShell({ children }: PropsWithChildren) {
       </motion.main>
     </div>
   );
-}
-
-function Status({ mode }: { mode: 'mock' | 'real' }) {
-  return <StatusPill tone={mode === 'real' ? 'good' : 'warn'}>{mode === 'real' ? '真实接口模式' : '模拟模式'}</StatusPill>;
 }

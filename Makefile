@@ -3,6 +3,8 @@ SHELL := /bin/zsh
 CLI_DIR := apps/skills-cli
 CLI_ENTRY := $(CLI_DIR)/src/cli.ts
 WEB_DIR := apps/skills-web
+WEB_E2E_PREVIEW_PORT ?= 4174
+SESSION_E2E_CATALOG_PORT ?= 18081
 
 GO_CACHE ?= /private/tmp/go-cache
 UV_CACHE_DIR ?= /private/tmp/uv-cache
@@ -97,7 +99,7 @@ help:
 	@printf "  make test-web          Run npm test in %s\n" "$(WEB_DIR)"
 	@printf "  make build-web         Run npm build in %s\n" "$(WEB_DIR)"
 	@printf "  make test-web-e2e      Build %s for real-mode smoke tests, then run Playwright against local Catalog on %s\n" "$(WEB_DIR)" "$(REGISTRY_URL)"
-	@printf "  make test-web-e2e-login Build %s for session-login E2E, then run Playwright against a local session-enabled Catalog on 127.0.0.1:18081\n" "$(WEB_DIR)"
+	@printf "  make test-web-e2e-login Build %s for session-login E2E, auto-clean stale E2E listeners, then run Playwright against a local session-enabled Catalog on 127.0.0.1:%s\n" "$(WEB_DIR)" "$(SESSION_E2E_CATALOG_PORT)"
 	@printf "  make web-dev           Start Vite dev server for %s\n\n" "$(WEB_DIR)"
 	@printf "Local KIND Development:\n"
 	@printf "  make build-images      Build local dev images: %s and %s\n" "$(CATALOG_IMAGE)" "$(WEB_IMAGE)"
@@ -184,27 +186,41 @@ build-web-image:
 build-images: build-catalog-image build-web-image
 
 test-web-e2e:
+	@pids="$$(lsof -tiTCP:$(WEB_E2E_PREVIEW_PORT) -sTCP:LISTEN 2>/dev/null || true)"; \
+	if [ -n "$$pids" ]; then \
+		echo "Stopping stale web E2E preview listener(s) on $(WEB_E2E_PREVIEW_PORT): $$pids"; \
+		kill $$pids; \
+		sleep 1; \
+	fi
 	$(WEB_E2E_ENV) npm --prefix $(WEB_DIR) run build
 	$(WEB_E2E_ENV) npm --prefix $(WEB_DIR) run test:e2e
 
 test-web-e2e-login:
+	@for port in $(SESSION_E2E_CATALOG_PORT) $(WEB_E2E_PREVIEW_PORT); do \
+		pids="$$(lsof -tiTCP:$$port -sTCP:LISTEN 2>/dev/null || true)"; \
+		if [ -n "$$pids" ]; then \
+			echo "Stopping stale session-login E2E listener(s) on $$port: $$pids"; \
+			kill $$pids; \
+			sleep 1; \
+		fi; \
+	done
 	env \
 		CI=1 \
-		VITE_SKILL_REGISTRY_URL=http://127.0.0.1:18081 \
+		VITE_SKILL_REGISTRY_URL=http://127.0.0.1:$(SESSION_E2E_CATALOG_PORT) \
 		VITE_SKILL_REGISTRY_TOKEN= \
 		VITE_SKILL_REGISTRY_ROLE= \
 		VITE_SKILL_REGISTRY_ACTOR= \
 		PLAYWRIGHT_CATALOG_COMMAND=$(SESSION_E2E_CATALOG_COMMAND) \
-		PLAYWRIGHT_CATALOG_PORT=18081 \
+		PLAYWRIGHT_CATALOG_PORT=$(SESSION_E2E_CATALOG_PORT) \
 		npm --prefix $(WEB_DIR) run build
 	env \
 		CI=1 \
-		VITE_SKILL_REGISTRY_URL=http://127.0.0.1:18081 \
+		VITE_SKILL_REGISTRY_URL=http://127.0.0.1:$(SESSION_E2E_CATALOG_PORT) \
 		VITE_SKILL_REGISTRY_TOKEN= \
 		VITE_SKILL_REGISTRY_ROLE= \
 		VITE_SKILL_REGISTRY_ACTOR= \
 		PLAYWRIGHT_CATALOG_COMMAND=$(SESSION_E2E_CATALOG_COMMAND) \
-		PLAYWRIGHT_CATALOG_PORT=18081 \
+		PLAYWRIGHT_CATALOG_PORT=$(SESSION_E2E_CATALOG_PORT) \
 		npm --prefix $(WEB_DIR) run test:e2e -- tests/e2e/session-login.spec.ts
 
 web-dev:

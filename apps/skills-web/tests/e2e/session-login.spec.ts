@@ -15,12 +15,12 @@ test('completes the browser session login flow for reader and operator roles', a
 
   await expect(page).toHaveURL(/\/catalog$/);
   await expect(page.getByRole('heading', { name: '查找技能' })).toBeVisible();
-  await expect(page.getByText('role reader')).toBeVisible();
+  await expect(page.getByText('当前用户：reader')).toBeVisible();
   await expect(page.getByRole('link', { name: '治理' })).toHaveCount(0);
 
   await page.goto('/workbench/governance');
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByText('role reader')).toBeVisible();
+  await expect(page.getByText('当前用户：reader')).toBeVisible();
 
   await page.getByRole('button', { name: '切换账号' }).click();
   await expect(page).toHaveURL(/\/login\?next=/);
@@ -29,7 +29,7 @@ test('completes the browser session login flow for reader and operator roles', a
   await login(page, 'operator', 'op-secret');
 
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByText('role operator')).toBeVisible();
+  await expect(page.getByText('当前用户：operator')).toBeVisible();
   await expect(page.getByRole('link', { name: '治理', exact: true })).toBeVisible();
 
   await page.getByRole('link', { name: '治理', exact: true }).click();

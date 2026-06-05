@@ -6,8 +6,6 @@ const FIXTURE_VERSION = '1.2.0';
 test('browses the live catalog and drills into a version', async ({ page }) => {
   await page.goto('/');
 
-  await expect(page.getByText(/已连接 (http:\/\/127\.0\.0\.1:18082|Catalog API)/)).toBeVisible();
-
   await page.getByRole('link', { name: '目录', exact: true }).click();
   await expect(page).toHaveURL(/\/catalog$/);
 

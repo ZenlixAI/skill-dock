@@ -25,6 +25,8 @@
 
 - `registry.example.com/skill-registry-catalog:1.0.0`
 - `registry.example.com/skill-registry-web:1.0.0`
+- 如果你们现场统一走镜像前缀，也可以直接设置：
+  - `global.registry`
 
 ### 1.2 Secret
 
@@ -73,6 +75,10 @@ postgres:
     database: skill_registry
     user: postgres
     password: password
+
+nexus:
+  persistence:
+    storageClass: local-path
 ```
 
 推荐先复制一份 values 再改：
@@ -130,6 +136,13 @@ nexus:
 说明：
 
 - 这版仓库已经把 Helm chart 收到 `zarf/charts/`，和 Dockerfile、K8s 清单、脚本放在一起管理
+- `catalog` / `web` / `nexus` / `postgres` 现在都支持：
+  - `podAnnotations`
+  - `podLabels`
+  - `nodeSelector`
+  - `tolerations`
+  - `affinity`
+- `web.service` / `nexus.service` / `catalog.service` 现在支持 `type` 和 `nodePort`
 - 这里的 `Nginx` 目前仍然需要保留在 `skills-web` 容器内
   - Traefik 负责集群入口
   - `Nginx` 负责 Pod 内静态资源和同域 `/api` 反代
@@ -214,7 +227,7 @@ skills import-local /abs/path/to/legacy-skill \
 建议按这个顺序验收：
 
 1. 浏览器打开 `https://skills.example.com`
-2. 浏览器检查 `https://skills.example.com/api/v1/session`
+2. 用浏览器账号登录一次，并确认切换账号 / 退出登录生效
 3. 浏览器打开 `https://nexus.example.com`
 4. CLI 执行 `skills find`
 5. CLI 执行 `skills publish`
