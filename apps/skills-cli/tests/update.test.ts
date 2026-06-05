@@ -168,7 +168,13 @@ describe('update command', () => {
       const result = await updateProjectSkills({ yes: true });
 
       expect(workflow.runRegistryInstallWorkflow).not.toHaveBeenCalled();
-      expect(result).toEqual({ successCount: 0, failCount: 0, foundCount: 1 });
+      expect(result).toEqual({
+        successCount: 0,
+        failCount: 0,
+        matchedCount: 1,
+        updatableCount: 1,
+        skippedCount: 0,
+      });
       expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Already up to date'));
 
       logSpy.mockRestore();
@@ -208,6 +214,95 @@ describe('update command', () => {
 
       expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('No updates were needed.'));
       logSpy.mockRestore();
+    });
+
+    it('does not print a clean no-op summary when every matched project skill is skipped as orphaned', async () => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      vi.mocked(installedView.listInstalledView).mockResolvedValue([
+        {
+          packageName: '@platform.skill/pdf-skill',
+          displayName: 'PDF Skill',
+          installName: 'pdf-skill',
+          aliases: ['@platform.skill/pdf-skill', 'pdf-skill'],
+          scope: 'project',
+          canonicalPath: '/tmp/project/.agents/skills/pdf-skill',
+          agentLinks: [],
+          sourceType: 'registry',
+          version: '1.2.0',
+          registry: 'https://catalog.example.com',
+          orphaned: true,
+          orphanReasons: ['missing_lock_entry'],
+        },
+      ]);
+
+      await runUpdate(['-y']);
+
+      expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('No updates were needed.'));
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('repair local installed state'));
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining('need local state repair before update')
+      );
+
+      logSpy.mockRestore();
+    });
+
+    it('selects a project registry record by alias through installed view filtering', async () => {
+      vi.mocked(installedView.listInstalledView).mockResolvedValue([
+        {
+          packageName: '@platform.skill/pdf-skill',
+          displayName: 'PDF Skill',
+          installName: 'pdf-skill',
+          aliases: ['@platform.skill/pdf-skill', 'pdf-skill'],
+          scope: 'project',
+          canonicalPath: '/tmp/project/.agents/skills/pdf-skill',
+          agentLinks: [],
+          sourceType: 'registry',
+          version: '1.0.0',
+          registry: 'https://catalog.example.com',
+          orphaned: false,
+          orphanReasons: [],
+        },
+        {
+          packageName: '@platform.skill/other-skill',
+          displayName: 'Other Skill',
+          installName: 'other-skill',
+          aliases: ['@platform.skill/other-skill', 'other-skill'],
+          scope: 'project',
+          canonicalPath: '/tmp/project/.agents/skills/other-skill',
+          agentLinks: [],
+          sourceType: 'registry',
+          version: '2.0.0',
+          registry: 'https://catalog.example.com',
+          orphaned: false,
+          orphanReasons: [],
+        },
+      ]);
+
+      vi.mocked(catalog.resolveInstallTarget).mockResolvedValue({
+        packageName: '@platform.skill/pdf-skill',
+        version: '1.1.0',
+        npmRegistry: 'https://npm.example.com',
+        tarballUrl: 'https://npm.example.com/@platform.skill/pdf-skill/-/pdf-skill-1.1.0.tgz',
+        integrity: 'sha512-test',
+        skillManifestDigest: 'sha256-test',
+        versionStatus: 'published',
+      });
+
+      await updateProjectSkills({ yes: true, skills: ['pdf-skill'] });
+
+      expect(catalog.resolveInstallTarget).toHaveBeenCalledTimes(1);
+      expect(catalog.resolveInstallTarget).toHaveBeenCalledWith('@platform.skill/pdf-skill', {
+        registry: 'https://catalog.example.com',
+        version: undefined,
+      });
+      expect(workflow.runRegistryInstallWorkflow).toHaveBeenCalledWith(
+        expect.objectContaining({
+          packageName: '@platform.skill/pdf-skill',
+          version: '1.1.0',
+          installGlobally: false,
+        })
+      );
     });
   });
 
