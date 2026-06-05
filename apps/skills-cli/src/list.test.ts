@@ -497,8 +497,141 @@ description: PDF processing workflow
         XDG_STATE_HOME: globalBase,
       });
       const parsed = JSON.parse(jsonResult.stdout.trim());
-      expect(parsed[0].winner).toBe('project');
-      expect(parsed[0].scopes).toHaveLength(2);
+      expect(parsed).toEqual([
+        {
+          name: '@platform.skill/pdf-skill',
+          winner: 'project',
+          scopes: [
+            {
+              scope: 'global',
+              version: '1.1.0',
+              path: expect.stringContaining('.agents/skills/platform.skill-pdf-skill'),
+              agents: expect.any(Array),
+              orphaned: false,
+            },
+            {
+              scope: 'project',
+              version: '1.2.0',
+              path: expect.stringContaining('.agents/skills/platform.skill-pdf-skill'),
+              agents: expect.any(Array),
+              orphaned: false,
+            },
+          ],
+        },
+      ]);
+      expect(parsed[0].scopes[0]).not.toHaveProperty('name');
+      expect(parsed[0].scopes[0]).not.toHaveProperty('aliases');
+      expect(parsed[0].scopes[1]).not.toHaveProperty('name');
+      expect(parsed[0].scopes[1]).not.toHaveProperty('aliases');
+    });
+
+    it('keeps shared display aliases in separate all-scope groups', () => {
+      const projectDir = join(testDir, '.agents', 'skills', 'review-command');
+      mkdirSync(projectDir, { recursive: true });
+      writeFileSync(
+        join(projectDir, 'SKILL.md'),
+        `---
+name: Review
+description: Project review command
+---
+# Review Command
+`
+      );
+
+      writeFileSync(
+        join(testDir, 'skills-lock.json'),
+        JSON.stringify(
+          {
+            version: 1,
+            skills: {
+              '@platform.skill/review-command': {
+                sourceType: 'registry',
+                packageName: '@platform.skill/review-command',
+                installName: 'review-command',
+                version: '1.0.0',
+                computedHash: 'project-hash',
+              },
+            },
+          },
+          null,
+          2
+        )
+      );
+
+      const globalBase = join(testDir, 'fake-home');
+      const globalDir = join(globalBase, '.agents', 'skills', 'review-helper');
+      mkdirSync(globalDir, { recursive: true });
+      writeFileSync(
+        join(globalDir, 'SKILL.md'),
+        `---
+name: Review
+description: Global review helper
+---
+# Review Helper
+`
+      );
+
+      const stateDir = join(globalBase, 'skills');
+      mkdirSync(stateDir, { recursive: true });
+      writeFileSync(
+        join(stateDir, '.skill-lock.json'),
+        JSON.stringify(
+          {
+            version: 3,
+            skills: {
+              '@platform.skill/review-helper': {
+                sourceType: 'registry',
+                version: '2.0.0',
+                packageName: '@platform.skill/review-helper',
+                installName: 'review-helper',
+                skillFolderHash: '',
+                installedAt: '',
+                updatedAt: '',
+              },
+            },
+          },
+          null,
+          2
+        )
+      );
+
+      const jsonResult = runCli(['list', '--all-scopes', '--json'], testDir, {
+        HOME: globalBase,
+        XDG_STATE_HOME: globalBase,
+      });
+      const parsed = JSON.parse(jsonResult.stdout.trim());
+
+      expect(parsed).toHaveLength(2);
+      expect(parsed).toEqual(
+        expect.arrayContaining([
+          {
+            name: '@platform.skill/review-command',
+            winner: 'project',
+            scopes: [
+              {
+                scope: 'project',
+                version: '1.0.0',
+                path: expect.stringContaining('.agents/skills/review-command'),
+                agents: expect.any(Array),
+                orphaned: false,
+              },
+            ],
+          },
+          {
+            name: '@platform.skill/review-helper',
+            winner: 'global',
+            scopes: [
+              {
+                scope: 'global',
+                version: '2.0.0',
+                path: expect.stringContaining('.agents/skills/review-helper'),
+                agents: expect.any(Array),
+                orphaned: false,
+              },
+            ],
+          },
+        ])
+      );
     });
   });
 
