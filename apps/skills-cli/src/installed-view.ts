@@ -18,6 +18,7 @@ export type InstalledViewScope = 'project' | 'global';
 export type AgentLinkKind = 'canonical' | 'symlink' | 'copy' | 'missing';
 
 export interface InstalledSkillView {
+  lockKey?: string;
   packageName?: string;
   displayName: string;
   installName: string;
@@ -71,6 +72,7 @@ interface CollectedScopeFacts {
 }
 
 interface DraftInstalledView {
+  lockKey?: string;
   packageName?: string;
   displayName: string;
   installName: string;
@@ -272,6 +274,7 @@ function projectInstalledFacts(facts: CollectedScopeFacts): InstalledSkillView[]
     const installName = lockFact?.entry.installName || fact.dirName;
     const draft = createDraft({
       scope: facts.scope,
+      lockKey: lockFact?.key,
       displayName: fact.displayName,
       installName,
       canonicalPath: fact.path,
@@ -373,6 +376,7 @@ function projectInstalledFacts(facts: CollectedScopeFacts): InstalledSkillView[]
     drafts.push(
       createDraft({
         scope: facts.scope,
+        lockKey: lockFact.key,
         displayName: lockFact.entry.installName || lockFact.entry.packageName || lockFact.key,
         installName,
         canonicalPath: join(facts.canonicalBase, sanitizeName(installName)),
@@ -400,6 +404,7 @@ function projectInstalledFacts(facts: CollectedScopeFacts): InstalledSkillView[]
   markAliasConflicts(drafts);
 
   return drafts.map((draft) => ({
+    lockKey: draft.lockKey,
     packageName: draft.packageName,
     displayName: draft.displayName,
     installName: draft.installName,
@@ -447,6 +452,7 @@ function findMatchingLockFact(
 
 function createDraft(input: {
   scope: InstalledViewScope;
+  lockKey?: string;
   displayName: string;
   installName: string;
   canonicalPath: string;
@@ -467,6 +473,7 @@ function createDraft(input: {
   }
 
   return {
+    lockKey: input.lockKey,
     packageName: input.packageName,
     displayName: input.displayName,
     installName: input.installName,
