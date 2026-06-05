@@ -69,6 +69,14 @@ _Avoid_: Raw row collection, partial version slice
 The persistence seam beneath the catalog repository that loads and saves one **Agent Skill Aggregate** and provides read indexes for listing and filtering.
 _Avoid_: Business-state owner, artifact intake module
 
+**Query Store**:
+The read-side seam beneath the catalog repository that serves catalog projections and install-resolution inputs without owning aggregate mutation rules.
+_Avoid_: Aggregate writer, mutation owner
+
+**Packaging Workspace**:
+The managed temporary directory created during skill packaging flows and reused across prepare, validate, pack, and cleanup.
+_Avoid_: Published artifact, source identity
+
 **Source Export**:
 An optional conversion that renders an internal skill package into a source-first layout for ecosystems such as skills.sh.
 _Avoid_: Native publish path
@@ -236,6 +244,8 @@ _Avoid_: Mutable internal revision
 - One **Package-Only CLI Input** requires positional install and update targets to use **Package Name**
 - One **Catalog Database** is the default V1 source for metadata storage and minimal search behavior
 - One **State Store** persists one **Agent Skill Aggregate** as the catalog repository's concurrency unit
+- One **Query Store** serves read projections and install-resolution inputs without owning aggregate mutation rules
+- One **Packaging Workspace** is a managed temporary directory rather than a published artifact
 - One **Source Export** is an optional downstream adaptation, not the native registry publish model
 - One **Source Export** is a **Lossy Export** rather than a full round-trip representation of catalog state
 - One **Agent Skill** has one or more **Skill Versions**
