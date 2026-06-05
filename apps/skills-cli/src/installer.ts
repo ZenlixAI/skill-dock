@@ -15,8 +15,9 @@ import { existsSync } from 'fs';
 import { join, basename, normalize, resolve, sep, relative, dirname } from 'path';
 import { homedir, platform } from 'os';
 import type { Skill, AgentType, RemoteSkill } from './types.ts';
-import { agents, detectInstalledAgents, isUniversalAgent } from './agents.ts';
+import { agents, isUniversalAgent } from './agents.ts';
 import { AGENTS_DIR, SKILLS_SUBDIR } from './constants.ts';
+import { listInstalledView } from './installed-view.ts';
 import { parseSkillMd } from './skills.ts';
 
 export type InstallMode = 'symlink' | 'copy';
@@ -646,219 +647,43 @@ export async function listInstalledSkills(
   } = {}
 ): Promise<InstalledSkill[]> {
   const cwd = options.cwd || process.cwd();
-  // Use a Map to deduplicate skills by scope:name
-  const skillsMap: Map<string, InstalledSkill> = new Map();
-  const scopes: Array<{ global: boolean; path: string; agentType?: AgentType }> = [];
-
-  // Detect which agents are actually installed
-  const detectedAgents = await detectInstalledAgents();
-  const agentFilter = options.agentFilter;
-  const agentsToCheck = agentFilter
-    ? detectedAgents.filter((a) => agentFilter.includes(a))
-    : detectedAgents;
-
-  // Determine which scopes to scan
-  const scopeTypes: Array<{ global: boolean }> = [];
-  if (options.global === undefined) {
-    scopeTypes.push({ global: false }, { global: true });
-  } else {
-    scopeTypes.push({ global: options.global });
-  }
-
-  // Build list of directories to scan: canonical + each installed agent's directory
-  //
-  // Scanning workflow:
-  //
-  //   detectInstalledAgents()
-  //            │
-  //            ▼
-  //   for each scope (project / global)
-  //            │
-  //            ├──▶ scan canonical dir ──▶ .agents/skills, ~/.agents/skills
-  //            │
-  //            ├──▶ scan each installed agent's dir ──▶ .cursor/skills, .claude/skills, ...
-  //            │
-  //            ▼
-  //   deduplicate by skill name
-  //
-  // Trade-off: More readdir() calls, but most non-existent dirs fail fast.
-  // Skills in agent-specific dirs skip the expensive "check all agents" loop.
-  //
-  for (const { global: isGlobal } of scopeTypes) {
-    // Add canonical directory
-    scopes.push({ global: isGlobal, path: getCanonicalSkillsDir(isGlobal, cwd) });
-
-    // Add each installed agent's skills directory
-    for (const agentType of agentsToCheck) {
-      const agent = agents[agentType];
-      if (isGlobal && agent.globalSkillsDir === undefined) {
-        continue;
-      }
-      const agentDir = isGlobal ? agent.globalSkillsDir! : join(cwd, agent.skillsDir);
-      // Avoid duplicate paths
-      if (!scopes.some((s) => s.path === agentDir && s.global === isGlobal)) {
-        scopes.push({ global: isGlobal, path: agentDir, agentType });
-      }
-    }
-
-    // Also scan skill directories for agents NOT in agentsToCheck, in case
-    // skills were installed with `--agent <name>` but the agent is no longer
-    // detected (e.g. ~/.openclaw was removed).  Only add dirs that actually
-    // exist on disk to avoid unnecessary readdir errors.
-    const allAgentTypes = Object.keys(agents) as AgentType[];
-    for (const agentType of allAgentTypes) {
-      if (agentsToCheck.includes(agentType)) continue;
-      const agent = agents[agentType];
-      if (isGlobal && agent.globalSkillsDir === undefined) continue;
-      const agentDir = isGlobal ? agent.globalSkillsDir! : join(cwd, agent.skillsDir);
-      if (scopes.some((s) => s.path === agentDir && s.global === isGlobal)) continue;
-      if (existsSync(agentDir)) {
-        scopes.push({ global: isGlobal, path: agentDir, agentType });
-      }
-    }
-  }
+  const scopes =
+    options.global === undefined
+      ? (['project', 'global'] as const)
+      : ([options.global ? 'global' : 'project'] as const);
+  const installedSkills: InstalledSkill[] = [];
 
   for (const scope of scopes) {
-    try {
-      const entries = await readdir(scope.path, { withFileTypes: true });
+    const views = await listInstalledView({
+      scope,
+      cwd,
+      agentFilter: options.agentFilter,
+    });
 
-      for (const entry of entries) {
-        const skillDir = join(scope.path, entry.name);
-        if (!(await isDirEntryOrSymlinkToDir(entry, skillDir))) continue;
+    for (const view of views) {
+      const canonicalExists = existsSync(view.canonicalPath);
+      const liveAgentLinks = view.agentLinks.filter((link) => link.kind !== 'missing');
 
-        const skillMdPath = join(skillDir, 'SKILL.md');
-
-        // Check if SKILL.md exists
-        try {
-          await stat(skillMdPath);
-        } catch {
-          // SKILL.md doesn't exist, skip this directory
-          continue;
-        }
-
-        // Parse the skill
-        const skill = await parseSkillMd(skillMdPath);
-        if (!skill) {
-          continue;
-        }
-
-        const scopeKey = scope.global ? 'global' : 'project';
-        const skillKey = `${scopeKey}:${skill.name}`;
-
-        // If scanning an agent-specific directory, attribute directly to that agent
-        if (scope.agentType) {
-          if (skillsMap.has(skillKey)) {
-            const existing = skillsMap.get(skillKey)!;
-            if (!existing.agents.includes(scope.agentType)) {
-              existing.agents.push(scope.agentType);
-            }
-          } else {
-            skillsMap.set(skillKey, {
-              name: skill.name,
-              description: skill.description,
-              path: skillDir,
-              canonicalPath: skillDir,
-              scope: scopeKey,
-              agents: [scope.agentType],
-            });
-          }
-          continue;
-        }
-
-        // For canonical directory, check which agents have this skill
-        const sanitizedSkillName = sanitizeName(skill.name);
-        const installedAgents: AgentType[] = [];
-
-        for (const agentType of agentsToCheck) {
-          const agent = agents[agentType];
-
-          if (scope.global && agent.globalSkillsDir === undefined) {
-            continue;
-          }
-
-          const agentBase = scope.global ? agent.globalSkillsDir! : join(cwd, agent.skillsDir);
-          let found = false;
-
-          // Try exact directory name matches
-          const possibleNames = Array.from(
-            new Set([
-              entry.name,
-              sanitizedSkillName,
-              skill.name
-                .toLowerCase()
-                .replace(/\s+/g, '-')
-                .replace(/[\/\\:\0]/g, ''),
-            ])
-          );
-
-          for (const possibleName of possibleNames) {
-            const agentSkillDir = join(agentBase, possibleName);
-            if (!isPathSafe(agentBase, agentSkillDir)) continue;
-
-            try {
-              await access(agentSkillDir);
-              found = true;
-              break;
-            } catch {
-              // Try next name
-            }
-          }
-
-          // Fallback: scan all directories and check SKILL.md files
-          // Handles cases where directory names don't match (e.g., "git-review" vs "Git Review Before Commit")
-          if (!found) {
-            try {
-              const agentEntries = await readdir(agentBase, { withFileTypes: true });
-              for (const agentEntry of agentEntries) {
-                const candidateDir = join(agentBase, agentEntry.name);
-                if (!(await isDirEntryOrSymlinkToDir(agentEntry, candidateDir))) continue;
-                if (!isPathSafe(agentBase, candidateDir)) continue;
-
-                try {
-                  const candidateSkillMd = join(candidateDir, 'SKILL.md');
-                  await stat(candidateSkillMd);
-                  const candidateSkill = await parseSkillMd(candidateSkillMd);
-                  if (candidateSkill && candidateSkill.name === skill.name) {
-                    found = true;
-                    break;
-                  }
-                } catch {
-                  // Not a valid skill directory
-                }
-              }
-            } catch {
-              // Agent base directory doesn't exist
-            }
-          }
-
-          if (found) {
-            installedAgents.push(agentType);
-          }
-        }
-
-        if (skillsMap.has(skillKey)) {
-          // Merge agents
-          const existing = skillsMap.get(skillKey)!;
-          for (const agent of installedAgents) {
-            if (!existing.agents.includes(agent)) {
-              existing.agents.push(agent);
-            }
-          }
-        } else {
-          skillsMap.set(skillKey, {
-            name: skill.name,
-            description: skill.description,
-            path: skillDir,
-            canonicalPath: skillDir,
-            scope: scopeKey,
-            agents: installedAgents,
-          });
-        }
+      if (!canonicalExists && liveAgentLinks.length === 0) {
+        continue;
       }
-    } catch {
-      // Directory doesn't exist, skip
+
+      const primaryPath = canonicalExists ? view.canonicalPath : liveAgentLinks[0]!.path;
+      const parsedSkill = await parseSkillMd(join(primaryPath, 'SKILL.md'));
+      if (!parsedSkill) {
+        continue;
+      }
+
+      installedSkills.push({
+        name: parsedSkill.name,
+        description: parsedSkill.description,
+        path: primaryPath,
+        canonicalPath: canonicalExists ? view.canonicalPath : primaryPath,
+        scope,
+        agents: Array.from(new Set(liveAgentLinks.map((link) => link.agent))).sort(),
+      });
     }
   }
 
-  return Array.from(skillsMap.values());
+  return installedSkills;
 }
