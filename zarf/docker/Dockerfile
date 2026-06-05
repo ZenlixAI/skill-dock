@@ -26,12 +26,28 @@ ARG APT_SECURITY_MIRROR=https://mirrors.aliyun.com/debian-security
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    sed -i \
-      -e "s|^\(URIs: \)https://deb.debian.org/debian-security$|\1${APT_SECURITY_MIRROR}|" \
-      -e "s|^\(URIs: \)https://deb.debian.org/debian$|\1${APT_MIRROR}|" \
-      /etc/apt/sources.list.d/debian.sources \
+    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+      sed -i \
+        -e "s|http://deb.debian.org/debian|${APT_MIRROR}|g" \
+        -e "s|https://deb.debian.org/debian|${APT_MIRROR}|g" \
+        -e "s|http://deb.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
+        -e "s|https://deb.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
+        -e "s|http://security.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
+        -e "s|https://security.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
+        /etc/apt/sources.list.d/debian.sources; \
+    fi \
+    && if [ -f /etc/apt/sources.list ]; then \
+      sed -i \
+        -e "s|http://deb.debian.org/debian|${APT_MIRROR}|g" \
+        -e "s|https://deb.debian.org/debian|${APT_MIRROR}|g" \
+        -e "s|http://deb.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
+        -e "s|https://deb.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
+        -e "s|http://security.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
+        -e "s|https://security.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
+        /etc/apt/sources.list; \
+    fi \
     && rm -f /etc/apt/apt.conf.d/docker-clean \
-    && apt-get update \
+    && apt-get update -o Acquire::Retries=3 \
     && apt-get install -y --no-install-recommends ca-certificates git tzdata
 
 WORKDIR /app
