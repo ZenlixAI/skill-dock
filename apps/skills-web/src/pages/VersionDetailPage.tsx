@@ -17,7 +17,6 @@ import { SectionHeading } from '../components/SectionHeading';
 import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
 import {
-  buildCatalogMutationResult,
   createMutationState,
   type CatalogMutationState,
   persistCatalogMutation,
@@ -119,13 +118,6 @@ export function VersionDetailPage() {
     ]);
   }
 
-  function persistMutationResult(result: Parameters<typeof persistCatalogMutation>[1]) {
-    setSearchParams(
-      persistCatalogMutation(searchParams, result),
-      { replace: true }
-    );
-  }
-
   async function handleReleaseRecord() {
     setActionState({
       ...createMutationState<'release' | 'governance'>(),
@@ -145,8 +137,17 @@ export function VersionDetailPage() {
         error: null,
         success: successMessage,
       });
-      persistMutationResult(
-        buildCatalogMutationResult('release-record', 'succeeded', successMessage, mutationDefaults)
+      setSearchParams(
+        persistCatalogMutation(
+          searchParams,
+          {
+            action: 'release-record',
+            outcome: 'succeeded',
+            message: successMessage,
+          },
+          mutationDefaults
+        ),
+        { replace: true }
       );
       appendLog(
         'release-record',
@@ -163,11 +164,18 @@ export function VersionDetailPage() {
         error: normalizedError.message,
         success: null,
       });
-      persistMutationResult(
-        buildCatalogMutationResult('release-record', outcome, normalizedError.message, {
-          ...mutationDefaults,
-          requestId: normalizedError.requestId,
-        })
+      setSearchParams(
+        persistCatalogMutation(
+          searchParams,
+          {
+            action: 'release-record',
+            outcome,
+            message: normalizedError.message,
+            requestId: normalizedError.requestId,
+          },
+          mutationDefaults
+        ),
+        { replace: true }
       );
     }
   }
@@ -192,8 +200,17 @@ export function VersionDetailPage() {
         error: null,
         success: successMessage,
       });
-      persistMutationResult(
-        buildCatalogMutationResult(response.record.action, 'succeeded', successMessage, mutationDefaults)
+      setSearchParams(
+        persistCatalogMutation(
+          searchParams,
+          {
+            action: response.record.action,
+            outcome: 'succeeded',
+            message: successMessage,
+          },
+          mutationDefaults
+        ),
+        { replace: true }
       );
       appendLog('governance', 'succeeded', `已应用 ${response.record.action} 治理动作。`);
       setRefreshKey((current) => current + 1);
@@ -206,11 +223,18 @@ export function VersionDetailPage() {
         error: normalizedError.message,
         success: null,
       });
-      persistMutationResult(
-        buildCatalogMutationResult(governanceAction, outcome, normalizedError.message, {
-          ...mutationDefaults,
-          requestId: normalizedError.requestId,
-        })
+      setSearchParams(
+        persistCatalogMutation(
+          searchParams,
+          {
+            action: governanceAction,
+            outcome,
+            message: normalizedError.message,
+            requestId: normalizedError.requestId,
+          },
+          mutationDefaults
+        ),
+        { replace: true }
       );
     }
   }

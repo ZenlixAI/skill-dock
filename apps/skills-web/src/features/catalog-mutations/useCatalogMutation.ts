@@ -4,13 +4,13 @@ import type {
 } from '../../components/MutationResultPanel';
 import { writeMutationResultSearchParams } from '../../components/MutationResultPanel';
 
-export type CatalogMutationState<TLoading extends string | boolean = boolean> = {
+export type CatalogMutationState<TLoading extends string | true = true> = {
   loading: TLoading | false;
   error: string | null;
   success: string | null;
 };
 
-export function createMutationState<TLoading extends string | boolean = boolean>(): CatalogMutationState<TLoading> {
+export function createMutationState<TLoading extends string | true = true>(): CatalogMutationState<TLoading> {
   return {
     loading: false,
     error: null,
@@ -18,13 +18,15 @@ export function createMutationState<TLoading extends string | boolean = boolean>
   };
 }
 
+export type CatalogMutationDefaults = Pick<MutationResult, 'packageName' | 'version' | 'actor'> & {
+  requestId?: string | null;
+};
+
 export function buildCatalogMutationResult(
   action: string,
   outcome: MutationResultOutcome,
   message: string,
-  defaults: Pick<MutationResult, 'packageName' | 'version' | 'actor'> & {
-    requestId?: string | null;
-  }
+  defaults: CatalogMutationDefaults
 ): MutationResult {
   return {
     action,
@@ -39,7 +41,19 @@ export function buildCatalogMutationResult(
 
 export function persistCatalogMutation(
   searchParams: URLSearchParams,
-  result: Parameters<typeof writeMutationResultSearchParams>[1]
+  result: {
+    action: string;
+    outcome: MutationResultOutcome;
+    message: string;
+    requestId?: string | null;
+  },
+  defaults: CatalogMutationDefaults
 ) {
-  return writeMutationResultSearchParams(searchParams, result);
+  return writeMutationResultSearchParams(
+    searchParams,
+    buildCatalogMutationResult(result.action, result.outcome, result.message, {
+      ...defaults,
+      requestId: result.requestId ?? null,
+    })
+  );
 }

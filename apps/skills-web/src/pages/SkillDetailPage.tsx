@@ -18,7 +18,6 @@ import { SectionHeading } from '../components/SectionHeading';
 import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
 import {
-  buildCatalogMutationResult,
   createMutationState,
   type CatalogMutationState,
   persistCatalogMutation,
@@ -92,13 +91,6 @@ export function SkillDetailPage() {
     ]);
   }
 
-  function persistMutationResult(result: Parameters<typeof persistCatalogMutation>[1]) {
-    setSearchParams(
-      persistCatalogMutation(searchParams, result),
-      { replace: true }
-    );
-  }
-
   async function handleRetireSkill() {
     setSubmitState({
       ...createMutationState(),
@@ -115,7 +107,18 @@ export function SkillDetailPage() {
         error: null,
         success: successMessage,
       });
-      persistMutationResult(buildCatalogMutationResult('retire', 'succeeded', successMessage, mutationDefaults));
+      setSearchParams(
+        persistCatalogMutation(
+          searchParams,
+          {
+            action: 'retire',
+            outcome: 'succeeded',
+            message: successMessage,
+          },
+          mutationDefaults
+        ),
+        { replace: true }
+      );
       appendLog('succeeded', `已退役 ${decodedPackage}。`);
       setRefreshKey((current) => current + 1);
     } catch (error: unknown) {
@@ -127,11 +130,18 @@ export function SkillDetailPage() {
         error: normalizedError.message,
         success: null,
       });
-      persistMutationResult(
-        buildCatalogMutationResult('retire', outcome, normalizedError.message, {
-          ...mutationDefaults,
-          requestId: normalizedError.requestId,
-        })
+      setSearchParams(
+        persistCatalogMutation(
+          searchParams,
+          {
+            action: 'retire',
+            outcome,
+            message: normalizedError.message,
+            requestId: normalizedError.requestId,
+          },
+          mutationDefaults
+        ),
+        { replace: true }
       );
     }
   }

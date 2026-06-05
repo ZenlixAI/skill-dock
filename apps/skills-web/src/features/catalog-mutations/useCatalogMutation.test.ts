@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildCatalogMutationResult,
   createMutationState,
+  persistCatalogMutation,
 } from './useCatalogMutation';
 
 describe('catalog mutation helpers', () => {
@@ -30,5 +31,26 @@ describe('catalog mutation helpers', () => {
       version: '1.2.0',
       actor: 'svc-release',
     });
+  });
+
+  it('persists mutation result params with defaults and request id', () => {
+    const result = persistCatalogMutation(
+      new URLSearchParams('tab=governance'),
+      {
+        action: 'retire',
+        outcome: 'failed',
+        message: 'retire failed',
+        requestId: 'req_123',
+      },
+      {
+        packageName: '@platform.skill/pdf-skill',
+        version: null,
+        actor: 'svc-release',
+      }
+    );
+
+    expect(result.toString()).toBe(
+      'tab=governance&mutation=retire&mutationOutcome=failed&mutationMessage=retire+failed&mutationRequestId=req_123&mutationPackage=%40platform.skill%2Fpdf-skill&mutationActor=svc-release'
+    );
   });
 });
