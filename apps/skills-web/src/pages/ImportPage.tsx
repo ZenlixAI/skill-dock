@@ -30,6 +30,14 @@ import { SurfaceCard } from '../components/SurfaceCard';
 import { WarningStack } from '../components/WarningStack';
 import { buildReleaseHandoffPath } from '../lib/releaseHandoff';
 import { useAsyncData } from '../lib/useAsyncData';
+import {
+  createDefaultAuthoringDraft,
+  draftFilesToRecord,
+  parseAuthoringJson,
+  type AuthoringFile,
+  type AuthoringTemplateId,
+  validateAuthoringPath,
+} from '../features/packaging/useAuthoringDraft';
 import { useRegistrySession } from '../session/SessionProvider';
 
 const steps = [
@@ -52,12 +60,6 @@ const steps = [
 ];
 
 type ReviewData = PackagingPrepareResponse | PackagingValidateResponse | PackagingPackResponse;
-type AuthoringTemplateId = 'prompt' | 'command' | 'workflow';
-type AuthoringFile = {
-  path: string;
-  content: string;
-  locked: boolean;
-};
 type ImportLogEntry = {
   id: string;
   step: 'prepare' | 'validate' | 'pack' | 'cleanup';
@@ -70,110 +72,37 @@ const AUTHORING_TEMPLATES: Record<
   {
     label: string;
     description: string;
-    files: AuthoringFile[];
   }
 > = {
   prompt: {
     label: 'prompt',
     description: '单 prompt skill',
-    files: [
-      {
-        path: 'prompts/main.md',
-        content: 'Write the core prompt here.\n',
-        locked: true,
-      },
-    ],
   },
   command: {
     label: 'command',
     description: '单命令 skill',
-    files: [
-      {
-        path: 'commands/run.txt',
-        content: 'echo authored\n',
-        locked: true,
-      },
-    ],
   },
   workflow: {
     label: 'workflow',
     description: '步骤型 workflow skill',
-    files: [
-      {
-        path: 'workflows/main.md',
-        content: '1. First step\n2. Second step\n',
-        locked: true,
-      },
-    ],
   },
 };
 
-function createAuthoringFiles(template: AuthoringTemplateId): AuthoringFile[] {
-  return AUTHORING_TEMPLATES[template].files.map((file) => ({ ...file }));
-}
-
 function defaultSelectedPath(template: AuthoringTemplateId): string {
-  return AUTHORING_TEMPLATES[template].files[0]?.path || '';
-}
-
-function parseInlineFiles(raw: string) {
-  const trimmed = raw.trim();
-  if (trimmed === '') {
-    return undefined;
-  }
-
-  const parsed = JSON.parse(trimmed) as unknown;
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('Inline files 必须是 JSON object，例如 {"commands/run.txt":"echo hi"}。');
-  }
-
-  const files: Record<string, string> = {};
-  Object.entries(parsed).forEach(([path, content]) => {
-    if (typeof content !== 'string') {
-      throw new Error(`Inline file ${path} 的内容必须是字符串。`);
-    }
-    files[path] = content;
-  });
-  return files;
-}
-
-function filesToRecord(files: AuthoringFile[]) {
-  const record: Record<string, string> = {};
-  files.forEach((file) => {
-    record[file.path] = file.content;
-  });
-  return record;
+  return createDefaultAuthoringDraft(template).files[0]?.path || '';
 }
 
 function serializeInlineFiles(files: AuthoringFile[]) {
-  return JSON.stringify(filesToRecord(files), null, 2);
-}
-
-function validateAuthoringPath(path: string, existing: AuthoringFile[]) {
-  const trimmed = path.trim();
-  if (trimmed === '') {
-    return '新文件路径不能为空。';
-  }
-  if (trimmed.startsWith('/')) {
-    return '文件路径必须是相对路径。';
-  }
-  if (trimmed === 'SKILL.md') {
-    return '根级 SKILL.md 由服务端生成，不能手动添加。';
-  }
-  if (trimmed.split('/').some((segment) => segment === '..')) {
-    return '文件路径不能包含 ..。';
-  }
-  if (existing.some((file) => file.path === trimmed)) {
-    return '文件路径不能重复。';
-  }
-  return null;
+  return JSON.stringify(draftFilesToRecord(files), null, 2);
 }
 
 function recordToAuthoringFiles(
   files: Record<string, string>,
   template: AuthoringTemplateId
 ): AuthoringFile[] {
-  const templateLockedPaths = new Set(AUTHORING_TEMPLATES[template].files.map((file) => file.path));
+  const templateLockedPaths = new Set(
+    createDefaultAuthoringDraft(template).files.map((file) => file.path)
+  );
   return Object.entries(files).map(([path, content]) => ({
     path,
     content,
@@ -182,7 +111,7 @@ function recordToAuthoringFiles(
 }
 
 function authoringMatchesTemplate(files: AuthoringFile[], template: AuthoringTemplateId) {
-  const templateFiles = createAuthoringFiles(template);
+  const templateFiles = createDefaultAuthoringDraft(template).files;
   if (files.length !== templateFiles.length) {
     return false;
   }
@@ -244,7 +173,7 @@ export function ImportPage() {
   const [location, setLocation] = useState('https://github.com/mattpocock/skills?path=skills/engineering/zoom-out');
   const [sourceRef, setSourceRef] = useState('');
   const [authoringTemplate, setAuthoringTemplate] = useState<AuthoringTemplateId>('command');
-  const [authoringFiles, setAuthoringFiles] = useState<AuthoringFile[]>(() => createAuthoringFiles('command'));
+  const [authoringFiles, setAuthoringFiles] = useState<AuthoringFile[]>(() => createDefaultAuthoringDraft('command').files);
   const [selectedAuthoringPath, setSelectedAuthoringPath] = useState(defaultSelectedPath('command'));
   const [newAuthoringPath, setNewAuthoringPath] = useState('');
   const [authoringError, setAuthoringError] = useState<string | null>(null);
@@ -374,7 +303,7 @@ export function ImportPage() {
       return;
     }
 
-    const nextFiles = createAuthoringFiles(nextTemplate);
+    const nextFiles = createDefaultAuthoringDraft(nextTemplate).files;
     setAuthoringTemplate(nextTemplate);
     setAuthoringFiles(nextFiles);
     setSelectedAuthoringPath(defaultSelectedPath(nextTemplate));
@@ -430,7 +359,22 @@ export function ImportPage() {
   }
 
   function applyRawInlineFiles() {
-    const parsedFiles = parseInlineFiles(rawInlineFiles);
+    const trimmed = rawInlineFiles.trim();
+    if (trimmed === '') {
+      const nextFiles: AuthoringFile[] = [];
+      setAuthoringFiles(nextFiles);
+      setSelectedAuthoringPath('');
+      setAuthoringError(null);
+      setRawInlineFilesDirty(false);
+      return;
+    }
+
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Inline files 必须是 JSON object，例如 {"commands/run.txt":"echo hi"}。');
+    }
+
+    const parsedFiles = parseAuthoringJson(trimmed);
     const nextFiles = recordToAuthoringFiles(parsedFiles || {}, authoringTemplate);
     setAuthoringFiles(nextFiles);
     setSelectedAuthoringPath(nextFiles[0]?.path || '');
@@ -441,8 +385,8 @@ export function ImportPage() {
   function buildPrepareRequest(): PackagingPrepareRequest {
     const platformFiles =
       rawInlineFilesDirty && rawInlineFiles.trim() !== ''
-        ? parseInlineFiles(rawInlineFiles)
-        : filesToRecord(authoringFiles);
+        ? parseAuthoringJson(rawInlineFiles)
+        : draftFilesToRecord(authoringFiles);
 
     return {
       source:
