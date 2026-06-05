@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import * as client from '../api/client';
@@ -60,6 +60,7 @@ describe('ImportPage', () => {
     renderImportPage();
 
     expect(await screen.findByDisplayValue('https://github.com/mattpocock/skills?path=skills/engineering/zoom-out')).toBeInTheDocument();
+    await waitFor(() => expect(client.getSession).toHaveBeenCalledTimes(1));
     expect(screen.getByText('4. 打包与交接')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('留空使用默认分支；也可填 release / commit sha')).toHaveValue('');
     expect(screen.getByDisplayValue('@company.skill/zoom-out')).toBeInTheDocument();

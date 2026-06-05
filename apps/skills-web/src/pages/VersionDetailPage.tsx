@@ -57,7 +57,7 @@ export function VersionDetailPage() {
   });
 
   const detail = useAsyncData(() => getVersionDetail(decodedPackage, version), [decodedPackage, version, refreshKey]);
-  const { session, hasCapability } = useRegistrySession();
+  const { session, hasCapability, getPosture, getPostureLabel } = useRegistrySession();
   const governance = useAsyncData(
     () => listGovernanceChanges({ packageName: decodedPackage, version }),
     [decodedPackage, version, refreshKey]
@@ -82,8 +82,21 @@ export function VersionDetailPage() {
     governanceReason.trim() !== '' &&
     governanceConfirmed &&
     (!replacementRequired || replacementRecommendation.trim() !== '');
+  const releasePosture = getPosture({
+    packageName: decodedPackage,
+    requiredAction: 'catalog.release_record.create',
+  });
   const releaseWriteEnabled = hasCapability('catalog.release_record.create', decodedPackage);
   const governanceWriteEnabled = hasCapability('catalog.governance.version.apply', decodedPackage);
+  const releasePostureLabel =
+    releasePosture === 'write_enabled'
+      ? '允许发布登记'
+      : releasePosture === 'read_only'
+        ? '发布登记只读'
+        : getPostureLabel({
+            packageName: decodedPackage,
+            requiredAction: 'catalog.release_record.create',
+          });
   const mutationResult = readMutationResultSearchParams(searchParams, {
     packageName: decodedPackage,
     version,
@@ -242,8 +255,8 @@ export function VersionDetailPage() {
         {detail.data?.installPolicy ? <StatusPill tone={detail.data.installPolicy === 'resolvable' ? 'good' : detail.data.installPolicy === 'catalog_only' ? 'warn' : 'bad'}>{detail.data.installPolicy}</StatusPill> : null}
         {detail.data?.registry.npmRegistry ? <StatusPill>{detail.data.registry.npmRegistry}</StatusPill> : null}
         <StatusPill tone={hasHandoff ? 'accent' : undefined}>{hasHandoff ? '已附带交接' : '直接打开'}</StatusPill>
-        <StatusPill tone={releaseWriteEnabled ? 'accent' : 'default'}>
-          {session.loading ? '会话加载中' : session.error ? '会话不可用' : releaseWriteEnabled ? '允许发布登记' : '发布登记只读'}
+        <StatusPill tone={releasePosture === 'write_enabled' ? 'accent' : releasePosture === 'package_filter_required' ? 'warn' : 'default'}>
+          {releasePostureLabel}
         </StatusPill>
       </div>
 

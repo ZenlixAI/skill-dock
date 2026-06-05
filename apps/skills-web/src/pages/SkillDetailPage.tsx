@@ -33,7 +33,7 @@ export function SkillDetailPage() {
   const { packageName = '' } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const decodedPackage = decodeURIComponent(packageName);
-  const { session, hasCapability } = useRegistrySession();
+  const { session, hasCapability, getPosture, getPostureLabel } = useRegistrySession();
   const [refreshKey, setRefreshKey] = useState(0);
   const [retireReason, setRetireReason] = useState('');
   const [retireConfirmed, setRetireConfirmed] = useState(false);
@@ -58,7 +58,20 @@ export function SkillDetailPage() {
   const latestVersionItem = versionList.data?.items[0];
   const statusTone = detail.data?.status === 'active' ? 'good' : 'bad';
   const canRetireSkill = retireReason.trim() !== '' && retireConfirmed && !submitState.loading;
+  const governancePosture = getPosture({
+    packageName: decodedPackage,
+    requiredAction: 'catalog.governance.skill.apply',
+  });
   const governanceWriteEnabled = hasCapability('catalog.governance.skill.apply', decodedPackage);
+  const governancePostureLabel =
+    governancePosture === 'write_enabled'
+      ? '允许退役'
+      : governancePosture === 'read_only'
+        ? '只读'
+        : getPostureLabel({
+            packageName: decodedPackage,
+            requiredAction: 'catalog.governance.skill.apply',
+          });
   const mutationResult = readMutationResultSearchParams(searchParams, {
     packageName: decodedPackage,
     version: null,
@@ -164,8 +177,8 @@ export function SkillDetailPage() {
         {detail.data?.sourceType ? <StatusPill tone="accent">{detail.data.sourceType}</StatusPill> : null}
         {detail.data?.latestVersion ? <StatusPill>最新 {detail.data.latestVersion}</StatusPill> : null}
         {installTarget.data?.version ? <StatusPill tone="good">安装目标 {installTarget.data.version}</StatusPill> : null}
-        <StatusPill tone={governanceWriteEnabled ? 'accent' : 'default'}>
-          {session.loading ? '会话加载中' : session.error ? '会话不可用' : governanceWriteEnabled ? '允许退役' : '只读'}
+        <StatusPill tone={governancePosture === 'write_enabled' ? 'accent' : governancePosture === 'package_filter_required' ? 'warn' : 'default'}>
+          {governancePostureLabel}
         </StatusPill>
       </div>
 
