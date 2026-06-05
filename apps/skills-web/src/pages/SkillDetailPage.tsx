@@ -2,14 +2,12 @@ import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
   applySkillGovernanceChange,
-  getSession,
   getInstallTarget,
   getSkillDetail,
   getSkillVersions,
   listGovernanceChanges,
 } from '../api/client';
 import { normalizeThrownRegistryError } from '../api/httpClient';
-import { canPerformAction } from '../api/session';
 import {
   inferMutationFailureOutcome,
   MutationResultPanel,
@@ -22,6 +20,7 @@ import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
 import { useAsyncData } from '../lib/useAsyncData';
 import { formatDate } from '../lib/format';
+import { useRegistrySession } from '../session/SessionProvider';
 
 type SkillLogEntry = {
   id: string;
@@ -34,7 +33,7 @@ export function SkillDetailPage() {
   const { packageName = '' } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const decodedPackage = decodeURIComponent(packageName);
-  const session = useAsyncData(() => getSession(), []);
+  const { session, hasCapability } = useRegistrySession();
   const [refreshKey, setRefreshKey] = useState(0);
   const [retireReason, setRetireReason] = useState('');
   const [retireConfirmed, setRetireConfirmed] = useState(false);
@@ -59,7 +58,7 @@ export function SkillDetailPage() {
   const latestVersionItem = versionList.data?.items[0];
   const statusTone = detail.data?.status === 'active' ? 'good' : 'bad';
   const canRetireSkill = retireReason.trim() !== '' && retireConfirmed && !submitState.loading;
-  const governanceWriteEnabled = canPerformAction(session.data, 'catalog.governance.skill.apply', decodedPackage);
+  const governanceWriteEnabled = hasCapability('catalog.governance.skill.apply', decodedPackage);
   const mutationResult = readMutationResultSearchParams(searchParams, {
     packageName: decodedPackage,
     version: null,

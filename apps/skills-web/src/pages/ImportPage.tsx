@@ -3,13 +3,11 @@ import { Link, useSearchParams } from 'react-router-dom';
 import {
   getPackagingBundleDownloadPath,
   cleanupPackagingWorkspace,
-  getSession,
   packSkill,
   preparePackaging,
   validatePackaging,
 } from '../api/client';
 import { normalizeThrownRegistryError } from '../api/httpClient';
-import { canPerformAction } from '../api/session';
 import type {
   PackagingPackResponse,
   PackagingPrepareRequest,
@@ -32,6 +30,7 @@ import { SurfaceCard } from '../components/SurfaceCard';
 import { WarningStack } from '../components/WarningStack';
 import { buildReleaseHandoffPath } from '../lib/releaseHandoff';
 import { useAsyncData } from '../lib/useAsyncData';
+import { useRegistrySession } from '../session/SessionProvider';
 
 const steps = [
   {
@@ -240,7 +239,7 @@ function describeImportOperationError(error: RegistryRequestError) {
 
 export function ImportPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const session = useAsyncData(() => getSession(), []);
+  const { session, hasCapability } = useRegistrySession();
   const [sourceType, setSourceType] = useState<PackagingSourceType>('git');
   const [location, setLocation] = useState('https://github.com/mattpocock/skills?path=skills/engineering/zoom-out');
   const [sourceRef, setSourceRef] = useState('');
@@ -312,7 +311,7 @@ export function ImportPage() {
   const normalizedPackageName = packageName.trim();
   const cleanupPackageName =
     packResult?.packageName || validateResult?.packageName || prepareResult?.packageName || normalizedPackageName;
-  const packagingWriteEnabled = canPerformAction(session.data, 'packaging.pack', normalizedPackageName);
+  const packagingWriteEnabled = hasCapability('packaging.pack', normalizedPackageName);
   const mutationResult = readMutationResultSearchParams(searchParams, {
     packageName: null,
     version: null,

@@ -40,15 +40,18 @@ export function getSessionPosture(
     return 'unauthenticated';
   }
   if (
-    options.requiredAction &&
-    session.allowedActions.includes(options.requiredAction) &&
-    !options.packageName?.trim() &&
-    session.allowedPackages.length > 0
+    options.requiredAction
   ) {
-    return 'package_filter_required';
-  }
-  if (options.requiredAction && hasCapability(session, options.requiredAction, options.packageName)) {
-    return 'write_enabled';
+    if (
+      session.allowedActions.includes(options.requiredAction) &&
+      !options.packageName?.trim() &&
+      session.allowedPackages.length > 0
+    ) {
+      return 'package_filter_required';
+    }
+    return hasCapability(session, options.requiredAction, options.packageName)
+      ? 'write_enabled'
+      : 'read_only';
   }
   return canMutateCatalog(session) ? 'write_enabled' : 'read_only';
 }

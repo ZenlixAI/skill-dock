@@ -118,4 +118,23 @@ describe('PermissionGate', () => {
     expect(screen.getByText('正在加载会话权限…')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Prepare packaging' })).toBeNull();
   });
+
+  it('lets an explicit null session override win over provider state', async () => {
+    vi.mocked(client.getSession).mockResolvedValue(
+      createSession(['session.read', 'packaging.prepare'])
+    );
+
+    render(
+      <SessionProvider>
+        <PermissionGate requiredAction="packaging.prepare" session={null}>
+          <button type="button">Prepare packaging</button>
+        </PermissionGate>
+      </SessionProvider>
+    );
+
+    expect(
+      await screen.findByText('当前没有可用于 packaging.prepare 的已登录 Catalog 会话。')
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Prepare packaging' })).toBeNull();
+  });
 });

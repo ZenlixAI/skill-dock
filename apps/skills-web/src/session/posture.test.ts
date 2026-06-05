@@ -47,6 +47,17 @@ describe('session posture', () => {
     ).toBe('read_only');
   });
 
+  it('treats the requested action as authoritative even when the session can write elsewhere', () => {
+    const session = createSession(['packaging.pack'], ['@platform.skill/*']);
+
+    expect(
+      getSessionPosture(session, {
+        packageName: '@platform.skill/pdf-skill',
+        requiredAction: 'catalog.governance.skill.apply',
+      })
+    ).toBe('read_only');
+  });
+
   it('marks an errored session load as unavailable', () => {
     expect(isSessionUnavailable(false, 'network down')).toBe(true);
     expect(isSessionUnavailable(true, 'network down')).toBe(false);

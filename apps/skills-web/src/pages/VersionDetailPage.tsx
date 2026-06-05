@@ -3,12 +3,10 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
   applyVersionGovernanceChange,
   createReleaseRecord,
-  getSession,
   getVersionDetail,
   listGovernanceChanges,
 } from '../api/client';
 import { normalizeThrownRegistryError } from '../api/httpClient';
-import { canPerformAction } from '../api/session';
 import {
   inferMutationFailureOutcome,
   MutationResultPanel,
@@ -22,6 +20,7 @@ import { SurfaceCard } from '../components/SurfaceCard';
 import { useAsyncData } from '../lib/useAsyncData';
 import { formatDate } from '../lib/format';
 import { buildReleaseHandoffPath, readReleaseHandoff } from '../lib/releaseHandoff';
+import { useRegistrySession } from '../session/SessionProvider';
 
 type VersionLogEntry = {
   id: string;
@@ -58,7 +57,7 @@ export function VersionDetailPage() {
   });
 
   const detail = useAsyncData(() => getVersionDetail(decodedPackage, version), [decodedPackage, version, refreshKey]);
-  const session = useAsyncData(() => getSession(), []);
+  const { session, hasCapability } = useRegistrySession();
   const governance = useAsyncData(
     () => listGovernanceChanges({ packageName: decodedPackage, version }),
     [decodedPackage, version, refreshKey]
@@ -83,8 +82,8 @@ export function VersionDetailPage() {
     governanceReason.trim() !== '' &&
     governanceConfirmed &&
     (!replacementRequired || replacementRecommendation.trim() !== '');
-  const releaseWriteEnabled = canPerformAction(session.data, 'catalog.release_record.create', decodedPackage);
-  const governanceWriteEnabled = canPerformAction(session.data, 'catalog.governance.version.apply', decodedPackage);
+  const releaseWriteEnabled = hasCapability('catalog.release_record.create', decodedPackage);
+  const governanceWriteEnabled = hasCapability('catalog.governance.version.apply', decodedPackage);
   const mutationResult = readMutationResultSearchParams(searchParams, {
     packageName: decodedPackage,
     version,

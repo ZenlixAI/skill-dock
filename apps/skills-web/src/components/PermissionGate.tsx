@@ -27,9 +27,14 @@ export function PermissionGate({
   children,
 }: PermissionGateProps) {
   const registrySession = useOptionalRegistrySession();
-  const resolvedSession = session ?? registrySession?.session.data ?? null;
-  const resolvedLoading = sessionLoading ?? registrySession?.session.loading ?? false;
-  const resolvedError = sessionError ?? registrySession?.session.error ?? null;
+  const resolvedSession =
+    session !== undefined ? session : (registrySession?.session.data ?? null);
+  const resolvedLoading =
+    sessionLoading !== undefined
+      ? sessionLoading
+      : (registrySession?.session.loading ?? false);
+  const resolvedError =
+    sessionError !== undefined ? sessionError : (registrySession?.session.error ?? null);
   const posture = getSessionPosture(resolvedSession, {
     loading: resolvedLoading,
     error: resolvedError,
