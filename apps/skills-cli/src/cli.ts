@@ -108,6 +108,8 @@ ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} skills add @company.skill/pdf-skill -g
   ${DIM}$${RESET} skills add @company.skill/pdf-skill --version 1.2.0
   ${DIM}$${RESET} skills add @company.skill/pdf-skill --registry https://catalog.example.com
+  ${DIM}$${RESET} skills add owner/repo --skill pdf
+  ${DIM}$${RESET} skills add ./local-skills --list
   ${DIM}$${RESET} skills remove                        ${DIM}# interactive remove${RESET}
   ${DIM}$${RESET} skills remove web-design             ${DIM}# remove by name${RESET}
   ${DIM}$${RESET} skills rm --global frontend-design
@@ -160,18 +162,22 @@ ${BOLD}Examples:${RESET}
 
 function showAddHelp(): void {
   console.log(`
-${BOLD}Usage:${RESET} skills add <package_name> [options]
+${BOLD}Usage:${RESET} skills add <source> [options]
 
 ${BOLD}Description:${RESET}
-  Add a skill package from the registry.
+  Install a skill from the registry or directly from a source repository/path.
 
 ${BOLD}Arguments:${RESET}
-  package_name      Registry package identity, e.g. @company.skill/pdf-skill
+  source            Registry package identity, local path, owner/repo, or Git URL
 
 ${BOLD}Options:${RESET}
   -g, --global           Install skill globally (user-level) instead of project-level
   -a, --agent <agents>   Specify agents to install to (use '*' for all agents)
   -y, --yes              Skip confirmation prompts
+  -s, --skill <names>    Select specific skill names from a source repository/path
+  -l, --list             List discovered skills from a source repository/path
+  --all                  Install all discovered skills from a source repository/path
+  --full-depth           Search nested directories more aggressively for source installs
   --registry <url>       Catalog base URL override (default env: SKILLS_REGISTRY_URL)
   --version <version>    Install an exact version from the registry
   --copy                 Copy files instead of symlinking to agent directories
@@ -180,6 +186,9 @@ ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} skills add @company.skill/pdf-skill
   ${DIM}$${RESET} skills add @company.skill/pdf-skill --version 1.2.0
   ${DIM}$${RESET} skills add @company.skill/pdf-skill --registry https://catalog.example.com
+  ${DIM}$${RESET} skills add owner/repo --skill pdf
+  ${DIM}$${RESET} skills add https://github.com/owner/repo?path=skills/pdf
+  ${DIM}$${RESET} skills add ./local-skills --list
 `);
 }
 

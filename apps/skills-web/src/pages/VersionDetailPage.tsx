@@ -283,7 +283,7 @@ export function VersionDetailPage() {
         <article className="console-signal">
           <span>发布登记</span>
           <strong>{actionState.loading === 'release' ? '执行中' : '就绪'}</strong>
-          <p>用于写入 release record。</p>
+          <p>用于在 bundle 已经发布到 npm registry 之后写入 release record。</p>
         </article>
         <article className="console-signal">
           <span>治理动作</span>
@@ -435,7 +435,7 @@ export function VersionDetailPage() {
               <div className="action-row">
                 <div className="action-row__copy">
                   <strong>Register this bundle</strong>
-                  <p>为这个 bundle 写入 catalog release record。</p>
+                  <p>先确认这个版本已经完成 `npm publish`，再为它写入 catalog release record。</p>
                 </div>
               </div>
               <button

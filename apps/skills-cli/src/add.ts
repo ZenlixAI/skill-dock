@@ -2,7 +2,7 @@ import * as p from '@clack/prompts';
 import pc from 'picocolors';
 import { existsSync } from 'fs';
 import { homedir } from 'os';
-import { sep, join, dirname } from 'path';
+import { sep, join, dirname, relative, resolve } from 'path';
 import { searchMultiselect } from './prompts/search-multiselect.ts';
 
 // Helper to check if a value is a cancel symbol (works with both clack and our custom prompts)
@@ -33,8 +33,11 @@ import {
   getLastSelectedAgents,
   saveSelectedAgents,
 } from './skill-lock.ts';
-import type { AgentType } from './types.ts';
+import type { AgentType, ParsedSource, Skill } from './types.ts';
 import { runRegistryInstallWorkflow } from './registry-install-workflow.ts';
+import { addSkillToLocalLock, computeSkillFolderHash } from './local-lock.ts';
+import { cloneRepo, cleanupTempDir } from './git.ts';
+import { discoverSkills, filterSkills } from './skills.ts';
 import packageJson from '../package.json' with { type: 'json' };
 export function initTelemetry(version: string): void {
   setVersion(version);
@@ -321,6 +324,8 @@ export interface AddOptions {
 const PACKAGE_NAME_RE = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 const EXACT_VERSION_RE =
   /^\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+const GITHUB_SHORTHAND_RE =
+  /^(?<owner>[A-Za-z0-9_.-]+)\/(?<repo>[A-Za-z0-9_.-]+?)(?:@(?<skill>[^/?#]+))?$/;
 
 function isPackageName(value: string): boolean {
   return PACKAGE_NAME_RE.test(value);
@@ -336,11 +341,12 @@ function showAddUsageError(message: string): never {
   console.log();
   console.log(pc.dim('  Usage:'));
   console.log(
-    `    ${pc.cyan('npx skills add')} ${pc.yellow('<package_name>')} ${pc.dim('[options]')}`
+    `    ${pc.cyan('npx skills add')} ${pc.yellow('<source>')} ${pc.dim('[options]')}`
   );
   console.log();
   console.log(pc.dim('  Example:'));
   console.log(`    ${pc.cyan('npx skills add')} ${pc.yellow('@platform.skill/pdf-skill')}`);
+  console.log(`    ${pc.cyan('npx skills add')} ${pc.yellow('owner/repo')}`);
   console.log();
   process.exit(1);
 }
@@ -371,6 +377,94 @@ function formatAgentDisplayList(agentTypes: AgentType[], maxShow: number = 6): s
     agentTypes.map((agentType) => agents[agentType].displayName),
     maxShow
   );
+}
+
+function normalizeSourceSubpath(raw: string | null): string | undefined {
+  if (!raw) return undefined;
+  const normalized = raw.trim().replace(/^\/+/, '');
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function parseGitHttpSource(value: string): ParsedSource | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return null;
+  }
+
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    return null;
+  }
+
+  const subpath = normalizeSourceSubpath(parsed.searchParams.get('path'));
+  const ref = parsed.searchParams.get('ref')?.trim() || undefined;
+
+  if (parsed.hostname === 'github.com') {
+    const segments = parsed.pathname.split('/').filter(Boolean);
+    if (segments.length >= 2) {
+      const owner = segments[0]!;
+      const repo = segments[1]!.replace(/\.git$/, '');
+      return {
+        type: 'github',
+        url: `https://github.com/${owner}/${repo}.git`,
+        ...(subpath ? { subpath } : {}),
+        ...(ref ? { ref } : {}),
+      };
+    }
+  }
+
+  if (parsed.pathname.endsWith('.git')) {
+    return {
+      type: 'git',
+      url: value,
+      ...(subpath ? { subpath } : {}),
+      ...(ref ? { ref } : {}),
+    };
+  }
+
+  return null;
+}
+
+function parseSourceInput(value: string): ParsedSource | null {
+  if (existsSync(value)) {
+    return {
+      type: 'local',
+      url: resolve(value),
+      localPath: resolve(value),
+    };
+  }
+
+  const httpSource = parseGitHttpSource(value);
+  if (httpSource) {
+    return httpSource;
+  }
+
+  if (
+    value.startsWith('git@') ||
+    value.startsWith('ssh://') ||
+    value.startsWith('git://') ||
+    value.startsWith('git+ssh://')
+  ) {
+    return {
+      type: 'git',
+      url: value,
+    };
+  }
+
+  const shorthandMatch = value.match(GITHUB_SHORTHAND_RE);
+  if (shorthandMatch?.groups) {
+    const owner = shorthandMatch.groups.owner;
+    const repo = shorthandMatch.groups.repo;
+    const skillFilter = shorthandMatch.groups.skill?.trim();
+    return {
+      type: 'github',
+      url: `https://github.com/${owner}/${repo}.git`,
+      ...(skillFilter ? { skillFilter } : {}),
+    };
+  }
+
+  return null;
 }
 
 function resolveDefaultTargetAgents(installedAgents: AgentType[]): AgentType[] {
@@ -609,6 +703,280 @@ export async function installRegistryPackage(
   );
 }
 
+function buildSourceResultLines(
+  successful: Array<{
+    skill: Skill;
+    agent: AgentType;
+    result: {
+      path: string;
+      canonicalPath?: string;
+    };
+  }>,
+  cwd: string,
+  verbose: boolean
+): string[] {
+  const skillNames = Array.from(new Set(successful.map(({ skill }) => skill.name)));
+  return [
+    `Skills: ${formatList(skillNames, 8)}`,
+    ...buildInstallResultLines(
+      successful.map(({ agent, result }) => ({ agent, result })),
+      cwd,
+      verbose
+    ),
+  ];
+}
+
+function buildLegacySourceMetadata(
+  source: ParsedSource,
+  input: string,
+  searchRoot: string,
+  skill: Skill
+): {
+  source: string;
+  sourceUrl?: string;
+  ref?: string;
+  skillPath?: string;
+} {
+  const skillMdPath = join(skill.path, 'SKILL.md');
+  const relativeSkillPath = relative(searchRoot, skillMdPath).split(sep).join('/');
+
+  return {
+    source: source.type === 'local' ? source.localPath || resolve(input) : input,
+    ...(source.type !== 'local' ? { sourceUrl: source.url } : {}),
+    ...(source.ref ? { ref: source.ref } : {}),
+    ...(relativeSkillPath ? { skillPath: relativeSkillPath } : {}),
+  };
+}
+
+async function selectSourceSkills(
+  discoveredSkills: Skill[],
+  source: ParsedSource,
+  options: AddOptions
+): Promise<Skill[]> {
+  if (options.list) {
+    const lines = discoveredSkills.map(
+      (skill) => `${skill.name}${skill.pluginName ? ` ${pc.dim(`(${skill.pluginName})`)}` : ''}`
+    );
+    p.note(lines.join('\n'), `Found ${discoveredSkills.length} skill${discoveredSkills.length === 1 ? '' : 's'}`);
+    return [];
+  }
+
+  const requestedSkillNames = [
+    ...(options.skill || []),
+    ...(source.skillFilter ? [source.skillFilter] : []),
+  ];
+
+  if (requestedSkillNames.length > 0) {
+    const matched = filterSkills(discoveredSkills, requestedSkillNames);
+    if (matched.length === 0) {
+      throw new Error(`No matching skills found for: ${requestedSkillNames.join(', ')}`);
+    }
+    return matched;
+  }
+
+  if (options.all || discoveredSkills.length === 1) {
+    return discoveredSkills;
+  }
+
+  if (options.yes) {
+    throw new Error(
+      'Multiple skills found. Re-run with --skill <name>, --all, or --list to choose non-interactively.'
+    );
+  }
+
+  const selected = await multiselect({
+    message: 'Select skills to install',
+    options: discoveredSkills.map((skill) => ({
+      value: skill.name,
+      label: skill.name,
+      hint: skill.description,
+    })),
+    required: true,
+  });
+
+  if (p.isCancel(selected)) {
+    p.cancel('Installation cancelled');
+    process.exit(0);
+  }
+
+  const chosenNames = selected as string[];
+  return discoveredSkills.filter((skill) => chosenNames.includes(skill.name));
+}
+
+async function installSourceReference(
+  input: string,
+  source: ParsedSource,
+  options: AddOptions,
+  spinner: ReturnType<typeof p.spinner>
+): Promise<void> {
+  const cwd = process.cwd();
+  let sourceRoot = source.localPath || source.url;
+  let cleanupRoot: string | null = null;
+
+  try {
+    if (source.type !== 'local') {
+      spinner.start('Cloning source repository...');
+      sourceRoot = await cloneRepo(source.url, source.ref);
+      cleanupRoot = sourceRoot;
+      spinner.stop('Source repository ready');
+    }
+
+    spinner.start('Discovering skills...');
+    const discoveredSkills = await discoverSkills(sourceRoot, source.subpath, {
+      fullDepth: options.fullDepth === true,
+    });
+    spinner.stop(
+      discoveredSkills.length === 0
+        ? 'No skills discovered'
+        : `Discovered ${discoveredSkills.length} skill${discoveredSkills.length === 1 ? '' : 's'}`
+    );
+
+    if (discoveredSkills.length === 0) {
+      throw new Error('No skills found in the provided source.');
+    }
+
+    const selectedSkills = await selectSourceSkills(discoveredSkills, source, options);
+    if (selectedSkills.length === 0) {
+      p.outro(pc.green('Done!'));
+      return;
+    }
+
+    const targetAgents = await resolveTargetAgentsForAdd(options, spinner);
+    const { installGlobally, installMode } = await resolveScopeAndModeForAdd(options, targetAgents);
+
+    const summaryLines = [
+      `Source: ${source.type === 'local' ? shortenPath(sourceRoot, cwd) : source.url}`,
+      `Skills: ${formatList(selectedSkills.map((skill) => skill.name), 8)}`,
+      ...buildAgentSummaryLines(targetAgents, installMode),
+    ];
+
+    console.log();
+    p.note(summaryLines.join('\n'), 'Installation Summary');
+
+    if (!options.yes) {
+      const confirmed = await p.confirm({ message: 'Proceed with installation?' });
+      if (p.isCancel(confirmed) || !confirmed) {
+        p.cancel('Installation cancelled');
+        process.exit(0);
+      }
+    }
+
+    spinner.start('Installing skills...');
+
+    const successful: Array<{
+      skill: Skill;
+      agent: AgentType;
+      result: {
+        success: true;
+        path: string;
+        canonicalPath?: string;
+        mode: InstallMode;
+        symlinkFailed?: boolean;
+        skipped?: boolean;
+      };
+    }> = [];
+    const failed: Array<{
+      skill: Skill;
+      agent: AgentType;
+      result: {
+        success: false;
+        path: string;
+        mode: InstallMode;
+        symlinkFailed?: boolean;
+        skipped?: boolean;
+        error?: string;
+      };
+    }> = [];
+
+    const searchRoot = source.subpath ? join(sourceRoot, source.subpath) : sourceRoot;
+
+    for (const skill of selectedSkills) {
+      const installResults = await Promise.all(
+        targetAgents.map(async (agent) => ({
+          agent,
+          result: await installSkillForAgent(skill, agent, {
+            global: installGlobally,
+            cwd,
+            mode: installMode,
+          }),
+        }))
+      );
+
+      const successfulForSkill = installResults.filter(
+        (entry): entry is typeof successful[number] => entry.result.success
+      ).map((entry) => ({ ...entry, skill }));
+      const failedForSkill = installResults.filter(
+        (entry): entry is typeof failed[number] => !entry.result.success
+      ).map((entry) => ({ ...entry, skill }));
+
+      successful.push(...successfulForSkill);
+      failed.push(...failedForSkill);
+
+      if (successfulForSkill.length === 0) {
+        continue;
+      }
+
+      const computedHash = await computeSkillFolderHash(skill.path);
+      const legacy = buildLegacySourceMetadata(source, input, searchRoot, skill);
+
+      if (installGlobally) {
+        await addSkillToLock(skill.name, {
+          sourceType: source.type,
+          skillFolderHash: computedHash,
+          legacy,
+        });
+      } else {
+        await addSkillToLocalLock(
+          skill.name,
+          {
+            sourceType: source.type,
+            computedHash,
+            legacy: {
+              source: legacy.source,
+              ...(legacy.ref ? { ref: legacy.ref } : {}),
+              ...(legacy.skillPath ? { skillPath: legacy.skillPath } : {}),
+            },
+          },
+          cwd
+        );
+      }
+    }
+
+    spinner.stop('Installation complete');
+
+    if (successful.length === 0) {
+      throw new Error(
+        failed[0]?.result.error || 'Failed to install any skills from the provided source.'
+      );
+    }
+
+    p.note(
+      buildSourceResultLines(successful, cwd, options.verbose === true).join('\n'),
+      pc.green(`Installed ${successful.length} target${successful.length === 1 ? '' : 's'}`)
+    );
+
+    if (failed.length > 0) {
+      p.log.warn(pc.yellow(`Failed on ${failed.length} target(s)`));
+      for (const entry of failed) {
+        p.log.message(
+          `  ${pc.red('✗')} ${entry.skill.name} → ${agents[entry.agent].displayName}: ${pc.dim(
+            entry.result.error
+          )}`
+        );
+      }
+    }
+
+    console.log();
+    p.outro(
+      pc.green('Done!') + pc.dim('  Review skills before use; they run with full agent permissions.')
+    );
+  } finally {
+    if (cleanupRoot) {
+      await cleanupTempDir(cleanupRoot).catch(() => {});
+    }
+  }
+}
+
 export async function runAdd(args: string[], options: AddOptions = {}): Promise<void> {
   const source = args[0];
   let installTipShown = false;
@@ -622,7 +990,7 @@ export async function runAdd(args: string[], options: AddOptions = {}): Promise<
   };
 
   if (!source) {
-    showAddUsageError('Missing required argument: package_name');
+    showAddUsageError('Missing required argument: source');
   }
 
   // Auto-enable non-interactive mode when running inside an AI agent
@@ -656,13 +1024,19 @@ export async function runAdd(args: string[], options: AddOptions = {}): Promise<
   try {
     const spinner = p.spinner();
 
-    if (!isPackageName(source)) {
+    if (isPackageName(source)) {
+      await installRegistryPackage(source, options, spinner);
+      return;
+    }
+
+    const parsedSource = parseSourceInput(source);
+    if (!parsedSource) {
       showAddUsageError(
-        'This command only accepts a registry package_name. Legacy local path, owner/repo, and URL installs are disabled.'
+        'Unsupported source. Use a registry package_name, local path, owner/repo, or Git URL.'
       );
     }
 
-    await installRegistryPackage(source, options, spinner);
+    await installSourceReference(source, parsedSource, options, spinner);
   } catch (error) {
     p.log.error(error instanceof Error ? error.message : 'Unknown error occurred');
     showInstallTip();

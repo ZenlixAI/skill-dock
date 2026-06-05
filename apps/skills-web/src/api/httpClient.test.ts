@@ -21,6 +21,20 @@ describe('normalizeRegistryError', () => {
     });
   });
 
+  it('explains when release-record fails because the registry version was never published', () => {
+    expect(
+      normalizeRegistryError({
+        status: 404,
+        code: 'registry_version_not_found',
+        message: 'registry_version_not_found: Registry version not found.',
+      })
+    ).toEqual({
+      kind: 'not_found',
+      message: 'Registry does not contain this package version yet. Publish the packed bundle to the npm registry, then retry release-record.',
+      requestId: undefined,
+    });
+  });
+
   it('turns 5xx responses into server errors and keeps the request id', () => {
     expect(normalizeRegistryError({ status: 503, message: 'upstream unavailable', requestId: 'req-123' })).toEqual({
       kind: 'server',

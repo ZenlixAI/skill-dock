@@ -43,6 +43,14 @@ function withQuery(path: string, params: Record<string, string | number | boolea
   return `${url.pathname}${url.search}`;
 }
 
+export function buildPackagingBundleDownloadPath(workspacePath: string, packageName: string, version: string) {
+  return withQuery('/api/v1/skill-packaging/bundle', {
+    workspacePath,
+    packageName,
+    version,
+  });
+}
+
 export function normalizeSkillsPage<T>(response: {
   items?: T[] | null;
   pageInfo?: Partial<SkillsPage<T>['pageInfo']> | null;
@@ -280,6 +288,7 @@ export const preparePackaging = apiClient.preparePackaging.bind(apiClient);
 export const validatePackaging = apiClient.validatePackaging.bind(apiClient);
 export const packSkill = apiClient.packSkill.bind(apiClient);
 export const cleanupPackagingWorkspace = apiClient.cleanupPackagingWorkspace.bind(apiClient);
+export const getPackagingBundleDownloadPath = buildPackagingBundleDownloadPath;
 export const createReleaseRecord = apiClient.createReleaseRecord.bind(apiClient);
 export const applySkillGovernanceChange = apiClient.applySkillGovernanceChange.bind(apiClient);
 export const applyVersionGovernanceChange = apiClient.applyVersionGovernanceChange.bind(apiClient);

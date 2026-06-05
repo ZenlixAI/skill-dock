@@ -9,6 +9,24 @@ import { parseAddOptions } from './add.ts';
 describe('add command', () => {
   let testDir: string;
 
+  function writeSkill(
+    dir: string,
+    name: string,
+    description: string,
+    metadataBlock?: string
+  ): void {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'SKILL.md'),
+      `---
+name: ${name}
+description: ${description}
+${metadataBlock ? `${metadataBlock}\n` : ''}---
+# ${name}
+`
+    );
+  }
+
   beforeEach(() => {
     testDir = join(tmpdir(), `skills-add-test-${Date.now()}`);
     mkdirSync(testDir, { recursive: true });
@@ -23,37 +41,36 @@ describe('add command', () => {
   it('should show error when no source provided', () => {
     const result = runCli(['add'], testDir);
     expect(result.stdout).toContain('ERROR');
-    expect(result.stdout).toContain('Missing required argument: package_name');
+    expect(result.stdout).toContain('Missing required argument: source');
     expect(result.exitCode).toBe(1);
   });
 
-  it('should reject source-style identifiers', () => {
-    const result = runCli(['add', 'vercel-labs/skills', '-y'], testDir);
-    expect(result.stdout).toContain('package_name');
-    expect(result.stdout).toContain('owner/repo');
-    expect(result.exitCode).toBe(1);
-  });
+  it('should list skills from a local path without prompting for agents', () => {
+    writeSkill(join(testDir, 'skills', 'zoom-out'), 'zoom-out', 'Broader context');
 
-  it('should reject local paths', () => {
     const result = runCli(['add', testDir, '--list'], testDir);
-    expect(result.stdout).toContain('package_name');
-    expect(result.stdout).toContain('local path');
-    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain('Found 1 skill');
+    expect(result.stdout).toContain('zoom-out');
+    expect(result.stdout).not.toContain('Which agents do you want to install to?');
+    expect(result.exitCode).toBe(0);
   });
 
-  it('should reject local paths even if the old compatibility env var is set', () => {
-    const result = runCli(['add', testDir, '-y'], testDir, {
+  it('should install from a local path even if the old compatibility env var is set', () => {
+    writeSkill(join(testDir, 'zoom-out'), 'zoom-out', 'Broader context');
+
+    const result = runCli(['add', testDir, '--skill', 'zoom-out', '-y'], testDir, {
       SKILLS_ALLOW_LEGACY_ADD: '1',
     });
-    expect(result.stdout).toContain('package_name');
-    expect(result.stdout).toContain('local path');
-    expect(result.exitCode).toBe(1);
+
+    expect(result.stdout).toContain('Installation Summary');
+    expect(result.stdout).toContain('zoom-out');
+    expect(result.exitCode).toBe(0);
   });
 
   it('should support add command alias (a)', () => {
     const resultA = runCli(['a'], testDir);
 
-    expect(resultA.stdout).toContain('Missing required argument: package_name');
+    expect(resultA.stdout).toContain('Missing required argument: source');
   });
 
   it('should reject removed add compatibility aliases', () => {
@@ -66,10 +83,11 @@ describe('add command', () => {
 
   it('should show dedicated add help output', () => {
     const output = stripLogo(runCliOutput(['add', '--help']));
-    expect(output).toContain('Usage: skills add <package_name> [options]');
-    expect(output).toContain('Add a skill package from the registry');
+    expect(output).toContain('Usage: skills add <source> [options]');
+    expect(output).toContain('Install a skill from the registry or directly from a source repository/path');
     expect(output).toContain('--version <version>');
     expect(output).toContain('skills add @company.skill/pdf-skill');
+    expect(output).toContain('skills add owner/repo --skill pdf');
   });
 
   it('should parse registry add options', () => {
@@ -151,22 +169,11 @@ describe('add command', () => {
 
   describe('internal skills', () => {
     it('should skip internal skills by default', () => {
-      // Create an internal skill
-      const skillDir = join(testDir, 'internal-skill');
-      mkdirSync(skillDir, { recursive: true });
-      writeFileSync(
-        join(skillDir, 'SKILL.md'),
-        `---
-name: internal-skill
-description: An internal skill
-metadata:
-  internal: true
----
-
-# Internal Skill
-
-This is an internal skill.
-`
+      writeSkill(
+        join(testDir, 'internal-skill'),
+        'internal-skill',
+        'An internal skill',
+        'metadata:\n  internal: true'
       );
 
       const result = runCli(['add', testDir, '--list'], testDir);
@@ -174,112 +181,60 @@ This is an internal skill.
     });
 
     it('should show internal skills when INSTALL_INTERNAL_SKILLS=1', () => {
-      // Create an internal skill
-      const skillDir = join(testDir, 'internal-skill');
-      mkdirSync(skillDir, { recursive: true });
-      writeFileSync(
-        join(skillDir, 'SKILL.md'),
-        `---
-name: internal-skill
-description: An internal skill
-metadata:
-  internal: true
----
-
-# Internal Skill
-
-This is an internal skill.
-`
+      writeSkill(
+        join(testDir, 'internal-skill'),
+        'internal-skill',
+        'An internal skill',
+        'metadata:\n  internal: true'
       );
 
       const result = runCli(['add', testDir, '--list'], testDir, {
         INSTALL_INTERNAL_SKILLS: '1',
       });
-      expect(result.stdout).toContain('package_name');
+      expect(result.stdout).toContain('internal-skill');
     });
 
     it('should show internal skills when INSTALL_INTERNAL_SKILLS=true', () => {
-      // Create an internal skill
-      const skillDir = join(testDir, 'internal-skill');
-      mkdirSync(skillDir, { recursive: true });
-      writeFileSync(
-        join(skillDir, 'SKILL.md'),
-        `---
-name: internal-skill
-description: An internal skill
-metadata:
-  internal: true
----
-
-# Internal Skill
-
-This is an internal skill.
-`
+      writeSkill(
+        join(testDir, 'internal-skill'),
+        'internal-skill',
+        'An internal skill',
+        'metadata:\n  internal: true'
       );
 
       const result = runCli(['add', testDir, '--list'], testDir, {
         INSTALL_INTERNAL_SKILLS: 'true',
       });
-      expect(result.stdout).toContain('package_name');
+      expect(result.stdout).toContain('internal-skill');
     });
 
     it('should show non-internal skills alongside internal when env var is set', () => {
-      // Create both internal and non-internal skills
       const internalDir = join(testDir, 'skills', 'internal-skill');
       const publicDir = join(testDir, 'skills', 'public-skill');
-      mkdirSync(internalDir, { recursive: true });
-      mkdirSync(publicDir, { recursive: true });
+      writeSkill(internalDir, 'internal-skill', 'An internal skill', 'metadata:\n  internal: true');
+      writeSkill(publicDir, 'public-skill', 'A public skill');
 
-      writeFileSync(
-        join(internalDir, 'SKILL.md'),
-        `---
-name: internal-skill
-description: An internal skill
-metadata:
-  internal: true
----
-# Internal Skill
-`
-      );
-
-      writeFileSync(
-        join(publicDir, 'SKILL.md'),
-        `---
-name: public-skill
-description: A public skill
----
-# Public Skill
-`
-      );
-
-      // Without env var - only public skill visible
       const resultWithout = runCli(['add', testDir, '--list'], testDir);
-      expect(resultWithout.stdout).toContain('package_name');
+      expect(resultWithout.stdout).toContain('public-skill');
+      expect(resultWithout.stdout).not.toContain('internal-skill');
 
-      // With env var - add still rejects local paths under the registry-first contract
       const resultWith = runCli(['add', testDir, '--list'], testDir, {
         INSTALL_INTERNAL_SKILLS: '1',
       });
-      expect(resultWith.stdout).toContain('package_name');
+      expect(resultWith.stdout).toContain('public-skill');
+      expect(resultWith.stdout).toContain('internal-skill');
     });
 
     it('should not treat metadata.internal: false as internal', () => {
-      const skillDir = join(testDir, 'not-internal-skill');
-      mkdirSync(skillDir, { recursive: true });
-      writeFileSync(
-        join(skillDir, 'SKILL.md'),
-        `---
-name: not-internal-skill
-description: Explicitly not internal
-metadata:
-  internal: false
----
-# Not Internal
-`
+      writeSkill(
+        join(testDir, 'not-internal-skill'),
+        'not-internal-skill',
+        'Explicitly not internal',
+        'metadata:\n  internal: false'
       );
 
       const result = runCli(['add', testDir, '--list'], testDir);
-      expect(result.stdout).toContain('package_name');
+      expect(result.stdout).toContain('not-internal-skill');
     });
   });
 });

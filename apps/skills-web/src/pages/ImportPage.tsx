@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
+  getPackagingBundleDownloadPath,
   cleanupPackagingWorkspace,
   getSession,
   packSkill,
@@ -46,18 +47,75 @@ const steps = [
     description: 'warningDetails + importReport + components',
   },
   {
-    title: '4. 打包 / 发布',
-    description: 'bundle metadata + release handoff',
+    title: '4. 打包与交接',
+    description: 'bundle download + release handoff',
   },
 ];
 
 type ReviewData = PackagingPrepareResponse | PackagingValidateResponse | PackagingPackResponse;
+type AuthoringTemplateId = 'prompt' | 'command' | 'workflow';
+type AuthoringFile = {
+  path: string;
+  content: string;
+  locked: boolean;
+};
 type ImportLogEntry = {
   id: string;
   step: 'prepare' | 'validate' | 'pack' | 'cleanup';
   outcome: 'succeeded' | 'failed';
   summary: string;
 };
+
+const AUTHORING_TEMPLATES: Record<
+  AuthoringTemplateId,
+  {
+    label: string;
+    description: string;
+    files: AuthoringFile[];
+  }
+> = {
+  prompt: {
+    label: 'prompt',
+    description: '单 prompt skill',
+    files: [
+      {
+        path: 'prompts/main.md',
+        content: 'Write the core prompt here.\n',
+        locked: true,
+      },
+    ],
+  },
+  command: {
+    label: 'command',
+    description: '单命令 skill',
+    files: [
+      {
+        path: 'commands/run.txt',
+        content: 'echo authored\n',
+        locked: true,
+      },
+    ],
+  },
+  workflow: {
+    label: 'workflow',
+    description: '步骤型 workflow skill',
+    files: [
+      {
+        path: 'workflows/main.md',
+        content: '1. First step\n2. Second step\n',
+        locked: true,
+      },
+    ],
+  },
+};
+
+function createAuthoringFiles(template: AuthoringTemplateId): AuthoringFile[] {
+  return AUTHORING_TEMPLATES[template].files.map((file) => ({ ...file }));
+}
+
+function defaultSelectedPath(template: AuthoringTemplateId): string {
+  return AUTHORING_TEMPLATES[template].files[0]?.path || '';
+}
 
 function parseInlineFiles(raw: string) {
   const trimmed = raw.trim();
@@ -78,6 +136,67 @@ function parseInlineFiles(raw: string) {
     files[path] = content;
   });
   return files;
+}
+
+function filesToRecord(files: AuthoringFile[]) {
+  const record: Record<string, string> = {};
+  files.forEach((file) => {
+    record[file.path] = file.content;
+  });
+  return record;
+}
+
+function serializeInlineFiles(files: AuthoringFile[]) {
+  return JSON.stringify(filesToRecord(files), null, 2);
+}
+
+function validateAuthoringPath(path: string, existing: AuthoringFile[]) {
+  const trimmed = path.trim();
+  if (trimmed === '') {
+    return '新文件路径不能为空。';
+  }
+  if (trimmed.startsWith('/')) {
+    return '文件路径必须是相对路径。';
+  }
+  if (trimmed === 'SKILL.md') {
+    return '根级 SKILL.md 由服务端生成，不能手动添加。';
+  }
+  if (trimmed.split('/').some((segment) => segment === '..')) {
+    return '文件路径不能包含 ..。';
+  }
+  if (existing.some((file) => file.path === trimmed)) {
+    return '文件路径不能重复。';
+  }
+  return null;
+}
+
+function recordToAuthoringFiles(
+  files: Record<string, string>,
+  template: AuthoringTemplateId
+): AuthoringFile[] {
+  const templateLockedPaths = new Set(AUTHORING_TEMPLATES[template].files.map((file) => file.path));
+  return Object.entries(files).map(([path, content]) => ({
+    path,
+    content,
+    locked: templateLockedPaths.has(path),
+  }));
+}
+
+function authoringMatchesTemplate(files: AuthoringFile[], template: AuthoringTemplateId) {
+  const templateFiles = createAuthoringFiles(template);
+  if (files.length !== templateFiles.length) {
+    return false;
+  }
+
+  return files.every((file, index) => {
+    const templateFile = templateFiles[index];
+    return (
+      templateFile !== undefined &&
+      file.path === templateFile.path &&
+      file.content === templateFile.content &&
+      file.locked === templateFile.locked
+    );
+  });
 }
 
 function hasComponents(data: ReviewData): data is PackagingValidateResponse | PackagingPackResponse {
@@ -123,13 +242,20 @@ export function ImportPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const session = useAsyncData(() => getSession(), []);
   const [sourceType, setSourceType] = useState<PackagingSourceType>('git');
-  const [location, setLocation] = useState('https://github.com/mattpocock/skills?path=skills/pdf');
-  const [sourceRef, setSourceRef] = useState('main');
-  const [inlineFiles, setInlineFiles] = useState('{\n  "commands/run.txt": "echo authored"\n}');
-  const [packageName, setPackageName] = useState('@company.skill/pdf-skill');
+  const [location, setLocation] = useState('https://github.com/mattpocock/skills?path=skills/engineering/zoom-out');
+  const [sourceRef, setSourceRef] = useState('');
+  const [authoringTemplate, setAuthoringTemplate] = useState<AuthoringTemplateId>('command');
+  const [authoringFiles, setAuthoringFiles] = useState<AuthoringFile[]>(() => createAuthoringFiles('command'));
+  const [selectedAuthoringPath, setSelectedAuthoringPath] = useState(defaultSelectedPath('command'));
+  const [newAuthoringPath, setNewAuthoringPath] = useState('');
+  const [authoringError, setAuthoringError] = useState<string | null>(null);
+  const [showAdvancedFiles, setShowAdvancedFiles] = useState(false);
+  const [rawInlineFiles, setRawInlineFiles] = useState('');
+  const [rawInlineFilesDirty, setRawInlineFilesDirty] = useState(false);
+  const [packageName, setPackageName] = useState('@company.skill/zoom-out');
   const [version, setVersion] = useState('1.2.0');
-  const [displayName, setDisplayName] = useState('PDF 技能');
-  const [description, setDescription] = useState('PDF 处理工作流');
+  const [displayName, setDisplayName] = useState('Zoom Out');
+  const [description, setDescription] = useState('Broader context');
   const [metadataSourceType, setMetadataSourceType] = useState('imported');
   const [publishRegistry, setPublishRegistry] = useState('https://npm.internal.example.com');
   const [strictMode, setStrictMode] = useState(false);
@@ -192,6 +318,9 @@ export function ImportPage() {
     version: null,
     actor: session.data?.actor ?? null,
   });
+  const selectedAuthoringFile =
+    authoringFiles.find((file) => file.path === selectedAuthoringPath) || authoringFiles[0] || null;
+  const advancedInlineFilesValue = rawInlineFilesDirty ? rawInlineFiles : serializeInlineFiles(authoringFiles);
 
   function appendLog(step: ImportLogEntry['step'], outcome: ImportLogEntry['outcome'], summary: string) {
     setActivityLog((current) => [
@@ -222,13 +351,93 @@ export function ImportPage() {
     );
   }
 
+  function resetAuthoringTemplate(nextTemplate: AuthoringTemplateId) {
+    const hasUnsavedChanges =
+      !authoringMatchesTemplate(authoringFiles, authoringTemplate) || rawInlineFilesDirty;
+
+    if (
+      hasUnsavedChanges &&
+      !window.confirm('切换模板会重建当前文件列表，未保存的作者输入会丢失。继续吗？')
+    ) {
+      return;
+    }
+
+    const nextFiles = createAuthoringFiles(nextTemplate);
+    setAuthoringTemplate(nextTemplate);
+    setAuthoringFiles(nextFiles);
+    setSelectedAuthoringPath(defaultSelectedPath(nextTemplate));
+    setAuthoringError(null);
+    setRawInlineFiles('');
+    setRawInlineFilesDirty(false);
+    setNewAuthoringPath('');
+  }
+
+  function handleAddAuthoringFile() {
+    const validationError = validateAuthoringPath(newAuthoringPath, authoringFiles);
+    if (validationError) {
+      setAuthoringError(validationError);
+      return;
+    }
+
+    const trimmed = newAuthoringPath.trim();
+    const nextFiles = [...authoringFiles, { path: trimmed, content: '', locked: false }];
+    setAuthoringFiles(nextFiles);
+    setSelectedAuthoringPath(trimmed);
+    setAuthoringError(null);
+    setNewAuthoringPath('');
+    setRawInlineFilesDirty(false);
+  }
+
+  function handleDeleteAuthoringFile(path: string) {
+    const target = authoringFiles.find((file) => file.path === path);
+    if (!target || target.locked) {
+      return;
+    }
+
+    const nextFiles = authoringFiles.filter((file) => file.path !== path);
+    setAuthoringFiles(nextFiles);
+    setAuthoringError(null);
+    setRawInlineFilesDirty(false);
+
+    if (selectedAuthoringPath === path) {
+      setSelectedAuthoringPath(nextFiles[0]?.path || '');
+    }
+  }
+
+  function handleAuthoringContentChange(content: string) {
+    const activePath = selectedAuthoringFile?.path;
+    if (!activePath) {
+      return;
+    }
+
+    setAuthoringFiles((current) =>
+      current.map((file) => (file.path === activePath ? { ...file, content } : file))
+    );
+    setAuthoringError(null);
+    setRawInlineFilesDirty(false);
+  }
+
+  function applyRawInlineFiles() {
+    const parsedFiles = parseInlineFiles(rawInlineFiles);
+    const nextFiles = recordToAuthoringFiles(parsedFiles || {}, authoringTemplate);
+    setAuthoringFiles(nextFiles);
+    setSelectedAuthoringPath(nextFiles[0]?.path || '');
+    setAuthoringError(null);
+    setRawInlineFilesDirty(false);
+  }
+
   function buildPrepareRequest(): PackagingPrepareRequest {
+    const platformFiles =
+      rawInlineFilesDirty && rawInlineFiles.trim() !== ''
+        ? parseInlineFiles(rawInlineFiles)
+        : filesToRecord(authoringFiles);
+
     return {
       source:
         sourceType === 'platform_authoring'
           ? {
               type: sourceType,
-              files: parseInlineFiles(inlineFiles),
+              files: platformFiles,
             }
           : {
               type: sourceType,
@@ -252,6 +461,16 @@ export function ImportPage() {
   }
 
   async function handlePrepare() {
+    if (sourceType === 'platform_authoring' && authoringError) {
+      setOperationState({
+        loading: false,
+        error: authoringError,
+        errorDetail: createLocalRequestError(authoringError),
+        success: null,
+      });
+      return;
+    }
+
     setOperationState({
       loading: 'prepare',
       error: null,
@@ -553,7 +772,7 @@ export function ImportPage() {
             <article className="console-signal">
               <span>发布交接</span>
               <strong>{releaseHandoffPath ? 'armed' : 'idle'}</strong>
-              <p>{releaseHandoffPath ? 'pack 结果已经能直接带到 release review。' : '完成 pack 后才会开放下游 handoff。'}</p>
+              <p>{releaseHandoffPath ? 'pack 结果已就绪，下一步是下载 bundle、发布到 registry，再写 release record。' : '完成 pack 后才会开放下游 handoff。'}</p>
             </article>
           </div>
 
@@ -567,14 +786,135 @@ export function ImportPage() {
             </label>
 
             {sourceType === 'platform_authoring' ? (
-              <label className="field">
-                <span>内联文件 JSON</span>
-                <textarea
-                  className="code-field"
-                  onChange={(event) => setInlineFiles(event.target.value)}
-                  value={inlineFiles}
-                />
-              </label>
+              <div className="authoring-editor">
+                <div className="authoring-editor__header">
+                  <div>
+                    <strong>作者输入</strong>
+                    <p>不要手写 `files` JSON。先选模板，再用文件面板补内容。</p>
+                  </div>
+                  <label className="field">
+                    <span>模板</span>
+                    <select
+                      aria-label="模板"
+                      onChange={(event) => resetAuthoringTemplate(event.target.value as AuthoringTemplateId)}
+                      value={authoringTemplate}
+                    >
+                      {Object.entries(AUTHORING_TEMPLATES).map(([key, template]) => (
+                        <option key={key} value={key}>
+                          {template.label} · {template.description}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <div className="authoring-editor__layout">
+                  <div className="authoring-editor__files">
+                    <label className="field">
+                      <span>新文件路径</span>
+                      <input
+                        aria-label="新文件路径"
+                        onChange={(event) => setNewAuthoringPath(event.target.value)}
+                        placeholder="例如 docs/README.md"
+                        value={newAuthoringPath}
+                      />
+                    </label>
+                    <button className="button button--secondary" onClick={handleAddAuthoringFile} type="button">
+                      添加文件
+                    </button>
+
+                    <div className="list-stack">
+                      {authoringFiles.map((file) => (
+                        <div className="authoring-file-row" key={file.path}>
+                          <button
+                            className={
+                              file.path === selectedAuthoringFile?.path
+                                ? 'button button--secondary authoring-file-row__select authoring-file-row__select--active'
+                                : 'button button--ghost authoring-file-row__select'
+                            }
+                            onClick={() => {
+                              setSelectedAuthoringPath(file.path);
+                              setAuthoringError(null);
+                            }}
+                            type="button"
+                          >
+                            {file.path}
+                          </button>
+                          {!file.locked ? (
+                            <button
+                              className="button button--ghost"
+                              onClick={() => handleDeleteAuthoringFile(file.path)}
+                              type="button"
+                            >
+                              删除 {file.path}
+                            </button>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="authoring-editor__content">
+                    <label className="field">
+                      <span>当前文件路径</span>
+                      <input aria-label="当前文件路径" readOnly value={selectedAuthoringFile?.path || ''} />
+                    </label>
+                    <label className="field">
+                      <span>当前文件内容</span>
+                      <textarea
+                        aria-label="当前文件内容"
+                        className="code-field"
+                        onChange={(event) => handleAuthoringContentChange(event.target.value)}
+                        value={selectedAuthoringFile?.content || ''}
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="authoring-editor__advanced">
+                  <button
+                    className="button button--ghost"
+                    onClick={() => setShowAdvancedFiles((current) => !current)}
+                    type="button"
+                  >
+                    {showAdvancedFiles ? '收起高级模式 / 原始 files JSON' : '高级模式 / 原始 files JSON'}
+                  </button>
+                  {showAdvancedFiles ? (
+                    <div className="stack-column">
+                      <label className="field">
+                        <span>原始 files JSON</span>
+                        <textarea
+                          className="code-field"
+                          onChange={(event) => {
+                            setRawInlineFiles(event.target.value);
+                            setRawInlineFilesDirty(true);
+                            setAuthoringError(null);
+                          }}
+                          value={advancedInlineFilesValue}
+                        />
+                      </label>
+                      <div className="authoring-actions">
+                        <button
+                          className="button button--secondary"
+                          onClick={() => {
+                            try {
+                              applyRawInlineFiles();
+                            } catch (error: unknown) {
+                              setAuthoringError(error instanceof Error ? error.message : '原始 files JSON 无法解析。');
+                            }
+                          }}
+                          type="button"
+                        >
+                          应用 JSON 到文件列表
+                        </button>
+                        <span className="support-copy">这里只给调试和粘贴现有 payload 用，默认还是走可视文件编辑。</span>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+
+                {authoringError ? <div className="error-box">{authoringError}</div> : null}
+              </div>
             ) : (
               <>
                 <label className="field">
@@ -590,7 +930,7 @@ export function ImportPage() {
                     <span>Git 引用</span>
                     <input
                       onChange={(event) => setSourceRef(event.target.value)}
-                      placeholder="main / release / commit sha"
+                      placeholder="留空使用默认分支；也可填 release / commit sha"
                       value={sourceRef}
                     />
                   </label>
@@ -641,12 +981,12 @@ export function ImportPage() {
 
             <MutationResultPanel result={mutationResult} />
 
-            <div className="action-row">
-              <div className="action-row__copy">
-                <strong>执行下一步打包动作</strong>
-                <p>先 prepare，再 validate，最后 pack。按钮状态会随链路自动变化，不需要你自己记步骤。</p>
+              <div className="action-row">
+                <div className="action-row__copy">
+                  <strong>执行下一步打包动作</strong>
+                  <p>先 prepare，再 validate，最后 pack。pack 只会产出 bundle；真正发布到 npm registry 仍然需要你手动执行。</p>
+                </div>
               </div>
-            </div>
             <div className="button-row">
               <PermissionGate
                 fallback={<div className="empty-box">当前会话对 `packaging.prepare` 只有只读权限。</div>}
@@ -797,6 +1137,10 @@ export function ImportPage() {
                     <strong>Validate 是放行闸门</strong>
                     <p>只要 validate 还没有过，就不要把 bundle 当成可发布制品看待。</p>
                   </article>
+                  <article className="list-card">
+                    <strong>Pack 不等于已发布</strong>
+                    <p>这个页面目前只负责产出 bundle 和 release handoff，不会替你执行 `npm publish`。</p>
+                  </article>
                 </div>
               </SurfaceCard>
 
@@ -824,7 +1168,7 @@ export function ImportPage() {
                     <div className="list-card__head">
                       <div>
                         <strong>发布交接</strong>
-                        <span>{releaseHandoffPath ? '下游链接已就绪' : 'pack 还没完成'}</span>
+                        <span>{releaseHandoffPath ? 'bundle 下载与 release handoff 已就绪' : 'pack 还没完成'}</span>
                       </div>
                       <StatusPill tone={releaseHandoffPath ? 'good' : 'warn'}>{releaseHandoffPath ? '已就绪' : '空闲'}</StatusPill>
                     </div>
@@ -889,11 +1233,17 @@ export function ImportPage() {
                       <StatusPill tone="good">pack 已可进入发布交接</StatusPill>
                     </div>
                     <p className="support-copy">
-                      这里不再让作者自己抄 digest / components。前端会把 pack 结果直接带到 release review 或更上层 authoring flow。
+                      这里还没有替你执行 npm publish，下载 bundle 并发布到目标 registry 后，再进入 release record。
                     </p>
                     <div className="authoring-actions">
+                      <a
+                        className="button button--secondary"
+                        href={getPackagingBundleDownloadPath(packResult.workspacePath, packResult.packageName, packResult.version)}
+                      >
+                        下载 bundle
+                      </a>
                       <Link className="button button--primary" to={releaseHandoffPath}>
-                        继续进入 release record
+                        发布后进入 release record
                       </Link>
                       <Link className="button button--secondary" to={authoringHandoffPath}>
                         打开作者流程

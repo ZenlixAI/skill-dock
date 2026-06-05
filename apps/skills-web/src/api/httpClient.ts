@@ -73,6 +73,7 @@ function isNetworkMessage(message: string) {
 export function normalizeRegistryError(input: {
   status?: number;
   message: string;
+  code?: string;
   requestId?: string;
 }): RegistryRequestError {
   if (input.status === 401 || input.status === 403) {
@@ -84,6 +85,13 @@ export function normalizeRegistryError(input: {
   }
 
   if (input.status === 404) {
+    if (input.code === 'registry_version_not_found') {
+      return {
+        kind: 'not_found',
+        message: 'Registry does not contain this package version yet. Publish the packed bundle to the npm registry, then retry release-record.',
+        requestId: input.requestId,
+      };
+    }
     return {
       kind: 'not_found',
       message: 'The requested registry resource was not found.',
@@ -119,6 +127,7 @@ export function normalizeThrownRegistryError(error: unknown): RegistryRequestErr
     return normalizeRegistryError({
       status: error.status,
       message: error.message,
+      code: error.code,
       requestId: error.requestId,
     });
   }
