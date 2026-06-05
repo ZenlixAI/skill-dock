@@ -32,6 +32,12 @@ describe('authoring draft', () => {
     });
   });
 
+  it('rejects non-object json values', () => {
+    expect(() => parseAuthoringJson('"text"')).toThrow(
+      'Inline files 必须是 JSON object，例如 {"commands/run.txt":"echo hi"}。'
+    );
+  });
+
   it('serializes files back into the request record shape', () => {
     const draft = createDefaultAuthoringDraft('workflow');
 

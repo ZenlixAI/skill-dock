@@ -29,7 +29,11 @@ export function draftFilesToRecord(files: AuthoringFile[]) {
 }
 
 export function parseAuthoringJson(raw: string) {
-  const parsed = JSON.parse(raw) as Record<string, unknown>;
+  const parsed = JSON.parse(raw.trim()) as unknown;
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Inline files 必须是 JSON object，例如 {"commands/run.txt":"echo hi"}。');
+  }
+
   return Object.fromEntries(
     Object.entries(parsed).map(([path, value]) => {
       if (typeof value !== 'string') {
