@@ -11,12 +11,17 @@ import {
   inferMutationFailureOutcome,
   MutationResultPanel,
   readMutationResultSearchParams,
-  writeMutationResultSearchParams,
 } from '../components/MutationResultPanel';
 import { PermissionGate } from '../components/PermissionGate';
 import { SectionHeading } from '../components/SectionHeading';
 import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
+import {
+  buildCatalogMutationResult,
+  createMutationState,
+  type CatalogMutationState,
+  persistCatalogMutation,
+} from '../features/catalog-mutations/useCatalogMutation';
 import { useAsyncData } from '../lib/useAsyncData';
 import { formatDate } from '../lib/format';
 import { buildReleaseHandoffPath, readReleaseHandoff } from '../lib/releaseHandoff';
@@ -46,15 +51,9 @@ export function VersionDetailPage() {
   const [replacementRecommendation, setReplacementRecommendation] = useState('');
   const [governanceConfirmed, setGovernanceConfirmed] = useState(false);
   const [activityLog, setActivityLog] = useState<VersionLogEntry[]>([]);
-  const [actionState, setActionState] = useState<{
-    loading: false | 'release' | 'governance';
-    error: string | null;
-    success: string | null;
-  }>({
-    loading: false,
-    error: null,
-    success: null,
-  });
+  const [actionState, setActionState] = useState<CatalogMutationState<'release' | 'governance'>>(
+    createMutationState()
+  );
 
   const detail = useAsyncData(() => getVersionDetail(decodedPackage, version), [decodedPackage, version, refreshKey]);
   const { session, hasCapability, getPosture, getPostureLabel } = useRegistrySession();
@@ -102,6 +101,11 @@ export function VersionDetailPage() {
     version,
     actor: session.data?.actor ?? null,
   });
+  const mutationDefaults = {
+    packageName: decodedPackage,
+    version,
+    actor: session.data?.actor ?? null,
+  };
 
   function appendLog(action: VersionLogEntry['action'], outcome: VersionLogEntry['outcome'], summary: string) {
     setActivityLog((current) => [
@@ -115,28 +119,17 @@ export function VersionDetailPage() {
     ]);
   }
 
-  function persistMutationResult(result: {
-    action: string;
-    outcome: 'succeeded' | 'failed' | 'forbidden' | 'unauthorized';
-    message: string;
-    requestId?: string | null;
-  }) {
+  function persistMutationResult(result: Parameters<typeof persistCatalogMutation>[1]) {
     setSearchParams(
-      writeMutationResultSearchParams(searchParams, {
-        ...result,
-        actor: session.data?.actor ?? null,
-        packageName: decodedPackage,
-        version,
-      }),
+      persistCatalogMutation(searchParams, result),
       { replace: true }
     );
   }
 
   async function handleReleaseRecord() {
     setActionState({
+      ...createMutationState<'release' | 'governance'>(),
       loading: 'release',
-      error: null,
-      success: null,
     });
     try {
       const response = await createReleaseRecord(decodedPackage, version, {
@@ -144,20 +137,17 @@ export function VersionDetailPage() {
         manifestDigest: manifestDigest.trim() || undefined,
         components: releaseComponents.length ? releaseComponents : undefined,
       });
+      const successMessage = response.created
+        ? '已创建新的 release record。'
+        : 'release record 已存在，后端返回幂等重放结果。';
       setActionState({
         loading: false,
         error: null,
-        success: response.created
-          ? '已创建新的 release record。'
-          : 'release record 已存在，后端返回幂等重放结果。',
+        success: successMessage,
       });
-      persistMutationResult({
-        action: 'release-record',
-        outcome: 'succeeded',
-        message: response.created
-          ? '已创建新的 release record。'
-          : 'release record 已存在，后端返回幂等重放结果。',
-      });
+      persistMutationResult(
+        buildCatalogMutationResult('release-record', 'succeeded', successMessage, mutationDefaults)
+      );
       appendLog(
         'release-record',
         'succeeded',
@@ -173,20 +163,19 @@ export function VersionDetailPage() {
         error: normalizedError.message,
         success: null,
       });
-      persistMutationResult({
-        action: 'release-record',
-        outcome,
-        message: normalizedError.message,
-        requestId: normalizedError.requestId,
-      });
+      persistMutationResult(
+        buildCatalogMutationResult('release-record', outcome, normalizedError.message, {
+          ...mutationDefaults,
+          requestId: normalizedError.requestId,
+        })
+      );
     }
   }
 
   async function handleVersionGovernance() {
     setActionState({
+      ...createMutationState<'release' | 'governance'>(),
       loading: 'governance',
-      error: null,
-      success: null,
     });
     try {
       const response = await applyVersionGovernanceChange(decodedPackage, version, {
@@ -195,20 +184,17 @@ export function VersionDetailPage() {
         replacementRecommendation:
           replacementRecommendation.trim() === '' ? undefined : replacementRecommendation.trim(),
       });
+      const successMessage = `已提交 ${response.record.action}。当前 version state：${
+        response.resultingState.versionStatus || response.record.action
+      }`;
       setActionState({
         loading: false,
         error: null,
-        success: `已提交 ${response.record.action}。当前 version state：${
-          response.resultingState.versionStatus || response.record.action
-        }`,
+        success: successMessage,
       });
-      persistMutationResult({
-        action: response.record.action,
-        outcome: 'succeeded',
-        message: `已提交 ${response.record.action}。当前 version state：${
-          response.resultingState.versionStatus || response.record.action
-        }`,
-      });
+      persistMutationResult(
+        buildCatalogMutationResult(response.record.action, 'succeeded', successMessage, mutationDefaults)
+      );
       appendLog('governance', 'succeeded', `已应用 ${response.record.action} 治理动作。`);
       setRefreshKey((current) => current + 1);
     } catch (error: unknown) {
@@ -220,12 +206,12 @@ export function VersionDetailPage() {
         error: normalizedError.message,
         success: null,
       });
-      persistMutationResult({
-        action: governanceAction,
-        outcome,
-        message: normalizedError.message,
-        requestId: normalizedError.requestId,
-      });
+      persistMutationResult(
+        buildCatalogMutationResult(governanceAction, outcome, normalizedError.message, {
+          ...mutationDefaults,
+          requestId: normalizedError.requestId,
+        })
+      );
     }
   }
 

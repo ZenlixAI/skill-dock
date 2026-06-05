@@ -12,12 +12,17 @@ import {
   inferMutationFailureOutcome,
   MutationResultPanel,
   readMutationResultSearchParams,
-  writeMutationResultSearchParams,
 } from '../components/MutationResultPanel';
 import { PermissionGate } from '../components/PermissionGate';
 import { SectionHeading } from '../components/SectionHeading';
 import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
+import {
+  buildCatalogMutationResult,
+  createMutationState,
+  type CatalogMutationState,
+  persistCatalogMutation,
+} from '../features/catalog-mutations/useCatalogMutation';
 import { useAsyncData } from '../lib/useAsyncData';
 import { formatDate } from '../lib/format';
 import { useRegistrySession } from '../session/SessionProvider';
@@ -38,15 +43,7 @@ export function SkillDetailPage() {
   const [retireReason, setRetireReason] = useState('');
   const [retireConfirmed, setRetireConfirmed] = useState(false);
   const [activityLog, setActivityLog] = useState<SkillLogEntry[]>([]);
-  const [submitState, setSubmitState] = useState<{
-    loading: boolean;
-    error: string | null;
-    success: string | null;
-  }>({
-    loading: false,
-    error: null,
-    success: null,
-  });
+  const [submitState, setSubmitState] = useState<CatalogMutationState>(createMutationState());
 
   const detail = useAsyncData(() => getSkillDetail(decodedPackage), [decodedPackage, refreshKey]);
   const versionList = useAsyncData(() => getSkillVersions(decodedPackage), [decodedPackage, refreshKey]);
@@ -77,6 +74,11 @@ export function SkillDetailPage() {
     version: null,
     actor: session.data?.actor ?? null,
   });
+  const mutationDefaults = {
+    packageName: decodedPackage,
+    version: null,
+    actor: session.data?.actor ?? null,
+  };
 
   function appendLog(outcome: SkillLogEntry['outcome'], summary: string) {
     setActivityLog((current) => [
@@ -90,44 +92,30 @@ export function SkillDetailPage() {
     ]);
   }
 
-  function persistMutationResult(result: {
-    action: string;
-    outcome: 'succeeded' | 'failed' | 'forbidden' | 'unauthorized';
-    message: string;
-    requestId?: string | null;
-  }) {
+  function persistMutationResult(result: Parameters<typeof persistCatalogMutation>[1]) {
     setSearchParams(
-      writeMutationResultSearchParams(searchParams, {
-        ...result,
-        actor: session.data?.actor ?? null,
-        packageName: decodedPackage,
-        version: null,
-      }),
+      persistCatalogMutation(searchParams, result),
       { replace: true }
     );
   }
 
   async function handleRetireSkill() {
     setSubmitState({
+      ...createMutationState(),
       loading: true,
-      error: null,
-      success: null,
     });
     try {
       const response = await applySkillGovernanceChange(decodedPackage, {
         action: 'retire',
         reason: retireReason.trim(),
       });
+      const successMessage = `已提交 skill retire。当前状态：${response.resultingState.status || 'retired'}`;
       setSubmitState({
         loading: false,
         error: null,
-        success: `已提交 skill retire。当前状态：${response.resultingState.status || 'retired'}`,
+        success: successMessage,
       });
-      persistMutationResult({
-        action: 'retire',
-        outcome: 'succeeded',
-        message: `已提交 skill retire。当前状态：${response.resultingState.status || 'retired'}`,
-      });
+      persistMutationResult(buildCatalogMutationResult('retire', 'succeeded', successMessage, mutationDefaults));
       appendLog('succeeded', `已退役 ${decodedPackage}。`);
       setRefreshKey((current) => current + 1);
     } catch (error: unknown) {
@@ -139,12 +127,12 @@ export function SkillDetailPage() {
         error: normalizedError.message,
         success: null,
       });
-      persistMutationResult({
-        action: 'retire',
-        outcome,
-        message: normalizedError.message,
-        requestId: normalizedError.requestId,
-      });
+      persistMutationResult(
+        buildCatalogMutationResult('retire', outcome, normalizedError.message, {
+          ...mutationDefaults,
+          requestId: normalizedError.requestId,
+        })
+      );
     }
   }
 
