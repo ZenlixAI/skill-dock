@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { existsSync, rmSync, mkdirSync, writeFileSync, readdirSync } from 'fs';
+import { existsSync, rmSync, mkdirSync, writeFileSync, readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { runCli, runCliWithInput } from './test-utils.js';
@@ -297,6 +297,66 @@ description: Demo skill
       const result = runCli(['remove', '@company.skill/my-skill', '-y'], testDir);
       expect(result.stdout).toContain('No matching skills');
       expect(existsSync(packageDir)).toBe(true);
+    });
+
+    it('does not delete a tracked lock entry when removing an orphaned conflicting canonical skill', () => {
+      const orphanDir = join(skillsDir, 'pdf skill');
+      mkdirSync(orphanDir, { recursive: true });
+      writeFileSync(
+        join(orphanDir, 'SKILL.md'),
+        `---
+name: pdf skill
+description: Untracked conflicting install
+---
+
+# pdf skill
+`
+      );
+
+      const trackedDir = join(skillsDir, 'pdf-skill');
+      mkdirSync(trackedDir, { recursive: true });
+      writeFileSync(
+        join(trackedDir, 'SKILL.md'),
+        `---
+name: pdf-skill
+description: Tracked install
+---
+
+# pdf-skill
+`
+      );
+
+      writeFileSync(
+        join(testDir, 'skills-lock.json'),
+        JSON.stringify(
+          {
+            version: 1,
+            skills: {
+              'pdf-skill': {
+                sourceType: 'local',
+                installName: 'pdf-skill',
+                computedHash: 'tracked-hash',
+              },
+            },
+          },
+          null,
+          2
+        )
+      );
+
+      const result = runCli(['remove', 'pdf skill', '-y'], testDir);
+      expect(result.stdout).toContain('Successfully removed');
+      expect(existsSync(orphanDir)).toBe(false);
+      expect(existsSync(trackedDir)).toBe(true);
+
+      const parsedLock = JSON.parse(readFileSync(join(testDir, 'skills-lock.json'), 'utf-8'));
+      expect(parsedLock.skills['pdf-skill']).toEqual(
+        expect.objectContaining({
+          sourceType: 'local',
+          installName: 'pdf-skill',
+          computedHash: 'tracked-hash',
+        })
+      );
     });
 
     it('should list skills to remove before confirmation', () => {
