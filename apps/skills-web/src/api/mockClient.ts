@@ -1,10 +1,6 @@
 import type {
-  AuditEventRecord,
-  CuratedSkillSummary,
   GovernanceChangeResponse,
   GovernanceRecord,
-  ImportReport,
-  InstallTarget,
   ListAuditFilters,
   ListGovernanceFilters,
   ListSkillsFilters,
@@ -18,356 +14,23 @@ import type {
   RegistryClientConfig,
   ReleaseRecordInput,
   ReleaseRecordResult,
-  SkillDetail,
   SkillGovernanceChangeInput,
-  SkillsPage,
-  SkillSummary,
-  SkillVersionDetail,
   SkillVersionSummary,
   VersionGovernanceChangeInput,
-  WarningDetail,
 } from './types';
-
-const skills: SkillSummary[] = [
-  {
-    packageName: '@platform.skill/pdf-skill',
-    displayName: 'PDF Skill',
-    description: 'OCR + extraction + post-processing workflow',
-    sourceType: 'imported',
-    status: 'active',
-    latestVersion: '1.2.0',
-    latestVersionStatus: 'published',
-    updatedAt: '2026-06-02T20:14:00Z',
-  },
-  {
-    packageName: '@platform.skill/code-review',
-    displayName: 'Code Review',
-    description: 'Review heuristics and checklist pack',
-    sourceType: 'platform_created',
-    status: 'active',
-    latestVersion: '0.8.4',
-    latestVersionStatus: 'published',
-    updatedAt: '2026-06-02T12:05:00Z',
-  },
-  {
-    packageName: '@platform.skill/web-scrape',
-    displayName: 'Web Scrape',
-    description: 'Structured website collection workflow',
-    sourceType: 'imported',
-    status: 'active',
-    latestVersion: '2.0.1',
-    latestVersionStatus: 'deprecated',
-    updatedAt: '2026-06-01T09:10:00Z',
-  },
-  {
-    packageName: '@platform.skill/legacy-diff',
-    displayName: 'Legacy Diff',
-    description: 'Historical diffing helper kept for traceability',
-    sourceType: 'native',
-    status: 'retired',
-    latestVersion: '0.5.2',
-    latestVersionStatus: 'deprecated',
-    updatedAt: '2026-05-28T03:35:00Z',
-  },
-];
-
-const curatedSkills: CuratedSkillSummary[] = [
-  { ...skills[0], curationReason: 'import workflow demo' },
-  { ...skills[1], curationReason: 'platform-authored sample' },
-  { ...skills[2], curationReason: 'governance timeline sample' },
-];
-
-const versions: Record<string, SkillVersionSummary[]> = {
-  '@platform.skill/pdf-skill': [
-    {
-      packageName: '@platform.skill/pdf-skill',
-      version: '1.2.0',
-      versionStatus: 'published',
-      installPolicy: 'resolvable',
-      publishedAt: '2026-06-02T20:14:00Z',
-    },
-    {
-      packageName: '@platform.skill/pdf-skill',
-      version: '1.1.1',
-      versionStatus: 'published',
-      installPolicy: 'resolvable',
-      publishedAt: '2026-05-27T09:42:00Z',
-    },
-    {
-      packageName: '@platform.skill/pdf-skill',
-      version: '1.0.0',
-      versionStatus: 'deprecated',
-      installPolicy: 'resolvable',
-      publishedAt: '2026-05-14T04:18:00Z',
-    },
-  ],
-  '@platform.skill/code-review': [
-    {
-      packageName: '@platform.skill/code-review',
-      version: '0.8.4',
-      versionStatus: 'published',
-      installPolicy: 'resolvable',
-      publishedAt: '2026-06-02T12:05:00Z',
-    },
-  ],
-  '@platform.skill/web-scrape': [
-    {
-      packageName: '@platform.skill/web-scrape',
-      version: '2.0.1',
-      versionStatus: 'deprecated',
-      installPolicy: 'resolvable',
-      publishedAt: '2026-06-01T09:10:00Z',
-    },
-    {
-      packageName: '@platform.skill/web-scrape',
-      version: '1.9.0',
-      versionStatus: 'yanked',
-      installPolicy: 'blocked',
-      publishedAt: '2026-05-24T08:00:00Z',
-    },
-  ],
-  '@platform.skill/legacy-diff': [
-    {
-      packageName: '@platform.skill/legacy-diff',
-      version: '0.5.2',
-      versionStatus: 'deprecated',
-      installPolicy: 'blocked',
-      publishedAt: '2026-05-28T03:35:00Z',
-    },
-  ],
-};
-
-const governance: GovernanceRecord[] = [
-  {
-    id: 'gov_01',
-    targetType: 'version',
-    packageName: '@platform.skill/web-scrape',
-    version: '1.9.0',
-    action: 'yank',
-    reason: 'security issue',
-    replacementRecommendation: '2.0.1',
-    changedBy: 'svc-publisher',
-    changedAt: '2026-06-02T18:56:00Z',
-  },
-  {
-    id: 'gov_02',
-    targetType: 'skill',
-    packageName: '@platform.skill/legacy-diff',
-    action: 'retire',
-    reason: 'merged into a newer package set',
-    changedBy: 'user_214',
-    changedAt: '2026-06-02T15:12:00Z',
-  },
-  {
-    id: 'gov_03',
-    targetType: 'version',
-    packageName: '@platform.skill/pdf-skill',
-    version: '1.0.0',
-    action: 'deprecate',
-    reason: 'replacement available',
-    replacementRecommendation: '1.2.0',
-    changedBy: 'svc-publisher',
-    changedAt: '2026-06-01T12:20:00Z',
-  },
-];
-
-const auditEvents: AuditEventRecord[] = [
-  {
-    id: 'aud_01',
-    requestId: 'req_01',
-    traceId: 'trace_01',
-    action: 'release.record',
-    actor: 'svc-publisher',
-    role: 'publisher',
-    authMechanism: 'header',
-    authDecision: 'allowed',
-    endpoint: '/api/v1/skills/%40platform.skill%2Fpdf-skill/versions/1.2.0/release-record',
-    method: 'PUT',
-    packageName: '@platform.skill/pdf-skill',
-    version: '1.2.0',
-    outcome: 'succeeded',
-    statusCode: 201,
-    details: {
-      created: true,
-      idempotentReplay: false,
-    },
-    createdAt: '2026-06-02T20:15:00Z',
-  },
-  {
-    id: 'aud_02',
-    requestId: 'req_02',
-    traceId: 'trace_02',
-    action: 'packaging.prepare',
-    actor: 'svc-publisher',
-    role: 'publisher',
-    authMechanism: 'header',
-    authDecision: 'allowed',
-    endpoint: '/api/v1/skill-packaging/prepare',
-    method: 'POST',
-    packageName: '@platform.skill/pdf-skill',
-    version: '1.2.0',
-    outcome: 'succeeded',
-    statusCode: 200,
-    details: {
-      sourceType: 'git',
-    },
-    createdAt: '2026-06-02T20:12:00Z',
-  },
-  {
-    id: 'aud_03',
-    requestId: 'req_03',
-    traceId: 'trace_03',
-    action: 'governance.version',
-    actor: 'svc-publisher',
-    role: 'publisher',
-    authMechanism: 'header',
-    authDecision: 'allowed',
-    endpoint: '/api/v1/skills/%40platform.skill%2Fweb-scrape/versions/1.9.0/governance-changes',
-    method: 'POST',
-    packageName: '@platform.skill/web-scrape',
-    version: '1.9.0',
-    outcome: 'succeeded',
-    statusCode: 201,
-    details: {
-      action: 'yank',
-    },
-    createdAt: '2026-06-02T18:56:00Z',
-  },
-];
-
-const previewWarningDetails: WarningDetail[] = [
-  {
-    code: 'normalized_missing_capability_content',
-    severity: 'warning',
-    title: 'Generated placeholder capability content',
-    message:
-      'Imported source lacked commands/, scripts/, docs/ or manifest files, so the packager inserted docs/README.md to keep the bundle publishable.',
-    suggestedAction:
-      'Replace the placeholder with real capability content before treating this source as the long-term upstream truth.',
-  },
-  {
-    code: 'normalized_rewrote_package_json_identity',
-    severity: 'warning',
-    title: 'Rewrote package identity',
-    message:
-      'The upstream package.json declared a different name/version, so the internal target identity was rewritten during prepare.',
-    suggestedAction: 'Confirm that the internal package mapping is intentional and record it in the import audit trail.',
-  },
-];
-
-const previewImportReport: ImportReport = {
-  sourceType: 'git',
-  strictMode: false,
-  normalized: true,
-  generatedPackageJson: true,
-  generatedCapabilityPlaceholder: true,
-  rewrotePackageIdentity: true,
-  generatedPaths: ['package.json', 'docs/README.md'],
-  warningCodes: ['normalized_missing_capability_content', 'normalized_rewrote_package_json_identity'],
-};
-
-function delay<T>(value: T, ms = 120): Promise<T> {
-  return new Promise((resolve) => {
-    setTimeout(() => resolve(value), ms);
-  });
-}
-
-function nowISOString() {
-  return new Date().toISOString();
-}
-
-function nextAuditId() {
-  return `aud_${String(auditEvents.length + 1).padStart(2, '0')}`;
-}
-
-function nextGovernanceId() {
-  return `gov_${String(governance.length + 1).padStart(2, '0')}`;
-}
-
-function latestVersionSummary(packageName: string): SkillVersionSummary | undefined {
-  return versions[packageName]?.[0];
-}
-
-function paginateItems<T>(
-  items: T[],
-  options?: {
-    cursor?: string;
-    pageSize?: number;
-  }
-): SkillsPage<T> {
-  const pageSize = options?.pageSize ?? 10;
-  const startIndex = options?.cursor ? Number.parseInt(options.cursor, 10) || 0 : 0;
-  const pagedItems = items.slice(startIndex, startIndex + pageSize);
-  const nextIndex = startIndex + pagedItems.length;
-
-  return {
-    items: pagedItems,
-    pageInfo: {
-      hasNextPage: nextIndex < items.length,
-      nextCursor: nextIndex < items.length ? String(nextIndex) : null,
-    },
-  };
-}
-
-function buildInstallTarget(packageName: string, version?: string): InstallTarget {
-  const resolvedVersion = version || latestVersionSummary(packageName)?.version || '1.2.0';
-  const foundVersion =
-    versions[packageName]?.find((item) => item.version === resolvedVersion) ||
-    latestVersionSummary(packageName);
-  return {
-    packageName,
-    version: resolvedVersion,
-    npmRegistry: 'https://npm.internal.example.com',
-    tarballUrl: `https://npm.internal.example.com/${encodeURIComponent(packageName)}/-/${packageName.split('/').pop()}-${resolvedVersion}.tgz`,
-    integrity: 'sha512-0bf7e77d49a2d7...',
-    skillManifestDigest: 'sha256:1c65eab3e1fb04af11c5ff2e7c54a1f0',
-    versionStatus: foundVersion?.versionStatus || 'published',
-  };
-}
-
-function buildVersionDetail(packageName: string, version: string): SkillVersionDetail {
-  const summary =
-    versions[packageName]?.find((item) => item.version === version) ||
-    latestVersionSummary(packageName) ||
-    versions['@platform.skill/pdf-skill'][0];
-
-  return {
-    ...summary,
-    registry: {
-      npmRegistry: 'https://npm.internal.example.com',
-      tarballUrl: `https://npm.internal.example.com/${encodeURIComponent(packageName)}/-/${packageName.split('/').pop()}-${summary.version}.tgz`,
-      integrity: 'sha512-0bf7e77d49a2d7...',
-      shasum: 'abc123def456',
-      publishedAt: summary.publishedAt,
-      distTags: summary.versionStatus === 'published' ? ['latest'] : ['legacy'],
-    },
-    bundle: {
-      skillManifestDigest: 'sha256:1c65eab3e1fb04af11c5ff2e7c54a1f0',
-      components: ['commands', 'scripts'],
-    },
-  };
-}
-
-function recordAudit(event: Omit<AuditEventRecord, 'id' | 'requestId' | 'traceId' | 'createdAt'>) {
-  auditEvents.unshift({
-    id: nextAuditId(),
-    requestId: `req_${Date.now()}`,
-    traceId: `trace_${Date.now()}`,
-    createdAt: nowISOString(),
-    ...event,
-  });
-}
-
-function setLatestSkillState(packageName: string) {
-  const skill = skills.find((item) => item.packageName === packageName);
-  const latest = latestVersionSummary(packageName);
-  if (!skill || !latest) {
-    return;
-  }
-  skill.latestVersion = latest.version;
-  skill.latestVersionStatus = latest.versionStatus;
-  skill.updatedAt = nowISOString();
-}
+import {
+  buildInstallTarget,
+  buildVersionDetail,
+  createMockState,
+  curatedSkills,
+  delay,
+  nextGovernanceId,
+  paginateItems,
+  previewImportReport,
+  previewWarningDetails,
+  recordAudit,
+  setLatestSkillState,
+} from './mockState';
 
 const config: RegistryClientConfig = {
   mode: 'mock',
@@ -376,6 +39,12 @@ const config: RegistryClientConfig = {
   actor: null,
   hasToken: false,
 };
+
+const state = createMockState();
+
+function nowISOString() {
+  return new Date().toISOString();
+}
 
 export const mockClient: RegistryApiClient = {
   getConfig() {
@@ -412,7 +81,7 @@ export const mockClient: RegistryApiClient = {
 
   async listSkills(filters?: ListSkillsFilters) {
     const query = filters?.query?.trim().toLowerCase() || '';
-    const filtered = skills.filter((skill) => {
+    const filtered = state.skills.filter((skill) => {
       const matchesQuery =
         query === '' ||
         skill.packageName.toLowerCase().includes(query) ||
@@ -437,7 +106,7 @@ export const mockClient: RegistryApiClient = {
   },
 
   async getSkillDetail(packageName: string) {
-    const skill = skills.find((item) => item.packageName === packageName) || skills[0];
+    const skill = state.skills.find((item) => item.packageName === packageName) || state.skills[0];
     return delay({
       ...skill,
       createdAt: '2026-05-20T02:00:00Z',
@@ -446,7 +115,7 @@ export const mockClient: RegistryApiClient = {
 
   async getSkillVersions(packageName: string, options?: { cursor?: string; pageSize?: number }) {
     return delay(
-      paginateItems(versions[packageName] || versions['@platform.skill/pdf-skill'], {
+      paginateItems(state.versions[packageName] || state.versions['@platform.skill/pdf-skill'], {
         cursor: options?.cursor,
         pageSize: options?.pageSize ?? 20,
       })
@@ -454,15 +123,15 @@ export const mockClient: RegistryApiClient = {
   },
 
   async getInstallTarget(packageName: string, version?: string) {
-    return delay(buildInstallTarget(packageName, version));
+    return delay(buildInstallTarget(state, packageName, version));
   },
 
   async getVersionDetail(packageName: string, version: string) {
-    return delay(buildVersionDetail(packageName, version));
+    return delay(buildVersionDetail(state, packageName, version));
   },
 
   async listGovernanceChanges(filters?: ListGovernanceFilters) {
-    const filtered = governance.filter((item) => {
+    const filtered = state.governance.filter((item) => {
       if (filters?.packageName && item.packageName !== filters.packageName) {
         return false;
       }
@@ -483,7 +152,7 @@ export const mockClient: RegistryApiClient = {
   },
 
   async listAuditEvents(filters?: ListAuditFilters) {
-    const filtered = auditEvents.filter((item) => {
+    const filtered = state.auditEvents.filter((item) => {
       if (filters?.action && item.action !== filters.action) {
         return false;
       }
@@ -531,7 +200,7 @@ export const mockClient: RegistryApiClient = {
       },
       errors: [],
     };
-    recordAudit({
+    recordAudit(state, {
       action: 'packaging.prepare',
       actor: 'web-ui',
       role: 'publisher',
@@ -563,7 +232,7 @@ export const mockClient: RegistryApiClient = {
       importReport: previewImportReport,
       errors: [],
     };
-    recordAudit({
+    recordAudit(state, {
       action: 'packaging.validate',
       actor: 'web-ui',
       role: 'publisher',
@@ -596,7 +265,7 @@ export const mockClient: RegistryApiClient = {
       importReport: previewImportReport,
       errors: [],
     };
-    recordAudit({
+    recordAudit(state, {
       action: 'packaging.pack',
       actor: 'web-ui',
       role: 'publisher',
@@ -616,7 +285,7 @@ export const mockClient: RegistryApiClient = {
   },
 
   async cleanupPackagingWorkspace(request) {
-    recordAudit({
+    recordAudit(state, {
       action: 'packaging.cleanup',
       actor: 'web-ui',
       role: 'publisher',
@@ -646,7 +315,7 @@ export const mockClient: RegistryApiClient = {
       versionStatus: 'published',
       installPolicy: 'resolvable',
     };
-    const existing = versions[packageName]?.find((item) => item.version === version);
+    const existing = state.versions[packageName]?.find((item) => item.version === version);
     if (!existing) {
       const newVersion: SkillVersionSummary = {
         packageName,
@@ -655,12 +324,12 @@ export const mockClient: RegistryApiClient = {
         installPolicy: 'resolvable',
         publishedAt: nowISOString(),
       };
-      versions[packageName] = [newVersion, ...(versions[packageName] || [])];
+      state.versions[packageName] = [newVersion, ...(state.versions[packageName] || [])];
       result.created = true;
       result.idempotentReplay = false;
     }
-    setLatestSkillState(packageName);
-    recordAudit({
+    setLatestSkillState(state, packageName);
+    recordAudit(state, {
       action: 'release.record',
       actor: 'web-ui',
       role: 'publisher',
@@ -683,7 +352,7 @@ export const mockClient: RegistryApiClient = {
   async applySkillGovernanceChange(packageName: string, input: SkillGovernanceChangeInput) {
     const changedAt = nowISOString();
     const record: GovernanceRecord = {
-      id: nextGovernanceId(),
+      id: nextGovernanceId(state),
       targetType: 'skill',
       packageName,
       action: input.action,
@@ -691,15 +360,15 @@ export const mockClient: RegistryApiClient = {
       changedBy: 'web-ui',
       changedAt,
     };
-    governance.unshift(record);
+    state.governance.unshift(record);
 
-    const skill = skills.find((item) => item.packageName === packageName);
+    const skill = state.skills.find((item) => item.packageName === packageName);
     if (skill) {
       skill.status = 'retired';
       skill.updatedAt = changedAt;
     }
 
-    recordAudit({
+    recordAudit(state, {
       action: 'governance.skill',
       actor: 'web-ui',
       role: 'publisher',
@@ -727,7 +396,7 @@ export const mockClient: RegistryApiClient = {
   async applyVersionGovernanceChange(packageName: string, version: string, input: VersionGovernanceChangeInput) {
     const changedAt = nowISOString();
     const record: GovernanceRecord = {
-      id: nextGovernanceId(),
+      id: nextGovernanceId(state),
       targetType: 'version',
       packageName,
       version,
@@ -737,9 +406,9 @@ export const mockClient: RegistryApiClient = {
       changedBy: 'web-ui',
       changedAt,
     };
-    governance.unshift(record);
+    state.governance.unshift(record);
 
-    const versionList = versions[packageName] || [];
+    const versionList = state.versions[packageName] || [];
     const target = versionList.find((item) => item.version === version);
     if (target) {
       target.versionStatus = input.action === 'yank' ? 'yanked' : 'deprecated';
@@ -747,9 +416,9 @@ export const mockClient: RegistryApiClient = {
         target.installPolicy = 'blocked';
       }
     }
-    setLatestSkillState(packageName);
+    setLatestSkillState(state, packageName);
 
-    recordAudit({
+    recordAudit(state, {
       action: 'governance.version',
       actor: 'web-ui',
       role: 'publisher',

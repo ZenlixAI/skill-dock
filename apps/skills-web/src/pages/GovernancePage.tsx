@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react';
-import { getSession, listGovernanceChanges } from '../api/client';
+import { listGovernanceChanges } from '../api/client';
 import { canPerformAction, hasPackageScope } from '../api/session';
 import type { GovernanceAction, GovernanceRecord, GovernanceTargetType } from '../api/types';
 import { SectionHeading } from '../components/SectionHeading';
 import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
 import { formatDate } from '../lib/format';
-import { useAsyncData } from '../lib/useAsyncData';
 import { usePaginatedCollection } from '../lib/usePaginatedCollection';
+import { useRegistrySession } from '../session/SessionProvider';
 
 type GovernanceLayer = {
   key: string;
@@ -44,7 +44,7 @@ function buildGovernanceLayers(records: GovernanceRecord[]): GovernanceLayer[] {
 }
 
 export function GovernancePage() {
-  const session = useAsyncData(() => getSession(), []);
+  const { session } = useRegistrySession();
   const [packageName, setPackageName] = useState('');
   const [targetType, setTargetType] = useState<GovernanceTargetType | ''>('');
   const [action, setAction] = useState<GovernanceAction | ''>('');
