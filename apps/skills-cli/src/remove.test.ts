@@ -359,6 +359,34 @@ description: Tracked install
       );
     });
 
+    it('removes a lock-only orphaned entry when the missing install is the only orphan reason', () => {
+      writeFileSync(
+        join(testDir, 'skills-lock.json'),
+        JSON.stringify(
+          {
+            version: 1,
+            skills: {
+              '@platform.skill/pdf-skill': {
+                sourceType: 'registry',
+                packageName: '@platform.skill/pdf-skill',
+                installName: 'pdf-skill',
+                version: '1.2.0',
+                computedHash: 'tracked-hash',
+              },
+            },
+          },
+          null,
+          2
+        )
+      );
+
+      const result = runCli(['remove', '@platform.skill/pdf-skill', '-y'], testDir);
+      expect(result.stdout).toContain('Successfully removed');
+
+      const parsedLock = JSON.parse(readFileSync(join(testDir, 'skills-lock.json'), 'utf-8'));
+      expect(parsedLock.skills['@platform.skill/pdf-skill']).toBeUndefined();
+    });
+
     it('should list skills to remove before confirmation', () => {
       // Answer 'n' to cancel the confirmation prompt
       const result = runCliWithInput(['remove', 'skill-one', 'skill-two'], 'n', testDir);

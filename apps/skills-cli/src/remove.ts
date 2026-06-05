@@ -58,7 +58,17 @@ async function removeRecordFromLock(
   isGlobal: boolean,
   cwd: string
 ): Promise<void> {
-  if (record.orphaned || !record.lockKey) {
+  if (!record.lockKey) {
+    return;
+  }
+
+  if (
+    record.orphaned &&
+    !(
+      record.orphanReasons.length === 1 &&
+      record.orphanReasons[0] === 'missing_canonical_path'
+    )
+  ) {
     return;
   }
 
