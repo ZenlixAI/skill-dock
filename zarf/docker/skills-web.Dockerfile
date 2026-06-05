@@ -1,4 +1,4 @@
-FROM truth-ai-registry.cn-hangzhou.cr.aliyuncs.com/base/node:22-bookworm AS build
+FROM truth-ai-registry.cn-hangzhou.cr.aliyuncs.com/node:22-bookworm AS build
 
 WORKDIR /src/apps/skills-web
 
@@ -8,7 +8,7 @@ RUN npm ci
 COPY apps/skills-web/ ./
 RUN npm run build
 
-FROM truth-ai-registry.cn-hangzhou.cr.aliyuncs.com/base/nginx:1.27-alpine AS runtime
+FROM truth-ai-registry.cn-hangzhou.cr.aliyuncs.com/nginx:1.27-alpine AS runtime
 
 ENV CATALOG_UPSTREAM=http://catalog:8080
 ENV CATALOG_AUTHORIZATION_HEADER=
