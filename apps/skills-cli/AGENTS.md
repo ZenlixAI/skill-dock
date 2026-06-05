@@ -38,7 +38,8 @@ src/
 ├── remove.ts         # Remove command implementation
 ├── remove.test.ts    # Remove command tests
 ├── agents.ts        # Agent definitions and detection
-├── installer.ts     # Skill installation logic (symlink/copy) + listInstalledSkills
+├── installer.ts     # Skill installation logic (symlink/copy)
+├── installed-view.ts # Installed-skill read model for list/remove/update
 ├── skills.ts        # Skill discovery and parsing
 ├── skill-lock.ts    # Global lock file management (~/.agents/.skill-lock.json)
 ├── local-lock.ts    # Local lock file management (skills-lock.json, checked in)
@@ -69,7 +70,6 @@ tests/
 ├── skill-matching.test.ts    # Tests for filterSkills (multi-word skill name matching)
 ├── source-parser.test.ts     # Tests for URL/path parsing
 ├── installer-symlink.test.ts # Tests for symlink installation
-├── list-installed.test.ts    # Tests for listing installed skills
 ├── skill-path.test.ts        # Tests for skill path handling
 ├── wellknown-provider.test.ts # Tests for well-known provider
 ├── xdg-config-paths.test.ts   # XDG global path handling tests

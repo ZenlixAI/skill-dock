@@ -3,6 +3,7 @@ import { existsSync, rmSync, mkdirSync, writeFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { runCli, runCliWithInput } from './test-utils.js';
+import type { InstalledSkillView } from './installed-view.ts';
 import { removeCommand } from './remove.ts';
 
 const {
@@ -16,7 +17,7 @@ const {
   trackMock,
 } = vi.hoisted(() => ({
   rmMock: vi.fn(() => Promise.resolve()),
-  listInstalledViewMock: vi.fn(() => Promise.resolve([])),
+  listInstalledViewMock: vi.fn<() => Promise<InstalledSkillView[]>>(() => Promise.resolve([])),
   removeSkillFromLockMock: vi.fn(() => Promise.resolve(true)),
   getSkillFromLockMock: vi.fn(() => Promise.resolve(null)),
   getAllLockedSkillsMock: vi.fn(() => Promise.resolve({})),
@@ -463,7 +464,7 @@ description: Demo skill
       const oldCwd = process.cwd();
       process.chdir(testDir);
 
-      listInstalledViewMock.mockResolvedValue([
+      const records: InstalledSkillView[] = [
         {
           packageName: '@platform.skill/pdf-skill',
           displayName: 'PDF Skill',
@@ -494,7 +495,8 @@ description: Demo skill
           orphaned: false,
           orphanReasons: [],
         },
-      ]);
+      ];
+      listInstalledViewMock.mockResolvedValue(records);
 
       try {
         await removeCommand(['@platform.skill/pdf-skill'], { yes: true });
@@ -516,7 +518,7 @@ description: Demo skill
       const oldCwd = process.cwd();
       process.chdir(testDir);
 
-      listInstalledViewMock.mockResolvedValue([
+      const records: InstalledSkillView[] = [
         {
           displayName: 'My Skill',
           installName: 'my-skill',
@@ -528,7 +530,8 @@ description: Demo skill
           orphaned: false,
           orphanReasons: [],
         },
-      ]);
+      ];
+      listInstalledViewMock.mockResolvedValue(records);
 
       try {
         await removeCommand(['@company.skill/my-skill'], { yes: true });

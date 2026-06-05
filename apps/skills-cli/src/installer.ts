@@ -17,8 +17,6 @@ import { homedir, platform } from 'os';
 import type { Skill, AgentType, RemoteSkill } from './types.ts';
 import { agents, isUniversalAgent } from './agents.ts';
 import { AGENTS_DIR, SKILLS_SUBDIR } from './constants.ts';
-import { listInstalledView } from './installed-view.ts';
-import { parseSkillMd } from './skills.ts';
 
 export type InstallMode = 'symlink' | 'copy';
 
@@ -623,67 +621,4 @@ export async function installRemoteSkillForAgent(
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
-}
-
-export interface InstalledSkill {
-  name: string;
-  description: string;
-  path: string;
-  canonicalPath: string;
-  scope: 'project' | 'global';
-  agents: AgentType[];
-}
-
-/**
- * Lists all installed skills from canonical locations
- * @param options - Options for listing skills
- * @returns Array of installed skills with metadata
- */
-export async function listInstalledSkills(
-  options: {
-    global?: boolean;
-    cwd?: string;
-    agentFilter?: AgentType[];
-  } = {}
-): Promise<InstalledSkill[]> {
-  const cwd = options.cwd || process.cwd();
-  const scopes =
-    options.global === undefined
-      ? (['project', 'global'] as const)
-      : ([options.global ? 'global' : 'project'] as const);
-  const installedSkills: InstalledSkill[] = [];
-
-  for (const scope of scopes) {
-    const views = await listInstalledView({
-      scope,
-      cwd,
-      agentFilter: options.agentFilter,
-    });
-
-    for (const view of views) {
-      const canonicalExists = existsSync(view.canonicalPath);
-      const liveAgentLinks = view.agentLinks.filter((link) => link.kind !== 'missing');
-
-      if (!canonicalExists && liveAgentLinks.length === 0) {
-        continue;
-      }
-
-      const primaryPath = canonicalExists ? view.canonicalPath : liveAgentLinks[0]!.path;
-      const parsedSkill = await parseSkillMd(join(primaryPath, 'SKILL.md'));
-      if (!parsedSkill) {
-        continue;
-      }
-
-      installedSkills.push({
-        name: parsedSkill.name,
-        description: parsedSkill.description,
-        path: primaryPath,
-        canonicalPath: canonicalExists ? view.canonicalPath : primaryPath,
-        scope,
-        agents: Array.from(new Set(liveAgentLinks.map((link) => link.agent))).sort(),
-      });
-    }
-  }
-
-  return installedSkills;
 }
