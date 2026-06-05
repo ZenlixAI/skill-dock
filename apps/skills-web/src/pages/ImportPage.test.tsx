@@ -196,6 +196,44 @@ describe('ImportPage', () => {
     );
   });
 
+  it('uses dirty advanced raw json in the prepare payload before apply', async () => {
+    vi.mocked(client.preparePackaging).mockResolvedValue({
+      workspacePath: '/tmp/skill-packaging/workspace',
+      packageName: '@company.skill/zoom-out',
+      version: '1.2.0',
+      warnings: [],
+      warningDetails: [],
+      errors: [],
+    });
+
+    renderImportPage();
+
+    fireEvent.change(await screen.findByLabelText('来源类型'), {
+      target: { value: 'platform_authoring' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '高级模式 / 原始 files JSON' }));
+    fireEvent.change(screen.getByLabelText('原始 files JSON'), {
+      target: {
+        value: '{\n  "docs/README.md": "hello\\n"\n}',
+      },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Prepare' }));
+
+    expect(await screen.findByText('prepare 完成，已经拿到 workspacePath 和 import review 数据。')).toBeInTheDocument();
+    expect(client.preparePackaging).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: {
+          type: 'platform_authoring',
+          files: {
+            'docs/README.md': 'hello\n',
+          },
+        },
+      })
+    );
+  });
+
   it('offers a bundle download handoff after pack instead of implying the bundle was already published', async () => {
     vi.mocked(client.preparePackaging).mockResolvedValue({
       workspacePath: '/tmp/skill-packaging/workspace',

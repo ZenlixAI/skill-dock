@@ -31,9 +31,12 @@ import { WarningStack } from '../components/WarningStack';
 import { buildReleaseHandoffPath } from '../lib/releaseHandoff';
 import { useAsyncData } from '../lib/useAsyncData';
 import {
-  createDefaultAuthoringDraft,
-  draftFilesToRecord,
+  createAuthoringEditorState,
+  getDefaultAuthoringPath,
+  hasUnsavedAuthoringChanges,
   parseOptionalAuthoringJson,
+  resolvePrepareAuthoringFiles,
+  serializeAuthoringFiles,
   type AuthoringFile,
   type AuthoringTemplateId,
   validateAuthoringPath,
@@ -88,45 +91,6 @@ const AUTHORING_TEMPLATES: Record<
   },
 };
 
-function defaultSelectedPath(template: AuthoringTemplateId): string {
-  return createDefaultAuthoringDraft(template).files[0]?.path || '';
-}
-
-function serializeInlineFiles(files: AuthoringFile[]) {
-  return JSON.stringify(draftFilesToRecord(files), null, 2);
-}
-
-function recordToAuthoringFiles(
-  files: Record<string, string>,
-  template: AuthoringTemplateId
-): AuthoringFile[] {
-  const templateLockedPaths = new Set(
-    createDefaultAuthoringDraft(template).files.map((file) => file.path)
-  );
-  return Object.entries(files).map(([path, content]) => ({
-    path,
-    content,
-    locked: templateLockedPaths.has(path),
-  }));
-}
-
-function authoringMatchesTemplate(files: AuthoringFile[], template: AuthoringTemplateId) {
-  const templateFiles = createDefaultAuthoringDraft(template).files;
-  if (files.length !== templateFiles.length) {
-    return false;
-  }
-
-  return files.every((file, index) => {
-    const templateFile = templateFiles[index];
-    return (
-      templateFile !== undefined &&
-      file.path === templateFile.path &&
-      file.content === templateFile.content &&
-      file.locked === templateFile.locked
-    );
-  });
-}
-
 function hasComponents(data: ReviewData): data is PackagingValidateResponse | PackagingPackResponse {
   return 'components' in data;
 }
@@ -173,8 +137,12 @@ export function ImportPage() {
   const [location, setLocation] = useState('https://github.com/mattpocock/skills?path=skills/engineering/zoom-out');
   const [sourceRef, setSourceRef] = useState('');
   const [authoringTemplate, setAuthoringTemplate] = useState<AuthoringTemplateId>('command');
-  const [authoringFiles, setAuthoringFiles] = useState<AuthoringFile[]>(() => createDefaultAuthoringDraft('command').files);
-  const [selectedAuthoringPath, setSelectedAuthoringPath] = useState(defaultSelectedPath('command'));
+  const [authoringFiles, setAuthoringFiles] = useState<AuthoringFile[]>(
+    () => createAuthoringEditorState('command').draft.files
+  );
+  const [selectedAuthoringPath, setSelectedAuthoringPath] = useState(
+    () => createAuthoringEditorState('command').selectedPath
+  );
   const [newAuthoringPath, setNewAuthoringPath] = useState('');
   const [authoringError, setAuthoringError] = useState<string | null>(null);
   const [showAdvancedFiles, setShowAdvancedFiles] = useState(false);
@@ -261,7 +229,7 @@ export function ImportPage() {
   });
   const selectedAuthoringFile =
     authoringFiles.find((file) => file.path === selectedAuthoringPath) || authoringFiles[0] || null;
-  const advancedInlineFilesValue = rawInlineFilesDirty ? rawInlineFiles : serializeInlineFiles(authoringFiles);
+  const advancedInlineFilesValue = rawInlineFilesDirty ? rawInlineFiles : serializeAuthoringFiles(authoringFiles);
 
   function appendLog(step: ImportLogEntry['step'], outcome: ImportLogEntry['outcome'], summary: string) {
     setActivityLog((current) => [
@@ -293,8 +261,11 @@ export function ImportPage() {
   }
 
   function resetAuthoringTemplate(nextTemplate: AuthoringTemplateId) {
-    const hasUnsavedChanges =
-      !authoringMatchesTemplate(authoringFiles, authoringTemplate) || rawInlineFilesDirty;
+    const hasUnsavedChanges = hasUnsavedAuthoringChanges({
+      authoringFiles,
+      rawInlineFilesDirty,
+      template: authoringTemplate,
+    });
 
     if (
       hasUnsavedChanges &&
@@ -303,10 +274,10 @@ export function ImportPage() {
       return;
     }
 
-    const nextFiles = createDefaultAuthoringDraft(nextTemplate).files;
+    const nextAuthoringState = createAuthoringEditorState(nextTemplate);
     setAuthoringTemplate(nextTemplate);
-    setAuthoringFiles(nextFiles);
-    setSelectedAuthoringPath(defaultSelectedPath(nextTemplate));
+    setAuthoringFiles(nextAuthoringState.draft.files);
+    setSelectedAuthoringPath(nextAuthoringState.selectedPath);
     setAuthoringError(null);
     setRawInlineFiles('');
     setRawInlineFilesDirty(false);
@@ -341,7 +312,7 @@ export function ImportPage() {
     setRawInlineFilesDirty(false);
 
     if (selectedAuthoringPath === path) {
-      setSelectedAuthoringPath(nextFiles[0]?.path || '');
+      setSelectedAuthoringPath(getDefaultAuthoringPath(nextFiles));
     }
   }
 
@@ -359,19 +330,22 @@ export function ImportPage() {
   }
 
   function applyRawInlineFiles() {
-    const parsedFiles = parseOptionalAuthoringJson(rawInlineFiles) || {};
-    const nextFiles = recordToAuthoringFiles(parsedFiles, authoringTemplate);
-    setAuthoringFiles(nextFiles);
-    setSelectedAuthoringPath(nextFiles[0]?.path || '');
+    const nextAuthoringState = createAuthoringEditorState(
+      authoringTemplate,
+      parseOptionalAuthoringJson(rawInlineFiles) || {}
+    );
+    setAuthoringFiles(nextAuthoringState.draft.files);
+    setSelectedAuthoringPath(nextAuthoringState.selectedPath);
     setAuthoringError(null);
     setRawInlineFilesDirty(false);
   }
 
   function buildPrepareRequest(): PackagingPrepareRequest {
-    const platformFiles =
-      rawInlineFilesDirty
-        ? parseOptionalAuthoringJson(rawInlineFiles) ?? draftFilesToRecord(authoringFiles)
-        : draftFilesToRecord(authoringFiles);
+    const platformFiles = resolvePrepareAuthoringFiles({
+      authoringFiles,
+      rawInlineFiles,
+      rawInlineFilesDirty,
+    });
 
     return {
       source:
