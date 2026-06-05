@@ -18,8 +18,8 @@ type PermissionGateProps = PropsWithChildren<{
 
 export function PermissionGate({
   session,
-  sessionLoading = false,
-  sessionError = null,
+  sessionLoading,
+  sessionError,
   requiredAction,
   packageName,
   fallback,
@@ -27,11 +27,11 @@ export function PermissionGate({
   children,
 }: PermissionGateProps) {
   const registrySession = useOptionalRegistrySession();
-  const useProviderState =
-    registrySession &&
+  const hasImplicitSessionState =
     session === undefined &&
     sessionLoading === undefined &&
     sessionError === undefined;
+  const useProviderState = Boolean(registrySession) && hasImplicitSessionState;
   const resolvedSession = session === undefined ? (registrySession?.session.data ?? null) : session;
   const posture = useProviderState
     ? registrySession.getPosture({ packageName, requiredAction })

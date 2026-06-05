@@ -1,7 +1,20 @@
 import { cleanup, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as client from '../api/client';
 import type { RegistrySession } from '../api/types';
+import { SessionProvider } from '../session/SessionProvider';
 import { PermissionGate } from './PermissionGate';
+
+vi.mock('../api/client', () => ({
+  getRegistryClientConfig: vi.fn(() => ({
+    mode: 'real',
+    baseUrl: null,
+    role: null,
+    actor: null,
+    hasToken: false,
+  })),
+  getSession: vi.fn(),
+}));
 
 function createSession(allowedActions: string[], allowedPackages: string[] = []): RegistrySession {
   return {
@@ -15,6 +28,7 @@ function createSession(allowedActions: string[], allowedPackages: string[] = [])
 
 afterEach(() => {
   cleanup();
+  vi.clearAllMocks();
 });
 
 describe('PermissionGate', () => {
@@ -70,5 +84,20 @@ describe('PermissionGate', () => {
 
     expect(screen.getByText('当前会话不可用，暂时无法校验 packaging.prepare。')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Prepare packaging' })).toBeNull();
+  });
+
+  it('defaults to provider loading state when explicit session props are omitted', () => {
+    vi.mocked(client.getSession).mockImplementation(() => new Promise(() => undefined));
+
+    render(
+      <SessionProvider>
+        <PermissionGate requiredAction="packaging.prepare">
+          <button type="button">Prepare packaging</button>
+        </PermissionGate>
+      </SessionProvider>
+    );
+
+    expect(screen.getByText('正在加载会话权限…')).toBeInTheDocument();
+    expect(screen.queryByText('当前没有可用于 packaging.prepare 的已登录 Catalog 会话。')).toBeNull();
   });
 });

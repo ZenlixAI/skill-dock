@@ -22,7 +22,11 @@ export function RequireAuthenticatedSession({ children }: PropsWithChildren) {
     return <div className="empty-box">正在加载会话…</div>;
   }
 
-  if (posture === 'unavailable' && session.errorDetail?.kind !== 'auth') {
+  if (posture === 'unavailable') {
+    if (session.errorDetail?.kind === 'auth') {
+      const next = `${location.pathname}${location.search}`;
+      return <Navigate replace to={`/login?next=${encodeURIComponent(next)}`} />;
+    }
     return <div className="error-box">{session.error}</div>;
   }
 
