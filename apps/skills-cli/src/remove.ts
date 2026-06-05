@@ -8,7 +8,6 @@ import { removeSkillFromLock } from './skill-lock.ts';
 import { removeSkillFromLocalLock } from './local-lock.ts';
 import type { AgentType } from './types.ts';
 import { listInstalledView, type InstalledSkillView } from './installed-view.ts';
-import { getInstalledDirectoryNames } from './installer.ts';
 
 export interface RemoveOptions {
   global?: boolean;
@@ -42,14 +41,8 @@ function selectRequestedRecords(
     return packageMatches;
   }
 
-  const requestedAliases = new Set(
-    getInstalledDirectoryNames(requestedSkill).map((alias) => normalizeSkillReference(alias))
-  );
   const aliasMatches = records.filter((record) =>
-    record.aliases.some((alias) => {
-      const normalizedAlias = normalizeSkillReference(alias);
-      return normalizedAlias === requestedNormalized || requestedAliases.has(normalizedAlias);
-    })
+    record.aliases.some((alias) => normalizeSkillReference(alias) === requestedNormalized)
   );
   if (aliasMatches.length > 0) {
     return aliasMatches;
@@ -211,14 +204,14 @@ export async function removeCommand(skillNames: string[], options: RemoveOptions
       const targetLinks = record.agentLinks.filter(
         (link) => targetAgents.includes(link.agent) && link.kind !== 'missing'
       );
+      const untargetedVisibleLinks = record.agentLinks.filter(
+        (link) => !targetAgents.includes(link.agent) && link.kind !== 'missing'
+      );
       const pathsToCleanup = new Set<string>([
         record.canonicalPath,
         ...targetLinks.map((link) => link.path),
       ]);
-      const hasUntargetedVisibleLinks = record.agentLinks.some(
-        (link) => !targetAgents.includes(link.agent) && link.kind !== 'missing'
-      );
-      if (hasUntargetedVisibleLinks) {
+      if (untargetedVisibleLinks.length > 0) {
         pathsToCleanup.delete(record.canonicalPath);
       }
 
@@ -234,7 +227,10 @@ export async function removeCommand(skillNames: string[], options: RemoveOptions
         }
       }
 
-      await removeRecordFromLock(record, isGlobal, cwd);
+      const keepsVisibleInstall = untargetedVisibleLinks.length > 0;
+      if (!keepsVisibleInstall) {
+        await removeRecordFromLock(record, isGlobal, cwd);
+      }
 
       results.push({
         skill: getRecordLabel(record),

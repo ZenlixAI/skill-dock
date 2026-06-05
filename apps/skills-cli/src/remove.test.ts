@@ -94,6 +94,7 @@ describe('remove command', { timeout: 30000 }, () => {
   let skillsDir: string;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     testDir = join(tmpdir(), `skills-remove-test-${Date.now()}`);
     mkdirSync(testDir, { recursive: true });
 
@@ -274,7 +275,7 @@ description: PDF processing workflow
       expect(existsSync(packageDir)).toBe(false);
     });
 
-    it('should remove an installed skill by package_name even when only the install directory name is visible', () => {
+    it('should not invent package-name aliases for an install that does not expose them', () => {
       const packageDir = join(skillsDir, 'my-skill');
       mkdirSync(packageDir, { recursive: true });
       writeFileSync(
@@ -289,8 +290,8 @@ description: Demo skill
       );
 
       const result = runCli(['remove', '@company.skill/my-skill', '-y'], testDir);
-      expect(result.stdout).toContain('Successfully removed');
-      expect(existsSync(packageDir)).toBe(false);
+      expect(result.stdout).toContain('No matching skills');
+      expect(existsSync(packageDir)).toBe(true);
     });
 
     it('should list skills to remove before confirmation', () => {
@@ -509,6 +510,34 @@ description: Demo skill
         '/tmp/project/.agents/skills/pdf-skill-display',
         expect.anything()
       );
+    });
+
+    it('does not match a package-style request when the record only exposes local aliases', async () => {
+      const oldCwd = process.cwd();
+      process.chdir(testDir);
+
+      listInstalledViewMock.mockResolvedValue([
+        {
+          displayName: 'My Skill',
+          installName: 'my-skill',
+          aliases: ['my-skill'],
+          scope: 'project',
+          canonicalPath: '/tmp/project/.agents/skills/my-skill',
+          agentLinks: [],
+          sourceType: 'local',
+          orphaned: false,
+          orphanReasons: [],
+        },
+      ]);
+
+      try {
+        await removeCommand(['@company.skill/my-skill'], { yes: true });
+      } finally {
+        process.chdir(oldCwd);
+      }
+
+      expect(rmMock).not.toHaveBeenCalled();
+      expect(removeSkillFromLocalLockMock).not.toHaveBeenCalled();
     });
   });
 });
