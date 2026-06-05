@@ -1,8 +1,93 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { existsSync, rmSync, mkdirSync, writeFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { runCli, runCliWithInput } from './test-utils.js';
+import { removeCommand } from './remove.ts';
+
+const {
+  rmMock,
+  listInstalledViewMock,
+  removeSkillFromLockMock,
+  getSkillFromLockMock,
+  getAllLockedSkillsMock,
+  readLocalLockMock,
+  removeSkillFromLocalLockMock,
+  trackMock,
+} = vi.hoisted(() => ({
+  rmMock: vi.fn(() => Promise.resolve()),
+  listInstalledViewMock: vi.fn(() => Promise.resolve([])),
+  removeSkillFromLockMock: vi.fn(() => Promise.resolve(true)),
+  getSkillFromLockMock: vi.fn(() => Promise.resolve(null)),
+  getAllLockedSkillsMock: vi.fn(() => Promise.resolve({})),
+  readLocalLockMock: vi.fn(() => Promise.resolve({ version: 1, skills: {} })),
+  removeSkillFromLocalLockMock: vi.fn(() => Promise.resolve(true)),
+  trackMock: vi.fn(),
+}));
+
+vi.mock('./detect-agent.ts', () => ({
+  detectAgent: vi.fn(() => Promise.resolve({ isAgent: false })),
+}));
+
+vi.mock('./agents.ts', () => ({
+  agents: {
+    cursor: {
+      displayName: 'Cursor',
+      skillsDir: '.cursor/rules',
+    },
+    'claude-code': {
+      displayName: 'Claude Code',
+      skillsDir: '.claude/skills',
+    },
+  },
+  detectInstalledAgents: vi.fn(() => Promise.resolve([])),
+}));
+
+vi.mock('./installed-view.ts', () => ({
+  listInstalledView: listInstalledViewMock,
+}));
+
+vi.mock('./skill-lock.ts', () => ({
+  getAllLockedSkills: getAllLockedSkillsMock,
+  removeSkillFromLock: removeSkillFromLockMock,
+  getSkillFromLock: getSkillFromLockMock,
+}));
+
+vi.mock('./local-lock.ts', () => ({
+  readLocalLock: readLocalLockMock,
+  removeSkillFromLocalLock: removeSkillFromLocalLockMock,
+}));
+
+vi.mock('./telemetry.ts', () => ({
+  track: trackMock,
+}));
+
+vi.mock('fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs/promises')>();
+  return {
+    ...actual,
+    rm: rmMock,
+  };
+});
+
+vi.mock('@clack/prompts', () => ({
+  spinner: vi.fn(() => ({
+    start: vi.fn(),
+    stop: vi.fn(),
+  })),
+  outro: vi.fn(),
+  log: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    message: vi.fn(),
+    success: vi.fn(),
+  },
+  confirm: vi.fn(() => Promise.resolve(true)),
+  multiselect: vi.fn(),
+  isCancel: vi.fn(() => false),
+  cancel: vi.fn(),
+}));
 
 describe('remove command', { timeout: 30000 }, () => {
   let testDir: string;
@@ -369,6 +454,61 @@ description: Demo skill
         testDir
       );
       expect(result.stdout).not.toContain('Invalid agents');
+    });
+  });
+
+  describe('installed view selection', () => {
+    it('matches requested skills by package name before display-name aliases', async () => {
+      const oldCwd = process.cwd();
+      process.chdir(testDir);
+
+      listInstalledViewMock.mockResolvedValue([
+        {
+          packageName: '@platform.skill/pdf-skill',
+          displayName: 'PDF Skill',
+          installName: 'pdf-skill',
+          aliases: ['@platform.skill/pdf-skill', 'pdf-skill', 'pdf-skill-display'],
+          scope: 'project',
+          canonicalPath: '/tmp/project/.agents/skills/pdf-skill',
+          agentLinks: [
+            {
+              agent: 'cursor',
+              path: '/tmp/project/.cursor/rules/pdf-skill',
+              kind: 'symlink',
+            },
+          ],
+          sourceType: 'registry',
+          version: '1.2.3',
+          orphaned: false,
+          orphanReasons: [],
+        },
+        {
+          displayName: '@platform.skill/pdf-skill',
+          installName: 'pdf-skill-display',
+          aliases: ['pdf-skill-display', '@platform.skill/pdf-skill'],
+          scope: 'project',
+          canonicalPath: '/tmp/project/.agents/skills/pdf-skill-display',
+          agentLinks: [],
+          sourceType: 'local',
+          orphaned: false,
+          orphanReasons: [],
+        },
+      ]);
+
+      try {
+        await removeCommand(['@platform.skill/pdf-skill'], { yes: true });
+      } finally {
+        process.chdir(oldCwd);
+      }
+
+      expect(rmMock).toHaveBeenCalledWith(
+        '/tmp/project/.agents/skills/pdf-skill',
+        expect.objectContaining({ recursive: true, force: true })
+      );
+      expect(rmMock).not.toHaveBeenCalledWith(
+        '/tmp/project/.agents/skills/pdf-skill-display',
+        expect.anything()
+      );
     });
   });
 });

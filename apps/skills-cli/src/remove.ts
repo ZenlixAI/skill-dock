@@ -1,21 +1,14 @@
 import * as p from '@clack/prompts';
 import pc from 'picocolors';
-import { readdir, rm, lstat } from 'fs/promises';
-import { join } from 'path';
-import { agents, detectInstalledAgents } from './agents.ts';
+import { rm } from 'fs/promises';
+import { agents } from './agents.ts';
 import { track } from './telemetry.ts';
 import { detectAgent } from './detect-agent.ts';
-import { getAllLockedSkills, removeSkillFromLock, getSkillFromLock } from './skill-lock.ts';
-import { readLocalLock, removeSkillFromLocalLock } from './local-lock.ts';
+import { removeSkillFromLock } from './skill-lock.ts';
+import { removeSkillFromLocalLock } from './local-lock.ts';
 import type { AgentType } from './types.ts';
-import {
-  deriveInstallName,
-  getInstallPath,
-  getCanonicalPath,
-  getCanonicalSkillsDir,
-  getInstalledDirectoryNames,
-  sanitizeName,
-} from './installer.ts';
+import { listInstalledView, type InstalledSkillView } from './installed-view.ts';
+import { getInstalledDirectoryNames } from './installer.ts';
 
 export interface RemoveOptions {
   global?: boolean;
@@ -24,20 +17,75 @@ export interface RemoveOptions {
   all?: boolean;
 }
 
-function matchesInstalledSkillReference(installedSkill: string, requestedSkill: string): boolean {
-  const installedNormalized = installedSkill.toLowerCase();
-  const requestedNormalized = requestedSkill.toLowerCase();
+function normalizeSkillReference(value: string): string {
+  return value.trim().toLowerCase();
+}
 
-  if (installedNormalized === requestedNormalized) {
-    return true;
+function getRecordLabel(record: InstalledSkillView): string {
+  return record.packageName || record.displayName;
+}
+
+function getRecordSelectionKey(record: InstalledSkillView): string {
+  return `${record.scope}:${record.canonicalPath}:${record.packageName || record.displayName}`;
+}
+
+function selectRequestedRecords(
+  records: InstalledSkillView[],
+  requestedSkill: string
+): InstalledSkillView[] {
+  const requestedNormalized = normalizeSkillReference(requestedSkill);
+  const packageMatches = records.filter(
+    (record) => record.packageName && normalizeSkillReference(record.packageName) === requestedNormalized
+  );
+
+  if (packageMatches.length > 0) {
+    return packageMatches;
   }
 
-  const installedAliases = getInstalledDirectoryNames(installedSkill).map((value) => value.toLowerCase());
-  const requestedAliases = getInstalledDirectoryNames(requestedSkill).map((value) => value.toLowerCase());
-
-  return requestedAliases.some(
-    (alias) => alias === installedNormalized || installedAliases.includes(alias)
+  const requestedAliases = new Set(
+    getInstalledDirectoryNames(requestedSkill).map((alias) => normalizeSkillReference(alias))
   );
+  const aliasMatches = records.filter((record) =>
+    record.aliases.some((alias) => {
+      const normalizedAlias = normalizeSkillReference(alias);
+      return normalizedAlias === requestedNormalized || requestedAliases.has(normalizedAlias);
+    })
+  );
+  if (aliasMatches.length > 0) {
+    return aliasMatches;
+  }
+
+  return records.filter(
+    (record) => normalizeSkillReference(record.displayName) === requestedNormalized
+  );
+}
+
+async function removeRecordFromLock(
+  record: InstalledSkillView,
+  isGlobal: boolean,
+  cwd: string
+): Promise<void> {
+  const candidates = [
+    record.packageName,
+    record.displayName,
+    record.installName,
+    ...record.aliases,
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+  const attempted = new Set<string>();
+  for (const candidate of candidates) {
+    if (attempted.has(candidate)) {
+      continue;
+    }
+    attempted.add(candidate);
+
+    const removed = isGlobal
+      ? await removeSkillFromLock(candidate)
+      : await removeSkillFromLocalLock(candidate, cwd);
+    if (removed) {
+      return;
+    }
+  }
 }
 
 export async function removeCommand(skillNames: string[], options: RemoveOptions) {
@@ -58,64 +106,13 @@ export async function removeCommand(skillNames: string[], options: RemoveOptions
   const spinner = p.spinner();
 
   spinner.start('Scanning for installed skills...');
-  const skillNamesSet = new Set<string>();
+  const records = await listInstalledView({
+    scope: isGlobal ? 'global' : 'project',
+    cwd,
+  });
+  spinner.stop(`Found ${records.length} unique installed skill(s)`);
 
-  const scanDir = async (dir: string) => {
-    try {
-      const entries = await readdir(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        if (entry.isDirectory()) {
-          skillNamesSet.add(entry.name);
-        }
-      }
-    } catch (err) {
-      if (err instanceof Error && (err as { code?: string }).code !== 'ENOENT') {
-        p.log.warn(`Could not scan directory ${dir}: ${err.message}`);
-      }
-    }
-  };
-
-  if (isGlobal) {
-    await scanDir(getCanonicalSkillsDir(true, cwd));
-    for (const agent of Object.values(agents)) {
-      if (agent.globalSkillsDir !== undefined) {
-        await scanDir(agent.globalSkillsDir);
-      }
-    }
-  } else {
-    await scanDir(getCanonicalSkillsDir(false, cwd));
-    for (const agent of Object.values(agents)) {
-      await scanDir(join(cwd, agent.skillsDir));
-    }
-  }
-
-  const displayNameBySanitized = new Map<string, string>();
-  let projectLock: Awaited<ReturnType<typeof readLocalLock>> | null = null;
-
-  if (isGlobal) {
-    const globalLock = await getAllLockedSkills();
-    for (const [key, entry] of Object.entries(globalLock)) {
-      for (const installDirName of getInstalledDirectoryNames(key, entry.installName)) {
-        displayNameBySanitized.set(installDirName, key);
-      }
-      displayNameBySanitized.set(sanitizeName(key), key);
-    }
-  } else {
-    projectLock = await readLocalLock(cwd);
-    for (const [key, entry] of Object.entries(projectLock.skills)) {
-      for (const installDirName of getInstalledDirectoryNames(key, entry.installName)) {
-        displayNameBySanitized.set(installDirName, key);
-      }
-      displayNameBySanitized.set(sanitizeName(key), key);
-    }
-  }
-
-  const installedSkills = Array.from(skillNamesSet)
-    .map((name) => displayNameBySanitized.get(name) || name)
-    .sort();
-  spinner.stop(`Found ${installedSkills.length} unique installed skill(s)`);
-
-  if (installedSkills.length === 0) {
+  if (records.length === 0) {
     p.outro(pc.yellow('No skills found to remove.'));
     return;
   }
@@ -132,23 +129,27 @@ export async function removeCommand(skillNames: string[], options: RemoveOptions
     }
   }
 
-  let selectedSkills: string[] = [];
+  let selectedRecords: InstalledSkillView[] = [];
 
   if (options.all) {
-    selectedSkills = installedSkills;
+    selectedRecords = records;
   } else if (skillNames.length > 0) {
-    selectedSkills = installedSkills.filter((s) =>
-      skillNames.some((name) => matchesInstalledSkillReference(s, name))
-    );
+    const matchedRecords = new Map<string, InstalledSkillView>();
+    for (const skillName of skillNames) {
+      for (const record of selectRequestedRecords(records, skillName)) {
+        matchedRecords.set(getRecordSelectionKey(record), record);
+      }
+    }
+    selectedRecords = Array.from(matchedRecords.values());
 
-    if (selectedSkills.length === 0) {
+    if (selectedRecords.length === 0) {
       p.log.error(`No matching skills found for: ${skillNames.join(', ')}`);
       return;
     }
   } else {
-    const choices = installedSkills.map((s) => ({
-      value: s,
-      label: s,
+    const choices = records.map((record, index) => ({
+      value: String(index),
+      label: getRecordLabel(record),
     }));
 
     const selected = await p.multiselect({
@@ -162,7 +163,9 @@ export async function removeCommand(skillNames: string[], options: RemoveOptions
       process.exit(0);
     }
 
-    selectedSkills = selected as string[];
+    selectedRecords = (selected as string[])
+      .map((value) => records[Number(value)])
+      .filter((record): record is InstalledSkillView => Boolean(record));
   }
 
   let targetAgents: AgentType[];
@@ -178,13 +181,13 @@ export async function removeCommand(skillNames: string[], options: RemoveOptions
   if (!options.yes) {
     console.log();
     p.log.info('Skills to remove:');
-    for (const skill of selectedSkills) {
-      p.log.message(`  ${pc.red('•')} ${skill}`);
+    for (const record of selectedRecords) {
+      p.log.message(`  ${pc.red('•')} ${getRecordLabel(record)}`);
     }
     console.log();
 
     const confirmed = await p.confirm({
-      message: `Are you sure you want to uninstall ${selectedSkills.length} skill(s)?`,
+      message: `Are you sure you want to uninstall ${selectedRecords.length} skill(s)?`,
     });
 
     if (p.isCancel(confirmed) || !confirmed) {
@@ -203,100 +206,45 @@ export async function removeCommand(skillNames: string[], options: RemoveOptions
     error?: string;
   }[] = [];
 
-  for (const skillName of selectedSkills) {
+  for (const record of selectedRecords) {
     try {
-      const lockEntry = isGlobal
-        ? await getSkillFromLock(skillName)
-        : projectLock?.skills[skillName] || null;
-      const installDirNames = getInstalledDirectoryNames(
-        skillName,
-        lockEntry?.installName || deriveInstallName(lockEntry?.packageName || skillName)
+      const targetLinks = record.agentLinks.filter(
+        (link) => targetAgents.includes(link.agent) && link.kind !== 'missing'
       );
-      const canonicalPath = getCanonicalPath(lockEntry?.installName || skillName, {
-        global: isGlobal,
-        cwd,
-      });
+      const pathsToCleanup = new Set<string>([
+        record.canonicalPath,
+        ...targetLinks.map((link) => link.path),
+      ]);
+      const hasUntargetedVisibleLinks = record.agentLinks.some(
+        (link) => !targetAgents.includes(link.agent) && link.kind !== 'missing'
+      );
+      if (hasUntargetedVisibleLinks) {
+        pathsToCleanup.delete(record.canonicalPath);
+      }
 
-      for (const agentKey of targetAgents) {
-        const agent = agents[agentKey];
-        const pathsToCleanup = new Set<string>();
-        for (const installDirName of installDirNames) {
-          pathsToCleanup.add(getInstallPath(installDirName, agentKey, { global: isGlobal, cwd }));
-          if (isGlobal && agent.globalSkillsDir) {
-            pathsToCleanup.add(join(agent.globalSkillsDir, installDirName));
-          } else {
-            pathsToCleanup.add(join(cwd, agent.skillsDir, installDirName));
-          }
-        }
-
-        for (const pathToCleanup of pathsToCleanup) {
-          // Skip if this is the canonical path - we'll handle that after checking all agents
-          if (pathToCleanup === canonicalPath) {
-            continue;
-          }
-
-          try {
-            const stats = await lstat(pathToCleanup).catch(() => null);
-            if (stats) {
-              await rm(pathToCleanup, { recursive: true, force: true });
-            }
-          } catch (err) {
-            p.log.warn(
-              `Could not remove skill from ${agent.displayName}: ${
-                err instanceof Error ? err.message : String(err)
-              }`
-            );
-          }
+      for (const pathToCleanup of pathsToCleanup) {
+        try {
+          await rm(pathToCleanup, { recursive: true, force: true });
+        } catch (err) {
+          p.log.warn(
+            `Could not remove ${getRecordLabel(record)} from ${pathToCleanup}: ${
+              err instanceof Error ? err.message : String(err)
+            }`
+          );
         }
       }
 
-      // Only remove the canonical path if no other installed agents are using it.
-      // This prevents breaking other agents when uninstalling from a specific agent (#287).
-      const installedAgents = await detectInstalledAgents();
-      const remainingAgents = installedAgents.filter((a) => !targetAgents.includes(a));
-
-      let isStillUsed = false;
-      for (const agentKey of remainingAgents) {
-        for (const installDirName of installDirNames) {
-          const path = getInstallPath(installDirName, agentKey, { global: isGlobal, cwd });
-          const exists = await lstat(path).catch(() => null);
-          if (exists) {
-            isStillUsed = true;
-            break;
-          }
-        }
-        if (isStillUsed) {
-          break;
-        }
-      }
-
-      if (!isStillUsed) {
-        await rm(canonicalPath, { recursive: true, force: true });
-      }
-
-      const resultLockEntry = isGlobal
-        ? await getSkillFromLock(skillName)
-        : projectLock?.skills[skillName];
-      const effectiveSource =
-        resultLockEntry?.packageName || resultLockEntry?.legacy?.source || 'local';
-      const effectiveSourceType =
-        resultLockEntry?.sourceType || (resultLockEntry?.packageName ? 'registry' : 'local');
-
-      if (isGlobal) {
-        await removeSkillFromLock(skillName);
-      } else {
-        await removeSkillFromLocalLock(skillName, cwd);
-      }
+      await removeRecordFromLock(record, isGlobal, cwd);
 
       results.push({
-        skill: skillName,
+        skill: getRecordLabel(record),
         success: true,
-        source: effectiveSource,
-        sourceType: effectiveSourceType,
+        source: record.packageName || record.displayName,
+        sourceType: record.sourceType,
       });
     } catch (err) {
       results.push({
-        skill: skillName,
+        skill: getRecordLabel(record),
         success: false,
         error: err instanceof Error ? err.message : String(err),
       });

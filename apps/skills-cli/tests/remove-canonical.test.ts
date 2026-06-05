@@ -49,7 +49,14 @@ describe('removeCommand canonical protection', () => {
 
     // 1. Create canonical storage
     await mkdir(canonicalPath, { recursive: true });
-    await writeFile(join(canonicalPath, 'SKILL.md'), '# Test');
+    await writeFile(
+      join(canonicalPath, 'SKILL.md'),
+      `---
+name: ${skillName}
+description: canonical protection test
+---
+`
+    );
 
     // 2. Install (symlink) to Claude and Continue
     await symlink(canonicalPath, claudePath, 'junction');
@@ -89,7 +96,14 @@ describe('removeCommand canonical protection', () => {
     const claudePath = join(tempDir, '.claude/skills', skillName);
 
     await mkdir(canonicalPath, { recursive: true });
-    await writeFile(join(canonicalPath, 'SKILL.md'), '# Test');
+    await writeFile(
+      join(canonicalPath, 'SKILL.md'),
+      `---
+name: ${skillName}
+description: canonical protection test
+---
+`
+    );
     await symlink(canonicalPath, claudePath, 'junction');
 
     // Mock agents: Only Claude is installed
