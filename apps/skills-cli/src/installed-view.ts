@@ -67,7 +67,7 @@ interface CollectedScopeFacts {
   agentFacts: AgentFact[];
   agentBases: Array<{ agent: AgentType; baseDir: string }>;
   lockFacts: LockFact[];
-  visibleAgents: AgentType[];
+  detectedVisibleAgents: AgentType[];
 }
 
 interface DraftInstalledView {
@@ -92,13 +92,14 @@ export async function listInstalledView(
 ): Promise<InstalledSkillView[]> {
   const cwd = options.cwd || process.cwd();
   const scopes = options.scope ? [options.scope] : (['project', 'global'] as InstalledViewScope[]);
-  const detectedAgents = options.agentFilter
-    ? (await detectInstalledAgents()).filter((agent) => options.agentFilter!.includes(agent))
-    : await detectInstalledAgents();
-  const visibleAgents = options.agentFilter ?? detectedAgents;
+  const detectedAgents = await detectInstalledAgents();
+  const detectedVisibleAgents = options.agentFilter
+    ? detectedAgents.filter((agent) => options.agentFilter!.includes(agent))
+    : detectedAgents;
+  const inspectedAgents = options.agentFilter ?? (Object.keys(agents) as AgentType[]);
 
   const views = await Promise.all(
-    scopes.map((scope) => collectInstalledFacts(scope, cwd, visibleAgents))
+    scopes.map((scope) => collectInstalledFacts(scope, cwd, inspectedAgents, detectedVisibleAgents))
   );
 
   return views
@@ -113,7 +114,8 @@ export async function listInstalledView(
 async function collectInstalledFacts(
   scope: InstalledViewScope,
   cwd: string,
-  visibleAgents: AgentType[]
+  inspectedAgents: AgentType[],
+  detectedVisibleAgents: AgentType[]
 ): Promise<CollectedScopeFacts> {
   const global = scope === 'global';
   const canonicalBase = getCanonicalSkillsDir(global, cwd);
@@ -121,10 +123,8 @@ async function collectInstalledFacts(
   const lockFacts = await readScopeLockFacts(scope, cwd);
   const agentFacts: AgentFact[] = [];
   const agentBases: Array<{ agent: AgentType; baseDir: string }> = [];
-  const agentsToInspect =
-    visibleAgents.length > 0 ? visibleAgents : (Object.keys(agents) as AgentType[]);
 
-  for (const agent of agentsToInspect) {
+  for (const agent of inspectedAgents) {
     if (isUniversalAgent(agent)) {
       continue;
     }
@@ -159,7 +159,7 @@ async function collectInstalledFacts(
     agentFacts,
     agentBases,
     lockFacts,
-    visibleAgents,
+    detectedVisibleAgents,
   };
 }
 
@@ -261,6 +261,7 @@ function projectInstalledFacts(facts: CollectedScopeFacts): InstalledSkillView[]
   const drafts: DraftInstalledView[] = [];
   const unmatchedLocks = new Set(facts.lockFacts.map((fact) => fact.key));
   const matchedAgentPaths = new Set<string>();
+  const agentFactsByPath = new Map(facts.agentFacts.map((fact) => [fact.path, fact]));
 
   for (const fact of facts.canonicalFacts) {
     const lockFact = findMatchingLockFact(fact, facts.lockFacts, unmatchedLocks);
@@ -300,7 +301,7 @@ function projectInstalledFacts(facts: CollectedScopeFacts): InstalledSkillView[]
 
   for (const draft of drafts) {
     for (const agentBase of facts.agentBases) {
-      const linkedPath = findExistingAgentLinkPath(agentBase.baseDir, draft);
+      const linkedPath = findExistingAgentLinkPath(agentBase.baseDir, draft, agentFactsByPath);
       if (!linkedPath || matchedAgentPaths.has(linkedPath)) {
         continue;
       }
@@ -313,7 +314,7 @@ function projectInstalledFacts(facts: CollectedScopeFacts): InstalledSkillView[]
       matchedAgentPaths.add(linkedPath);
     }
 
-    for (const agent of facts.visibleAgents) {
+    for (const agent of facts.detectedVisibleAgents) {
       if (!isUniversalAgent(agent)) {
         continue;
       }
@@ -524,7 +525,6 @@ function buildIdentityAliases(input: {
     input.installName,
     input.dirName,
     input.lockKey,
-    input.packageName ? deriveInstallName(input.packageName) : undefined,
   ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
 
   if (input.packageName) {
@@ -548,10 +548,19 @@ function aliasesOverlap(left: Set<string>, right: Set<string>): boolean {
   return false;
 }
 
-function findExistingAgentLinkPath(baseDir: string, draft: DraftInstalledView): string | null {
+function findExistingAgentLinkPath(
+  baseDir: string,
+  draft: DraftInstalledView,
+  agentFactsByPath: Map<string, AgentFact>
+): string | null {
   for (const candidate of buildDirectoryCandidates(draft)) {
     const candidatePath = join(baseDir, candidate);
-    if (existsSync(candidatePath)) {
+    if (!existsSync(candidatePath)) {
+      continue;
+    }
+
+    const agentFact = agentFactsByPath.get(candidatePath);
+    if (!agentFact || agentSkillMatchesDraft(agentFact, draft)) {
       return candidatePath;
     }
   }
@@ -567,6 +576,26 @@ function buildDirectoryCandidates(draft: DraftInstalledView): string[] {
   candidates.add(sanitizeName(draft.installName));
 
   return Array.from(candidates).filter((candidate) => candidate.length > 0);
+}
+
+function agentSkillMatchesDraft(agentFact: AgentFact, draft: DraftInstalledView): boolean {
+  if (!agentFact.displayName) {
+    return true;
+  }
+
+  return aliasesOverlap(draft.aliases, buildParsedSkillAliases(agentFact.displayName));
+}
+
+function buildParsedSkillAliases(displayName: string): Set<string> {
+  const aliases = new Set<string>();
+  aliases.add(displayName);
+  aliases.add(sanitizeName(displayName));
+
+  for (const alias of getInstalledDirectoryNames(displayName)) {
+    aliases.add(alias);
+  }
+
+  return aliases;
 }
 
 function classifyAgentLinkKind(path: string, canonicalPath: string): AgentLinkKind {

@@ -1,13 +1,15 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import * as agentsModule from './agents.ts';
 import { listInstalledView } from './installed-view.ts';
 
 describe('installed view projection', () => {
   const roots: string[] = [];
 
   afterEach(() => {
+    vi.restoreAllMocks();
     for (const root of roots.splice(0)) {
       rmSync(root, { recursive: true, force: true });
     }
@@ -236,6 +238,63 @@ describe('installed view projection', () => {
     );
   });
 
+  it('does not mark healthy installs orphaned when scoped packages share a basename alias', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'installed-view-scoped-basename-'));
+    roots.push(root);
+
+    for (const dir of ['review-a', 'review-b'] as const) {
+      mkdirSync(join(root, '.agents', 'skills', dir), { recursive: true });
+      writeFileSync(
+        join(root, '.agents', 'skills', dir, 'SKILL.md'),
+        `---\nname: ${dir}\ndescription: Scoped package collision repro\n---\n`
+      );
+    }
+
+    writeFileSync(
+      join(root, 'skills-lock.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          skills: {
+            '@scope-a/review': {
+              sourceType: 'registry',
+              computedHash: 'hash-a',
+              packageName: '@scope-a/review',
+              installName: 'review-a',
+              version: '1.0.0',
+            },
+            '@scope-b/review': {
+              sourceType: 'registry',
+              computedHash: 'hash-b',
+              packageName: '@scope-b/review',
+              installName: 'review-b',
+              version: '1.0.0',
+            },
+          },
+        },
+        null,
+        2
+      )
+    );
+
+    const records = await listInstalledView({ scope: 'project', cwd: root });
+
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          packageName: '@scope-a/review',
+          installName: 'review-a',
+          orphaned: false,
+        }),
+        expect.objectContaining({
+          packageName: '@scope-b/review',
+          installName: 'review-b',
+          orphaned: false,
+        }),
+      ])
+    );
+  });
+
   it('ignores stray agent directories without a valid SKILL.md', async () => {
     const root = mkdtempSync(join(tmpdir(), 'installed-view-stray-agent-dir-'));
     roots.push(root);
@@ -246,6 +305,70 @@ describe('installed view projection', () => {
     const records = await listInstalledView({ scope: 'project', cwd: root });
 
     expect(records).toEqual([]);
+  });
+
+  it('does not attach an unrelated agent-specific skill to a canonical install', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'installed-view-unrelated-agent-skill-'));
+    roots.push(root);
+
+    mkdirSync(join(root, '.agents', 'skills', 'alpha-skill'), { recursive: true });
+    writeFileSync(
+      join(root, '.agents', 'skills', 'alpha-skill', 'SKILL.md'),
+      `---\nname: Alpha\ndescription: Canonical alpha\n---\n`
+    );
+    writeFileSync(
+      join(root, 'skills-lock.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          skills: {
+            '@scope/alpha': {
+              sourceType: 'registry',
+              computedHash: 'alpha-hash',
+              packageName: '@scope/alpha',
+              installName: 'alpha-skill',
+              version: '1.0.0',
+            },
+          },
+        },
+        null,
+        2
+      )
+    );
+
+    mkdirSync(join(root, '.claude', 'skills', 'alpha'), { recursive: true });
+    writeFileSync(
+      join(root, '.claude', 'skills', 'alpha', 'SKILL.md'),
+      `---\nname: Beta\ndescription: Unrelated beta skill\n---\n`
+    );
+
+    const records = await listInstalledView({ scope: 'project', cwd: root });
+
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          packageName: '@scope/alpha',
+          agentLinks: expect.not.arrayContaining([
+            expect.objectContaining({
+              agent: 'claude-code',
+              path: join(root, '.claude', 'skills', 'alpha'),
+            }),
+          ]),
+        }),
+        expect.objectContaining({
+          displayName: 'Beta',
+          installName: 'alpha',
+          orphaned: true,
+          orphanReasons: expect.arrayContaining(['missing_canonical_path']),
+          agentLinks: expect.arrayContaining([
+            expect.objectContaining({
+              agent: 'claude-code',
+              path: join(root, '.claude', 'skills', 'alpha'),
+            }),
+          ]),
+        }),
+      ])
+    );
   });
 
   it('honors agentFilter when projecting agent-specific links', async () => {
@@ -291,6 +414,57 @@ describe('installed view projection', () => {
           agentLinks: expect.not.arrayContaining([
             expect.objectContaining({
               agent: 'claude-code',
+            }),
+          ]),
+        }),
+      ])
+    );
+  });
+
+  it('does not invent universal agent links for filtered agents that are not detected', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'installed-view-filtered-universal-'));
+    roots.push(root);
+
+    vi.spyOn(agentsModule, 'detectInstalledAgents').mockResolvedValue([]);
+
+    mkdirSync(join(root, '.agents', 'skills', 'pdf-skill'), { recursive: true });
+    writeFileSync(
+      join(root, '.agents', 'skills', 'pdf-skill', 'SKILL.md'),
+      `---\nname: PDF Skill\ndescription: Read PDFs\n---\n`
+    );
+    writeFileSync(
+      join(root, 'skills-lock.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          skills: {
+            '@platform.skill/pdf-skill': {
+              sourceType: 'registry',
+              computedHash: 'abc123',
+              packageName: '@platform.skill/pdf-skill',
+              installName: 'pdf-skill',
+              version: '1.2.3',
+            },
+          },
+        },
+        null,
+        2
+      )
+    );
+
+    const records = await listInstalledView({
+      scope: 'project',
+      cwd: root,
+      agentFilter: ['cursor'],
+    });
+
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          packageName: '@platform.skill/pdf-skill',
+          agentLinks: expect.not.arrayContaining([
+            expect.objectContaining({
+              agent: 'cursor',
             }),
           ]),
         }),
