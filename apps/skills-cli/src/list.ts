@@ -64,14 +64,12 @@ function formatDisplayName(record: InstalledSkillView): string {
   return record.orphaned ? `${name} ${DIM}(orphaned)${RESET}` : name;
 }
 
-function aliasesOverlap(left: Iterable<string>, right: Iterable<string>): boolean {
-  const rightSet = new Set(right);
-  for (const alias of left) {
-    if (rightSet.has(alias)) {
-      return true;
-    }
+function matchesAllScopeIdentity(left: InstalledSkillView, right: InstalledSkillView): boolean {
+  if (left.packageName && right.packageName) {
+    return left.packageName === right.packageName;
   }
-  return false;
+
+  return left.installName === right.installName;
 }
 
 export function parseListOptions(args: string[]): ListOptions {
@@ -126,21 +124,9 @@ export async function runList(args: string[]): Promise<void> {
   });
 
   if (allScopes) {
-    const entries = installedSkills.map((skill) => {
-      return {
-        name: getDisplayName(skill),
-        aliases: skill.aliases,
-        version: skill.version || null,
-        scope: skill.scope,
-        path: skill.canonicalPath,
-        agents: getAgentNames(skill),
-        orphaned: skill.orphaned,
-      };
-    });
-
     const grouped: Array<{
+      record: InstalledSkillView;
       name: string;
-      aliases: Set<string>;
       winner: 'project' | 'global';
       scopes: Array<{
         scope: 'project' | 'global';
@@ -151,25 +137,33 @@ export async function runList(args: string[]): Promise<void> {
       }>;
     }> = [];
 
-    for (const entry of entries) {
-      const existing = grouped.find((group) => aliasesOverlap(group.aliases, entry.aliases));
+    for (const record of installedSkills) {
+      const existing = grouped.find((group) => matchesAllScopeIdentity(group.record, record));
+      const scopeEntry = {
+        scope: record.scope,
+        version: record.version || null,
+        path: record.canonicalPath,
+        agents: getAgentNames(record),
+        orphaned: record.orphaned,
+      };
+
       if (existing) {
-        existing.scopes.push(entry);
-        for (const alias of entry.aliases) {
-          existing.aliases.add(alias);
+        existing.scopes.push(scopeEntry);
+        if (record.packageName && !existing.record.packageName) {
+          existing.record = record;
         }
-        if (entry.name.includes('/') && !existing.name.includes('/')) {
-          existing.name = entry.name;
+        if (getDisplayName(record).includes('/') && !existing.name.includes('/')) {
+          existing.name = getDisplayName(record);
         }
-        if (entry.scope === 'project') {
+        if (record.scope === 'project') {
           existing.winner = 'project';
         }
       } else {
         grouped.push({
-          name: entry.name,
-          aliases: new Set(entry.aliases),
-          winner: entry.scope,
-          scopes: [entry],
+          record,
+          name: getDisplayName(record),
+          winner: record.scope,
+          scopes: [scopeEntry],
         });
       }
     }
@@ -179,7 +173,7 @@ export async function runList(args: string[]): Promise<void> {
     if (options.json) {
       console.log(
         JSON.stringify(
-          values.map(({ aliases: _, ...item }) => item),
+          values.map(({ record: _, ...item }) => item),
           null,
           2
         )
