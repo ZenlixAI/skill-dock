@@ -21,8 +21,8 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 FROM truth-ai-registry.cn-hangzhou.cr.aliyuncs.com/base/debian:trixie-slim AS runtime
 
-ARG APT_MIRROR=https://mirrors.aliyun.com/debian
-ARG APT_SECURITY_MIRROR=https://mirrors.aliyun.com/debian-security
+ARG APT_MIRROR=http://mirrors.aliyun.com/debian
+ARG APT_SECURITY_MIRROR=http://mirrors.aliyun.com/debian-security
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
