@@ -3,13 +3,13 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { RegistrySession } from '../api/types';
 import { PermissionGate } from './PermissionGate';
 
-function createSession(allowedActions: string[]): RegistrySession {
+function createSession(allowedActions: string[], allowedPackages: string[] = []): RegistrySession {
   return {
     role: 'publisher',
     actor: 'svc-publisher',
     authMechanism: 'configured_token',
     allowedActions,
-    allowedPackages: [],
+    allowedPackages,
   };
 }
 
@@ -48,10 +48,10 @@ describe('PermissionGate', () => {
       <PermissionGate
         packageName="@platform.skill/agent-notes"
         requiredAction="catalog.governance.skill.apply"
-        session={{
-          ...createSession(['session.read', 'catalog.governance.skill.apply']),
-          allowedPackages: ['@platform.skill/code-review'],
-        }}
+        session={createSession(
+          ['session.read', 'catalog.governance.skill.apply'],
+          ['@platform.skill/code-review']
+        )}
       >
         <button type="button">Retire skill</button>
       </PermissionGate>

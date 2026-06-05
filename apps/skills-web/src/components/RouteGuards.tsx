@@ -11,21 +11,22 @@ function isStaticRuntimeAuth() {
 
 export function RequireAuthenticatedSession({ children }: PropsWithChildren) {
   const location = useLocation();
-  const { session } = useRegistrySession();
+  const { session, getPosture } = useRegistrySession();
+  const posture = getPosture();
 
   if (isStaticRuntimeAuth()) {
     return <>{children}</>;
   }
 
-  if (session.loading) {
+  if (posture === 'loading') {
     return <div className="empty-box">正在加载会话…</div>;
   }
 
-  if (session.errorDetail && session.errorDetail.kind !== 'auth') {
+  if (posture === 'unavailable' && session.errorDetail?.kind !== 'auth') {
     return <div className="error-box">{session.error}</div>;
   }
 
-  if (!session.data) {
+  if (posture === 'unauthenticated') {
     const next = `${location.pathname}${location.search}`;
     return <Navigate replace to={`/login?next=${encodeURIComponent(next)}`} />;
   }
@@ -37,13 +38,14 @@ export function RequireOperatorSession({
   children,
   requiredAction,
 }: PropsWithChildren<{ requiredAction?: string }>) {
-  const { session } = useRegistrySession();
+  const { session, getPosture } = useRegistrySession();
+  const posture = getPosture();
 
-  if (session.loading) {
+  if (posture === 'loading') {
     return <div className="empty-box">正在加载会话…</div>;
   }
 
-  if (!session.data) {
+  if (posture === 'unauthenticated' || !session.data) {
     return <Navigate replace to="/" />;
   }
 
