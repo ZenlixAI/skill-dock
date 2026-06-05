@@ -1,4 +1,4 @@
-FROM truth-ai-registry.cn-hangzhou.cr.aliyuncs.com/base/golang:1.26-bookworm AS build
+FROM truth-ai-registry.cn-hangzhou.cr.aliyuncs.com/base/golang:1.26-trixie AS build
 
 WORKDIR /src
 
@@ -13,7 +13,7 @@ COPY foundation ./foundation
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/skill-registry ./cmd/skill-registry
 
-FROM truth-ai-registry.cn-hangzhou.cr.aliyuncs.com/base/debian:bookworm-slim AS runtime
+FROM truth-ai-registry.cn-hangzhou.cr.aliyuncs.com/base/debian:trixie-slim AS runtime
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git \
