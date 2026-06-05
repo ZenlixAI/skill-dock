@@ -2,10 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { runUpdate, updateProjectSkills, updateGlobalSkills } from '../src/update.ts';
 import * as workflow from '../src/registry-install-workflow.ts';
 import * as catalog from '../src/catalog.ts';
-import * as localLock from '../src/local-lock.ts';
-import * as skillLock from '../src/skill-lock.ts';
-import * as installer from '../src/installer.ts';
-import * as fsPromises from 'fs/promises';
+import * as installedView from '../src/installed-view.ts';
 import { runCliOutput } from '../src/test-utils.ts';
 
 vi.mock('../src/registry-install-workflow.ts', () => ({
@@ -13,20 +10,11 @@ vi.mock('../src/registry-install-workflow.ts', () => ({
 }));
 
 vi.mock('../src/catalog.ts');
-vi.mock('../src/local-lock.ts');
-vi.mock('../src/skill-lock.ts');
-vi.mock('fs/promises', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('fs/promises')>();
+vi.mock('../src/installed-view.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/installed-view.ts')>();
   return {
     ...actual,
-    readFile: vi.fn(),
-  };
-});
-vi.mock('../src/installer.ts', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/installer.ts')>();
-  return {
-    ...actual,
-    listInstalledSkills: vi.fn(),
+    listInstalledView: vi.fn(() => Promise.resolve([])),
   };
 });
 vi.mock('../src/agents.ts', () => ({
@@ -52,8 +40,7 @@ vi.mock('fs', async (importOriginal) => {
 describe('update command', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(fsPromises.readFile).mockRejectedValue(new Error('missing package.json'));
-    vi.mocked(installer.listInstalledSkills).mockResolvedValue([]);
+    vi.mocked(installedView.listInstalledView).mockResolvedValue([]);
     Object.defineProperty(process.stdin, 'isTTY', {
       value: true,
       configurable: true,
@@ -72,7 +59,6 @@ describe('update command', () => {
 
     it('uses concise install guidance when no project skills are installed', async () => {
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-      vi.mocked(localLock.readLocalLock).mockResolvedValue({ version: 1, skills: {} });
 
       await updateProjectSkills({ yes: true });
 
@@ -85,18 +71,22 @@ describe('update command', () => {
     });
 
     it('re-resolves registry-installed project skills by package name', async () => {
-      vi.mocked(localLock.readLocalLock).mockResolvedValue({
-        version: 1,
-        skills: {
-          '@platform.skill/pdf-skill': {
-            sourceType: 'registry',
-            packageName: '@platform.skill/pdf-skill',
-            version: '1.0.0',
-            registry: 'https://catalog.example.com',
-            computedHash: 'abc',
-          },
+      vi.mocked(installedView.listInstalledView).mockResolvedValue([
+        {
+          packageName: '@platform.skill/pdf-skill',
+          displayName: 'PDF Skill',
+          installName: 'pdf-skill',
+          aliases: ['@platform.skill/pdf-skill', 'pdf-skill'],
+          scope: 'project',
+          canonicalPath: '/tmp/project/.agents/skills/pdf-skill',
+          agentLinks: [],
+          sourceType: 'registry',
+          version: '1.0.0',
+          registry: 'https://catalog.example.com',
+          orphaned: false,
+          orphanReasons: [],
         },
-      });
+      ]);
 
       vi.mocked(catalog.resolveInstallTarget).mockResolvedValue({
         packageName: '@platform.skill/pdf-skill',
@@ -125,19 +115,19 @@ describe('update command', () => {
     });
 
     it('ignores non-registry project entries', async () => {
-      vi.mocked(localLock.readLocalLock).mockResolvedValue({
-        version: 1,
-        skills: {
-          'legacy-skill': {
-            sourceType: 'github',
-            computedHash: 'abc',
-            legacy: {
-              source: 'owner/repo',
-              skillPath: 'skills/legacy-skill/SKILL.md',
-            },
-          },
+      vi.mocked(installedView.listInstalledView).mockResolvedValue([
+        {
+          displayName: 'Legacy Skill',
+          installName: 'legacy-skill',
+          aliases: ['legacy-skill'],
+          scope: 'project',
+          canonicalPath: '/tmp/project/.agents/skills/legacy-skill',
+          agentLinks: [],
+          sourceType: 'github',
+          orphaned: false,
+          orphanReasons: [],
         },
-      });
+      ]);
 
       await updateProjectSkills({ yes: true });
 
@@ -148,18 +138,22 @@ describe('update command', () => {
     it('skips reinstall when the installed version already matches the resolved target', async () => {
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-      vi.mocked(localLock.readLocalLock).mockResolvedValue({
-        version: 1,
-        skills: {
-          '@platform.skill/pdf-skill': {
-            sourceType: 'registry',
-            packageName: '@platform.skill/pdf-skill',
-            version: '1.2.0',
-            registry: 'https://catalog.example.com',
-            computedHash: 'abc',
-          },
+      vi.mocked(installedView.listInstalledView).mockResolvedValue([
+        {
+          packageName: '@platform.skill/pdf-skill',
+          displayName: 'PDF Skill',
+          installName: 'pdf-skill',
+          aliases: ['@platform.skill/pdf-skill', 'pdf-skill'],
+          scope: 'project',
+          canonicalPath: '/tmp/project/.agents/skills/pdf-skill',
+          agentLinks: [],
+          sourceType: 'registry',
+          version: '1.2.0',
+          registry: 'https://catalog.example.com',
+          orphaned: false,
+          orphanReasons: [],
         },
-      });
+      ]);
 
       vi.mocked(catalog.resolveInstallTarget).mockResolvedValue({
         packageName: '@platform.skill/pdf-skill',
@@ -183,18 +177,22 @@ describe('update command', () => {
     it('prints a no-op summary when every targeted skill is already current', async () => {
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-      vi.mocked(localLock.readLocalLock).mockResolvedValue({
-        version: 1,
-        skills: {
-          '@platform.skill/pdf-skill': {
-            sourceType: 'registry',
-            packageName: '@platform.skill/pdf-skill',
-            version: '1.2.0',
-            registry: 'https://catalog.example.com',
-            computedHash: 'abc',
-          },
+      vi.mocked(installedView.listInstalledView).mockResolvedValue([
+        {
+          packageName: '@platform.skill/pdf-skill',
+          displayName: 'PDF Skill',
+          installName: 'pdf-skill',
+          aliases: ['@platform.skill/pdf-skill', 'pdf-skill'],
+          scope: 'project',
+          canonicalPath: '/tmp/project/.agents/skills/pdf-skill',
+          agentLinks: [],
+          sourceType: 'registry',
+          version: '1.2.0',
+          registry: 'https://catalog.example.com',
+          orphaned: false,
+          orphanReasons: [],
         },
-      });
+      ]);
 
       vi.mocked(catalog.resolveInstallTarget).mockResolvedValue({
         packageName: '@platform.skill/pdf-skill',
@@ -214,21 +212,51 @@ describe('update command', () => {
   });
 
   describe('updateGlobalSkills', () => {
-    it('re-resolves registry-installed global skills by package name', async () => {
-      vi.mocked(skillLock.readSkillLock).mockResolvedValue({
-        version: 3,
-        skills: {
-          '@platform.skill/pdf-skill': {
-            sourceType: 'registry',
-            skillFolderHash: '',
-            installedAt: '',
-            updatedAt: '',
-            packageName: '@platform.skill/pdf-skill',
-            version: '1.0.0',
-            registry: 'https://catalog.example.com',
-          },
+    it('skips orphaned registry installs and tells the user to repair local state first', async () => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      vi.mocked(installedView.listInstalledView).mockResolvedValue([
+        {
+          packageName: '@platform.skill/pdf-skill',
+          displayName: 'PDF Skill',
+          installName: 'pdf-skill',
+          aliases: ['@platform.skill/pdf-skill', 'pdf-skill'],
+          scope: 'global',
+          canonicalPath: '/tmp/home/.agents/skills/pdf-skill',
+          agentLinks: [],
+          sourceType: 'registry',
+          version: '1.2.3',
+          registry: 'https://catalog.example.com',
+          orphaned: true,
+          orphanReasons: ['missing_lock_entry'],
         },
-      });
+      ]);
+
+      await updateGlobalSkills();
+
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('repair local installed state'));
+      expect(catalog.resolveInstallTarget).not.toHaveBeenCalled();
+
+      logSpy.mockRestore();
+    });
+
+    it('re-resolves registry-installed global skills by package name', async () => {
+      vi.mocked(installedView.listInstalledView).mockResolvedValue([
+        {
+          packageName: '@platform.skill/pdf-skill',
+          displayName: 'PDF Skill',
+          installName: 'pdf-skill',
+          aliases: ['@platform.skill/pdf-skill', 'pdf-skill'],
+          scope: 'global',
+          canonicalPath: '/tmp/home/.agents/skills/pdf-skill',
+          agentLinks: [],
+          sourceType: 'registry',
+          version: '1.0.0',
+          registry: 'https://catalog.example.com',
+          orphaned: false,
+          orphanReasons: [],
+        },
+      ]);
 
       vi.mocked(catalog.resolveInstallTarget).mockResolvedValue({
         packageName: '@platform.skill/pdf-skill',
@@ -257,22 +285,19 @@ describe('update command', () => {
     });
 
     it('ignores non-registry global entries', async () => {
-      vi.mocked(skillLock.readSkillLock).mockResolvedValue({
-        version: 3,
-        skills: {
-          'legacy-skill': {
-            sourceType: 'github',
-            skillFolderHash: 'abc',
-            installedAt: '',
-            updatedAt: '',
-            legacy: {
-              source: 'owner/repo',
-              sourceUrl: 'https://github.com/owner/repo.git',
-              skillPath: 'skills/legacy-skill/SKILL.md',
-            },
-          },
+      vi.mocked(installedView.listInstalledView).mockResolvedValue([
+        {
+          displayName: 'Legacy Skill',
+          installName: 'legacy-skill',
+          aliases: ['legacy-skill'],
+          scope: 'global',
+          canonicalPath: '/tmp/home/.agents/skills/legacy-skill',
+          agentLinks: [],
+          sourceType: 'github',
+          orphaned: false,
+          orphanReasons: [],
         },
-      });
+      ]);
 
       await updateGlobalSkills({ yes: true });
 
@@ -280,27 +305,22 @@ describe('update command', () => {
       expect(workflow.runRegistryInstallWorkflow).not.toHaveBeenCalled();
     });
 
-    it('updates unlocked global registry skills by inferring package identity from installed directories', async () => {
-      vi.mocked(skillLock.readSkillLock).mockResolvedValue({
-        version: 3,
-        skills: {},
-      });
-      vi.mocked(installer.listInstalledSkills).mockResolvedValue([
+    it('updates healthy installed-view registry skills without inferring package identity from package.json', async () => {
+      vi.mocked(installedView.listInstalledView).mockResolvedValue([
         {
-          name: 'my-skill',
-          description: 'demo',
-          path: '/Users/test/.agents/skills/my-skill',
-          canonicalPath: '/Users/test/.agents/skills/my-skill',
+          packageName: '@company.skill/my-skill',
+          displayName: 'My Skill',
+          installName: 'my-skill',
+          aliases: ['@company.skill/my-skill', 'my-skill'],
           scope: 'global',
-          agents: ['claude-code'],
+          canonicalPath: '/Users/test/.agents/skills/my-skill',
+          agentLinks: [],
+          sourceType: 'registry',
+          version: '0.1.0',
+          orphaned: false,
+          orphanReasons: [],
         },
       ]);
-      vi.mocked(fsPromises.readFile).mockResolvedValueOnce(
-        JSON.stringify({
-          name: '@company.skill/my-skill',
-          version: '0.1.0',
-        })
-      );
       vi.mocked(catalog.resolveInstallTarget).mockResolvedValue({
         packageName: '@company.skill/my-skill',
         version: '0.1.1',

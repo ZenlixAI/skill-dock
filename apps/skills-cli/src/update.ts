@@ -1,14 +1,10 @@
-import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { existsSync, readdirSync } from 'fs';
 import * as p from '@clack/prompts';
 
 import { agents, detectInstalledAgents, getUniversalAgents } from './agents.ts';
-import { hasSkillPackageScope, isExactVersion } from './authoring.ts';
-import { readSkillLock, type SkillLockEntry } from './skill-lock.ts';
-import { readLocalLock, type LocalSkillLockEntry } from './local-lock.ts';
 import { runRegistryInstallWorkflow } from './registry-install-workflow.ts';
-import { listInstalledSkills } from './installer.ts';
+import { listInstalledView, type InstalledSkillView } from './installed-view.ts';
 import { sanitizeMetadata } from './sanitize.ts';
 import { track } from './telemetry.ts';
 import { resolveInstallTarget } from './catalog.ts';
@@ -26,16 +22,6 @@ export interface UpdateCheckOptions {
   project?: boolean;
   yes?: boolean;
   skills?: string[];
-}
-
-type RegistryUpdateEntry = {
-  name: string;
-  entry: SkillLockEntry | LocalSkillLockEntry;
-};
-
-interface InstalledPackageJson {
-  name?: unknown;
-  version?: unknown;
 }
 
 function ensureUniversalAgents(targetAgents: AgentType[]): AgentType[] {
@@ -153,79 +139,39 @@ export async function resolveUpdateScope(options: UpdateCheckOptions): Promise<U
   return scope as UpdateScope;
 }
 
-export function matchesSkillFilter(name: string, filter?: string[]): boolean {
-  if (!filter || filter.length === 0) return true;
-  const lower = name.toLowerCase();
-  return filter.some((value) => value.toLowerCase() === lower);
-}
-
-async function inferUnlockedGlobalRegistryEntries(
-  lockedSkills: Record<string, SkillLockEntry>,
-  skillFilter?: string[]
-): Promise<RegistryUpdateEntry[]> {
-  const installedSkills = await listInstalledSkills({ global: true });
-  const lockedPackageNames = new Set(
-    Object.entries(lockedSkills)
-      .filter(([, entry]) => entry.sourceType === 'registry')
-      .map(([name, entry]) => (entry.packageName || name).toLowerCase())
-  );
-  const lockedInstallNames = new Set(
-    Object.entries(lockedSkills)
-      .filter(([, entry]) => entry.sourceType === 'registry')
-      .map(([name, entry]) => (entry.installName || name).toLowerCase())
-  );
-  const inferred: RegistryUpdateEntry[] = [];
-
-  for (const installed of installedSkills) {
-    const installName = installed.name.trim();
-    if (lockedInstallNames.has(installName.toLowerCase())) {
-      continue;
-    }
-
-    try {
-      const raw = await readFile(join(installed.canonicalPath, 'package.json'), 'utf-8');
-      const pkg = JSON.parse(raw) as InstalledPackageJson;
-      if (typeof pkg.name !== 'string' || !hasSkillPackageScope(pkg.name)) {
-        continue;
-      }
-      if (typeof pkg.version !== 'string' || !isExactVersion(pkg.version)) {
-        continue;
-      }
-      if (
-        !matchesSkillFilter(pkg.name, skillFilter) &&
-        !matchesSkillFilter(installName, skillFilter)
-      ) {
-        continue;
-      }
-      if (lockedPackageNames.has(pkg.name.toLowerCase())) {
-        continue;
-      }
-
-      inferred.push({
-        name: pkg.name,
-        entry: {
-          sourceType: 'registry',
-          skillFolderHash: '',
-          installedAt: '',
-          updatedAt: '',
-          packageName: pkg.name,
-          installName,
-          version: pkg.version,
-          registry: process.env.SKILLS_REGISTRY_URL?.trim() || undefined,
-        },
-      });
-      lockedPackageNames.add(pkg.name.toLowerCase());
-      lockedInstallNames.add(installName.toLowerCase());
-    } catch {
-      continue;
-    }
+function recordMatchesSkillFilter(record: InstalledSkillView, filter?: string[]): boolean {
+  if (!filter || filter.length === 0) {
+    return true;
   }
 
-  return inferred;
+  const requested = filter.map((value) => value.toLowerCase());
+  if (record.packageName && requested.includes(record.packageName.toLowerCase())) {
+    return true;
+  }
+
+  return record.aliases.some((alias) => requested.includes(alias.toLowerCase()));
+}
+
+function getRegistryRecordsForUpdate(
+  records: InstalledSkillView[],
+  skillFilter?: string[]
+): InstalledSkillView[] {
+  return records.filter((record) => {
+    if (!record.packageName) return false;
+    if (record.sourceType !== 'registry') return false;
+    return recordMatchesSkillFilter(record, skillFilter);
+  });
+}
+
+function getUpdatableRegistryRecords(
+  records: InstalledSkillView[],
+  skillFilter?: string[]
+): InstalledSkillView[] {
+  return getRegistryRecordsForUpdate(records, skillFilter).filter((record) => !record.orphaned);
 }
 
 async function updateRegistryEntries(
-  entries: RegistryUpdateEntry[],
+  entries: InstalledSkillView[],
   global: boolean
 ): Promise<{ successCount: number; failCount: number; alreadyUpToDateCount: number }> {
   let successCount = 0;
@@ -237,18 +183,18 @@ async function updateRegistryEntries(
   }
 
   for (const skill of entries) {
-    const packageName = skill.entry.packageName || skill.name;
+    const packageName = skill.packageName!;
     const safeName = sanitizeMetadata(packageName);
 
     console.log(`${TEXT}Updating ${safeName}...${RESET}`);
 
     try {
       const target = await resolveInstallTarget(packageName, {
-        registry: skill.entry.registry,
+        registry: skill.registry,
         version: undefined,
       });
 
-      if (skill.entry.version && skill.entry.version === target.version) {
+      if (skill.version && skill.version === target.version) {
         alreadyUpToDateCount++;
         console.log(`  ${DIM}Already up to date${RESET} ${safeName} ${DIM}@ ${target.version}${RESET}`);
         continue;
@@ -258,7 +204,7 @@ async function updateRegistryEntries(
       await runRegistryInstallWorkflow({
         packageName,
         version: target.version,
-        registry: skill.entry.registry,
+        registry: skill.registry,
         targetAgents,
         installGlobally: global,
         installMode: resolveInstallModeForUpdate(targetAgents),
@@ -274,44 +220,32 @@ async function updateRegistryEntries(
   return { successCount, failCount, alreadyUpToDateCount };
 }
 
-export async function getProjectSkillsForUpdate(
-  skillFilter?: string[]
-): Promise<Array<{ name: string; entry: LocalSkillLockEntry }>> {
-  const localLock = await readLocalLock();
-  const skills: Array<{ name: string; entry: LocalSkillLockEntry }> = [];
-
-  for (const [name, entry] of Object.entries(localLock.skills)) {
-    if (!matchesSkillFilter(name, skillFilter)) continue;
-    if (entry.sourceType !== 'registry') continue;
-    skills.push({ name, entry });
-  }
-
-  return skills;
-}
-
 export async function updateGlobalSkills(
   options: UpdateCheckOptions = {}
 ): Promise<{ successCount: number; failCount: number; checkedCount: number }> {
-  const lock = await readSkillLock();
-  const matchedEntries = Object.entries(lock.skills)
-    .filter(([name]) => matchesSkillFilter(name, options.skills))
-    .map(([name, entry]) => ({ name, entry }));
-  const inferredEntries = await inferUnlockedGlobalRegistryEntries(lock.skills, options.skills);
-  const combinedEntries = [...matchedEntries, ...inferredEntries];
+  const records = await listInstalledView({ scope: 'global' });
+  const registryRecords = getRegistryRecordsForUpdate(records, options.skills);
+  const updatableRecords = getUpdatableRegistryRecords(records, options.skills);
+  const orphanedRecords = registryRecords.filter((record) => record.orphaned);
 
-  if (combinedEntries.length === 0) {
+  if (registryRecords.length === 0) {
     if (!options.skills) {
-      console.log(`${DIM}No global skills tracked in lock file.${RESET}`);
-      console.log(`${DIM}Install skills with${RESET} ${TEXT}skills add <package_name> -g${RESET}`);
+      console.log(`${DIM}No global skills to update.${RESET}`);
+      console.log(`${DIM}Install global skills with${RESET} ${TEXT}skills add <package_name> -g${RESET}`);
     }
     return { successCount: 0, failCount: 0, checkedCount: 0 };
   }
 
-  const registryEntries = combinedEntries.filter((item) => item.entry.sourceType === 'registry');
-  const result = await updateRegistryEntries(registryEntries, true);
+  for (const record of orphanedRecords) {
+    console.log(
+      `${DIM}Skipping ${sanitizeMetadata(record.packageName || record.displayName)}:${RESET} repair local installed state before update`
+    );
+  }
+
+  const result = await updateRegistryEntries(updatableRecords, true);
 
   if (
-    registryEntries.length > 0 &&
+    updatableRecords.length > 0 &&
     result.failCount === 0 &&
     result.successCount === 0 &&
     result.alreadyUpToDateCount > 0
@@ -322,16 +256,19 @@ export async function updateGlobalSkills(
   return {
     successCount: result.successCount,
     failCount: result.failCount,
-    checkedCount: combinedEntries.length,
+    checkedCount: registryRecords.length,
   };
 }
 
 export async function updateProjectSkills(
   options: UpdateCheckOptions = {}
 ): Promise<{ successCount: number; failCount: number; foundCount: number }> {
-  const projectSkills = await getProjectSkillsForUpdate(options.skills);
+  const records = await listInstalledView({ scope: 'project' });
+  const registryRecords = getRegistryRecordsForUpdate(records, options.skills);
+  const updatableRecords = getUpdatableRegistryRecords(records, options.skills);
+  const orphanedRecords = registryRecords.filter((record) => record.orphaned);
 
-  if (projectSkills.length === 0) {
+  if (registryRecords.length === 0) {
     if (!options.skills) {
       console.log(`${DIM}No project skills to update.${RESET}`);
       console.log(`${DIM}Install project skills with${RESET} ${TEXT}skills add <package_name>${RESET}`);
@@ -339,11 +276,16 @@ export async function updateProjectSkills(
     return { successCount: 0, failCount: 0, foundCount: 0 };
   }
 
-  const registryEntries = projectSkills.filter((item) => item.entry.sourceType === 'registry');
-  const result = await updateRegistryEntries(registryEntries, false);
+  for (const record of orphanedRecords) {
+    console.log(
+      `${DIM}Skipping ${sanitizeMetadata(record.packageName || record.displayName)}:${RESET} repair local installed state before update`
+    );
+  }
+
+  const result = await updateRegistryEntries(updatableRecords, false);
 
   if (
-    registryEntries.length > 0 &&
+    updatableRecords.length > 0 &&
     result.failCount === 0 &&
     result.successCount === 0 &&
     result.alreadyUpToDateCount > 0
@@ -354,7 +296,7 @@ export async function updateProjectSkills(
   return {
     successCount: result.successCount,
     failCount: result.failCount,
-    foundCount: projectSkills.length,
+    foundCount: registryRecords.length,
   };
 }
 
