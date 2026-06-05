@@ -222,7 +222,13 @@ async function updateRegistryEntries(
 
 export async function updateGlobalSkills(
   options: UpdateCheckOptions = {}
-): Promise<{ successCount: number; failCount: number; checkedCount: number }> {
+): Promise<{
+  successCount: number;
+  failCount: number;
+  matchedCount: number;
+  updatableCount: number;
+  skippedCount: number;
+}> {
   const records = await listInstalledView({ scope: 'global' });
   const registryRecords = getRegistryRecordsForUpdate(records, options.skills);
   const updatableRecords = getUpdatableRegistryRecords(records, options.skills);
@@ -233,7 +239,7 @@ export async function updateGlobalSkills(
       console.log(`${DIM}No global skills to update.${RESET}`);
       console.log(`${DIM}Install global skills with${RESET} ${TEXT}skills add <package_name> -g${RESET}`);
     }
-    return { successCount: 0, failCount: 0, checkedCount: 0 };
+    return { successCount: 0, failCount: 0, matchedCount: 0, updatableCount: 0, skippedCount: 0 };
   }
 
   for (const record of orphanedRecords) {
@@ -256,13 +262,21 @@ export async function updateGlobalSkills(
   return {
     successCount: result.successCount,
     failCount: result.failCount,
-    checkedCount: registryRecords.length,
+    matchedCount: registryRecords.length,
+    updatableCount: updatableRecords.length,
+    skippedCount: orphanedRecords.length,
   };
 }
 
 export async function updateProjectSkills(
   options: UpdateCheckOptions = {}
-): Promise<{ successCount: number; failCount: number; foundCount: number }> {
+): Promise<{
+  successCount: number;
+  failCount: number;
+  matchedCount: number;
+  updatableCount: number;
+  skippedCount: number;
+}> {
   const records = await listInstalledView({ scope: 'project' });
   const registryRecords = getRegistryRecordsForUpdate(records, options.skills);
   const updatableRecords = getUpdatableRegistryRecords(records, options.skills);
@@ -273,7 +287,7 @@ export async function updateProjectSkills(
       console.log(`${DIM}No project skills to update.${RESET}`);
       console.log(`${DIM}Install project skills with${RESET} ${TEXT}skills add <package_name>${RESET}`);
     }
-    return { successCount: 0, failCount: 0, foundCount: 0 };
+    return { successCount: 0, failCount: 0, matchedCount: 0, updatableCount: 0, skippedCount: 0 };
   }
 
   for (const record of orphanedRecords) {
@@ -296,7 +310,9 @@ export async function updateProjectSkills(
   return {
     successCount: result.successCount,
     failCount: result.failCount,
-    foundCount: registryRecords.length,
+    matchedCount: registryRecords.length,
+    updatableCount: updatableRecords.length,
+    skippedCount: orphanedRecords.length,
   };
 }
 
@@ -313,16 +329,21 @@ export async function runUpdate(args: string[] = []): Promise<void> {
 
   let totalSuccess = 0;
   let totalFail = 0;
-  let totalFound = 0;
+  let totalMatched = 0;
+  let totalUpdatable = 0;
+  let totalSkipped = 0;
 
   if (scope === 'global' || scope === 'both') {
     if (scope === 'both' && !options.skills) {
       console.log(`${BOLD}Global Skills${RESET}`);
     }
-    const { successCount, failCount, checkedCount } = await updateGlobalSkills(options);
+    const { successCount, failCount, matchedCount, updatableCount, skippedCount } =
+      await updateGlobalSkills(options);
     totalSuccess += successCount;
     totalFail += failCount;
-    totalFound += checkedCount;
+    totalMatched += matchedCount;
+    totalUpdatable += updatableCount;
+    totalSkipped += skippedCount;
     if (scope === 'both' && !options.skills) {
       console.log();
     }
@@ -332,13 +353,16 @@ export async function runUpdate(args: string[] = []): Promise<void> {
     if (scope === 'both' && !options.skills) {
       console.log(`${BOLD}Project Skills${RESET}`);
     }
-    const { successCount, failCount, foundCount } = await updateProjectSkills(options);
+    const { successCount, failCount, matchedCount, updatableCount, skippedCount } =
+      await updateProjectSkills(options);
     totalSuccess += successCount;
     totalFail += failCount;
-    totalFound += foundCount;
+    totalMatched += matchedCount;
+    totalUpdatable += updatableCount;
+    totalSkipped += skippedCount;
   }
 
-  if (options.skills && totalFound === 0) {
+  if (options.skills && totalMatched === 0) {
     console.log(`${DIM}No installed skills found matching: ${options.skills.join(', ')}${RESET}`);
   }
 
@@ -349,7 +373,12 @@ export async function runUpdate(args: string[] = []): Promise<void> {
   if (totalFail > 0) {
     console.log(`${DIM}Failed to update ${totalFail} skill(s)${RESET}`);
   }
-  if (totalFound > 0 && totalSuccess === 0 && totalFail === 0) {
+  if (totalSkipped > 0) {
+    console.log(
+      `${DIM}Skipped ${totalSkipped} skill(s) that need local state repair before update.${RESET}`
+    );
+  }
+  if (totalUpdatable > 0 && totalSuccess === 0 && totalFail === 0) {
     console.log(`${DIM}No updates were needed.${RESET}`);
   }
 
