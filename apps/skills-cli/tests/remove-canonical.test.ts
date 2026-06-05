@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { removeCommand } from '../src/remove.ts';
 import * as agentsModule from '../src/agents.ts';
+import { readLocalLock } from '../src/local-lock.ts';
 
 // Mock detectInstalledAgents
 vi.mock('../src/agents.ts', async () => {
@@ -61,6 +62,22 @@ description: canonical protection test
     // 2. Install (symlink) to Claude and Continue
     await symlink(canonicalPath, claudePath, 'junction');
     await symlink(canonicalPath, continuePath, 'junction');
+    await writeFile(
+      join(tempDir, 'skills-lock.json'),
+      JSON.stringify(
+        {
+          version: 1,
+          skills: {
+            [skillName]: {
+              sourceType: 'local',
+              computedHash: 'abc123',
+            },
+          },
+        },
+        null,
+        2
+      )
+    );
 
     // Verify setup
     expect(
@@ -88,6 +105,9 @@ description: canonical protection test
     expect(
       (await lstat(continuePath)).isSymbolicLink() || (await lstat(continuePath)).isDirectory()
     ).toBe(true);
+
+    // Lock entry should remain because the skill is still installed elsewhere.
+    expect((await readLocalLock(tempDir)).skills[skillName]).toBeDefined();
   });
 
   it('should remove canonical storage if NO other agents are using it', async () => {
