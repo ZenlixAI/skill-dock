@@ -14,7 +14,6 @@ COPY app ./app
 COPY business ./business
 COPY cmd ./cmd
 COPY foundation ./foundation
-COPY zarf/data ./zarf/data
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
@@ -25,14 +24,15 @@ FROM truth-ai-registry.cn-hangzhou.cr.aliyuncs.com/base/debian:trixie-slim AS ru
 ARG APT_MIRROR=https://mirrors.aliyun.com/debian
 ARG APT_SECURITY_MIRROR=https://mirrors.aliyun.com/debian-security
 
-RUN sed -i \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    sed -i \
       -e "s|^\(URIs: \)https://deb.debian.org/debian-security$|\1${APT_SECURITY_MIRROR}|" \
       -e "s|^\(URIs: \)https://deb.debian.org/debian$|\1${APT_MIRROR}|" \
       /etc/apt/sources.list.d/debian.sources \
     && rm -f /etc/apt/apt.conf.d/docker-clean \
     && apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates git tzdata \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends ca-certificates git tzdata
 
 WORKDIR /app
 

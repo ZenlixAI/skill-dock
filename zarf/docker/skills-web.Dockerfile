@@ -1,12 +1,17 @@
 FROM --platform=$BUILDPLATFORM truth-ai-registry.cn-hangzhou.cr.aliyuncs.com/base/node:22 AS build
 
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+
 WORKDIR /src/apps/skills-web
 
 COPY apps/skills-web/package.json apps/skills-web/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci
+    npm ci --registry=${NPM_REGISTRY}
 
-COPY apps/skills-web/ ./
+COPY apps/skills-web/index.html ./index.html
+COPY apps/skills-web/tsconfig.json ./tsconfig.json
+COPY apps/skills-web/vite.config.ts ./vite.config.ts
+COPY apps/skills-web/src ./src
 RUN npm run build
 
 FROM truth-ai-registry.cn-hangzhou.cr.aliyuncs.com/base/nginx:1.27 AS runtime
