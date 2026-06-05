@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { RegistrySession } from '../api/types';
 import {
   getSessionPosture,
+  getSessionPostureLabel,
   hasCapability,
   isSessionUnavailable,
 } from './posture';
@@ -56,6 +57,12 @@ describe('session posture', () => {
         requiredAction: 'catalog.governance.skill.apply',
       })
     ).toBe('read_only');
+    expect(
+      getSessionPostureLabel(session, {
+        packageName: '@platform.skill/pdf-skill',
+        requiredAction: 'catalog.governance.skill.apply',
+      })
+    ).toBe('当前会话对 catalog.governance.skill.apply 只有只读权限');
   });
 
   it('marks an errored session load as unavailable', () => {

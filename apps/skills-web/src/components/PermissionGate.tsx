@@ -2,6 +2,7 @@ import type { PropsWithChildren, ReactNode } from 'react';
 import type { RegistrySession } from '../api/types';
 import {
   getSessionPosture,
+  getSessionPostureLabel,
   hasCapability as sessionHasCapability,
 } from '../session/posture';
 import { useOptionalRegistrySession } from '../session/SessionProvider';
@@ -58,6 +59,15 @@ export function PermissionGate({
 
   if (posture === 'unauthenticated') {
     return <>{unavailableFallback ?? <div className="empty-box">当前没有可用于 {requiredAction} 的已登录 Catalog 会话。</div>}</>;
+  }
+
+  if (posture === 'package_filter_required') {
+    return <div className="empty-box">{getSessionPostureLabel(resolvedSession, {
+      loading: resolvedLoading,
+      error: resolvedError,
+      packageName,
+      requiredAction,
+    })}</div>;
   }
 
   const allowed = sessionHasCapability(resolvedSession, requiredAction, packageName);

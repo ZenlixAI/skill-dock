@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import * as client from '../api/client';
 import { SessionProvider } from '../session/SessionProvider';
@@ -35,6 +35,16 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+beforeEach(() => {
+  vi.mocked(client.getSession).mockResolvedValue({
+    role: 'operator',
+    actor: 'operator',
+    authMechanism: 'session',
+    allowedActions: ['session.read', 'packaging.prepare', 'packaging.validate', 'packaging.pack'],
+    allowedPackages: [],
+  });
+});
+
 function renderImportPage() {
   return render(
     <SessionProvider>
@@ -66,6 +76,25 @@ describe('ImportPage', () => {
     expect(screen.getByLabelText('模板')).toHaveValue('command');
     expect(screen.getByDisplayValue('commands/run.txt')).toBeInTheDocument();
     expect(screen.getByLabelText('当前文件内容')).toHaveValue('echo authored\n');
+  });
+
+  it('surfaces package_filter_required in the session posture pill when a scoped pack action has no package focus', async () => {
+    vi.mocked(client.getSession).mockResolvedValue({
+      role: 'operator',
+      actor: 'operator',
+      authMechanism: 'session',
+      allowedActions: ['session.read', 'packaging.pack'],
+      allowedPackages: ['@company.skill/*'],
+    });
+
+    renderImportPage();
+
+    fireEvent.change(await screen.findByLabelText('packageName'), {
+      target: { value: '' },
+    });
+
+    const matches = await screen.findAllByText('需要先选定包名');
+    expect(matches.some((element) => element.classList.contains('status-pill'))).toBe(true);
   });
 
   it('allows adding and deleting non-locked authoring files', async () => {

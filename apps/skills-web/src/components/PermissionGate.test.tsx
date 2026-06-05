@@ -75,6 +75,24 @@ describe('PermissionGate', () => {
     expect(screen.queryByRole('button', { name: 'Retire skill' })).toBeNull();
   });
 
+  it('renders a package-focus hint when a scoped action is missing package focus', () => {
+    render(
+      <PermissionGate
+        packageName=""
+        requiredAction="catalog.governance.skill.apply"
+        session={createSession(
+          ['session.read', 'catalog.governance.skill.apply'],
+          ['@platform.skill/*']
+        )}
+      >
+        <button type="button">Retire skill</button>
+      </PermissionGate>
+    );
+
+    expect(screen.getByText('需要先选定包名')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retire skill' })).toBeNull();
+  });
+
   it('renders an unavailable posture when the session check failed', () => {
     render(
       <PermissionGate requiredAction="packaging.prepare" session={null} sessionError="registry offline">

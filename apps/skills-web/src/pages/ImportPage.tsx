@@ -239,7 +239,7 @@ function describeImportOperationError(error: RegistryRequestError) {
 
 export function ImportPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { session, hasCapability } = useRegistrySession();
+  const { session, getPosture, getPostureLabel } = useRegistrySession();
   const [sourceType, setSourceType] = useState<PackagingSourceType>('git');
   const [location, setLocation] = useState('https://github.com/mattpocock/skills?path=skills/engineering/zoom-out');
   const [sourceRef, setSourceRef] = useState('');
@@ -311,7 +311,20 @@ export function ImportPage() {
   const normalizedPackageName = packageName.trim();
   const cleanupPackageName =
     packResult?.packageName || validateResult?.packageName || prepareResult?.packageName || normalizedPackageName;
-  const packagingWriteEnabled = hasCapability('packaging.pack', normalizedPackageName);
+  const packagingPosture = getPosture({
+    packageName: normalizedPackageName,
+    requiredAction: 'packaging.pack',
+  });
+  const packagingWriteEnabled = packagingPosture === 'write_enabled';
+  const packagingPostureLabel =
+    packagingPosture === 'write_enabled'
+      ? '允许打包'
+      : packagingPosture === 'read_only'
+        ? '打包只读'
+        : getPostureLabel({
+            packageName: normalizedPackageName,
+            requiredAction: 'packaging.pack',
+          });
   const mutationResult = readMutationResultSearchParams(searchParams, {
     packageName: null,
     version: null,
@@ -741,8 +754,8 @@ export function ImportPage() {
         <StatusPill>{version}</StatusPill>
         <StatusPill tone={strictMode ? 'warn' : 'good'}>{strictMode ? '严格' : '宽松'}</StatusPill>
         <StatusPill tone={stageTone}>阶段 {currentStage}</StatusPill>
-        <StatusPill tone={packagingWriteEnabled ? 'accent' : 'default'}>
-          {session.loading ? '会话加载中' : session.error ? '会话不可用' : packagingWriteEnabled ? '允许打包' : '打包只读'}
+        <StatusPill tone={packagingPosture === 'write_enabled' ? 'accent' : packagingPosture === 'package_filter_required' ? 'warn' : 'default'}>
+          {packagingPostureLabel}
         </StatusPill>
       </div>
 

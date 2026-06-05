@@ -70,5 +70,10 @@ export function getSessionPostureLabel(
   if (posture === 'unavailable') return '会话不可用';
   if (posture === 'unauthenticated') return '未登录';
   if (posture === 'package_filter_required') return '需要先选定包名';
+  if (options.requiredAction) {
+    return posture === 'write_enabled'
+      ? `允许执行 ${options.requiredAction}`
+      : `当前会话对 ${options.requiredAction} 只有只读权限`;
+  }
   return describeSessionPosture(session);
 }
