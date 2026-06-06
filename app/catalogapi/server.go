@@ -42,23 +42,27 @@ type ServerConfig struct {
 }
 
 type Server struct {
-	repo                 catalog.Repository
-	authorizer           *auth.Authorizer
-	sessionManager       *auth.SessionManager
-	catalogReadModule    catalogReadWorkflow
-	governanceModule     *governanceModule
-	packagingModule      *packagingModule
-	sessionModule        sessionWorkflow
-	publicNPMRegistryURL string
-	mockRegistry         *artifactadapter.MockRegistry
-	disableMockRegistry  bool
-	packaging            *packaging.Service
-	idempotency          persist.IdempotencyStore
-	audit                persist.AuditStore
-	auditRecorder        *AuditRecorder
-	logger               *log.Logger
-	metrics              *observability.Collector
-	requestID            atomic.Uint64
+	repo                  catalog.Repository
+	authorizer            *auth.Authorizer
+	sessionManager        *auth.SessionManager
+	accessWorkflow        accessWorkflowHandler
+	catalogReadModule     catalogReadWorkflow
+	auditQueryModule      auditQueryWorkflow
+	catalogMutationModule catalogMutationWorkflow
+	governanceModule      *governanceModule
+	packagingModule       *packagingModule
+	packagingAccessModule packagingAccessWorkflow
+	sessionModule         sessionWorkflow
+	publicNPMRegistryURL  string
+	mockRegistry          *artifactadapter.MockRegistry
+	disableMockRegistry   bool
+	packaging             *packaging.Service
+	idempotency           persist.IdempotencyStore
+	audit                 persist.AuditStore
+	auditRecorder         *AuditRecorder
+	logger                *log.Logger
+	metrics               *observability.Collector
+	requestID             atomic.Uint64
 }
 
 type contextKey string
@@ -104,6 +108,19 @@ func NewServer(config ServerConfig) *Server {
 	server.catalogReadModule = &catalogReadModule{
 		repo: config.Repository,
 	}
+	server.accessWorkflow = &accessWorkflow{
+		authorizer: authorizer,
+		audit:      auditRecorder,
+		logger:     logger,
+	}
+	server.auditQueryModule = &auditQueryModule{
+		audit:      config.Audit,
+		authorizer: authorizer,
+	}
+	server.catalogMutationModule = &catalogMutationModule{
+		repo:  config.Repository,
+		audit: auditRecorder,
+	}
 	server.governanceModule = &governanceModule{
 		repo:       config.Repository,
 		authorizer: authorizer,
@@ -114,6 +131,10 @@ func NewServer(config ServerConfig) *Server {
 		audit:               auditRecorder,
 		cache:               newPackagingResponseCache(10 * time.Minute),
 		allowAnonymousCache: false,
+	}
+	server.packagingAccessModule = &packagingAccessModule{
+		service: config.Packaging,
+		audit:   auditRecorder,
 	}
 	server.sessionModule = &sessionModule{
 		authorizer:     authorizer,
@@ -367,56 +388,14 @@ func (s *Server) handleMetrics(writer http.ResponseWriter, request *http.Request
 }
 
 func (s *Server) handleAuditEvents(writer http.ResponseWriter, request *http.Request) {
-	if s.audit == nil {
-		writeCatalogError(writer, request, catalog.NewError(503, "internal_error", "Audit store is not configured.", nil))
-		return
-	}
-
-	pageSize, err := parsePageSize(request.URL.Query())
-	if err != nil {
-		writeCatalogError(writer, request, err)
-		return
-	}
-	cursor, err := parseCursor(request.URL.Query())
-	if err != nil {
-		writeCatalogError(writer, request, err)
-		return
-	}
-
 	packageName := request.URL.Query().Get("package_name")
 	if packageName != "" && !s.authorizePackageAccess(writer, request, packageName) {
 		return
 	}
 
-	current := auth.PrincipalFromContext(request.Context())
-	if authErr := s.authorizer.RequirePackageFilter(current, packageName); authErr != nil {
-		writeAuthorizationError(writer, request, authErr)
-		return
-	}
-
-	authDecision, authDecisionErr := parseAuthDecisionFilter(request.URL.Query().Get("auth_decision"))
-	if authDecisionErr != nil {
-		writeCatalogError(writer, request, authDecisionErr)
-		return
-	}
-	versionFilter, versionFilterErr := parseExactVersionQueryParam(request.URL.Query().Get("version"), "version")
-	if versionFilterErr != nil {
-		writeCatalogError(writer, request, versionFilterErr)
-		return
-	}
-
-	response, auditErr := s.audit.List(request.Context(), persist.AuditQuery{
-		Action:       request.URL.Query().Get("action"),
-		Actor:        request.URL.Query().Get("actor"),
-		AuthDecision: authDecision,
-		PackageName:  packageName,
-		Version:      versionFilter,
-		Outcome:      request.URL.Query().Get("outcome"),
-		PageSize:     pageSize,
-		Cursor:       cursor,
-	})
-	if auditErr != nil {
-		writeCatalogError(writer, request, auditErr)
+	response, err := s.auditQueryModule.listEvents(request.Context(), auth.PrincipalFromContext(request.Context()), request.URL.Query())
+	if err != nil {
+		writeCatalogError(writer, request, err)
 		return
 	}
 	writeJSON(writer, http.StatusOK, response)
@@ -692,30 +671,12 @@ func (s *Server) handlePackagingCleanup(writer http.ResponseWriter, request *htt
 		return
 	}
 
-	if strings.TrimSpace(payload.WorkspacePath) == "" {
-		err := catalog.NewError(422, "invalid_request", "workspacePath is required.", nil)
-		s.recordMutationAudit(request, "packaging.cleanup", "", "", err.Status, "failed", map[string]any{
-			"errorCode": err.Code,
-		})
+	response, status, err := s.packagingAccessModule.cleanup(request.Context(), auth.PrincipalFromContext(request.Context()), payload)
+	if err != nil {
 		writeCatalogError(writer, request, err)
 		return
 	}
-
-	if err := s.packaging.Cleanup(payload.WorkspacePath); err != nil {
-		s.recordMutationAudit(request, "packaging.cleanup", "", "", statusFromError(err), "failed", map[string]any{
-			"errorCode": errorCodeFromError(err),
-		})
-		writeCatalogError(writer, request, err)
-		return
-	}
-
-	s.recordMutationAudit(request, "packaging.cleanup", "", "", http.StatusOK, "succeeded", map[string]any{
-		"workspacePath": payload.WorkspacePath,
-	})
-	writeJSON(writer, http.StatusOK, packaging.CleanupResponse{
-		WorkspacePath: payload.WorkspacePath,
-		Removed:       true,
-	})
+	writeJSON(writer, status, response)
 }
 
 func (s *Server) handlePackagingBundleDownload(writer http.ResponseWriter, request *http.Request) {
@@ -724,136 +685,88 @@ func (s *Server) handlePackagingBundleDownload(writer http.ResponseWriter, reque
 		return
 	}
 
-	workspacePath := strings.TrimSpace(request.URL.Query().Get("workspacePath"))
 	packageName := strings.TrimSpace(request.URL.Query().Get("packageName"))
-	version := strings.TrimSpace(request.URL.Query().Get("version"))
-	if workspacePath == "" || packageName == "" || version == "" {
-		err := catalog.NewError(422, "invalid_request", "workspacePath, packageName, and version are required.", nil)
-		s.recordMutationAudit(request, "packaging.bundle.download", packageName, version, err.Status, "failed", map[string]any{
-			"errorCode": err.Code,
-		})
-		writeCatalogError(writer, request, err)
-		return
-	}
 	if !s.authorizePackageAccess(writer, request, packageName) {
 		return
 	}
 
-	bundlePath, err := s.packaging.BundlePath(workspacePath, packaging.Target{
-		PackageName: packageName,
-		Version:     version,
-	})
+	content, err := s.packagingAccessModule.downloadBundle(
+		request.Context(),
+		auth.PrincipalFromContext(request.Context()),
+		strings.TrimSpace(request.URL.Query().Get("workspacePath")),
+		packageName,
+		strings.TrimSpace(request.URL.Query().Get("version")),
+	)
 	if err != nil {
-		s.recordMutationAudit(request, "packaging.bundle.download", packageName, version, statusFromError(err), "failed", map[string]any{
-			"errorCode": errorCodeFromError(err),
-		})
 		writeCatalogError(writer, request, err)
 		return
 	}
 
-	content, readErr := os.ReadFile(bundlePath)
-	if readErr != nil {
-		err := catalog.NewError(404, "bundle_not_found", "Bundle archive does not exist for the requested workspace.", map[string]any{
-			"workspacePath": workspacePath,
-			"packageName":   packageName,
-			"version":       version,
-		})
-		s.recordMutationAudit(request, "packaging.bundle.download", packageName, version, err.Status, "failed", map[string]any{
-			"errorCode": err.Code,
-		})
-		writeCatalogError(writer, request, err)
-		return
-	}
-
-	s.recordMutationAudit(request, "packaging.bundle.download", packageName, version, http.StatusOK, "succeeded", nil)
 	writer.Header().Set("Content-Type", "application/octet-stream")
 	writer.WriteHeader(http.StatusOK)
 	_, _ = writer.Write(content)
 }
 
 func (s *Server) handleReleaseRecord(writer http.ResponseWriter, request *http.Request, packageName string, versionPath string) {
-	version, err := decodeVersion(versionPath)
+	rawBody, readErr := io.ReadAll(request.Body)
+	if readErr != nil {
+		writeCatalogError(writer, request, catalog.NewError(422, "invalid_request", "request body is invalid JSON.", map[string]any{"error": readErr.Error()}))
+		return
+	}
+
+	response, status, err := s.catalogMutationModule.createReleaseRecord(
+		request.Context(),
+		auth.PrincipalFromContext(request.Context()),
+		packageName,
+		versionPath,
+		rawBody,
+	)
 	if err != nil {
 		writeCatalogError(writer, request, err)
 		return
 	}
-
-	input, decodeErr := decodeOptionalReleaseRecordInput(request)
-	if decodeErr != nil {
-		writeCatalogError(writer, request, decodeErr)
-		return
-	}
-
-	response, repoErr := s.repo.CreateReleaseRecord(request.Context(), packageName, version, input)
-	if repoErr != nil {
-		s.recordMutationAudit(request, "release.record", packageName, version, statusFromError(repoErr), "failed", map[string]any{
-			"errorCode": errorCodeFromError(repoErr),
-		})
-		writeCatalogError(writer, request, repoErr)
-		return
-	}
-
-	status := http.StatusOK
-	if response.Created {
-		status = http.StatusCreated
-	}
-	s.recordMutationAudit(request, "release.record", packageName, version, status, "succeeded", map[string]any{
-		"created":          response.Created,
-		"idempotentReplay": response.IdempotentReplay,
-	})
 	writeJSON(writer, status, response)
 }
 
 func (s *Server) handleSkillGovernanceChange(writer http.ResponseWriter, request *http.Request, packageName string) {
-	var payload catalog.SkillGovernanceChangeInput
-	if err := decodeJSONBody(request, &payload); err != nil {
-		writeCatalogError(writer, request, err)
+	rawBody, readErr := io.ReadAll(request.Body)
+	if readErr != nil {
+		writeCatalogError(writer, request, catalog.NewError(422, "invalid_request", "request body is invalid JSON.", map[string]any{"error": readErr.Error()}))
 		return
 	}
 
-	response, repoErr := s.repo.ApplySkillGovernanceChange(request.Context(), packageName, payload, auth.ActorFromRequest(request))
-	if repoErr != nil {
-		s.recordMutationAudit(request, "governance.skill", packageName, "", statusFromError(repoErr), "failed", map[string]any{
-			"action":    payload.Action,
-			"errorCode": errorCodeFromError(repoErr),
-		})
-		writeCatalogError(writer, request, repoErr)
-		return
-	}
-
-	s.recordMutationAudit(request, "governance.skill", packageName, "", http.StatusCreated, "succeeded", map[string]any{
-		"action": payload.Action,
-	})
-	writeJSON(writer, http.StatusCreated, response)
-}
-
-func (s *Server) handleVersionGovernanceChange(writer http.ResponseWriter, request *http.Request, packageName string, versionPath string) {
-	version, err := decodeVersion(versionPath)
+	response, status, err := s.catalogMutationModule.applySkillGovernanceChange(
+		request.Context(),
+		auth.PrincipalFromContext(request.Context()),
+		packageName,
+		rawBody,
+	)
 	if err != nil {
 		writeCatalogError(writer, request, err)
 		return
 	}
+	writeJSON(writer, status, response)
+}
 
-	var payload catalog.VersionGovernanceChangeInput
-	if decodeErr := decodeJSONBody(request, &payload); decodeErr != nil {
-		writeCatalogError(writer, request, decodeErr)
+func (s *Server) handleVersionGovernanceChange(writer http.ResponseWriter, request *http.Request, packageName string, versionPath string) {
+	rawBody, readErr := io.ReadAll(request.Body)
+	if readErr != nil {
+		writeCatalogError(writer, request, catalog.NewError(422, "invalid_request", "request body is invalid JSON.", map[string]any{"error": readErr.Error()}))
 		return
 	}
 
-	response, repoErr := s.repo.ApplyVersionGovernanceChange(request.Context(), packageName, version, payload, auth.ActorFromRequest(request))
-	if repoErr != nil {
-		s.recordMutationAudit(request, "governance.version", packageName, version, statusFromError(repoErr), "failed", map[string]any{
-			"action":    payload.Action,
-			"errorCode": errorCodeFromError(repoErr),
-		})
-		writeCatalogError(writer, request, repoErr)
+	response, status, err := s.catalogMutationModule.applyVersionGovernanceChange(
+		request.Context(),
+		auth.PrincipalFromContext(request.Context()),
+		packageName,
+		versionPath,
+		rawBody,
+	)
+	if err != nil {
+		writeCatalogError(writer, request, err)
 		return
 	}
-
-	s.recordMutationAudit(request, "governance.version", packageName, version, http.StatusCreated, "succeeded", map[string]any{
-		"action": payload.Action,
-	})
-	writeJSON(writer, http.StatusCreated, response)
+	writeJSON(writer, status, response)
 }
 
 func splitSkillPath(targetURL *url.URL) (string, []string, *catalog.Error) {
@@ -1099,14 +1012,7 @@ func writeAuthorizationError(writer http.ResponseWriter, request *http.Request, 
 }
 
 func (s *Server) authorizeActionAccess(writer http.ResponseWriter, request *http.Request, action auth.Action, packageName string, version string) bool {
-	current := auth.PrincipalFromContext(request.Context())
-	observability.SetObservedAction(writer, string(action))
-	observability.SetObservedAuthDecision(writer, observability.AuthDecisionAllowed)
-	if authErr := s.authorizer.AuthorizeAction(current, action); authErr != nil {
-		s.denyAuthorization(writer, request, current, authErr, packageName, version)
-		return false
-	}
-	return true
+	return s.accessWorkflow.authorizeAction(writer, request, action, packageName, version)
 }
 
 func requestIDFromContext(ctx context.Context) string {
@@ -1250,20 +1156,9 @@ func stringPtr(value string) *string {
 }
 
 func (s *Server) authorizePackageAccess(writer http.ResponseWriter, request *http.Request, packageName string) bool {
-	current := auth.PrincipalFromContext(request.Context())
-	if authErr := s.authorizer.AuthorizePackage(current, packageName); authErr == nil {
-		return true
-	} else {
-		s.denyAuthorization(writer, request, current, authErr, packageName, "")
-		return false
-	}
+	return s.accessWorkflow.authorizePackage(writer, request, packageName)
 }
 
 func (s *Server) denyAuthorization(writer http.ResponseWriter, request *http.Request, current auth.Principal, authErr *auth.AuthorizationError, packageName string, version string) {
-	observability.SetObservedAuthDecision(writer, observability.AuthDecisionDenied)
-	observability.SetObservedOutcome(writer, authErr.Code)
-	if err := s.auditRecorder.RecordAuthorizationDenied(request, current, authErr.Code, authErr.Status, packageName, version, authErr.Details); err != nil {
-		s.logAuditWriteFailure(request, "auth.denied", err)
-	}
-	writeAuthorizationError(writer, request, authErr)
+	s.accessWorkflow.deny(writer, request, current, authErr, packageName, version)
 }

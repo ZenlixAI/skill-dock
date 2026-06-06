@@ -51,7 +51,7 @@ func (s *Server) handleSession(writer http.ResponseWriter, request *http.Request
 		return
 	}
 	if authErr := s.authorizer.AuthorizeAction(current, auth.ActionReadSession); authErr != nil {
-		s.denyAuthorization(writer, request, current, authErr, "", "")
+		s.accessWorkflow.deny(writer, request, current, authErr, "", "")
 		return
 	}
 
