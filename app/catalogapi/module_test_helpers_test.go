@@ -272,7 +272,9 @@ func (m *auditQueryModuleStub) listEventsCallCount() int {
 }
 
 type catalogMutationModuleStub struct {
-	createReleaseRecordCalls atomic.Int64
+	createReleaseRecordCalls    atomic.Int64
+	applySkillGovernanceCalls   atomic.Int64
+	applyVersionGovernanceCalls atomic.Int64
 }
 
 func newCatalogMutationModuleStubForTest(_ interface{ Helper() }) *catalogMutationModuleStub {
@@ -285,10 +287,12 @@ func (m *catalogMutationModuleStub) createReleaseRecord(context.Context, auth.Pr
 }
 
 func (m *catalogMutationModuleStub) applySkillGovernanceChange(context.Context, auth.Principal, string, []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error) {
+	m.applySkillGovernanceCalls.Add(1)
 	return catalog.GovernanceChangeResponse{}, http.StatusCreated, nil
 }
 
 func (m *catalogMutationModuleStub) applyVersionGovernanceChange(context.Context, auth.Principal, string, string, []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error) {
+	m.applyVersionGovernanceCalls.Add(1)
 	return catalog.GovernanceChangeResponse{}, http.StatusCreated, nil
 }
 
@@ -296,7 +300,16 @@ func (m *catalogMutationModuleStub) createReleaseRecordCallCount() int {
 	return int(m.createReleaseRecordCalls.Load())
 }
 
+func (m *catalogMutationModuleStub) applySkillGovernanceCallCount() int {
+	return int(m.applySkillGovernanceCalls.Load())
+}
+
+func (m *catalogMutationModuleStub) applyVersionGovernanceCallCount() int {
+	return int(m.applyVersionGovernanceCalls.Load())
+}
+
 type packagingAccessModuleStub struct {
+	cleanupCalls        atomic.Int64
 	downloadBundleCalls atomic.Int64
 }
 
@@ -305,6 +318,7 @@ func newPackagingAccessModuleStubForTest(_ interface{ Helper() }) *packagingAcce
 }
 
 func (m *packagingAccessModuleStub) cleanup(context.Context, auth.Principal, packaging.CleanupRequest) (packaging.CleanupResponse, int, *catalog.Error) {
+	m.cleanupCalls.Add(1)
 	return packaging.CleanupResponse{Removed: true}, http.StatusOK, nil
 }
 
@@ -315,4 +329,8 @@ func (m *packagingAccessModuleStub) downloadBundle(context.Context, auth.Princip
 
 func (m *packagingAccessModuleStub) downloadBundleCallCount() int {
 	return int(m.downloadBundleCalls.Load())
+}
+
+func (m *packagingAccessModuleStub) cleanupCallCount() int {
+	return int(m.cleanupCalls.Load())
 }

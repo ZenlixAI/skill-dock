@@ -90,3 +90,54 @@ func TestAuditQueryModuleListsEventsWithCombinedFilters(t *testing.T) {
 		t.Fatalf("unexpected audit event: %+v", page.Items[0])
 	}
 }
+
+func TestAuditQueryModuleReturnsServiceUnavailableWhenStoreMissing(t *testing.T) {
+	module := &auditQueryModule{
+		authorizer: auth.NewAuthorizer(auth.Config{}),
+	}
+
+	_, err := module.listEvents(context.Background(), auth.Principal{Role: "publisher", Actor: "publisher"}, url.Values{})
+
+	if err == nil {
+		t.Fatal("expected missing store error")
+	}
+	if err.Status != http.StatusServiceUnavailable {
+		t.Fatalf("expected status %d, got %d", http.StatusServiceUnavailable, err.Status)
+	}
+}
+
+func TestAuditQueryModulePropagatesAuditStoreErrors(t *testing.T) {
+	module := &auditQueryModule{
+		audit: stubAuditStore{
+			listErr: catalog.NewError(http.StatusServiceUnavailable, "audit_unavailable", "Audit backend unavailable.", nil),
+		},
+		authorizer: auth.NewAuthorizer(auth.Config{}),
+	}
+
+	_, err := module.listEvents(context.Background(), auth.Principal{Role: "publisher", Actor: "publisher"}, url.Values{})
+
+	if err == nil {
+		t.Fatal("expected store error")
+	}
+	if err.Code != "audit_unavailable" {
+		t.Fatalf("expected audit_unavailable code, got %+v", err)
+	}
+}
+
+func TestAuditQueryModuleRejectsInvalidVersionFilter(t *testing.T) {
+	module := &auditQueryModule{
+		audit:      stubAuditStore{},
+		authorizer: auth.NewAuthorizer(auth.Config{}),
+	}
+
+	_, err := module.listEvents(context.Background(), auth.Principal{Role: "publisher", Actor: "publisher"}, url.Values{
+		"version": []string{"latest"},
+	})
+
+	if err == nil {
+		t.Fatal("expected invalid version error")
+	}
+	if err.Status != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, err.Status)
+	}
+}

@@ -45,6 +45,44 @@ func TestServerRoutesReleaseRecordThroughCatalogMutationModule(t *testing.T) {
 	}
 }
 
+func TestServerRoutesSkillGovernanceThroughCatalogMutationModule(t *testing.T) {
+	module := newCatalogMutationModuleStubForTest(t)
+	server := newTestServer()
+	server.catalogMutationModule = module
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/skills/%40platform.skill%2Fcode-review/governance-changes", strings.NewReader(`{"action":"retire","reason":"merged"}`))
+	request.Header.Set("X-Role", "publisher")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusCreated, recorder.Code, recorder.Body.String())
+	}
+	if got := module.applySkillGovernanceCallCount(); got != 1 {
+		t.Fatalf("expected skill governance workflow to be called once, got %d", got)
+	}
+}
+
+func TestServerRoutesVersionGovernanceThroughCatalogMutationModule(t *testing.T) {
+	module := newCatalogMutationModuleStubForTest(t)
+	server := newTestServer()
+	server.catalogMutationModule = module
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/skills/%40platform.skill%2Fpdf-skill/versions/1.2.0/governance-changes", strings.NewReader(`{"action":"yank","reason":"security issue"}`))
+	request.Header.Set("X-Role", "publisher")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusCreated, recorder.Code, recorder.Body.String())
+	}
+	if got := module.applyVersionGovernanceCallCount(); got != 1 {
+		t.Fatalf("expected version governance workflow to be called once, got %d", got)
+	}
+}
+
 func TestServerRoutesBundleDownloadThroughPackagingAccessModule(t *testing.T) {
 	module := newPackagingAccessModuleStubForTest(t)
 	server := newTestServer()
@@ -61,6 +99,26 @@ func TestServerRoutesBundleDownloadThroughPackagingAccessModule(t *testing.T) {
 	}
 	if got := module.downloadBundleCallCount(); got != 1 {
 		t.Fatalf("expected packaging access module to be called once, got %d", got)
+	}
+}
+
+func TestServerRoutesPackagingCleanupThroughPackagingAccessModule(t *testing.T) {
+	module := newPackagingAccessModuleStubForTest(t)
+	server := newTestServer()
+	server.packagingAccessModule = module
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/skill-packaging/cleanup", strings.NewReader(`{"workspacePath":"/tmp/workspace"}`))
+	request.Header.Set("X-Role", "publisher")
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+	if got := module.cleanupCallCount(); got != 1 {
+		t.Fatalf("expected cleanup workflow to be called once, got %d", got)
 	}
 }
 
