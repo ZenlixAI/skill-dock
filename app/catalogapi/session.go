@@ -50,12 +50,11 @@ func (s *Server) handleSession(writer http.ResponseWriter, request *http.Request
 		writeJSON(writer, http.StatusOK, nil)
 		return
 	}
-	if authErr := s.authorizer.AuthorizeAction(current, auth.ActionReadSession); authErr != nil {
-		s.accessWorkflow.deny(writer, request, current, authErr, "", "")
+	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), current))
+	if !s.accessWorkflow.authorizeAction(writer, request, auth.ActionReadSession, "", "") {
 		return
 	}
 
-	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), current))
 	current = auth.PrincipalFromContext(request.Context())
 	writeJSON(writer, http.StatusOK, s.sessionModule.current(current))
 }

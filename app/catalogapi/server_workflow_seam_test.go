@@ -5,8 +5,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"skill_registry/app/auth"
 )
 
 func TestServerRoutesAuditEventsThroughAuditQueryModule(t *testing.T) {
@@ -67,13 +65,12 @@ func TestServerRoutesBundleDownloadThroughPackagingAccessModule(t *testing.T) {
 }
 
 func TestServerSessionDeniedPathUsesSharedAccessWorkflow(t *testing.T) {
-	workflow := newAccessWorkflowStubForTest(t, true)
+	workflow := newAccessWorkflowStubForTest(t, false)
 	server := newTestServer()
 	server.accessWorkflow = workflow
-	server.authorizer = auth.NewAuthorizer(auth.Config{})
 
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/session", nil)
-	request.Header.Set("X-Role", "stranger")
+	request.Header.Set("X-Role", "publisher")
 	recorder := httptest.NewRecorder()
 
 	server.Handler().ServeHTTP(recorder, request)

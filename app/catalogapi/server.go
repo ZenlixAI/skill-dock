@@ -245,9 +245,7 @@ func (s *Server) requireAction(next http.HandlerFunc, action auth.Action) http.H
 		}
 		request = request.WithContext(auth.ContextWithPrincipal(request.Context(), authPrincipal))
 		observability.SetObservedPrincipal(writer, authPrincipal)
-		observability.SetObservedAuthDecision(writer, observability.AuthDecisionAllowed)
-		if authErr := s.authorizer.AuthorizeAction(authPrincipal, action); authErr != nil {
-			s.denyAuthorization(writer, request, authPrincipal, authErr, "", "")
+		if !s.accessWorkflow.authorizeAction(writer, request, action, "", "") {
 			return
 		}
 		next.ServeHTTP(writer, request)
