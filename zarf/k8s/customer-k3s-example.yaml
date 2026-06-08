@@ -15,7 +15,7 @@ stringData:
   skill_registry_authoring_token: replace-authoring-token
   skill_registry_publisher_token: replace-publisher-token
   # Address used by the Catalog process itself to read registry metadata/tarballs.
-  skill_registry_npm_registry_url: https://nexus.example.com/repository/skills-npm
+  skill_registry_npm_registry_url: http://nexus.skill-registry.svc.cluster.local:8081/repository/skills-npm
   # Required only when the web "发布 skill" action should let Catalog publish directly to Nexus.
   skill_registry_npm_publish_authorization: Bearer replace-nexus-publish-token
   # Address returned to external CLI clients in install-target responses.
