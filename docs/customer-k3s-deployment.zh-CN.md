@@ -151,7 +151,7 @@
 常见正确示例：
 
 - Pod 内地址：
-  - `http://nexus.repo.svc.cluster.local/repository/skills-npm/`
+  - `http://nexus.skill-registry.svc.cluster.local:8081/repository/skills-npm/`
 - CLI 外部地址：
   - `https://skills.example.com/repository/skills-npm/`
   - 它和 `SKILLS_REGISTRY_URL=https://skills.example.com` 共用同一个公共 host
