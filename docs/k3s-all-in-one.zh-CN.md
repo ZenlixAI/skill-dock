@@ -15,7 +15,7 @@
 - Helm chart：
   - [zarf/charts/skill-registry](../zarf/charts/skill-registry)
   - 当前默认更贴近客户现场：`外部 Postgres + 内置 Nexus + catalog + skills-web`
-  - 如果你仍要用 Helm 跑 full all-in-one，再显式设置 `postgres.enabled=true`
+  - 如果你仍要用 Helm 跑 full all-in-one，再显式设置 `postgresql.enabled=true`
 
 ## 1. 部署前要改的值
 
@@ -26,7 +26,7 @@
 - `registry.example.com/skill-registry-catalog:1.0.0`
 - `registry.example.com/skill-registry-web:1.0.0`
 - 如果你们现场统一走镜像前缀，也可以直接设置：
-  - `global.registry`
+  - `global.imageRegistry`
 
 ### 1.2 Secret
 
@@ -65,16 +65,31 @@ kubectl apply -f zarf/k8s/k3s-all-in-one.yaml
 如果你的集群和当前客户现场一样，至少覆盖：
 
 ```yaml
-database:
-  host: postgresql.postgresql.svc.cluster.local
-  port: 5432
+global:
+  imageRegistry: harbor.example.com/skill-registry
 
-postgres:
+postgresql:
   enabled: false
   auth:
     database: skill_registry
-    user: postgres
+    username: postgres
     password: password
+  host: postgresql.postgresql.svc.cluster.local
+  port: 5432
+  sslMode: disable
+
+traefik:
+  routes:
+    web:
+      enabled: true
+      host: skills.example.com
+      pathPrefix: /
+      tls: true
+    nexus:
+      enabled: true
+      host: skills.example.com
+      pathPrefix: /repository/skills-npm
+      tls: true
 
 nexus:
   persistence:
@@ -84,7 +99,7 @@ nexus:
 推荐先复制一份 values 再改：
 
 ```bash
-cp zarf/charts/skill-registry/values.yaml /tmp/skill-registry-values.yaml
+cp zarf/charts/skill-registry/values.production.example.yaml /tmp/skill-registry-values.yaml
 ```
 
 安装示例：
@@ -99,41 +114,49 @@ helm upgrade --install skill-registry ./zarf/charts/skill-registry \
 如果你已经有统一公网入口，至少覆盖：
 
 ```yaml
-nexus:
-  publicRepositoryUrl: https://skills.example.com/repository/skills-npm/
+traefik:
+  routes:
+    web:
+      enabled: true
+      host: skills.example.com
+      pathPrefix: /
+    nexus:
+      enabled: true
+      host: skills.example.com
+      pathPrefix: /repository/skills-npm
 
-ingress:
-  web:
-    host: skills.example.com
-  nexus:
-    host: skills.example.com
+nexus:
+  repository:
+    publicUrl: ""
 ```
 
-如果你的 k3s 现场不是走标准 `Ingress`，而是走 Traefik `IngressRoute + entrypoint`，可以改成：
+如果你的 k3s 现场不是默认 `web` entrypoint，或者暂时不走 TLS，可以改成：
 
 ```yaml
-ingress:
-  kind: ingressRoute
-  web:
-    scheme: http
-  nexus:
-    scheme: http
-
 traefik:
-  web:
-    entrypoint: web
-  nexus:
-    entrypoint: amber
+  entrypoint: amber
+  routes:
+    web:
+      enabled: true
+      host: skills.example.com
+      pathPrefix: /
+      tls: false
+    nexus:
+      enabled: true
+      host: skills.example.com
+      pathPrefix: /repository/skills-npm
+      tls: false
 
 nexus:
-  publicRepositoryUrl: http://<cluster-ip>:31081/repository/skills-npm/
+  repository:
+    publicUrl: http://<cluster-ip>:31081/repository/skills-npm/
 ```
 
 补充：
 
-- `traefik.web.match` / `traefik.nexus.match` 现在默认会自动按 `Host(...) && PathPrefix(...)` 生成
-- 只有你想自定义更复杂规则时，才需要手动覆盖这两个 `match`
-- 如果你的入口不是 TLS，记得把 `ingress.web.scheme` / `ingress.nexus.scheme` 改成 `http`
+- `traefik.routes.web` / `traefik.routes.nexus` 会自动生成不重叠的 `IngressRoute` 规则
+- 统一 host 场景下，web 路由会自动排除 `/repository/skills-npm`
+- 只有你想自定义更复杂规则时，才需要去改 chart 模板
 
 说明：
 
@@ -152,11 +175,11 @@ nexus:
 如果你确实要把 Postgres 也一起打进 Helm，再补：
 
 ```yaml
-postgres:
+postgresql:
   enabled: true
   auth:
     database: skill_registry
-    user: skill_registry
+    username: skill_registry
     password: change-me
 ```
 
@@ -174,7 +197,7 @@ kubectl -n skill-registry get ingressroute
 - `nexus-0`
 - `catalog-*`
 - `skills-web-*`
-- 如果 `postgres.enabled=true`，再额外等 `postgres-0`
+- 如果 `postgresql.enabled=true`，再额外等 `postgresql-*`
 
 ## 3. Nexus 自动初始化说明
 

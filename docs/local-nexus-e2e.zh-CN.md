@@ -111,10 +111,10 @@ manifest 里的本地 `path` 会先在调用方本地转成源码归档，再走
 1. 打开 <http://127.0.0.1:8080>，确认 web 正常
 2. 打开 <http://127.0.0.1:8081>，确认 Nexus 可访问且 `skills-npm` 已存在
 3. `curl http://127.0.0.1:18080/healthz`，确认 Catalog 返回 200
-4. 跑一次 `cli-publish`
-5. 跑一次 `cli-find`
-6. 跑一次 `cli-add`
-7. 跑一次 `cli-import-local`
+4. 跑一次 `make cli ARGS="publish /abs/path/to/skill" NPM_BACKEND=nexus`
+5. 跑一次 `make cli ARGS="find your-skill"`
+6. 跑一次 `make cli ARGS="add @company.skill/your-skill-name -y" NPM_BACKEND=nexus`
+7. 跑一次 `make cli ARGS="import-local /abs/path/to/legacy-skill --package-name @company.skill/legacy-skill --version 0.1.0" NPM_BACKEND=nexus`
 8. 如有批量场景，再跑 `batch-import`
 
 ## 重置本地环境

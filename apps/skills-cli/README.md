@@ -4,6 +4,19 @@
 
 The CLI for the open agent skills ecosystem.
 
+For the current `skill_registry` monorepo deployment model, also read:
+
+- root repo runbook: [`../../README.md`](../../README.md)
+- local kind + Nexus E2E: [`../../docs/local-nexus-e2e.zh-CN.md`](../../docs/local-nexus-e2e.zh-CN.md)
+- customer deployment: [`../../docs/customer-k3s-deployment.zh-CN.md`](../../docs/customer-k3s-deployment.zh-CN.md)
+
+This README describes the generic CLI surface. In the current private-registry deployment:
+
+- `--registry` / `SKILLS_REGISTRY_URL` points to the Catalog / Web public base URL
+- npm package install and tarball access use the npm-compatible registry URL separately
+- `publish` still means `local pack -> npm publish -> Catalog release-record`
+- `import-local` means `local source archive -> Catalog prepare/validate/pack -> npm publish -> Catalog release-record`
+
 <!-- agent-list:start -->
 
 Supports **OpenCode**, **Claude Code**, **Codex**, **Cursor**, and [51 more](#supported-agents).

@@ -1,21 +1,21 @@
-# 客户现场交付 Runbook：K3s + 外部 Nexus + Skills CLI
+# 客户现场交付 Runbook：K3s + Skills CLI
 
 ## 1. 适用范围
 
-这份 Runbook 只覆盖下面这条交付形态：
+这份 Runbook 现在覆盖两条客户现场交付形态：
 
-- 集群内部署：
-  - `skills-web`
-  - `catalog`
-- 集群外已有：
-  - `Postgres`
-  - `Nexus` npm 仓
-- 集群外下发：
-  - `skills` CLI
+1. 静态 YAML：
+  - 集群内部署 `skills-web + catalog`
+  - 集群外已有 `Postgres + Nexus`
+  - 集群外下发 `skills` CLI
+2. Helm chart：
+  - 复用外部或集群内已有 `Postgres`
+  - Chart 内部署 `nexus + catalog + skills-web`
+  - 集群外下发 `skills` CLI
 
-如果客户没有外部 Nexus，这份文档不够，需要单独补方案。
+如果你明确只走“外部 Nexus + 集群内 web/catalog”这一条，继续看本页的静态清单部分即可。
 
-如果客户现场是“**复用集群内 Postgres，但 Nexus 跟业务一起部署**”，现在可以直接用 Helm chart：
+如果客户现场是“**复用集群内 Postgres，但 Nexus 跟业务一起部署**”，直接用 Helm chart：
 
 - [zarf/charts/skill-registry](../zarf/charts/skill-registry)
 
@@ -32,7 +32,9 @@
 1. `skills-web`
 2. `catalog`
 3. `Postgres`
-4. 外部 `Nexus`
+4. `Nexus`
+   - 可以是外部已有
+   - 也可以是 Helm chart 内置
 5. `skills` CLI 下发到发布机 / 运维机 / 客户开发机
 
 ## 3. 交付前输入清单
@@ -42,9 +44,13 @@
 ### 3.1 外部依赖
 
 - Postgres DSN
-- Nexus npm hosted 仓地址
-- Catalog Pod 内访问 Nexus 的地址
-- CLI 机器访问 Nexus 的地址
+- 如果走外部 Nexus：
+  - Nexus npm hosted 仓地址
+  - Catalog Pod 内访问 Nexus 的地址
+  - CLI 机器访问 Nexus 的地址
+- 如果走 chart 内置 Nexus：
+  - 统一公网 host
+  - 是否通过同 host 的 `/repository/skills-npm/` 暴露
 
 ### 3.2 域名与入口
 
@@ -209,7 +215,7 @@ docker build -f zarf/docker/skills-web.Dockerfile -t registry.example.com/skill-
 这份示例假设：
 
 - Postgres 已存在
-- Nexus 已存在
+- Nexus 由集群内 `nexus` Service 提供，外部 CLI 通过同 host 的 `/repository/skills-npm/` 访问
 - 你只需要替换：
   - image
   - 域名
@@ -224,13 +230,13 @@ docker build -f zarf/docker/skills-web.Dockerfile -t registry.example.com/skill-
 
 1. 复用集群内已有 Postgres
 2. Chart 内部署 `nexus + catalog + skills-web`
-3. 如需 full all-in-one，再显式设置 `postgres.enabled=true`
+3. 如需 full all-in-one，再显式设置 `postgresql.enabled=true`
 
 当前 chart 还额外支持这些现场常用交付字段：
 
-- `global.registry`
+- `global.imageRegistry`
 - `global.imagePullSecrets`
-- `catalog/web/nexus/postgres` 的：
+- `catalog/web/nexus/postgresql` 的：
   - `podAnnotations`
   - `podLabels`
   - `nodeSelector`
@@ -240,7 +246,7 @@ docker build -f zarf/docker/skills-web.Dockerfile -t registry.example.com/skill-
   - `type`
   - `nodePort`
 - `nexus.persistence.storageClass`
-- `postgres.persistence.storageClass`
+- `postgresql.persistence.storageClass`
 
 按你当前集群口径的最小安装示例：
 
@@ -248,10 +254,10 @@ docker build -f zarf/docker/skills-web.Dockerfile -t registry.example.com/skill-
 helm upgrade --install skill-registry ./zarf/charts/skill-registry \
   -n skill-registry \
   --create-namespace \
-  --set database.host=postgresql.postgresql.svc.cluster.local \
-  --set database.port=5432 \
-  --set postgres.auth.user=postgres \
-  --set postgres.auth.password=password
+  --set postgresql.host=postgresql.postgresql.svc.cluster.local \
+  --set postgresql.port=5432 \
+  --set postgresql.auth.username=postgres \
+  --set postgresql.auth.password=password
 ```
 
 ## 7. Skills CLI 下发方式
@@ -378,7 +384,8 @@ export NPM_CONFIG_USERCONFIG=/abs/path/to/.npmrc
 确认：
 
 - Postgres 已可连通
-- Nexus npm hosted 仓已创建
+- 如果走外部 Nexus：Nexus npm hosted 仓已创建
+- 如果走 chart 内置 Nexus：统一公网 host 与 `/repository/skills-npm/` 路由已确定
 - CLI 公网 npm 入口地址已确定
 - k3s Ingress 路径已确定
 
@@ -403,7 +410,8 @@ docker build -f zarf/docker/skills-web.Dockerfile -t registry.example.com/skill-
 - `publisher token`
 - `SKILL_REGISTRY_NPM_REGISTRY_URL`
 - `SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL`
-- web 侧代理用 `reader token`
+- 浏览器登录模式下的 `SKILL_REGISTRY_SESSION_SECRET` / `SKILL_REGISTRY_SESSION_USERS_JSON`
+- 如果你坚持只读固定 token Web，再额外准备 web 侧代理用 `reader token`
 
 ### Step 4. 改 k3s 清单
 
@@ -440,7 +448,8 @@ docker build -f zarf/docker/skills-web.Dockerfile -t registry.example.com/skill-
 
 - Ingress
 - `/api` 代理
-- reader token 注入
+- session 配置是否完整
+- 如果是只读固定 token 部署，再查 reader token 注入
 
 ### Step 7. 安装 CLI 到运维机
 

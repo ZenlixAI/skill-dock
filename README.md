@@ -250,6 +250,16 @@ VITE_SKILL_REGISTRY_TOKEN=publisher-secret \
 npm run dev
 ```
 
+当前 Web 的真实边界：
+
+- 浏览器默认走 session 登录，不再依赖固定 `reader-secret` 注入
+- Web 导入/发布页现在是 **pack-only handoff**
+- 也就是：
+  - Web 负责 `prepare -> validate -> pack`
+  - 页面会给出 bundle / release handoff 信息
+  - 真正的 `npm publish` 仍在 Web 外完成
+  - `release-record` 仍然发生在包已经进入 npm registry 之后
+
 构建验证：
 
 ```bash
