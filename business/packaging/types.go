@@ -1,5 +1,7 @@
 package packaging
 
+import "skill_registry/business/catalog"
+
 type Source struct {
 	Type          string            `json:"type"`
 	Location      string            `json:"location,omitempty"`
@@ -127,6 +129,32 @@ type PackResponse struct {
 	WarningDetails []WarningDetail `json:"warningDetails,omitempty"`
 	ImportReport   *ImportReport   `json:"importReport,omitempty"`
 	Errors         []string        `json:"errors"`
+}
+
+type PublishRequest struct {
+	WorkspacePath string `json:"workspacePath"`
+	Target        Target `json:"target"`
+}
+
+func (r PublishRequest) GetTarget() Target {
+	return r.Target
+}
+
+type PublishResponse struct {
+	WorkspacePath       string                `json:"workspacePath"`
+	PackageName         string                `json:"packageName"`
+	Version             string                `json:"version"`
+	ManifestDigest      string                `json:"manifestDigest"`
+	Components          []string              `json:"components"`
+	PublishedToRegistry bool                  `json:"publishedToRegistry"`
+	Created             bool                  `json:"created"`
+	IdempotentReplay    bool                  `json:"idempotentReplay"`
+	VersionStatus       catalog.VersionStatus `json:"versionStatus"`
+	InstallPolicy       catalog.InstallPolicy `json:"installPolicy"`
+	Warnings            []string              `json:"warnings"`
+	WarningDetails      []WarningDetail       `json:"warningDetails,omitempty"`
+	ImportReport        *ImportReport         `json:"importReport,omitempty"`
+	Errors              []string              `json:"errors"`
 }
 
 type CleanupRequest struct {

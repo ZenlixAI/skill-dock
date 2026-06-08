@@ -80,6 +80,11 @@ describe('publish workflow', () => {
 
     fetchMock
       .mockResolvedValueOnce(
+        new Response(null, {
+          status: 404,
+        })
+      )
+      .mockResolvedValueOnce(
         new Response(JSON.stringify({ ok: true }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -98,13 +103,18 @@ describe('publish workflow', () => {
     expect(packLocalSkillDirectory).toHaveBeenCalledWith({
       directory: testDir,
     });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
+      'https://npm.example.com/%40acme.skill%2Fmy-skill',
+      expect.objectContaining({ method: 'GET' })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
       'https://catalog.example.com/api/v1/skills/%40acme.skill%2Fmy-skill/versions/1.2.0/release-record',
       expect.objectContaining({ method: 'PUT' })
     );
-    const releaseRecordPayload = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    const releaseRecordPayload = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
     expect(releaseRecordPayload).toEqual({
       publishRegistry: 'https://npm.example.com',
       manifestDigest: 'sha256:packed',
@@ -153,12 +163,18 @@ describe('publish workflow', () => {
       manifestDigest: 'sha256:packed',
       cleanup: vi.fn(),
     });
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ ok: true }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })
-    );
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 404,
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      );
 
     await runPublishWorkflow({
       path: testDir,
@@ -168,7 +184,8 @@ describe('publish workflow', () => {
       path: testDir,
       strict: undefined,
     });
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
       'https://skills.sh/api/v1/skills/%40acme.skill%2Fmy-skill/versions/1.2.0/release-record',
       expect.objectContaining({ method: 'PUT' })
     );
@@ -231,6 +248,11 @@ describe('publish workflow', () => {
       manifestDigest: 'sha256:packed',
       cleanup: vi.fn(),
     });
+    fetchMock.mockResolvedValueOnce(
+      new Response(null, {
+        status: 404,
+      })
+    );
 
     const result = await runPublishWorkflow({
       path: testDir,
@@ -241,7 +263,160 @@ describe('publish workflow', () => {
       ok: false,
       errors: ['publish denied'],
     });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips npm publish when the target version already exists in the npm registry and still writes the release record', async () => {
+    vi.mocked(runPackagingSession).mockResolvedValueOnce({
+      ok: true,
+      sessionKind: 'local',
+      directory: testDir,
+      skillMdPath: join(testDir, 'SKILL.md'),
+      packageJsonPath: join(testDir, 'package.json'),
+      publishRegistry: 'https://npm.example.com',
+      packageName: '@acme.skill/my-skill',
+      version: '1.2.0',
+      displayName: 'my-skill',
+      description: 'A valid skill',
+      components: ['commands'],
+      errors: [],
+    });
+    vi.mocked(packLocalSkillDirectory).mockResolvedValueOnce({
+      bundlePath: join(testDir, 'packed.tgz'),
+      manifestDigest: 'sha256:packed',
+      cleanup: vi.fn(),
+    });
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            name: '@acme.skill/my-skill',
+            versions: {
+              '1.2.0': {
+                name: '@acme.skill/my-skill',
+                version: '1.2.0',
+              },
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      );
+
+    const result = await runPublishWorkflow({
+      path: testDir,
+      registry: 'https://catalog.example.com',
+    });
+
+    expect(spawnSync).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'https://npm.example.com/%40acme.skill%2Fmy-skill',
+      expect.objectContaining({ method: 'GET' })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'https://catalog.example.com/api/v1/skills/%40acme.skill%2Fmy-skill/versions/1.2.0/release-record',
+      expect.objectContaining({ method: 'PUT' })
+    );
+    expect(result).toEqual({
+      ok: true,
+      packageName: '@acme.skill/my-skill',
+      version: '1.2.0',
+      bundlePath: join(testDir, 'packed.tgz'),
+    });
+  });
+
+  it('recovers from an already-published npm version by reconciling the release record', async () => {
+    vi.mocked(spawnSync).mockReturnValueOnce({
+      status: 1,
+      stdout: '',
+      stderr: 'npm error You cannot publish over the previously published versions: 1.2.0.',
+    } as ReturnType<typeof spawnSync>);
+    vi.mocked(runPackagingSession).mockResolvedValueOnce({
+      ok: true,
+      sessionKind: 'local',
+      directory: testDir,
+      skillMdPath: join(testDir, 'SKILL.md'),
+      packageJsonPath: join(testDir, 'package.json'),
+      publishRegistry: 'https://npm.example.com',
+      packageName: '@acme.skill/my-skill',
+      version: '1.2.0',
+      displayName: 'my-skill',
+      description: 'A valid skill',
+      components: ['commands'],
+      errors: [],
+    });
+    vi.mocked(packLocalSkillDirectory).mockResolvedValueOnce({
+      bundlePath: join(testDir, 'packed.tgz'),
+      manifestDigest: 'sha256:packed',
+      cleanup: vi.fn(),
+    });
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            name: '@acme.skill/my-skill',
+            versions: {},
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            name: '@acme.skill/my-skill',
+            versions: {
+              '1.2.0': {
+                name: '@acme.skill/my-skill',
+                version: '1.2.0',
+              },
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      );
+
+    const result = await runPublishWorkflow({
+      path: testDir,
+      registry: 'https://catalog.example.com',
+    });
+
+    expect(spawnSync).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'https://npm.example.com/%40acme.skill%2Fmy-skill',
+      expect.objectContaining({ method: 'GET' })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'https://npm.example.com/%40acme.skill%2Fmy-skill',
+      expect.objectContaining({ method: 'GET' })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      'https://catalog.example.com/api/v1/skills/%40acme.skill%2Fmy-skill/versions/1.2.0/release-record',
+      expect.objectContaining({ method: 'PUT' })
+    );
+    expect(result).toEqual({
+      ok: true,
+      packageName: '@acme.skill/my-skill',
+      version: '1.2.0',
+      bundlePath: join(testDir, 'packed.tgz'),
+    });
   });
 
   it('prefers the externally injected npm userconfig and registry when publishing', async () => {
@@ -272,12 +447,18 @@ describe('publish workflow', () => {
       manifestDigest: 'sha256:packed',
       cleanup: vi.fn(),
     });
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ ok: true }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })
-    );
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 404,
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      );
 
     const result = await runPublishWorkflow({
       path: testDir,
@@ -324,12 +505,18 @@ describe('publish workflow', () => {
       manifestDigest: 'sha256:packed',
       cleanup: vi.fn(),
     });
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ ok: true }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })
-    );
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 404,
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      );
 
     const result = await runPublishWorkflow({
       path: testDir,
@@ -337,7 +524,7 @@ describe('publish workflow', () => {
     });
 
     expect(result.ok).toBe(true);
-    const releaseRecordPayload = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    const releaseRecordPayload = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
     expect(releaseRecordPayload).toEqual({
       publishRegistry: 'https://npm.example.com',
       manifestDigest: 'sha256:packed',

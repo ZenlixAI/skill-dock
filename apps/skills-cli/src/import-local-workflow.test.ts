@@ -96,6 +96,11 @@ describe('import-local workflow', () => {
         )
       )
       .mockResolvedValueOnce(
+        new Response(null, {
+          status: 404,
+        })
+      )
+      .mockResolvedValueOnce(
         new Response(JSON.stringify({ ok: true }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -123,13 +128,13 @@ describe('import-local workflow', () => {
       archiveBase64: 'archive-base64',
     });
     expect(preparePayload.options).toEqual({});
-    const releaseRecordPayload = JSON.parse(String(fetchMock.mock.calls[3]?.[1]?.body));
+    const releaseRecordPayload = JSON.parse(String(fetchMock.mock.calls[4]?.[1]?.body));
     expect(releaseRecordPayload).toEqual({
       manifestDigest: 'sha256:test',
       components: ['docs'],
     });
     expect(fetchMock).toHaveBeenNthCalledWith(
-      4,
+      5,
       'https://catalog.example.com/api/v1/skills/%40acme.skill%2Flegacy-skill/versions/0.1.0/release-record',
       expect.objectContaining({ method: 'PUT' })
     );
@@ -192,6 +197,11 @@ describe('import-local workflow', () => {
         )
       )
       .mockResolvedValueOnce(
+        new Response(null, {
+          status: 404,
+        })
+      )
+      .mockResolvedValueOnce(
         new Response(JSON.stringify({ ok: true }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -212,6 +222,223 @@ describe('import-local workflow', () => {
       env: expect.objectContaining({
         NPM_CONFIG_USERCONFIG: '/tmp/external-import.npmrc',
       }),
+    });
+  });
+
+  it('skips npm publish when the imported version already exists in the npm registry and still writes the release record', async () => {
+    writeFileSync(
+      join(testDir, 'SKILL.md'),
+      `---\nname: legacy-skill\ndescription: Imported skill\n---\n`
+    );
+
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            workspacePath: '/tmp/workspace',
+            packageName: '@acme.skill/legacy-skill',
+            version: '0.1.0',
+            warnings: [],
+            errors: [],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            ok: true,
+            workspacePath: '/tmp/workspace',
+            packageName: '@acme.skill/legacy-skill',
+            version: '0.1.0',
+            manifestDigest: 'sha256:test',
+            components: ['docs'],
+            warnings: [],
+            errors: [],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            workspacePath: '/tmp/workspace',
+            bundlePath: '/tmp/workspace/legacy-skill-0.1.0.tgz',
+            packageName: '@acme.skill/legacy-skill',
+            version: '0.1.0',
+            bundleBase64: Buffer.from('tgz-data').toString('base64'),
+            manifestDigest: 'sha256:test',
+            components: ['docs'],
+            warnings: [],
+            errors: [],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            name: '@acme.skill/legacy-skill',
+            versions: {
+              '0.1.0': {
+                name: '@acme.skill/legacy-skill',
+                version: '0.1.0',
+              },
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      );
+
+    const result = await runImportLocalWorkflow({
+      path: testDir,
+      registry: 'https://catalog.example.com',
+      packageName: '@acme.skill/legacy-skill',
+      version: '0.1.0',
+      npmRegistry: 'https://npm.example.com',
+    });
+
+    expect(spawnSync).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      'https://npm.example.com/%40acme.skill%2Flegacy-skill',
+      expect.objectContaining({ method: 'GET' })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      'https://catalog.example.com/api/v1/skills/%40acme.skill%2Flegacy-skill/versions/0.1.0/release-record',
+      expect.objectContaining({ method: 'PUT' })
+    );
+    expect(result).toEqual({
+      ok: true,
+      packageName: '@acme.skill/legacy-skill',
+      version: '0.1.0',
+      bundlePath: expect.stringContaining('legacy-skill-0.1.0.tgz'),
+    });
+  });
+
+  it('recovers import-local when npm reports the version is already published but the release record is still missing', async () => {
+    writeFileSync(
+      join(testDir, 'SKILL.md'),
+      `---\nname: legacy-skill\ndescription: Imported skill\n---\n`
+    );
+    vi.mocked(spawnSync).mockReturnValueOnce({
+      status: 1,
+      stdout: '',
+      stderr: 'npm error You cannot publish over the previously published versions: 0.1.0.',
+    } as ReturnType<typeof spawnSync>);
+
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            workspacePath: '/tmp/workspace',
+            packageName: '@acme.skill/legacy-skill',
+            version: '0.1.0',
+            warnings: [],
+            errors: [],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            ok: true,
+            workspacePath: '/tmp/workspace',
+            packageName: '@acme.skill/legacy-skill',
+            version: '0.1.0',
+            manifestDigest: 'sha256:test',
+            components: ['docs'],
+            warnings: [],
+            errors: [],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            workspacePath: '/tmp/workspace',
+            bundlePath: '/tmp/workspace/legacy-skill-0.1.0.tgz',
+            packageName: '@acme.skill/legacy-skill',
+            version: '0.1.0',
+            bundleBase64: Buffer.from('tgz-data').toString('base64'),
+            manifestDigest: 'sha256:test',
+            components: ['docs'],
+            warnings: [],
+            errors: [],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            name: '@acme.skill/legacy-skill',
+            versions: {},
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            name: '@acme.skill/legacy-skill',
+            versions: {
+              '0.1.0': {
+                name: '@acme.skill/legacy-skill',
+                version: '0.1.0',
+              },
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      );
+
+    const result = await runImportLocalWorkflow({
+      path: testDir,
+      registry: 'https://catalog.example.com',
+      packageName: '@acme.skill/legacy-skill',
+      version: '0.1.0',
+      npmRegistry: 'https://npm.example.com',
+    });
+
+    expect(spawnSync).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      'https://npm.example.com/%40acme.skill%2Flegacy-skill',
+      expect.objectContaining({ method: 'GET' })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      'https://npm.example.com/%40acme.skill%2Flegacy-skill',
+      expect.objectContaining({ method: 'GET' })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      6,
+      'https://catalog.example.com/api/v1/skills/%40acme.skill%2Flegacy-skill/versions/0.1.0/release-record',
+      expect.objectContaining({ method: 'PUT' })
+    );
+    expect(result).toEqual({
+      ok: true,
+      packageName: '@acme.skill/legacy-skill',
+      version: '0.1.0',
+      bundlePath: expect.stringContaining('legacy-skill-0.1.0.tgz'),
     });
   });
 
@@ -271,6 +498,11 @@ describe('import-local workflow', () => {
         )
       )
       .mockResolvedValueOnce(
+        new Response(null, {
+          status: 404,
+        })
+      )
+      .mockResolvedValueOnce(
         new Response(JSON.stringify({ ok: true }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -291,7 +523,7 @@ describe('import-local workflow', () => {
     expect(preparePayload.options).toEqual({
       publishRegistry: 'https://npm.example.com',
     });
-    const releaseRecordPayload = JSON.parse(String(fetchMock.mock.calls[3]?.[1]?.body));
+    const releaseRecordPayload = JSON.parse(String(fetchMock.mock.calls[4]?.[1]?.body));
     expect(releaseRecordPayload).toEqual({
       publishRegistry: 'https://npm.example.com',
       manifestDigest: 'sha256:test',
@@ -302,7 +534,7 @@ describe('import-local workflow', () => {
       'publish',
       expect.stringContaining('legacy-skill-0.1.0.tgz'),
       '--registry',
-      'https://npm.example.com/',
+      'https://npm.example.com',
     ]);
   });
 });

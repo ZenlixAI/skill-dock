@@ -324,6 +324,7 @@ Catalog：
 - `SKILL_REGISTRY_AUTHORING_TOKEN`
 - `SKILL_REGISTRY_PUBLISHER_TOKEN`
 - `SKILL_REGISTRY_NPM_REGISTRY_URL`
+- `SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION` or `SKILL_REGISTRY_NPM_PUBLISH_TOKEN`
 - `SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL`
 
 补充：
@@ -331,5 +332,6 @@ Catalog：
 - 本地开发默认就是 `kind`：Catalog 暴露在 `http://127.0.0.1:18080`，Nexus 暴露在 `http://127.0.0.1:8081`
 - `make dev-bootstrap` 会重新初始化集群内 Nexus 仓，并重写本地 `/private/tmp/skill-registry-nexus/.npmrc`
 - `SKILL_REGISTRY_NPM_REGISTRY_URL` 给 Catalog 自己读 registry 元数据；`SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL` 给宿主机 CLI 下载 tarball
+- 如果要让 Web 里的“发布 skill”由 Catalog 直接发到 Nexus，还需要给 Catalog 配 `SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION`（例如 `Bearer NpmToken.xxxxx`）；也可改用 `SKILL_REGISTRY_NPM_PUBLISH_TOKEN`
 - CLI 永远连 Catalog；切换后端 npm registry 时，需要同时确认 Catalog 的内部访问地址和对外下载地址
 - Docker 镜像默认关闭 sample data 与 `/mock-npm`

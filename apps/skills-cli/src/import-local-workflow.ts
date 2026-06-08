@@ -14,6 +14,7 @@ import {
 import { hasSkillPackageScope, isExactVersion, isPackageName } from './authoring.ts';
 import { inspectImportSourceDirectory } from './import-source.ts';
 import { resolveNpmUserConfigPath } from './npm-auth.ts';
+import { ensurePublishedVersion } from './npm-publish-recovery.ts';
 import { normalizeRegistryUrl } from './registry-url.ts';
 import { createSourceArchiveBase64 } from './source-archive.ts';
 
@@ -202,7 +203,14 @@ export async function runImportLocalWorkflow(
     bundle.components = packPayload.components;
     let retainBundleUntilExit = false;
     try {
-      publishBundle(directory, bundle.bundlePath, options.npmRegistry || publishRegistry);
+      const npmPublishRegistry = normalizeRegistryUrl(options.npmRegistry) || publishRegistry;
+      await ensurePublishedVersion({
+        directory,
+        packageName: finalPackageName,
+        version: finalVersion,
+        npmRegistry: npmPublishRegistry,
+        publish: () => publishBundle(directory, bundle.bundlePath, npmPublishRegistry),
+      });
       await putReleaseRecord(finalPackageName, finalVersion, {
         registry,
         publishRegistry,

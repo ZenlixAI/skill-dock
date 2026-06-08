@@ -41,6 +41,7 @@ const (
 	ActionPackagingPrepare       Action = "packaging.prepare"
 	ActionPackagingValidate      Action = "packaging.validate"
 	ActionPackagingPack          Action = "packaging.pack"
+	ActionPackagingPublish       Action = "packaging.publish"
 	ActionCreateReleaseRecord    Action = "catalog.release_record.create"
 	ActionApplySkillGovernance   Action = "catalog.governance.skill.apply"
 	ActionApplyVersionGovernance Action = "catalog.governance.version.apply"
@@ -297,6 +298,10 @@ func defaultCapabilities() map[Action]map[string]struct{} {
 		},
 		ActionPackagingPack: {
 			"authoring": {},
+			"publisher": {},
+			"operator":  {},
+		},
+		ActionPackagingPublish: {
 			"publisher": {},
 			"operator":  {},
 		},

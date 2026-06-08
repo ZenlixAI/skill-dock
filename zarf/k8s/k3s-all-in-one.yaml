@@ -39,6 +39,8 @@ stringData:
   skill_registry_publisher_token: replace-publisher-token
   # Internal URL used by Catalog pods to read npm metadata and tarballs.
   skill_registry_npm_registry_url: http://nexus.skill-registry.svc.cluster.local:8081/repository/skills-npm/
+  # Required only when the web "发布 skill" action should let Catalog publish directly to Nexus.
+  skill_registry_npm_publish_authorization: Bearer replace-nexus-publish-token
   # External URL returned to CLI clients for publish/install flows.
   skill_registry_public_npm_registry_url: https://nexus.example.com/repository/skills-npm/
   skill_registry_auth_tokens_json: ""
@@ -382,6 +384,11 @@ spec:
                 secretKeyRef:
                   name: catalog-secrets
                   key: skill_registry_npm_registry_url
+            - name: SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION
+              valueFrom:
+                secretKeyRef:
+                  name: catalog-secrets
+                  key: skill_registry_npm_publish_authorization
             - name: SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL
               valueFrom:
                 secretKeyRef:

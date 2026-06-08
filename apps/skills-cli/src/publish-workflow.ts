@@ -10,6 +10,7 @@ import { packLocalSkillDirectory } from './local-packaging.ts';
 import { resolveNpmUserConfigPath } from './npm-auth.ts';
 import { runPackagingSession } from './packaging-session.ts';
 import { normalizeRegistryUrl } from './registry-url.ts';
+import { ensurePublishedVersion } from './npm-publish-recovery.ts';
 
 export interface PublishWorkflowOptions {
   path?: string;
@@ -95,7 +96,13 @@ export async function runPublishWorkflow(
     });
     let retainBundleUntilExit = false;
     try {
-      publishBundle(directory, bundle.bundlePath, npmPublishRegistry);
+      await ensurePublishedVersion({
+        directory,
+        packageName: session.packageName,
+        version: session.version,
+        npmRegistry: npmPublishRegistry,
+        publish: () => publishBundle(directory, bundle.bundlePath, npmPublishRegistry),
+      });
 
       await putReleaseRecord(session.packageName, session.version, {
         registry,

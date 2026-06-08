@@ -28,6 +28,7 @@ describe('packaging workflow view state', () => {
           errors: [],
         },
         packResult: null,
+        publishResult: null,
         publishRegistry: 'https://npm.internal.example.com',
       }).currentStage
     ).toBe('validated');
@@ -48,6 +49,7 @@ describe('packaging workflow view state', () => {
         warningDetails: [],
         errors: [],
       },
+      publishResult: null,
       publishRegistry: 'https://npm.internal.example.com',
     });
 
@@ -92,6 +94,7 @@ describe('packaging workflow view state', () => {
         errors: [],
       },
       packResult: null,
+      publishResult: null,
       publishRegistry: 'https://npm.internal.example.com',
     });
 
@@ -105,6 +108,55 @@ describe('packaging workflow view state', () => {
       detail: '可以进入 pack',
       tone: 'good',
       label: '已通过',
+    });
+  });
+
+  it('shows the published stage once backend publish succeeds', () => {
+    const state = derivePackagingViewState({
+      prepareResult: {
+        workspacePath: '/tmp/workspace',
+        packageName: '@company.skill/zoom-out',
+        version: '1.2.0',
+        warnings: [],
+        warningDetails: [],
+        errors: [],
+      },
+      validateResult: {
+        ok: true,
+        workspacePath: '/tmp/workspace',
+        packageName: '@company.skill/zoom-out',
+        version: '1.2.0',
+        manifestDigest: 'sha256:abc',
+        components: ['docs'],
+        warnings: [],
+        warningDetails: [],
+        errors: [],
+      },
+      packResult: null,
+      publishResult: {
+        workspacePath: '/tmp/workspace',
+        packageName: '@company.skill/zoom-out',
+        version: '1.2.0',
+        manifestDigest: 'sha256:abc',
+        components: ['docs'],
+        publishedToRegistry: true,
+        created: true,
+        idempotentReplay: false,
+        versionStatus: 'published',
+        installPolicy: 'resolvable',
+        warnings: [],
+        warningDetails: [],
+        errors: [],
+      },
+      publishRegistry: 'https://npm.internal.example.com',
+    });
+
+    expect(state.currentStage).toBe('published');
+    expect(state.currentStageSummary).toBe('registry publish 和 release record 都已完成。');
+    expect(state.releaseReadiness).toEqual({
+      detail: 'registry publish 和 release record 都已完成',
+      tone: 'good',
+      label: '已完成',
     });
   });
 

@@ -5,11 +5,13 @@ import {
   cleanupPackagingWorkspace,
   packSkill,
   preparePackaging,
+  publishSkill,
   validatePackaging,
 } from '../api/client';
 import { normalizeThrownRegistryError } from '../api/httpClient';
 import type {
   PackagingPackResponse,
+  PackagingPublishResponse,
   PackagingPrepareRequest,
   PackagingPrepareResponse,
   PackagingSourceType,
@@ -61,14 +63,18 @@ const steps = [
   },
   {
     title: '4. 打包与交接',
-    description: 'bundle download + release handoff',
+    description: '高级模式 pack handoff / 默认模式一键 publish',
   },
 ];
 
-type ReviewData = PackagingPrepareResponse | PackagingValidateResponse | PackagingPackResponse;
+type ReviewData =
+  | PackagingPrepareResponse
+  | PackagingValidateResponse
+  | PackagingPackResponse
+  | PackagingPublishResponse;
 type ImportLogEntry = {
   id: string;
-  step: 'prepare' | 'validate' | 'pack' | 'cleanup';
+  step: 'prepare' | 'validate' | 'pack' | 'publish' | 'cleanup';
   outcome: 'succeeded' | 'failed';
   summary: string;
 };
@@ -161,7 +167,7 @@ export function ImportPage() {
   const [strictMode, setStrictMode] = useState(false);
   const [includeBundle, setIncludeBundle] = useState(false);
   const [operationState, setOperationState] = useState<{
-    loading: false | 'prepare' | 'validate' | 'pack' | 'cleanup';
+    loading: false | 'prepare' | 'validate' | 'pack' | 'publish' | 'cleanup';
     error: string | null;
     errorDetail: RegistryRequestError | null;
     success: string | null;
@@ -174,17 +180,19 @@ export function ImportPage() {
   const [prepareResult, setPrepareResult] = useState<PackagingPrepareResponse | null>(null);
   const [validateResult, setValidateResult] = useState<PackagingValidateResponse | null>(null);
   const [packResult, setPackResult] = useState<PackagingPackResponse | null>(null);
+  const [publishResult, setPublishResult] = useState<PackagingPublishResponse | null>(null);
   const [activityLog, setActivityLog] = useState<ImportLogEntry[]>([]);
 
   const workflow = derivePackagingViewState({
     prepareResult,
     validateResult,
     packResult,
+    publishResult,
     publishRegistry,
   });
-  const reviewData: ReviewData | null = packResult || validateResult || prepareResult;
+  const reviewData: ReviewData | null = publishResult || packResult || validateResult || prepareResult;
   const stageTone =
-    workflow.currentStage === 'pack_complete'
+    workflow.currentStage === 'published' || workflow.currentStage === 'pack_complete'
       ? 'good'
       : workflow.currentStage === 'validated'
         ? 'accent'
@@ -398,6 +406,7 @@ export function ImportPage() {
       setPrepareResult(response);
       setValidateResult(null);
       setPackResult(null);
+      setPublishResult(null);
       setOperationState({
         loading: false,
         error: null,
@@ -462,6 +471,7 @@ export function ImportPage() {
       });
       setValidateResult(response);
       setPackResult(null);
+      setPublishResult(null);
       const message = response.ok ? messages.success : messages.failed;
       setOperationState({
         loading: false,
@@ -518,6 +528,7 @@ export function ImportPage() {
         includeBundle,
       });
       setPackResult(response);
+      setPublishResult(null);
       setOperationState({
         loading: false,
         error: null,
@@ -613,7 +624,62 @@ export function ImportPage() {
       return;
     }
 
-    await runPack(workspacePath, '发布交接已生成。这里还没有替你执行 npm publish。');
+    setOperationState({
+      loading: 'publish',
+      error: null,
+      errorDetail: null,
+      success: null,
+    });
+    try {
+      const response = await publishSkill({
+        workspacePath,
+        target: {
+          packageName: packageName.trim(),
+          version: version.trim(),
+        },
+      });
+      setPublishResult(response);
+      setPackResult(null);
+      setOperationState({
+        loading: false,
+        error: null,
+        errorDetail: null,
+        success: 'skill 已发布到 registry，并已写入 release record。',
+      });
+      persistMutationResult({
+        action: 'publish',
+        outcome: 'succeeded',
+        message: 'skill 已发布到 registry，并已写入 release record。',
+        packageName: response.packageName,
+        version: response.version,
+      });
+      appendLog(
+        'publish',
+        'succeeded',
+        response.publishedToRegistry
+          ? `已发布 ${response.packageName}@${response.version} 并写入 release record。`
+          : `已复用现有 registry 版本并补齐 ${response.packageName}@${response.version} 的 release record。`
+      );
+    } catch (error: unknown) {
+      const outcome = inferMutationFailureOutcome(error);
+      const normalizedError = normalizeThrownRegistryError(error);
+      const message = describeImportOperationError(normalizedError);
+      appendLog('publish', 'failed', normalizedError.message);
+      setOperationState({
+        loading: false,
+        error: normalizedError.message,
+        errorDetail: normalizedError,
+        success: null,
+      });
+      persistMutationResult(
+        toMutationResult('publish', normalizedError, outcome, {
+          packageName: validateResult?.packageName || prepareResult?.packageName || normalizedPackageName || null,
+          version: validateResult?.version || prepareResult?.version || version.trim() || null,
+          actor: session.data?.actor ?? null,
+          message,
+        })
+      );
+    }
   }
 
   async function handlePack() {
@@ -670,6 +736,7 @@ export function ImportPage() {
       setPrepareResult(null);
       setValidateResult(null);
       setPackResult(null);
+      setPublishResult(null);
       setOperationState({
         loading: false,
         error: null,
@@ -710,7 +777,7 @@ export function ImportPage() {
     <div className="page-grid">
       <SectionHeading
         eyebrow="导入与打包"
-        title="先检查并生成预览，再进入发布交接。"
+        title="先检查并生成预览，再一键发布。"
         description="默认模式只暴露“检查并生成发布预览”和“发布 skill”两个动作。底层 prepare / validate / pack 仍然保留在高级模式里给 operator 排障。"
         tone="backstage"
       />
@@ -727,7 +794,7 @@ export function ImportPage() {
       </div>
 
       <div className="two-column two-column--wide-right">
-        <SurfaceCard title="导入 skill" description="先填来源和目标，再用默认模式完成预览与发布交接。" variant="console">
+        <SurfaceCard title="导入 skill" description="先填来源和目标，再用默认模式完成预览与发布。" variant="console">
           <div className="stack-column form-section">
             <label className="field">
               <span>来源类型</span>
@@ -936,7 +1003,7 @@ export function ImportPage() {
             <div className="action-row">
               <div className="action-row__copy">
                 <strong>默认模式</strong>
-                <p>先检查并生成发布预览，再进入发布交接。当前“发布 skill”只会生成 bundle 和 release handoff，不会替你执行 `npm publish`。</p>
+                <p>先检查并生成发布预览，再执行后端一次性 publish。默认“发布 skill”会由 Catalog 完成 registry publish 和 release record。</p>
               </div>
             </div>
             <div className="button-row">
@@ -957,17 +1024,17 @@ export function ImportPage() {
                 </button>
               </PermissionGate>
               <PermissionGate
-                fallback={<div className="empty-box">当前会话对 `packaging.pack` 只有只读权限。</div>}
+                fallback={<div className="empty-box">当前会话对 `packaging.publish` 只有只读权限。</div>}
                 packageName={normalizedPackageName}
-                requiredAction="packaging.pack"
+                requiredAction="packaging.publish"
               >
                 <button
                   className="button button--secondary"
-                  disabled={!workflow.canPack || operationState.loading !== false}
+                  disabled={!workflow.canPublish || operationState.loading !== false}
                   onClick={() => void handlePublish()}
                   type="button"
                 >
-                  {operationState.loading === 'pack' ? '生成发布交接中…' : '发布 skill'}
+                  {operationState.loading === 'publish' ? '发布中…' : '发布 skill'}
                 </button>
               </PermissionGate>
               <button
@@ -1162,8 +1229,8 @@ export function ImportPage() {
                     <p>只要 validate 还没有过，就不要把 bundle 当成可发布制品看待。</p>
                   </article>
                   <article className="list-card">
-                    <strong>Pack 不等于已发布</strong>
-                    <p>这个页面目前只负责产出 bundle 和 release handoff，不会替你执行 `npm publish`。</p>
+                    <strong>默认模式会直接发布</strong>
+                    <p>点击“发布 skill”后，Catalog 会完成 registry publish 和 release record；只有高级模式里的 Pack 仍然是手动交接。</p>
                   </article>
                 </div>
               </SurfaceCard>
@@ -1220,7 +1287,14 @@ export function ImportPage() {
                 </div>
               </SurfaceCard>
 
-              <SurfaceCard title="Pack 交接" description="发布前最后确认的 bundle 元数据。">
+              <SurfaceCard
+                title={publishResult ? '发布结果' : 'Pack 交接'}
+                description={
+                  publishResult
+                    ? '后端已经完成 registry publish 和 release record。'
+                    : '发布前最后确认的 bundle 元数据。'
+                }
+              >
                 <dl className="property-list">
                   <div>
                     <dt>工作目录</dt>
@@ -1244,6 +1318,18 @@ export function ImportPage() {
                       <dd>{reviewData.components.join(', ') || '无'}</dd>
                     </div>
                   ) : null}
+                  {publishResult ? (
+                    <>
+                      <div>
+                        <dt>registry publish</dt>
+                        <dd>{publishResult.publishedToRegistry ? '本次已执行' : '复用已有版本'}</dd>
+                      </div>
+                      <div>
+                        <dt>release record</dt>
+                        <dd>{publishResult.created ? '本次已创建' : '已存在，按幂等返回'}</dd>
+                      </div>
+                    </>
+                  ) : null}
                   {hasBundlePath(reviewData) ? (
                     <div>
                       <dt>bundle base64</dt>
@@ -1251,7 +1337,17 @@ export function ImportPage() {
                     </div>
                   ) : null}
                 </dl>
-                {packResult && releaseHandoffPath && authoringHandoffPath ? (
+                {publishResult ? (
+                  <div className="stack-column handoff-panel">
+                    <div className="pill-row">
+                      <StatusPill tone="good">发布已完成</StatusPill>
+                    </div>
+                    <p className="support-copy">
+                      这次已经由后端完成 registry publish 和 release record，普通模式下不再暴露 bundle / handoff 细节。
+                    </p>
+                  </div>
+                ) : null}
+                {packResult && !publishResult && releaseHandoffPath && authoringHandoffPath ? (
                   <div className="stack-column handoff-panel">
                     <div className="pill-row">
                       <StatusPill tone="good">pack 已可进入发布交接</StatusPill>

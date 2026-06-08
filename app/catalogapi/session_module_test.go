@@ -39,6 +39,7 @@ func TestSessionModuleReturnsCurrentPrincipalView(t *testing.T) {
 		"catalog.release_record.create",
 		"packaging.pack",
 		"packaging.prepare",
+		"packaging.publish",
 		"packaging.validate",
 		"session.read",
 	}

@@ -19,7 +19,13 @@ vi.mock('../api/client', () => ({
     role: 'operator',
     actor: 'operator',
     authMechanism: 'session',
-    allowedActions: ['session.read', 'packaging.prepare', 'packaging.validate', 'packaging.pack'],
+    allowedActions: [
+      'session.read',
+      'packaging.prepare',
+      'packaging.validate',
+      'packaging.pack',
+      'packaging.publish',
+    ],
     allowedPackages: [],
   }),
   getPackagingBundleDownloadPath: vi.fn(
@@ -27,6 +33,7 @@ vi.mock('../api/client', () => ({
       `/api/v1/skill-packaging/bundle?workspacePath=${encodeURIComponent(workspacePath)}&packageName=${encodeURIComponent(packageName)}&version=${encodeURIComponent(version)}`
   ),
   packSkill: vi.fn(),
+  publishSkill: vi.fn(),
   preparePackaging: vi.fn(),
   validatePackaging: vi.fn(),
 }));
@@ -41,7 +48,13 @@ beforeEach(() => {
     role: 'operator',
     actor: 'operator',
     authMechanism: 'session',
-    allowedActions: ['session.read', 'packaging.prepare', 'packaging.validate', 'packaging.pack'],
+    allowedActions: [
+      'session.read',
+      'packaging.prepare',
+      'packaging.validate',
+      'packaging.pack',
+      'packaging.publish',
+    ],
     allowedPackages: [],
   });
 });
@@ -288,7 +301,7 @@ describe('ImportPage', () => {
     );
   });
 
-  it('offers a bundle download handoff after publish skill instead of implying the bundle was already published', async () => {
+  it('publishes through the backend publish api and stops showing manual handoff links', async () => {
     vi.mocked(client.preparePackaging).mockResolvedValue({
       workspacePath: '/tmp/skill-packaging/workspace',
       packageName: '@company.skill/zoom-out',
@@ -308,13 +321,17 @@ describe('ImportPage', () => {
       warningDetails: [],
       errors: [],
     });
-    vi.mocked(client.packSkill).mockResolvedValue({
+    vi.mocked(client.publishSkill).mockResolvedValue({
       workspacePath: '/tmp/skill-packaging/workspace',
-      bundlePath: '/tmp/skill-packaging/workspace/.dist/zoom-out-1.2.0.tgz',
       packageName: '@company.skill/zoom-out',
       version: '1.2.0',
       manifestDigest: 'sha256:manifest',
       components: ['commands'],
+      publishedToRegistry: true,
+      created: true,
+      idempotentReplay: false,
+      versionStatus: 'published',
+      installPolicy: 'resolvable',
       warnings: [],
       warningDetails: [],
       errors: [],
@@ -325,11 +342,16 @@ describe('ImportPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: '检查并生成发布预览' }));
     fireEvent.click(await screen.findByRole('button', { name: '发布 skill' }));
 
-    expect(await screen.findByRole('link', { name: '下载 bundle' })).toHaveAttribute(
-      'href',
-      '/api/v1/skill-packaging/bundle?workspacePath=%2Ftmp%2Fskill-packaging%2Fworkspace&packageName=%40company.skill%2Fzoom-out&version=1.2.0'
-    );
-    expect(screen.getByText('这里还没有替你执行 npm publish，下载 bundle 并发布到目标 registry 后，再进入 release record。')).toBeInTheDocument();
+    expect(client.publishSkill).toHaveBeenCalledWith({
+      workspacePath: '/tmp/skill-packaging/workspace',
+      target: {
+        packageName: '@company.skill/zoom-out',
+        version: '1.2.0',
+      },
+    });
+    expect(await screen.findByText('skill 已发布到 registry，并已写入 release record。')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '下载 bundle' })).not.toBeInTheDocument();
+    expect(screen.queryByText('这里还没有替你执行 npm publish，下载 bundle 并发布到目标 registry 后，再进入 release record。')).not.toBeInTheDocument();
   });
 
   it('shows the validated stage after preview succeeds', async () => {

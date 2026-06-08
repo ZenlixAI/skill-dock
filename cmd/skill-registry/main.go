@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"skill_registry/app/auth"
@@ -42,20 +43,22 @@ func main() {
 	}
 
 	server := catalogapi.NewServer(catalogapi.ServerConfig{
-		ReaderToken:          os.Getenv("SKILL_REGISTRY_READER_TOKEN"),
-		AuthoringToken:       os.Getenv("SKILL_REGISTRY_AUTHORING_TOKEN"),
-		PublisherToken:       os.Getenv("SKILL_REGISTRY_PUBLISHER_TOKEN"),
-		PublicNPMRegistryURL: os.Getenv("SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL"),
-		AuthTokens:           configuredAuthTokens(),
-		SessionSecret:        os.Getenv("SKILL_REGISTRY_SESSION_SECRET"),
-		SessionUsers:         configuredSessionUsers(),
-		MockRegistry:         configuredMockRegistry(sampleData, enableMockRegistry),
-		DisableMockRegistry:  !enableMockRegistry,
-		Packaging:            packaging.NewService(""),
-		Repository:           repository,
-		Idempotency:          idempotencyStore,
-		Audit:                auditStore,
-		Logger:               log.New(os.Stderr, "", 0),
+		ReaderToken:                     os.Getenv("SKILL_REGISTRY_READER_TOKEN"),
+		AuthoringToken:                  os.Getenv("SKILL_REGISTRY_AUTHORING_TOKEN"),
+		PublisherToken:                  os.Getenv("SKILL_REGISTRY_PUBLISHER_TOKEN"),
+		NPMRegistryURL:                  os.Getenv("SKILL_REGISTRY_NPM_REGISTRY_URL"),
+		NPMRegistryPublishAuthorization: configuredNPMPublishAuthorization(),
+		PublicNPMRegistryURL:            os.Getenv("SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL"),
+		AuthTokens:                      configuredAuthTokens(),
+		SessionSecret:                   os.Getenv("SKILL_REGISTRY_SESSION_SECRET"),
+		SessionUsers:                    configuredSessionUsers(),
+		MockRegistry:                    configuredMockRegistry(sampleData, enableMockRegistry),
+		DisableMockRegistry:             !enableMockRegistry,
+		Packaging:                       packaging.NewService(""),
+		Repository:                      repository,
+		Idempotency:                     idempotencyStore,
+		Audit:                           auditStore,
+		Logger:                          log.New(os.Stderr, "", 0),
 	})
 
 	log.Printf("skill registry listening on %s", addr)
@@ -148,4 +151,14 @@ func envBoolOrDefault(key string, fallback bool) bool {
 		log.Fatalf("parse %s: expected boolean value, got %q", key, value)
 		return fallback
 	}
+}
+
+func configuredNPMPublishAuthorization() string {
+	if value := strings.TrimSpace(os.Getenv("SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION")); value != "" {
+		return value
+	}
+	if token := strings.TrimSpace(os.Getenv("SKILL_REGISTRY_NPM_PUBLISH_TOKEN")); token != "" {
+		return "Bearer " + token
+	}
+	return ""
 }

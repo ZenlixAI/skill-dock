@@ -210,13 +210,35 @@ export interface PackagingPackRequest {
 }
 
 export interface PackagingPackResponse {
-  workspacePath: string;
-  bundlePath: string;
+	workspacePath: string;
+	bundlePath: string;
   bundleBase64?: string;
   packageName: string;
   version: string;
   manifestDigest: string;
   components: string[];
+  warnings: string[];
+  warningDetails: WarningDetail[];
+	importReport?: ImportReport;
+	errors: string[];
+}
+
+export interface PackagingPublishRequest {
+  workspacePath: string;
+  target: PackagingTarget;
+}
+
+export interface PackagingPublishResponse {
+  workspacePath: string;
+  packageName: string;
+  version: string;
+  manifestDigest: string;
+  components: string[];
+  publishedToRegistry: boolean;
+  created: boolean;
+  idempotentReplay: boolean;
+  versionStatus: VersionStatus;
+  installPolicy: InstallPolicy;
   warnings: string[];
   warningDetails: WarningDetail[];
   importReport?: ImportReport;
@@ -324,6 +346,7 @@ export interface RegistryApiClient {
   preparePackaging(request: PackagingPrepareRequest): Promise<PackagingPrepareResponse>;
   validatePackaging(request: PackagingValidateRequest): Promise<PackagingValidateResponse>;
   packSkill(request: PackagingPackRequest): Promise<PackagingPackResponse>;
+  publishSkill(request: PackagingPublishRequest): Promise<PackagingPublishResponse>;
   cleanupPackagingWorkspace(request: PackagingCleanupRequest): Promise<PackagingCleanupResponse>;
   createReleaseRecord(packageName: string, version: string, input: ReleaseRecordInput): Promise<ReleaseRecordResult>;
   applySkillGovernanceChange(packageName: string, input: SkillGovernanceChangeInput): Promise<GovernanceChangeResponse>;

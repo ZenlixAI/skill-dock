@@ -195,6 +195,9 @@ func (m *MockRegistry) PublishPackage(packageName string, body []byte) bool {
 			attachment, ok = payload.Attachments[packageBasename(packageName)+"-"+version+".tgz"]
 		}
 		if !ok {
+			attachment, ok = payload.Attachments[packageAttachmentName(packageName, version)]
+		}
+		if !ok {
 			continue
 		}
 		tarball, err := base64.StdEncoding.DecodeString(attachment.Data)

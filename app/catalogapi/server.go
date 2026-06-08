@@ -25,44 +25,50 @@ import (
 )
 
 type ServerConfig struct {
-	Repository           catalog.Repository
-	ReaderToken          string
-	AuthoringToken       string
-	PublisherToken       string
-	PublicNPMRegistryURL string
-	AuthTokens           map[string]auth.TokenConfig
-	SessionSecret        string
-	SessionUsers         map[string]auth.SessionUserConfig
-	MockRegistry         *artifactadapter.MockRegistry
-	DisableMockRegistry  bool
-	Packaging            *packaging.Service
-	Idempotency          persist.IdempotencyStore
-	Audit                persist.AuditStore
-	Logger               *log.Logger
+	Repository                      catalog.Repository
+	ReaderToken                     string
+	AuthoringToken                  string
+	PublisherToken                  string
+	NPMRegistryURL                  string
+	NPMRegistryPublishAuthorization string
+	NPMRegistryPublishClient        *http.Client
+	PublicNPMRegistryURL            string
+	AuthTokens                      map[string]auth.TokenConfig
+	SessionSecret                   string
+	SessionUsers                    map[string]auth.SessionUserConfig
+	MockRegistry                    *artifactadapter.MockRegistry
+	DisableMockRegistry             bool
+	Packaging                       *packaging.Service
+	Idempotency                     persist.IdempotencyStore
+	Audit                           persist.AuditStore
+	Logger                          *log.Logger
 }
 
 type Server struct {
-	repo                  catalog.Repository
-	authorizer            *auth.Authorizer
-	sessionManager        *auth.SessionManager
-	accessWorkflow        accessWorkflowHandler
-	catalogReadModule     catalogReadWorkflow
-	auditQueryModule      auditQueryWorkflow
-	catalogMutationModule catalogMutationWorkflow
-	governanceModule      *governanceModule
-	packagingModule       *packagingModule
-	packagingAccessModule packagingAccessWorkflow
-	sessionModule         sessionWorkflow
-	publicNPMRegistryURL  string
-	mockRegistry          *artifactadapter.MockRegistry
-	disableMockRegistry   bool
-	packaging             *packaging.Service
-	idempotency           persist.IdempotencyStore
-	audit                 persist.AuditStore
-	auditRecorder         *AuditRecorder
-	logger                *log.Logger
-	metrics               *observability.Collector
-	requestID             atomic.Uint64
+	repo                            catalog.Repository
+	authorizer                      *auth.Authorizer
+	sessionManager                  *auth.SessionManager
+	accessWorkflow                  accessWorkflowHandler
+	catalogReadModule               catalogReadWorkflow
+	auditQueryModule                auditQueryWorkflow
+	catalogMutationModule           catalogMutationWorkflow
+	governanceModule                *governanceModule
+	packagingModule                 *packagingModule
+	packagingAccessModule           packagingAccessWorkflow
+	sessionModule                   sessionWorkflow
+	npmRegistryURL                  string
+	npmRegistryPublishAuthorization string
+	npmRegistryPublishClient        *http.Client
+	publicNPMRegistryURL            string
+	mockRegistry                    *artifactadapter.MockRegistry
+	disableMockRegistry             bool
+	packaging                       *packaging.Service
+	idempotency                     persist.IdempotencyStore
+	audit                           persist.AuditStore
+	auditRecorder                   *AuditRecorder
+	logger                          *log.Logger
+	metrics                         *observability.Collector
+	requestID                       atomic.Uint64
 }
 
 type contextKey string
@@ -92,18 +98,24 @@ func NewServer(config ServerConfig) *Server {
 	}
 
 	server := &Server{
-		repo:                 config.Repository,
-		authorizer:           authorizer,
-		sessionManager:       sessionManager,
-		publicNPMRegistryURL: strings.TrimRight(strings.TrimSpace(config.PublicNPMRegistryURL), "/"),
-		mockRegistry:         config.MockRegistry,
-		disableMockRegistry:  config.DisableMockRegistry,
-		packaging:            config.Packaging,
-		idempotency:          config.Idempotency,
-		audit:                config.Audit,
-		auditRecorder:        auditRecorder,
-		logger:               logger,
-		metrics:              observability.NewCollector(),
+		repo:                            config.Repository,
+		authorizer:                      authorizer,
+		sessionManager:                  sessionManager,
+		npmRegistryURL:                  strings.TrimRight(strings.TrimSpace(config.NPMRegistryURL), "/"),
+		npmRegistryPublishAuthorization: strings.TrimSpace(config.NPMRegistryPublishAuthorization),
+		npmRegistryPublishClient:        config.NPMRegistryPublishClient,
+		publicNPMRegistryURL:            strings.TrimRight(strings.TrimSpace(config.PublicNPMRegistryURL), "/"),
+		mockRegistry:                    config.MockRegistry,
+		disableMockRegistry:             config.DisableMockRegistry,
+		packaging:                       config.Packaging,
+		idempotency:                     config.Idempotency,
+		audit:                           config.Audit,
+		auditRecorder:                   auditRecorder,
+		logger:                          logger,
+		metrics:                         observability.NewCollector(),
+	}
+	if server.npmRegistryPublishClient == nil {
+		server.npmRegistryPublishClient = http.DefaultClient
 	}
 	server.catalogReadModule = &catalogReadModule{
 		repo: config.Repository,
@@ -160,6 +172,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/api/v1/skill-packaging/prepare", s.requireAction(s.handlePackagingPrepare, auth.ActionPackagingPrepare))
 	mux.Handle("/api/v1/skill-packaging/validate", s.requireAction(s.handlePackagingValidate, auth.ActionPackagingValidate))
 	mux.Handle("/api/v1/skill-packaging/pack", s.requireAction(s.handlePackagingPack, auth.ActionPackagingPack))
+	mux.Handle("/api/v1/skill-packaging/publish", s.requireAction(s.handlePackagingPublish, auth.ActionPackagingPublish))
 	mux.Handle("/api/v1/skill-packaging/cleanup", s.requireAction(s.handlePackagingCleanup, auth.ActionPackagingPack))
 	mux.Handle("/api/v1/skill-packaging/bundle", s.requireAction(s.handlePackagingBundleDownload, auth.ActionPackagingPack))
 	if !s.disableMockRegistry {

@@ -6,6 +6,8 @@ import type {
   ListSkillsFilters,
   PackagingPackRequest,
   PackagingPackResponse,
+  PackagingPublishRequest,
+  PackagingPublishResponse,
   PackagingPrepareRequest,
   PackagingPrepareResponse,
   PackagingValidateRequest,
@@ -67,6 +69,7 @@ export const mockClient: RegistryApiClient = {
         'packaging.prepare',
         'packaging.validate',
         'packaging.pack',
+        'packaging.publish',
         'catalog.release_record.create',
         'catalog.governance.skill.apply',
         'catalog.governance.version.apply',
@@ -282,6 +285,61 @@ export const mockClient: RegistryApiClient = {
       },
     });
     return delay(response);
+  },
+
+  async publishSkill(request: PackagingPublishRequest) {
+    const existing = state.versions[request.target.packageName]?.find(
+      (item) => item.version === request.target.version
+    );
+    const result: PackagingPublishResponse = {
+      workspacePath: request.workspacePath,
+      packageName: request.target.packageName,
+      version: request.target.version,
+      manifestDigest: 'sha256:1c65eab3e1fb04af11c5ff2e7c54a1f0',
+      components: ['docs', 'scripts'],
+      publishedToRegistry: !existing,
+      created: !existing,
+      idempotentReplay: Boolean(existing),
+      versionStatus: 'published',
+      installPolicy: 'resolvable',
+      warnings: previewWarningDetails.map((item) => item.code),
+      warningDetails: previewWarningDetails,
+      importReport: previewImportReport,
+      errors: [],
+    };
+    if (!existing) {
+      const newVersion: SkillVersionSummary = {
+        packageName: request.target.packageName,
+        version: request.target.version,
+        versionStatus: 'published',
+        installPolicy: 'resolvable',
+        publishedAt: nowISOString(),
+      };
+      state.versions[request.target.packageName] = [
+        newVersion,
+        ...(state.versions[request.target.packageName] || []),
+      ];
+      setLatestSkillState(state, request.target.packageName);
+    }
+    recordAudit(state, {
+      action: 'packaging.publish',
+      actor: 'web-ui',
+      role: 'publisher',
+      authMechanism: 'mock',
+      authDecision: 'allowed',
+      endpoint: '/api/v1/skill-packaging/publish',
+      method: 'POST',
+      packageName: request.target.packageName,
+      version: request.target.version,
+      outcome: 'succeeded',
+      statusCode: existing ? 200 : 201,
+      details: {
+        workspacePath: request.workspacePath,
+        publishedToRegistry: result.publishedToRegistry,
+        created: result.created,
+      },
+    });
+    return delay(result);
   },
 
   async cleanupPackagingWorkspace(request) {

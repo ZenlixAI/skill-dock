@@ -43,6 +43,7 @@ export const listAuditEvents = apiClient.listAuditEvents.bind(apiClient);
 export const preparePackaging = apiClient.preparePackaging.bind(apiClient);
 export const validatePackaging = apiClient.validatePackaging.bind(apiClient);
 export const packSkill = apiClient.packSkill.bind(apiClient);
+export const publishSkill = apiClient.publishSkill.bind(apiClient);
 export const cleanupPackagingWorkspace = apiClient.cleanupPackagingWorkspace.bind(apiClient);
 export const getPackagingBundleDownloadPath = buildPackagingBundleDownloadPath;
 export const createReleaseRecord = apiClient.createReleaseRecord.bind(apiClient);

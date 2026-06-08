@@ -4,6 +4,8 @@ import type {
   PackagingCleanupResponse,
   PackagingPackRequest,
   PackagingPackResponse,
+  PackagingPublishRequest,
+  PackagingPublishResponse,
   PackagingPrepareRequest,
   PackagingPrepareResponse,
   PackagingValidateRequest,
@@ -47,7 +49,7 @@ export function normalizePackagingReview<
 
 export const packagingClient: Pick<
   RegistryApiClient,
-  'preparePackaging' | 'validatePackaging' | 'packSkill' | 'cleanupPackagingWorkspace'
+  'preparePackaging' | 'validatePackaging' | 'packSkill' | 'publishSkill' | 'cleanupPackagingWorkspace'
 > = {
   async preparePackaging(request: PackagingPrepareRequest) {
     const response = await requestJSON<PackagingPrepareResponse>('/api/v1/skill-packaging/prepare', {
@@ -73,6 +75,17 @@ export const packagingClient: Pick<
 
   async packSkill(request: PackagingPackRequest) {
     const response = await requestJSON<PackagingPackResponse>('/api/v1/skill-packaging/pack', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+    return {
+      ...normalizePackagingReview(response),
+      components: Array.isArray(response.components) ? response.components : [],
+    };
+  },
+
+  async publishSkill(request: PackagingPublishRequest) {
+    const response = await requestJSON<PackagingPublishResponse>('/api/v1/skill-packaging/publish', {
       method: 'POST',
       body: JSON.stringify(request),
     });

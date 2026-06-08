@@ -946,6 +946,132 @@ func TestSkillPackagingPrepareValidateAndPack(t *testing.T) {
 	}
 }
 
+func TestSkillPackagingPublishPublishesAndCreatesReleaseRecord(t *testing.T) {
+	mockRegistry := artifactadapter.NewMockRegistry(nil)
+	registryBaseURL := "https://registry.example.com/mock-npm"
+	registryServer := NewServer(ServerConfig{
+		Repository:   catalog.NewMemoryRepository(catalog.SampleData()),
+		MockRegistry: mockRegistry,
+	})
+
+	registryClient := &http.Client{
+		Transport: httpRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			recorder := httptest.NewRecorder()
+			proxyRequest := httptest.NewRequest(request.Method, request.URL.String(), request.Body)
+			proxyRequest.Header = request.Header.Clone()
+			registryServer.Handler().ServeHTTP(recorder, proxyRequest)
+
+			return &http.Response{
+				StatusCode: recorder.Code,
+				Header:     recorder.Result().Header.Clone(),
+				Body:       io.NopCloser(bytes.NewReader(recorder.Body.Bytes())),
+			}, nil
+		}),
+	}
+
+	packagingService := packaging.NewService("")
+	workspacePath, _ := prepareManagedWorkspaceForTest(
+		t,
+		packagingService,
+		"@platform.skill/fixture-skill",
+		"0.2.0",
+	)
+
+	catalogServer := NewServer(ServerConfig{
+		Repository: catalog.NewMemoryRepository(catalog.SampleData(), catalog.MemoryRepositoryOptions{
+			ArtifactSource: artifactadapter.NewNPMRegistryArtifactSource(registryBaseURL, registryClient),
+		}),
+		Packaging:                packagingService,
+		NPMRegistryURL:           registryBaseURL,
+		NPMRegistryPublishClient: registryClient,
+	})
+
+	publishRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/publish", `{
+		"workspacePath":"`+workspacePath+`",
+		"target":{"packageName":"@platform.skill/fixture-skill","version":"0.2.0"}
+	}`)
+	publishRequest.Header.Set("X-Role", "publisher")
+	publishRecorder := httptest.NewRecorder()
+	catalogServer.Handler().ServeHTTP(publishRecorder, publishRequest)
+
+	if publishRecorder.Code != http.StatusCreated {
+		t.Fatalf("expected publish status %d, got %d body=%s", http.StatusCreated, publishRecorder.Code, publishRecorder.Body.String())
+	}
+
+	var publishPayload struct {
+		WorkspacePath       string                `json:"workspacePath"`
+		PackageName         string                `json:"packageName"`
+		Version             string                `json:"version"`
+		ManifestDigest      string                `json:"manifestDigest"`
+		Components          []string              `json:"components"`
+		PublishedToRegistry bool                  `json:"publishedToRegistry"`
+		Created             bool                  `json:"created"`
+		IdempotentReplay    bool                  `json:"idempotentReplay"`
+		VersionStatus       catalog.VersionStatus `json:"versionStatus"`
+		InstallPolicy       catalog.InstallPolicy `json:"installPolicy"`
+		Errors              []string              `json:"errors"`
+	}
+	if err := json.Unmarshal(publishRecorder.Body.Bytes(), &publishPayload); err != nil {
+		t.Fatalf("decode publish response: %v", err)
+	}
+	if publishPayload.WorkspacePath != workspacePath {
+		t.Fatalf("expected workspacePath %q, got %q", workspacePath, publishPayload.WorkspacePath)
+	}
+	if !publishPayload.PublishedToRegistry || !publishPayload.Created || publishPayload.IdempotentReplay {
+		t.Fatalf("unexpected publish result: %+v", publishPayload)
+	}
+	if publishPayload.PackageName != "@platform.skill/fixture-skill" || publishPayload.Version != "0.2.0" {
+		t.Fatalf("unexpected package identity: %+v", publishPayload)
+	}
+	if publishPayload.ManifestDigest == "" || len(publishPayload.Components) == 0 {
+		t.Fatalf("expected manifest digest and components, got %+v", publishPayload)
+	}
+	if publishPayload.VersionStatus != catalog.VersionStatusPublished || publishPayload.InstallPolicy != catalog.InstallPolicyResolvable {
+		t.Fatalf("unexpected release state: %+v", publishPayload)
+	}
+
+	replayRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/publish", `{
+		"workspacePath":"`+workspacePath+`",
+		"target":{"packageName":"@platform.skill/fixture-skill","version":"0.2.0"}
+	}`)
+	replayRequest.Header.Set("X-Role", "publisher")
+	replayRecorder := httptest.NewRecorder()
+	catalogServer.Handler().ServeHTTP(replayRecorder, replayRequest)
+
+	if replayRecorder.Code != http.StatusOK {
+		t.Fatalf("expected replay status %d, got %d body=%s", http.StatusOK, replayRecorder.Code, replayRecorder.Body.String())
+	}
+
+	var replayPayload struct {
+		PublishedToRegistry bool `json:"publishedToRegistry"`
+		Created             bool `json:"created"`
+		IdempotentReplay    bool `json:"idempotentReplay"`
+	}
+	if err := json.Unmarshal(replayRecorder.Body.Bytes(), &replayPayload); err != nil {
+		t.Fatalf("decode replay response: %v", err)
+	}
+	if replayPayload.PublishedToRegistry || replayPayload.Created || !replayPayload.IdempotentReplay {
+		t.Fatalf("unexpected replay result: %+v", replayPayload)
+	}
+
+	searchRequest := httptest.NewRequest(http.MethodGet, "/api/v1/skills/search?q=fixture", nil)
+	searchRequest.Header.Set("X-Role", "reader")
+	searchRecorder := httptest.NewRecorder()
+	catalogServer.Handler().ServeHTTP(searchRecorder, searchRequest)
+	if searchRecorder.Code != http.StatusOK {
+		t.Fatalf("expected search status %d, got %d", http.StatusOK, searchRecorder.Code)
+	}
+	var searchPayload struct {
+		Items []catalog.SkillSummary `json:"items"`
+	}
+	if err := json.Unmarshal(searchRecorder.Body.Bytes(), &searchPayload); err != nil {
+		t.Fatalf("decode search response: %v", err)
+	}
+	if len(searchPayload.Items) != 1 || searchPayload.Items[0].PackageName != "@platform.skill/fixture-skill" {
+		t.Fatalf("unexpected search payload: %+v", searchPayload)
+	}
+}
+
 func TestSkillPackagingPackMetadataAndBundleDownload(t *testing.T) {
 	server := newTestServer()
 	fixtureDir := createPackagingFixture(t)
