@@ -20,7 +20,7 @@ stringData:
   skill_registry_npm_publish_authorization: Bearer replace-nexus-publish-token
   # Address returned to external CLI clients in install-target responses.
   # If Catalog runs in-cluster and CLI runs on operator/dev machines, this must be CLI-reachable.
-  skill_registry_public_npm_registry_url: https://nexus.example.com/repository/skills-npm
+  skill_registry_public_npm_registry_url: https://skills.example.com/repository/skills-npm
   skill_registry_auth_tokens_json: ""
   # Required only when browser login/session-cookie mode is enabled.
   skill_registry_session_secret: replace-session-secret
@@ -207,6 +207,13 @@ spec:
     - host: skills.example.com
       http:
         paths:
+          - path: /repository/skills-npm
+            pathType: Prefix
+            backend:
+              service:
+                name: nexus
+                port:
+                  number: 8081
           - path: /
             pathType: Prefix
             backend:

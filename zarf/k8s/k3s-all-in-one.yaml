@@ -42,7 +42,7 @@ stringData:
   # Required only when the web "发布 skill" action should let Catalog publish directly to Nexus.
   skill_registry_npm_publish_authorization: Bearer replace-nexus-publish-token
   # External URL returned to CLI clients for publish/install flows.
-  skill_registry_public_npm_registry_url: https://nexus.example.com/repository/skills-npm/
+  skill_registry_public_npm_registry_url: https://skills.example.com/repository/skills-npm/
   skill_registry_auth_tokens_json: ""
   # Required when the web side should support browser login / switch user / logout.
   skill_registry_session_secret: replace-session-secret
@@ -499,6 +499,13 @@ spec:
     - host: skills.example.com
       http:
         paths:
+          - path: /repository/skills-npm
+            pathType: Prefix
+            backend:
+              service:
+                name: nexus
+                port:
+                  number: 8081
           - path: /
             pathType: Prefix
             backend:
@@ -506,23 +513,3 @@ spec:
                 name: skills-web
                 port:
                   number: 8080
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: nexus
-  namespace: skill-registry
-  annotations:
-    kubernetes.io/ingress.class: traefik
-spec:
-  rules:
-    - host: nexus.example.com
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: nexus
-                port:
-                  number: 8081
