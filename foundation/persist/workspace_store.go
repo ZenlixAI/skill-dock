@@ -46,21 +46,29 @@ func NewSQLWorkspaceStore(ctx context.Context, databaseURL string) (*SQLWorkspac
 }
 
 func (s *SQLWorkspaceStore) Migrate(ctx context.Context) error {
-	for _, statement := range []string{
-		`CREATE TABLE IF NOT EXISTS packaging_workspaces (
-			workspace_id TEXT NOT NULL PRIMARY KEY,
-			workspace_snapshot BLOB NOT NULL,
-			bundle_content BLOB,
-			created_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_packaging_workspaces_updated_at ON packaging_workspaces(updated_at)`,
-	} {
+	for _, statement := range workspaceMigrationStatements(s.dialect) {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func workspaceMigrationStatements(dialect string) []string {
+	binaryType := "BLOB"
+	if dialect == "pgx" {
+		binaryType = "BYTEA"
+	}
+	return []string{
+		`CREATE TABLE IF NOT EXISTS packaging_workspaces (
+			workspace_id TEXT NOT NULL PRIMARY KEY,
+			workspace_snapshot ` + binaryType + ` NOT NULL,
+			bundle_content ` + binaryType + `,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_packaging_workspaces_updated_at ON packaging_workspaces(updated_at)`,
+	}
 }
 
 func (s *SQLWorkspaceStore) SaveWorkspace(ctx context.Context, workspaceID string, snapshot []byte, createdAt time.Time) error {
