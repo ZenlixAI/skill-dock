@@ -2485,7 +2485,7 @@ func TestInstallTargetResolvesLatestPublishedVersion(t *testing.T) {
 
 func TestInstallTargetUsesPublicRegistryURLWhenConfigured(t *testing.T) {
 	internalRegistry := "http://nexus.skill-registry.svc.cluster.local:8081/repository/skills-npm"
-	publicRegistry := "http://127.0.0.1:8081/repository/skills-npm"
+	publicRegistry := "https://skills.example.com/repository/skills-npm"
 	server := NewServer(ServerConfig{
 		Repository:           catalog.NewMemoryRepository(catalog.SampleDataWithRegistryBase(internalRegistry)),
 		Packaging:            packaging.NewService(""),
