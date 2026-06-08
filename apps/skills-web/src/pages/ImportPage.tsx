@@ -149,6 +149,7 @@ export function ImportPage() {
   const [newAuthoringPath, setNewAuthoringPath] = useState('');
   const [authoringError, setAuthoringError] = useState<string | null>(null);
   const [showAdvancedFiles, setShowAdvancedFiles] = useState(false);
+  const [showAdvancedWorkflow, setShowAdvancedWorkflow] = useState(false);
   const [rawInlineFiles, setRawInlineFiles] = useState('');
   const [rawInlineFilesDirty, setRawInlineFilesDirty] = useState(false);
   const [packageName, setPackageName] = useState('@company.skill/zoom-out');
@@ -375,7 +376,7 @@ export function ImportPage() {
     };
   }
 
-  async function handlePrepare() {
+  async function runPrepare(successMessage = 'prepare 完成，已经拿到 workspacePath 和 import review 数据。') {
     if (sourceType === 'platform_authoring' && authoringError) {
       setOperationState({
         loading: false,
@@ -383,7 +384,7 @@ export function ImportPage() {
         errorDetail: createLocalRequestError(authoringError),
         success: null,
       });
-      return;
+      return null;
     }
 
     setOperationState({
@@ -401,16 +402,17 @@ export function ImportPage() {
         loading: false,
         error: null,
         errorDetail: null,
-        success: 'prepare 完成，已经拿到 workspacePath 和 import review 数据。',
+        success: successMessage,
       });
       persistMutationResult({
         action: 'prepare',
         outcome: 'succeeded',
-        message: 'prepare 完成，已经拿到 workspacePath 和 import review 数据。',
+        message: successMessage,
         packageName: response.packageName,
         version: response.version,
       });
       appendLog('prepare', 'succeeded', `已准备 ${response.packageName}@${response.version}。`);
+      return response;
     } catch (error: unknown) {
       const outcome = inferMutationFailureOutcome(error);
       const normalizedError = normalizeThrownRegistryError(error);
@@ -430,7 +432,132 @@ export function ImportPage() {
           message,
         })
       );
+      return null;
     }
+  }
+
+  async function runValidate(
+    workspacePath: string,
+    messages: {
+      success: string;
+      failed: string;
+    } = {
+      success: 'validate 通过，可以继续 pack。',
+      failed: 'validate 返回未通过，请先处理 errors。',
+    }
+  ) {
+    setOperationState({
+      loading: 'validate',
+      error: null,
+      errorDetail: null,
+      success: null,
+    });
+    try {
+      const response = await validatePackaging({
+        workspacePath,
+        target: {
+          packageName: packageName.trim(),
+          version: version.trim(),
+        },
+      });
+      setValidateResult(response);
+      setPackResult(null);
+      const message = response.ok ? messages.success : messages.failed;
+      setOperationState({
+        loading: false,
+        error: null,
+        errorDetail: null,
+        success: message,
+      });
+      persistMutationResult({
+        action: 'validate',
+        outcome: response.ok ? 'succeeded' : 'failed',
+        message,
+        packageName: response.packageName,
+        version: response.version,
+      });
+      appendLog('validate', response.ok ? 'succeeded' : 'failed', response.ok ? '校验通过。' : '校验返回阻断错误。');
+      return response;
+    } catch (error: unknown) {
+      const outcome = inferMutationFailureOutcome(error);
+      const normalizedError = normalizeThrownRegistryError(error);
+      const message = describeImportOperationError(normalizedError);
+      appendLog('validate', 'failed', normalizedError.message);
+      setOperationState({
+        loading: false,
+        error: normalizedError.message,
+        errorDetail: normalizedError,
+        success: null,
+      });
+      persistMutationResult(
+        toMutationResult('validate', normalizedError, outcome, {
+          packageName: prepareResult?.packageName || normalizedPackageName || null,
+          version: prepareResult?.version || version.trim() || null,
+          actor: session.data?.actor ?? null,
+          message,
+        })
+      );
+      return null;
+    }
+  }
+
+  async function runPack(workspacePath: string, successMessage = 'pack 完成，已经拿到 bundlePath / manifestDigest / components。') {
+    setOperationState({
+      loading: 'pack',
+      error: null,
+      errorDetail: null,
+      success: null,
+    });
+    try {
+      const response = await packSkill({
+        workspacePath,
+        target: {
+          packageName: packageName.trim(),
+          version: version.trim(),
+        },
+        includeBundle,
+      });
+      setPackResult(response);
+      setOperationState({
+        loading: false,
+        error: null,
+        errorDetail: null,
+        success: successMessage,
+      });
+      persistMutationResult({
+        action: 'pack',
+        outcome: 'succeeded',
+        message: successMessage,
+        packageName: response.packageName,
+        version: response.version,
+      });
+      appendLog('pack', 'succeeded', `已打包 bundle ${response.bundlePath}。`);
+      return response;
+    } catch (error: unknown) {
+      const outcome = inferMutationFailureOutcome(error);
+      const normalizedError = normalizeThrownRegistryError(error);
+      const message = describeImportOperationError(normalizedError);
+      appendLog('pack', 'failed', normalizedError.message);
+      setOperationState({
+        loading: false,
+        error: normalizedError.message,
+        errorDetail: normalizedError,
+        success: null,
+      });
+      persistMutationResult(
+        toMutationResult('pack', normalizedError, outcome, {
+          packageName: validateResult?.packageName || prepareResult?.packageName || normalizedPackageName || null,
+          version: validateResult?.version || prepareResult?.version || version.trim() || null,
+          actor: session.data?.actor ?? null,
+          message,
+        })
+      );
+      return null;
+    }
+  }
+
+  async function handlePrepare() {
+    await runPrepare();
   }
 
   async function handleValidate() {
@@ -450,58 +577,43 @@ export function ImportPage() {
       });
       return;
     }
-    setOperationState({
-      loading: 'validate',
-      error: null,
-      errorDetail: null,
-      success: null,
+
+    await runValidate(prepareResult.workspacePath);
+  }
+
+  async function handlePreview() {
+    const prepared = await runPrepare('来源检查完成，继续生成预览…');
+    if (!prepared?.workspacePath) {
+      return;
+    }
+
+    await runValidate(prepared.workspacePath, {
+      success: '预览已生成，可以继续发布 skill。',
+      failed: '预览生成完成，但存在阻断错误，请先处理 errors。',
     });
-    try {
-      const response = await validatePackaging({
-        workspacePath: prepareResult.workspacePath,
-        target: {
-          packageName: packageName.trim(),
-          version: version.trim(),
-        },
-      });
-      setValidateResult(response);
-      setPackResult(null);
+  }
+
+  async function handlePublish() {
+    const workspacePath = validateResult?.workspacePath || prepareResult?.workspacePath;
+    if (!validateResult?.ok || !workspacePath) {
+      const message = '请先执行“检查并生成发布预览”。';
       setOperationState({
         loading: false,
-        error: null,
-        errorDetail: null,
-        success: response.ok
-          ? 'validate 通过，可以继续 pack。'
-          : 'validate 返回未通过，请先处理 errors。',
-      });
-      persistMutationResult({
-        action: 'validate',
-        outcome: response.ok ? 'succeeded' : 'failed',
-        message: response.ok ? 'validate 通过，可以继续 pack。' : 'validate 返回未通过，请先处理 errors。',
-        packageName: response.packageName,
-        version: response.version,
-      });
-      appendLog('validate', response.ok ? 'succeeded' : 'failed', response.ok ? '校验通过。' : '校验返回阻断错误。');
-    } catch (error: unknown) {
-      const outcome = inferMutationFailureOutcome(error);
-      const normalizedError = normalizeThrownRegistryError(error);
-      const message = describeImportOperationError(normalizedError);
-      appendLog('validate', 'failed', normalizedError.message);
-      setOperationState({
-        loading: false,
-        error: normalizedError.message,
-        errorDetail: normalizedError,
+        error: message,
+        errorDetail: createLocalRequestError(message),
         success: null,
       });
-      persistMutationResult(
-        toMutationResult('validate', normalizedError, outcome, {
-          packageName: prepareResult.packageName || normalizedPackageName || null,
-          version: prepareResult.version || version.trim() || null,
-          actor: session.data?.actor ?? null,
-          message,
-        })
-      );
+      persistMutationResult({
+        action: 'pack',
+        outcome: 'failed',
+        message,
+        packageName: normalizedPackageName || null,
+        version: version.trim() || null,
+      });
+      return;
     }
+
+    await runPack(workspacePath, '发布交接已生成。这里还没有替你执行 npm publish。');
   }
 
   async function handlePack() {
@@ -523,56 +635,8 @@ export function ImportPage() {
       appendLog('pack', 'failed', '在 validate 通过前就请求了 pack。');
       return;
     }
-    setOperationState({
-      loading: 'pack',
-      error: null,
-      errorDetail: null,
-      success: null,
-    });
-    try {
-      const response = await packSkill({
-        workspacePath,
-        target: {
-          packageName: packageName.trim(),
-          version: version.trim(),
-        },
-        includeBundle,
-      });
-      setPackResult(response);
-      setOperationState({
-        loading: false,
-        error: null,
-        errorDetail: null,
-        success: 'pack 完成，已经拿到 bundlePath / manifestDigest / components。',
-      });
-      persistMutationResult({
-        action: 'pack',
-        outcome: 'succeeded',
-        message: 'pack 完成，已经拿到 bundlePath / manifestDigest / components。',
-        packageName: response.packageName,
-        version: response.version,
-      });
-      appendLog('pack', 'succeeded', `已打包 bundle ${response.bundlePath}。`);
-    } catch (error: unknown) {
-      const outcome = inferMutationFailureOutcome(error);
-      const normalizedError = normalizeThrownRegistryError(error);
-      const message = describeImportOperationError(normalizedError);
-      appendLog('pack', 'failed', normalizedError.message);
-      setOperationState({
-        loading: false,
-        error: normalizedError.message,
-        errorDetail: normalizedError,
-        success: null,
-      });
-      persistMutationResult(
-        toMutationResult('pack', normalizedError, outcome, {
-          packageName: validateResult?.packageName || prepareResult?.packageName || normalizedPackageName || null,
-          version: validateResult?.version || prepareResult?.version || version.trim() || null,
-          actor: session.data?.actor ?? null,
-          message,
-        })
-      );
-    }
+
+    await runPack(workspacePath);
   }
 
   async function handleCleanup() {
@@ -646,8 +710,8 @@ export function ImportPage() {
     <div className="page-grid">
       <SectionHeading
         eyebrow="导入与打包"
-        title="把 prepare → validate → pack 做成显式工作流，而不是一键黑盒。"
-        description="这个页面已经可以直连真实 packaging API。前端不做规则判断，只把 warningDetails 和 importReport 变成用户能看懂的确认面。"
+        title="先检查并生成预览，再进入发布交接。"
+        description="默认模式只暴露“检查并生成发布预览”和“发布 skill”两个动作。底层 prepare / validate / pack 仍然保留在高级模式里给 operator 排障。"
         tone="backstage"
       />
 
@@ -663,34 +727,7 @@ export function ImportPage() {
       </div>
 
       <div className="two-column two-column--wide-right">
-        <SurfaceCard title="工作流" description="按当前同步的 packaging API 合同拆成 4 步。" variant="console">
-          <div className="step-list">
-            {steps.map((step, index) => (
-              <article className={index === workflow.activeStepIndex ? 'step-card step-card--active' : 'step-card'} key={step.title}>
-                <strong>{step.title}</strong>
-                <p>{step.description}</p>
-              </article>
-            ))}
-          </div>
-
-          <div className="console-strip">
-            <article className="console-signal">
-              <span>当前阶段</span>
-              <strong>{workflow.currentStage}</strong>
-              <p>{workflow.currentStageSummary}</p>
-            </article>
-            <article className="console-signal">
-              <span>工作目录</span>
-              <strong>{workflow.workspaceStatus}</strong>
-              <p>{prepareResult?.workspacePath || 'prepare 之后这里会出现临时工作目录。'}</p>
-            </article>
-            <article className="console-signal">
-              <span>发布交接</span>
-              <strong>{workflow.releaseStatus}</strong>
-              <p>{workflow.releaseSummary}</p>
-            </article>
-          </div>
-
+        <SurfaceCard title="导入 skill" description="先填来源和目标，再用默认模式完成预览与发布交接。" variant="console">
           <div className="stack-column form-section">
             <label className="field">
               <span>来源类型</span>
@@ -896,12 +933,12 @@ export function ImportPage() {
 
             <MutationResultPanel result={mutationResult} />
 
-              <div className="action-row">
-                <div className="action-row__copy">
-                  <strong>执行下一步打包动作</strong>
-                  <p>先 prepare，再 validate，最后 pack。pack 只会产出 bundle；真正发布到 npm registry 仍然需要你手动执行。</p>
-                </div>
+            <div className="action-row">
+              <div className="action-row__copy">
+                <strong>默认模式</strong>
+                <p>先检查并生成发布预览，再进入发布交接。当前“发布 skill”只会生成 bundle 和 release handoff，不会替你执行 `npm publish`。</p>
               </div>
+            </div>
             <div className="button-row">
               <PermissionGate
                 fallback={<div className="empty-box">当前会话对 `packaging.prepare` 只有只读权限。</div>}
@@ -911,24 +948,12 @@ export function ImportPage() {
                 <button
                   className="button button--primary"
                   disabled={operationState.loading !== false}
-                  onClick={() => void handlePrepare()}
+                  onClick={() => void handlePreview()}
                   type="button"
                 >
-                  {operationState.loading === 'prepare' ? '准备中…' : 'Prepare'}
-                </button>
-              </PermissionGate>
-              <PermissionGate
-                fallback={<div className="empty-box">当前会话对 `packaging.validate` 只有只读权限。</div>}
-                packageName={normalizedPackageName}
-                requiredAction="packaging.validate"
-              >
-                <button
-                  className="button button--secondary"
-                  disabled={!workflow.canValidate || operationState.loading !== false}
-                  onClick={() => void handleValidate()}
-                  type="button"
-                >
-                  {operationState.loading === 'validate' ? '校验中…' : 'Validate'}
+                  {operationState.loading === 'prepare' || operationState.loading === 'validate'
+                    ? '生成预览中…'
+                    : '检查并生成发布预览'}
                 </button>
               </PermissionGate>
               <PermissionGate
@@ -939,32 +964,128 @@ export function ImportPage() {
                 <button
                   className="button button--secondary"
                   disabled={!workflow.canPack || operationState.loading !== false}
-                  onClick={() => void handlePack()}
+                  onClick={() => void handlePublish()}
                   type="button"
                 >
-                  {operationState.loading === 'pack' ? '打包中…' : 'Pack'}
+                  {operationState.loading === 'pack' ? '生成发布交接中…' : '发布 skill'}
                 </button>
               </PermissionGate>
-              <PermissionGate
-                fallback={<div className="empty-box">当前会话对 `packaging.pack` 只有只读权限。</div>}
-                packageName={cleanupPackageName}
-                requiredAction="packaging.pack"
+              <button
+                className="button button--ghost"
+                onClick={() => setShowAdvancedWorkflow((current) => !current)}
+                type="button"
               >
-                <button
-                  className="button button--secondary"
-                  disabled={!workflow.canCleanup || operationState.loading !== false}
-                  onClick={() => void handleCleanup()}
-                  type="button"
-                >
-                  {operationState.loading === 'cleanup' ? '清理中…' : '丢弃工作目录'}
-                </button>
-              </PermissionGate>
+                {showAdvancedWorkflow ? '收起高级模式' : '高级模式：查看 prepare / validate / pack'}
+              </button>
             </div>
+
+            {showAdvancedWorkflow ? (
+              <SurfaceCard
+                title="高级模式"
+                description="普通用户不需要看这层协议细节；这里只给 operator 做排障和手动控制。"
+              >
+                <div className="step-list">
+                  {steps.map((step, index) => (
+                    <article
+                      className={index === workflow.activeStepIndex ? 'step-card step-card--active' : 'step-card'}
+                      key={step.title}
+                    >
+                      <strong>{step.title}</strong>
+                      <p>{step.description}</p>
+                    </article>
+                  ))}
+                </div>
+
+                <div className="console-strip">
+                  <article className="console-signal">
+                    <span>当前阶段</span>
+                    <strong>{workflow.currentStage}</strong>
+                    <p>{workflow.currentStageSummary}</p>
+                  </article>
+                  <article className="console-signal">
+                    <span>工作目录</span>
+                    <strong>{workflow.workspaceStatus}</strong>
+                    <p>{prepareResult?.workspacePath || 'prepare 之后这里会出现临时工作目录。'}</p>
+                  </article>
+                  <article className="console-signal">
+                    <span>发布交接</span>
+                    <strong>{workflow.releaseStatus}</strong>
+                    <p>{workflow.releaseSummary}</p>
+                  </article>
+                </div>
+
+                <div className="action-row">
+                  <div className="action-row__copy">
+                    <strong>原始协议动作</strong>
+                    <p>按 prepare → validate → pack 手动执行，适合排查响应内容或复现特定阶段问题。</p>
+                  </div>
+                </div>
+
+                <div className="button-row">
+                  <PermissionGate
+                    fallback={<div className="empty-box">当前会话对 `packaging.prepare` 只有只读权限。</div>}
+                    packageName={normalizedPackageName}
+                    requiredAction="packaging.prepare"
+                  >
+                    <button
+                      className="button button--primary"
+                      disabled={operationState.loading !== false}
+                      onClick={() => void handlePrepare()}
+                      type="button"
+                    >
+                      {operationState.loading === 'prepare' ? '准备中…' : 'Prepare'}
+                    </button>
+                  </PermissionGate>
+                  <PermissionGate
+                    fallback={<div className="empty-box">当前会话对 `packaging.validate` 只有只读权限。</div>}
+                    packageName={normalizedPackageName}
+                    requiredAction="packaging.validate"
+                  >
+                    <button
+                      className="button button--secondary"
+                      disabled={!workflow.canValidate || operationState.loading !== false}
+                      onClick={() => void handleValidate()}
+                      type="button"
+                    >
+                      {operationState.loading === 'validate' ? '校验中…' : 'Validate'}
+                    </button>
+                  </PermissionGate>
+                  <PermissionGate
+                    fallback={<div className="empty-box">当前会话对 `packaging.pack` 只有只读权限。</div>}
+                    packageName={normalizedPackageName}
+                    requiredAction="packaging.pack"
+                  >
+                    <button
+                      className="button button--secondary"
+                      disabled={!workflow.canPack || operationState.loading !== false}
+                      onClick={() => void handlePack()}
+                      type="button"
+                    >
+                      {operationState.loading === 'pack' ? '打包中…' : 'Pack'}
+                    </button>
+                  </PermissionGate>
+                  <PermissionGate
+                    fallback={<div className="empty-box">当前会话对 `packaging.pack` 只有只读权限。</div>}
+                    packageName={cleanupPackageName}
+                    requiredAction="packaging.pack"
+                  >
+                    <button
+                      className="button button--secondary"
+                      disabled={!workflow.canCleanup || operationState.loading !== false}
+                      onClick={() => void handleCleanup()}
+                      type="button"
+                    >
+                      {operationState.loading === 'cleanup' ? '清理中…' : '丢弃工作目录'}
+                    </button>
+                  </PermissionGate>
+                </div>
+              </SurfaceCard>
+            ) : null}
           </div>
         </SurfaceCard>
 
-        <SurfaceCard className="surface-card--sticky" title="校验审阅" description="右侧始终展示当前 prepare / validate / pack 的最新结果。" variant="rail">
-          {!reviewData ? <div className="empty-box">先执行 `prepare`，再启动这条打包工作流。</div> : null}
+        <SurfaceCard className="surface-card--sticky" title="校验审阅" description="右侧始终展示当前预览 / 打包结果，方便确认能不能继续发版。" variant="rail">
+          {!reviewData ? <div className="empty-box">先执行“检查并生成发布预览”，再决定是否继续发布。</div> : null}
           {reviewData ? (
             <div className="stack-column">
               <div className="console-strip console-strip--compact">

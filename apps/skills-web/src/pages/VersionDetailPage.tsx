@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
   applyVersionGovernanceChange,
   createReleaseRecord,
+  getPackagingBundleDownloadPath,
   getVersionDetail,
   listGovernanceChanges,
 } from '../api/client';
@@ -45,6 +46,7 @@ export function VersionDetailPage() {
   const [publishRegistry, setPublishRegistry] = useState(handoff.publishRegistry || '');
   const [manifestDigest, setManifestDigest] = useState(handoff.manifestDigest || '');
   const [components, setComponents] = useState(handoff.components?.join(', ') || '');
+  const [publishConfirmed, setPublishConfirmed] = useState(false);
   const [governanceAction, setGovernanceAction] = useState<'deprecate' | 'yank'>('deprecate');
   const [governanceReason, setGovernanceReason] = useState('');
   const [replacementRecommendation, setReplacementRecommendation] = useState('');
@@ -67,6 +69,10 @@ export function VersionDetailPage() {
     .filter(Boolean);
   const authoringPath = buildReleaseHandoffPath(handoff, '/workbench/authoring');
   const hasHandoff = Boolean(handoff.manifestDigest || handoff.bundlePath || handoff.workspacePath || handoff.components?.length);
+  const bundleDownloadPath =
+    hasHandoff && handoff.workspacePath
+      ? getPackagingBundleDownloadPath(handoff.workspacePath, decodedPackage, version)
+      : null;
   const currentVersionStatus = detail.data?.versionStatus || 'unknown';
   const versionTone =
     currentVersionStatus === 'published' ? 'good' : currentVersionStatus === 'deprecated' ? 'warn' : 'bad';
@@ -457,9 +463,42 @@ export function VersionDetailPage() {
                   <p>先确认这个版本已经完成 `npm publish`，再为它写入 catalog release record。</p>
                 </div>
               </div>
+              <div className="list-stack">
+                <article className="list-card">
+                  <div className="list-card__head">
+                    <div>
+                      <strong>发布前检查清单</strong>
+                      <span>release-record 不会替你执行 npm publish。</span>
+                    </div>
+                    <StatusPill tone={publishConfirmed ? 'good' : 'warn'}>
+                      {publishConfirmed ? '已确认' : '待确认'}
+                    </StatusPill>
+                  </div>
+                  <p>先下载 bundle，并在你自己的终端里对目标 npm registry 执行 publish。</p>
+                  {bundleDownloadPath ? (
+                    <div className="authoring-actions">
+                      <a className="button button--secondary" href={bundleDownloadPath}>
+                        下载 bundle
+                      </a>
+                      <span className="support-copy">{handoff.bundlePath || '使用当前 handoff 的 bundle 结果。'}</span>
+                    </div>
+                  ) : (
+                    <p className="support-copy">如果你不是从 authoring handoff 进入这个页面，请先回到导入页重新生成 bundle。</p>
+                  )}
+                </article>
+              </div>
+              <label className="checkbox-row">
+                <input
+                  aria-label="我确认这个版本已经完成 npm publish，可继续写 release record。"
+                  checked={publishConfirmed}
+                  onChange={(event) => setPublishConfirmed(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>我确认这个版本已经完成 npm publish，可继续写 release record。</span>
+              </label>
               <button
                 className="button button--primary"
-                disabled={actionState.loading !== false}
+                disabled={actionState.loading !== false || !publishConfirmed}
                 onClick={() => void handleReleaseRecord()}
                 type="button"
               >

@@ -54,6 +54,8 @@ KIND_CLUSTER ?= skill-registry
 K8S_NAMESPACE ?= skill-registry
 CATALOG_IMAGE ?= skill-registry-catalog:dev
 WEB_IMAGE ?= skill-registry-web:dev
+CATALOG_DOCKERFILE ?= zarf/docker/local/Dockerfile
+WEB_DOCKERFILE ?= zarf/docker/local/skills-web.Dockerfile
 DEV_KIND_CONFIG ?= zarf/k8s/dev/kind-config.yaml
 DEV_K8S_MANIFEST ?= zarf/k8s/dev/kind-stack.yaml
 DEV_POSTGRES_IMAGE ?= postgres:17
@@ -78,7 +80,7 @@ case "$(NPM_BACKEND)" in \
 esac
 endef
 
-.PHONY: help verify verify-full test-go test-go-packaging python-sync test-cli test-cli-dist test-cli-packaging typecheck-cli build-cli web-install typecheck-web test-web build-web test-web-e2e test-web-e2e-login web-dev build-catalog-image build-web-image build-images docker-build compose-up compose-down dev-prepull dev-up dev-down dev-load dev-apply dev-delete dev-bootstrap dev-ready dev-run dev-reset dev-update dev-update-apply dev-status cli cli-find cli-add cli-publish cli-import-local cli-init cli-inspect cli-list cli-remove cli-update batch-import clean-dev
+.PHONY: help verify verify-full test-go test-go-packaging python-sync test-cli test-cli-dist test-cli-packaging typecheck-cli build-cli web-install typecheck-web test-web build-web test-web-e2e test-web-e2e-login web-dev build-catalog-image build-web-image build-images dev-prepull dev-up dev-down dev-load dev-apply dev-delete dev-bootstrap dev-ready dev-run dev-reset dev-update dev-update-apply dev-status cli cli-find cli-add cli-publish cli-import-local cli-init cli-inspect cli-list cli-remove cli-update batch-import clean-dev
 
 help:
 	@printf "skill_registry make targets\n\n"
@@ -115,12 +117,9 @@ help:
 	@printf "  make dev-update-apply  Rebuild images, reload them, and re-apply manifests\n"
 	@printf "  make dev-status        Show pods and services in namespace %s\n" "$(K8S_NAMESPACE)"
 	@printf "  make dev-down          Delete kind cluster %s\n\n" "$(KIND_CLUSTER)"
-	@printf "Deploy / Packaging Assets:\n"
-	@printf "  make build-catalog-image  Build %s\n" "$(CATALOG_IMAGE)"
-	@printf "  make build-web-image      Build %s\n" "$(WEB_IMAGE)"
-	@printf "  make docker-build         Build the production Catalog image\n"
-	@printf "  make compose-up           Start production compose assets only\n"
-	@printf "  make compose-down         Stop production compose assets only\n\n"
+	@printf "Docker Images:\n"
+	@printf "  make build-catalog-image  Build %s using %s\n" "$(CATALOG_IMAGE)" "$(CATALOG_DOCKERFILE)"
+	@printf "  make build-web-image      Build %s using %s\n\n" "$(WEB_IMAGE)" "$(WEB_DOCKERFILE)"
 	@printf "CLI against local kind stack:\n"
 	@printf "  make cli ARGS=\"find pdf\" [CLI_TOKEN=auto] [NPM_BACKEND=%s] [NPM_USERCONFIG=/abs/path/.npmrc]\n" "$(NPM_BACKENDS)"
 	@printf "  make cli-find QUERY=%s [OUTPUT=%s]  # compatibility alias over make cli\n" "$(QUERY)" "$(OUTPUT_FORMATS)"
@@ -178,10 +177,10 @@ build-web:
 	npm --prefix $(WEB_DIR) run build
 
 build-catalog-image:
-	docker build -f zarf/docker/Dockerfile -t $(CATALOG_IMAGE) .
+	docker build -f $(CATALOG_DOCKERFILE) -t $(CATALOG_IMAGE) .
 
 build-web-image:
-	docker build -f zarf/docker/skills-web.Dockerfile -t $(WEB_IMAGE) .
+	docker build -f $(WEB_DOCKERFILE) -t $(WEB_IMAGE) .
 
 build-images: build-catalog-image build-web-image
 
@@ -225,9 +224,6 @@ test-web-e2e-login:
 
 web-dev:
 	npm --prefix $(WEB_DIR) run dev
-
-docker-build:
-	docker build -f zarf/docker/Dockerfile -t skill-registry:latest .
 
 dev-prepull:
 	docker pull $(DEV_POSTGRES_IMAGE)
@@ -305,12 +301,6 @@ dev-update-apply: build-images dev-load dev-apply
 
 dev-status:
 	kubectl -n $(K8S_NAMESPACE) get pods,svc -o wide
-
-compose-up:
-	docker compose -f zarf/compose/production.yml up --build
-
-compose-down:
-	docker compose -f zarf/compose/production.yml down
 
 cli:
 	@test -n '$(strip $(ARGS))' || (echo "ARGS is required, e.g. make cli ARGS=\"find pdf\"" && exit 1)

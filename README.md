@@ -2,17 +2,13 @@
 
 ## 启动模式
 
-这套仓库现在只保留两类运行方式：
+这套仓库现在本地只保留 `kind` 开发与真实 E2E 这一条运行路径：
 
-- 本地 `kind` 开发与真实 E2E：
-  - `make dev-run`
-  - `make dev-status`
-  - `make dev-bootstrap`
-  - 这是唯一保留的本地运行主路径，`skills-web` / `catalog` / `postgres` / `nexus` 都在 `kind` 里
-- 可部署资产验证：
-  - `make compose-up`
-  - `make compose-down`
-  - 这里只保留 production compose，用来检查容器化交付资产，不再承担本地 Nexus E2E
+- `make dev-run`
+- `make dev-status`
+- `make dev-bootstrap`
+- `skills-web` / `catalog` / `postgres` / `nexus` 都在 `kind` 里
+- 本地镜像默认使用 `zarf/docker/local/` 下的 Dockerfile 构建
 
 如果你现在关心的是**客户现场交付 / k3s 部署 / CLI 下发方式**，直接看：
 
@@ -282,19 +278,7 @@ make batch-import MANIFEST=/abs/path/to/import.json NPM_BACKEND=nexus
 
 详细说明看 [docs/batch-import-skills.zh-CN.md](./docs/batch-import-skills.zh-CN.md)。
 
-### 7. Docker / k3s 交付
-
-生产镜像：
-
-```bash
-make docker-build
-```
-
-最小生产 compose：
-
-```bash
-make compose-up
-```
+### 7. k3s 交付
 
 部署说明统一看 [docs/customer-k3s-deployment.zh-CN.md](docs/customer-k3s-deployment.zh-CN.md)。
 
