@@ -119,36 +119,36 @@ type testPackagingModule struct {
 
 type stubPackagingService struct {
 	prepareCalls atomic.Int64
-	prepareFunc  func(packaging.PrepareRequest) (packaging.PrepareResponse, error)
-	validateFunc func(packaging.ValidateRequest) (packaging.ValidateResponse, error)
-	packFunc     func(packaging.PackRequest) (packaging.PackResponse, error)
+	prepareFunc  func(context.Context, packaging.PrepareRequest) (packaging.PrepareResponse, error)
+	validateFunc func(context.Context, packaging.ValidateRequest) (packaging.ValidateResponse, error)
+	packFunc     func(context.Context, packaging.PackRequest) (packaging.PackResponse, error)
 }
 
-func (s *stubPackagingService) Prepare(input packaging.PrepareRequest) (packaging.PrepareResponse, error) {
+func (s *stubPackagingService) PrepareContext(ctx context.Context, input packaging.PrepareRequest) (packaging.PrepareResponse, error) {
 	s.prepareCalls.Add(1)
 	if s.prepareFunc != nil {
-		return s.prepareFunc(input)
+		return s.prepareFunc(ctx, input)
 	}
 	return packaging.PrepareResponse{}, nil
 }
 
-func (s *stubPackagingService) Validate(input packaging.ValidateRequest) (packaging.ValidateResponse, error) {
+func (s *stubPackagingService) ValidateContext(ctx context.Context, input packaging.ValidateRequest) (packaging.ValidateResponse, error) {
 	if s.validateFunc != nil {
-		return s.validateFunc(input)
+		return s.validateFunc(ctx, input)
 	}
 	return packaging.ValidateResponse{}, nil
 }
 
-func (s *stubPackagingService) Pack(input packaging.PackRequest) (packaging.PackResponse, error) {
+func (s *stubPackagingService) PackContext(ctx context.Context, input packaging.PackRequest) (packaging.PackResponse, error) {
 	if s.packFunc != nil {
-		return s.packFunc(input)
+		return s.packFunc(ctx, input)
 	}
 	return packaging.PackResponse{}, nil
 }
 
 func newPackagingModuleForTest(_ interface{ Helper() }) *testPackagingModule {
 	service := &stubPackagingService{
-		prepareFunc: func(input packaging.PrepareRequest) (packaging.PrepareResponse, error) {
+		prepareFunc: func(_ context.Context, input packaging.PrepareRequest) (packaging.PrepareResponse, error) {
 			return packaging.PrepareResponse{
 				WorkspacePath: "cached-workspace",
 				PackageName:   input.Target.PackageName,
@@ -176,7 +176,7 @@ func prepareManagedWorkspaceForTest(t *testing.T, service *packaging.Service, pa
 	t.Helper()
 
 	fixtureDir := createPackagingFixture(t)
-	prepareResponse, err := service.Prepare(packaging.PrepareRequest{
+	prepareResponse, err := service.PrepareContext(context.Background(), packaging.PrepareRequest{
 		Source: packaging.Source{
 			Type:          "upload_archive",
 			ArchiveBase64: buildSourceArchiveBase64FromDirectory(t, fixtureDir),
@@ -195,7 +195,7 @@ func prepareManagedWorkspaceForTest(t *testing.T, service *packaging.Service, pa
 		t.Fatalf("prepare workspace: %v", err)
 	}
 
-	packResponse, err := service.Pack(packaging.PackRequest{
+	packResponse, err := service.PackContext(context.Background(), packaging.PackRequest{
 		WorkspacePath: prepareResponse.WorkspacePath,
 		Target: packaging.Target{
 			PackageName: packageName,

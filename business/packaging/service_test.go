@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"skill_registry/business/catalog"
+	"skill_registry/foundation/persist"
 )
 
 func TestValidateTargetAcceptsCompanySpecificSkillScope(t *testing.T) {
@@ -549,6 +551,153 @@ func TestCopySourceDirectorySkipsPackagingArtifacts(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(workspaceDir, ".dist")); !os.IsNotExist(err) {
 		t.Fatalf("expected .dist to be skipped, got err=%v", err)
 	}
+}
+
+func TestPrepareContextPropagatesCancellationToWorkspaceStore(t *testing.T) {
+	service := NewServiceWithWorkspaceStore(t.TempDir(), cancelAwareWorkspaceStore{})
+	sourceDir := copyExternalSkillFixture(t, "minimal-imported-skill")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := service.PrepareContext(ctx, PrepareRequest{
+		Source:   Source{Type: "upload_archive", ArchiveBase64: buildSourceArchiveBase64FromDirectory(t, sourceDir)},
+		Target:   Target{PackageName: "@platform.skill/zoom-out", Version: "1.0.0"},
+		Metadata: Metadata{DisplayName: "Zoom Out", Description: "Broader context", SourceType: "imported"},
+	})
+	if err == nil {
+		t.Fatal("expected canceled prepare to fail")
+	}
+	catalogErr, ok := err.(*catalog.Error)
+	if !ok {
+		t.Fatalf("expected catalog error, got %T", err)
+	}
+	if catalogErr.Code != "request_canceled" {
+		t.Fatalf("expected request_canceled, got %#v", catalogErr)
+	}
+}
+
+func TestPackContextPropagatesCancellationToWorkspaceStore(t *testing.T) {
+	store := memoryWorkspaceStore{
+		record: persist.WorkspaceRecord{
+			WorkspaceID: "ws-canceled",
+			Snapshot:    buildWorkspaceArchive(t, map[string]string{"SKILL.md": skillMarkdownFixture(), "package.json": `{"name":"@platform.skill/zoom-out","version":"1.0.0"}`}),
+		},
+	}
+	service := NewServiceWithWorkspaceStore(t.TempDir(), store)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := service.PackContext(ctx, PackRequest{
+		WorkspacePath: "ws-canceled",
+		Target:        Target{PackageName: "@platform.skill/zoom-out", Version: "1.0.0"},
+	})
+	if err == nil {
+		t.Fatal("expected canceled pack to fail")
+	}
+	catalogErr, ok := err.(*catalog.Error)
+	if !ok {
+		t.Fatalf("expected catalog error, got %T", err)
+	}
+	if catalogErr.Code != "request_canceled" {
+		t.Fatalf("expected request_canceled, got %#v", catalogErr)
+	}
+}
+
+type cancelAwareWorkspaceStore struct{}
+
+func (cancelAwareWorkspaceStore) SaveWorkspace(ctx context.Context, workspaceID string, snapshot []byte, createdAt time.Time) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (cancelAwareWorkspaceStore) LoadWorkspace(ctx context.Context, workspaceID string) (persist.WorkspaceRecord, error) {
+	if err := ctx.Err(); err != nil {
+		return persist.WorkspaceRecord{}, err
+	}
+	return persist.WorkspaceRecord{}, persist.ErrWorkspaceRecordNotFound
+}
+
+func (cancelAwareWorkspaceStore) SaveBundle(ctx context.Context, workspaceID string, bundle []byte, updatedAt time.Time) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (cancelAwareWorkspaceStore) LoadBundle(ctx context.Context, workspaceID string) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return nil, persist.ErrWorkspaceBundleNotFound
+}
+
+func (cancelAwareWorkspaceStore) DeleteWorkspace(ctx context.Context, workspaceID string) error {
+	return ctx.Err()
+}
+
+func (cancelAwareWorkspaceStore) DeleteExpired(ctx context.Context, cutoff time.Time) error {
+	return ctx.Err()
+}
+
+type memoryWorkspaceStore struct {
+	record persist.WorkspaceRecord
+}
+
+func (s memoryWorkspaceStore) SaveWorkspace(ctx context.Context, workspaceID string, snapshot []byte, createdAt time.Time) error {
+	return ctx.Err()
+}
+
+func (s memoryWorkspaceStore) LoadWorkspace(ctx context.Context, workspaceID string) (persist.WorkspaceRecord, error) {
+	if err := ctx.Err(); err != nil {
+		return persist.WorkspaceRecord{}, err
+	}
+	return s.record, nil
+}
+
+func (s memoryWorkspaceStore) SaveBundle(ctx context.Context, workspaceID string, bundle []byte, updatedAt time.Time) error {
+	return ctx.Err()
+}
+
+func (s memoryWorkspaceStore) LoadBundle(ctx context.Context, workspaceID string) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return nil, persist.ErrWorkspaceBundleNotFound
+}
+
+func (s memoryWorkspaceStore) DeleteWorkspace(ctx context.Context, workspaceID string) error {
+	return ctx.Err()
+}
+
+func (s memoryWorkspaceStore) DeleteExpired(ctx context.Context, cutoff time.Time) error {
+	return ctx.Err()
+}
+
+func buildWorkspaceArchive(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+
+	workspaceDir := t.TempDir()
+	for relativePath, content := range files {
+		absolutePath := filepath.Join(workspaceDir, filepath.FromSlash(relativePath))
+		if err := os.MkdirAll(filepath.Dir(absolutePath), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", relativePath, err)
+		}
+		if err := os.WriteFile(absolutePath, []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", relativePath, err)
+		}
+	}
+
+	archive, err := archiveWorkspace(context.Background(), workspaceDir)
+	if err != nil {
+		t.Fatalf("archive workspace: %v", err)
+	}
+	return archive
+}
+
+func skillMarkdownFixture() string {
+	return "---\nname: zoom-out\ndescription: Broader context\n---\n"
 }
 
 func TestCreateBundleArchiveSkipsPackagingArtifacts(t *testing.T) {

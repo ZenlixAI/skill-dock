@@ -15,24 +15,30 @@ import (
 	"skill_registry/foundation/persist"
 )
 
-func (s *Service) persistWorkspaceSnapshot(workspacePath string) (string, error) {
-	snapshot, err := archiveWorkspace(workspacePath)
+func (s *Service) persistWorkspaceSnapshot(ctx context.Context, workspacePath string) (string, error) {
+	if err := packagingContextError(ctx); err != nil {
+		return "", err
+	}
+	snapshot, err := archiveWorkspace(ctx, workspacePath)
 	if err != nil {
 		return "", catalog.NewError(500, "internal_error", "Failed to persist packaging workspace.", nil)
 	}
 	workspaceID := workspaceHandle()
-	if err := s.workspaceStore.SaveWorkspace(context.Background(), workspaceID, snapshot, time.Now().UTC()); err != nil {
+	if err := s.workspaceStore.SaveWorkspace(ctx, workspaceID, snapshot, time.Now().UTC()); err != nil {
 		return "", catalog.NewError(500, "internal_error", "Failed to persist packaging workspace.", nil)
 	}
 	return workspaceID, nil
 }
 
-func (s *Service) materializeWorkspace(workspacePath string) (string, func(), error) {
+func (s *Service) materializeWorkspace(ctx context.Context, workspacePath string) (string, func(), error) {
+	if err := packagingContextError(ctx); err != nil {
+		return "", nil, err
+	}
 	if s.workspaceStore == nil {
 		return workspacePath, func() {}, nil
 	}
 
-	record, err := s.workspaceStore.LoadWorkspace(context.Background(), workspacePath)
+	record, err := s.workspaceStore.LoadWorkspace(ctx, workspacePath)
 	if err != nil {
 		if err == persist.ErrWorkspaceRecordNotFound {
 			return "", nil, catalog.NewError(422, "invalid_request", "workspacePath must reference an existing packaging workspace.", map[string]any{"workspacePath": workspacePath})
@@ -44,7 +50,7 @@ func (s *Service) materializeWorkspace(workspacePath string) (string, func(), er
 	if err != nil {
 		return "", nil, catalog.NewError(500, "internal_error", "Failed to materialize packaging workspace.", nil)
 	}
-	if err := extractWorkspaceArchive(record.Snapshot, tempWorkspace); err != nil {
+	if err := extractWorkspaceArchive(ctx, record.Snapshot, tempWorkspace); err != nil {
 		_ = os.RemoveAll(tempWorkspace)
 		return "", nil, err
 	}
@@ -52,12 +58,15 @@ func (s *Service) materializeWorkspace(workspacePath string) (string, func(), er
 	return tempWorkspace, func() { _ = os.RemoveAll(tempWorkspace) }, nil
 }
 
-func archiveWorkspace(workspacePath string) ([]byte, error) {
+func archiveWorkspace(ctx context.Context, workspacePath string) ([]byte, error) {
 	var compressed bytes.Buffer
 	gzipWriter := gzip.NewWriter(&compressed)
 	tarWriter := tar.NewWriter(gzipWriter)
 
 	walkErr := filepath.WalkDir(workspacePath, func(path string, entry os.DirEntry, err error) error {
+		if ctxErr := packagingContextError(ctx); ctxErr != nil {
+			return ctxErr
+		}
 		if err != nil {
 			return err
 		}
@@ -96,6 +105,9 @@ func archiveWorkspace(workspacePath string) ([]byte, error) {
 			return nil
 		}
 
+		if ctxErr := packagingContextError(ctx); ctxErr != nil {
+			return ctxErr
+		}
 		content, err := os.ReadFile(path)
 		if err != nil {
 			return err
@@ -118,7 +130,7 @@ func archiveWorkspace(workspacePath string) ([]byte, error) {
 	return compressed.Bytes(), nil
 }
 
-func extractWorkspaceArchive(archive []byte, workspacePath string) error {
+func extractWorkspaceArchive(ctx context.Context, archive []byte, workspacePath string) error {
 	gzipReader, err := gzip.NewReader(bytes.NewReader(archive))
 	if err != nil {
 		return catalog.NewError(500, "internal_error", "Persisted packaging workspace is unreadable.", nil)
@@ -127,6 +139,9 @@ func extractWorkspaceArchive(archive []byte, workspacePath string) error {
 
 	tarReader := tar.NewReader(gzipReader)
 	for {
+		if ctxErr := packagingContextError(ctx); ctxErr != nil {
+			return ctxErr
+		}
 		header, err := tarReader.Next()
 		if err == io.EOF {
 			return nil
@@ -149,9 +164,15 @@ func extractWorkspaceArchive(archive []byte, workspacePath string) error {
 			if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
 				return catalog.NewError(500, "internal_error", "Failed to materialize packaging workspace.", nil)
 			}
+			if ctxErr := packagingContextError(ctx); ctxErr != nil {
+				return ctxErr
+			}
 			content, err := io.ReadAll(tarReader)
 			if err != nil {
 				return catalog.NewError(500, "internal_error", "Failed to materialize packaging workspace.", nil)
+			}
+			if ctxErr := packagingContextError(ctx); ctxErr != nil {
+				return ctxErr
 			}
 			if err := os.WriteFile(targetPath, content, 0o644); err != nil {
 				return catalog.NewError(500, "internal_error", "Failed to materialize packaging workspace.", nil)

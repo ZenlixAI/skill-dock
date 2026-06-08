@@ -55,7 +55,7 @@ func (s *Server) handlePackagingPublish(writer http.ResponseWriter, request *htt
 }
 
 func (s *Server) publishPackagedWorkspace(ctx context.Context, payload packaging.PublishRequest) (packaging.PublishResponse, int, *catalog.Error) {
-	packResponse, err := s.packaging.Pack(packaging.PackRequest{
+	packResponse, err := s.packaging.PackContext(ctx, packaging.PackRequest{
 		WorkspacePath: payload.WorkspacePath,
 		Target:        payload.Target,
 	})
@@ -83,7 +83,7 @@ func (s *Server) publishPackagedWorkspace(ctx context.Context, payload packaging
 		return packaging.PublishResponse{}, releaseErr.Status, releaseErr
 	}
 
-	packedMetadata, metadataErr := s.packaging.PackageMetadata(payload.WorkspacePath)
+	packedMetadata, metadataErr := s.packaging.PackageMetadataContext(ctx, payload.WorkspacePath)
 	if metadataErr != nil {
 		return packaging.PublishResponse{}, catalogErrorFromError(metadataErr).Status, catalogErrorFromError(metadataErr)
 	}
@@ -93,7 +93,7 @@ func (s *Server) publishPackagedWorkspace(ctx context.Context, payload packaging
 		return packaging.PublishResponse{}, http.StatusInternalServerError, catalog.NewError(500, "internal_error", "workspace package metadata could not be decoded.", nil)
 	}
 
-	tarball, readErr := s.packaging.BundleContent(payload.WorkspacePath, payload.Target)
+	tarball, readErr := s.packaging.BundleContentContext(ctx, payload.WorkspacePath, payload.Target)
 	if readErr != nil {
 		return packaging.PublishResponse{}, http.StatusInternalServerError, catalogErrorFromError(readErr)
 	}

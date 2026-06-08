@@ -16,9 +16,9 @@ import (
 )
 
 type packagingService interface {
-	Prepare(input packaging.PrepareRequest) (packaging.PrepareResponse, error)
-	Validate(input packaging.ValidateRequest) (packaging.ValidateResponse, error)
-	Pack(input packaging.PackRequest) (packaging.PackResponse, error)
+	PrepareContext(ctx context.Context, input packaging.PrepareRequest) (packaging.PrepareResponse, error)
+	ValidateContext(ctx context.Context, input packaging.ValidateRequest) (packaging.ValidateResponse, error)
+	PackContext(ctx context.Context, input packaging.PackRequest) (packaging.PackResponse, error)
 }
 
 type packagingModule struct {
@@ -39,19 +39,19 @@ func (m *packagingModule) prepare(ctx context.Context, principal auth.Principal,
 			"suggestedAction": "Use source.type=upload_archive, git, or platform_authoring instead.",
 		})
 	}, func(payload packaging.PrepareRequest) (any, error) {
-		return m.service.Prepare(payload)
+		return m.service.PrepareContext(ctx, payload)
 	})
 }
 
 func (m *packagingModule) validate(ctx context.Context, principal auth.Principal, payload packaging.ValidateRequest) (any, int, *catalog.Error) {
 	return executePackagingWorkflow(ctx, m, principal, "validate", payload, true, nil, func(payload packaging.ValidateRequest) (any, error) {
-		return m.service.Validate(payload)
+		return m.service.ValidateContext(ctx, payload)
 	})
 }
 
 func (m *packagingModule) pack(ctx context.Context, principal auth.Principal, payload packaging.PackRequest) (any, int, *catalog.Error) {
 	return executePackagingWorkflow(ctx, m, principal, "pack", payload, !payload.IncludeBundle, nil, func(payload packaging.PackRequest) (any, error) {
-		return m.service.Pack(payload)
+		return m.service.PackContext(ctx, payload)
 	})
 }
 

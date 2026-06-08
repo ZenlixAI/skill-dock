@@ -34,7 +34,14 @@ func NewServiceWithWorkspaceStore(tempRoot string, store persist.WorkspaceStore)
 }
 
 func (s *Service) Prepare(input PrepareRequest) (PrepareResponse, error) {
+	return s.PrepareContext(context.Background(), input)
+}
+
+func (s *Service) PrepareContext(ctx context.Context, input PrepareRequest) (PrepareResponse, error) {
 	if err := validateTarget(input.Target); err != nil {
+		return PrepareResponse{}, err
+	}
+	if err := packagingContextError(ctx); err != nil {
 		return PrepareResponse{}, err
 	}
 
@@ -49,7 +56,7 @@ func (s *Service) Prepare(input PrepareRequest) (PrepareResponse, error) {
 	}
 
 	if s.workspaceStore != nil {
-		handle, persistErr := s.persistWorkspaceSnapshot(workspacePath)
+		handle, persistErr := s.persistWorkspaceSnapshot(ctx, workspacePath)
 		if persistErr != nil {
 			_ = os.RemoveAll(workspacePath)
 			return PrepareResponse{}, persistErr
@@ -70,11 +77,18 @@ func (s *Service) Prepare(input PrepareRequest) (PrepareResponse, error) {
 }
 
 func (s *Service) Validate(input ValidateRequest) (ValidateResponse, error) {
+	return s.ValidateContext(context.Background(), input)
+}
+
+func (s *Service) ValidateContext(ctx context.Context, input ValidateRequest) (ValidateResponse, error) {
 	if err := validateTarget(input.Target); err != nil {
 		return ValidateResponse{}, err
 	}
+	if err := packagingContextError(ctx); err != nil {
+		return ValidateResponse{}, err
+	}
 
-	workspacePath, cleanup, err := s.materializeWorkspace(input.WorkspacePath)
+	workspacePath, cleanup, err := s.materializeWorkspace(ctx, input.WorkspacePath)
 	if err != nil {
 		return ValidateResponse{}, err
 	}
@@ -100,11 +114,18 @@ func (s *Service) Validate(input ValidateRequest) (ValidateResponse, error) {
 }
 
 func (s *Service) Pack(input PackRequest) (PackResponse, error) {
+	return s.PackContext(context.Background(), input)
+}
+
+func (s *Service) PackContext(ctx context.Context, input PackRequest) (PackResponse, error) {
 	if err := validateTarget(input.Target); err != nil {
 		return PackResponse{}, err
 	}
+	if err := packagingContextError(ctx); err != nil {
+		return PackResponse{}, err
+	}
 
-	workspacePath, cleanup, err := s.materializeWorkspace(input.WorkspacePath)
+	workspacePath, cleanup, err := s.materializeWorkspace(ctx, input.WorkspacePath)
 	if err != nil {
 		return PackResponse{}, err
 	}
@@ -139,7 +160,7 @@ func (s *Service) Pack(input PackRequest) (PackResponse, error) {
 		if readErr != nil {
 			return PackResponse{}, catalog.NewError(500, "internal_error", "Packed bundle could not be read from the materialized workspace.", nil)
 		}
-		if saveErr := s.workspaceStore.SaveBundle(context.Background(), input.WorkspacePath, bundleContent, time.Now().UTC()); saveErr != nil {
+		if saveErr := s.workspaceStore.SaveBundle(ctx, input.WorkspacePath, bundleContent, time.Now().UTC()); saveErr != nil {
 			return PackResponse{}, catalog.NewError(500, "internal_error", "Packed bundle could not be persisted.", nil)
 		}
 		bundlePath = workspaceBundleHandle(input.WorkspacePath, input.Target)
@@ -161,14 +182,21 @@ func (s *Service) Pack(input PackRequest) (PackResponse, error) {
 }
 
 func (s *Service) Cleanup(workspacePath string) error {
+	return s.CleanupContext(context.Background(), workspacePath)
+}
+
+func (s *Service) CleanupContext(ctx context.Context, workspacePath string) error {
+	if err := packagingContextError(ctx); err != nil {
+		return err
+	}
 	if s.workspaceStore != nil {
-		if _, err := s.workspaceStore.LoadWorkspace(context.Background(), workspacePath); err != nil {
+		if _, err := s.workspaceStore.LoadWorkspace(ctx, workspacePath); err != nil {
 			if err == persist.ErrWorkspaceRecordNotFound {
 				return catalog.NewError(422, "invalid_request", "workspacePath must reference an existing packaging workspace.", map[string]any{"workspacePath": workspacePath})
 			}
 			return catalog.NewError(500, "internal_error", "Failed to remove packaging workspace.", nil)
 		}
-		if err := s.workspaceStore.DeleteWorkspace(context.Background(), workspacePath); err != nil {
+		if err := s.workspaceStore.DeleteWorkspace(ctx, workspacePath); err != nil {
 			return catalog.NewError(500, "internal_error", "Failed to remove packaging workspace.", nil)
 		}
 		return nil
@@ -177,11 +205,18 @@ func (s *Service) Cleanup(workspacePath string) error {
 }
 
 func (s *Service) BundlePath(workspacePath string, target Target) (string, error) {
+	return s.BundlePathContext(context.Background(), workspacePath, target)
+}
+
+func (s *Service) BundlePathContext(ctx context.Context, workspacePath string, target Target) (string, error) {
 	if err := validateTarget(target); err != nil {
 		return "", err
 	}
+	if err := packagingContextError(ctx); err != nil {
+		return "", err
+	}
 	if s.workspaceStore != nil {
-		if _, err := s.workspaceStore.LoadBundle(context.Background(), workspacePath); err != nil {
+		if _, err := s.workspaceStore.LoadBundle(ctx, workspacePath); err != nil {
 			if err == persist.ErrWorkspaceRecordNotFound {
 				return "", catalog.NewError(422, "invalid_request", "workspacePath must reference an existing packaging workspace.", map[string]any{"workspacePath": workspacePath})
 			}
@@ -196,18 +231,25 @@ func (s *Service) BundlePath(workspacePath string, target Target) (string, error
 }
 
 func (s *Service) BundleContent(workspacePath string, target Target) ([]byte, error) {
+	return s.BundleContentContext(context.Background(), workspacePath, target)
+}
+
+func (s *Service) BundleContentContext(ctx context.Context, workspacePath string, target Target) ([]byte, error) {
 	if err := validateTarget(target); err != nil {
 		return nil, err
 	}
+	if err := packagingContextError(ctx); err != nil {
+		return nil, err
+	}
 	if s.workspaceStore != nil {
-		bundle, err := s.workspaceStore.LoadBundle(context.Background(), workspacePath)
+		bundle, err := s.workspaceStore.LoadBundle(ctx, workspacePath)
 		if err == nil {
 			return bundle, nil
 		}
 		if err != persist.ErrWorkspaceBundleNotFound && err != persist.ErrWorkspaceRecordNotFound {
 			return nil, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil)
 		}
-		packed, packErr := s.Pack(PackRequest{
+		packed, packErr := s.PackContext(ctx, PackRequest{
 			WorkspacePath: workspacePath,
 			Target:        target,
 		})
@@ -217,7 +259,7 @@ func (s *Service) BundleContent(workspacePath string, target Target) ([]byte, er
 		if len(packed.Errors) > 0 {
 			return nil, catalog.NewError(404, "bundle_not_found", "Bundle archive does not exist for the requested workspace.", map[string]any{"workspacePath": workspacePath})
 		}
-		bundle, err = s.workspaceStore.LoadBundle(context.Background(), workspacePath)
+		bundle, err = s.workspaceStore.LoadBundle(ctx, workspacePath)
 		if err != nil {
 			return nil, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil)
 		}
@@ -231,7 +273,14 @@ func (s *Service) BundleContent(workspacePath string, target Target) ([]byte, er
 }
 
 func (s *Service) PackageMetadata(workspacePath string) (map[string]any, error) {
-	materializedPath, cleanup, err := s.materializeWorkspace(workspacePath)
+	return s.PackageMetadataContext(context.Background(), workspacePath)
+}
+
+func (s *Service) PackageMetadataContext(ctx context.Context, workspacePath string) (map[string]any, error) {
+	if err := packagingContextError(ctx); err != nil {
+		return nil, err
+	}
+	materializedPath, cleanup, err := s.materializeWorkspace(ctx, workspacePath)
 	if err != nil {
 		return nil, err
 	}
@@ -260,6 +309,20 @@ func (s *Service) PruneExpiredWorkspaces(ttl time.Duration) error {
 		}
 	}
 	return s.workspaceSource.pruneExpiredWorkspaces(ttl)
+}
+
+func packagingContextError(ctx context.Context) error {
+	if ctx == nil {
+		return nil
+	}
+	switch err := ctx.Err(); {
+	case err == nil:
+		return nil
+	case err == context.DeadlineExceeded:
+		return catalog.NewError(504, "request_timeout", "Request context deadline exceeded during packaging.", nil)
+	default:
+		return catalog.NewError(499, "request_canceled", "Request context was canceled during packaging.", nil)
+	}
 }
 
 func ensureManagedWorkspace(workspacePath string, managed bool) error {

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"reflect"
 	"testing"
+	"time"
 
 	"skill_registry/app/auth"
 	"skill_registry/business/packaging"
@@ -101,5 +102,36 @@ func TestPackagingModuleDecodePrepareRequestRecordsFailureAudit(t *testing.T) {
 	}
 	if store.events[0].StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("expected 422 audit status, got %+v", store.events[0])
+	}
+}
+
+func TestPackagingModulePassesRequestContextToPackagingService(t *testing.T) {
+	seenRequestID := ""
+	module := &packagingModule{
+		service: &stubPackagingService{
+			prepareFunc: func(ctx context.Context, input packaging.PrepareRequest) (packaging.PrepareResponse, error) {
+				value, _ := ctx.Value(requestIDContextKey).(string)
+				seenRequestID = value
+				return packaging.PrepareResponse{
+					WorkspacePath: "workspace-handle",
+					PackageName:   input.Target.PackageName,
+					Version:       input.Target.Version,
+				}, nil
+			},
+		},
+		cache:               newPackagingResponseCache(10 * time.Minute),
+		allowAnonymousCache: true,
+	}
+	ctx := context.WithValue(context.Background(), requestIDContextKey, "req_packaging_ctx")
+
+	_, status, err := module.prepare(ctx, auth.Principal{Role: "authoring"}, packaging.PrepareRequest{
+		Target: packaging.Target{PackageName: "@platform.skill/zoom-out", Version: "1.0.0"},
+	})
+
+	if err != nil || status != http.StatusOK {
+		t.Fatalf("expected prepare success, got status=%d err=%v", status, err)
+	}
+	if seenRequestID != "req_packaging_ctx" {
+		t.Fatalf("expected request context to reach packaging service, got %q", seenRequestID)
 	}
 }

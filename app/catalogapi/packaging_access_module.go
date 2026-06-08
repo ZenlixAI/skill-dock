@@ -26,7 +26,7 @@ func (m *packagingAccessModule) cleanup(ctx context.Context, principal auth.Prin
 		m.recordAudit(ctx, principal, "packaging.cleanup", "", "", err.Status, "failed", map[string]any{"errorCode": err.Code})
 		return packaging.CleanupResponse{}, 0, err
 	}
-	if err := m.service.Cleanup(payload.WorkspacePath); err != nil {
+	if err := m.service.CleanupContext(ctx, payload.WorkspacePath); err != nil {
 		catalogErr := catalogErrorFromError(err)
 		m.recordAudit(ctx, principal, "packaging.cleanup", "", "", catalogErr.Status, "failed", map[string]any{"errorCode": catalogErr.Code})
 		return packaging.CleanupResponse{}, 0, catalogErr
@@ -42,7 +42,7 @@ func (m *packagingAccessModule) downloadBundle(ctx context.Context, principal au
 		return nil, err
 	}
 
-	content, err := m.service.BundleContent(workspacePath, packaging.Target{
+	content, err := m.service.BundleContentContext(ctx, workspacePath, packaging.Target{
 		PackageName: packageName,
 		Version:     version,
 	})
