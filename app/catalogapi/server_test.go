@@ -1667,6 +1667,137 @@ func TestSkillPackagingPrepareIdempotencyPersistsAcrossServerInstances(t *testin
 	}
 }
 
+func TestSkillPackagingWorkspacePersistsAcrossServerInstances(t *testing.T) {
+	fixtureDir := createPackagingFixture(t)
+	databaseURL := "file:" + filepath.Join(t.TempDir(), "packaging-workspaces.db")
+	workspaceStoreOne, err := persist.NewSQLWorkspaceStore(context.Background(), databaseURL)
+	if err != nil {
+		t.Fatalf("create workspace store one: %v", err)
+	}
+	workspaceStoreTwo, err := persist.NewSQLWorkspaceStore(context.Background(), databaseURL)
+	if err != nil {
+		t.Fatalf("create workspace store two: %v", err)
+	}
+
+	serverOne := NewServer(ServerConfig{
+		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+		Packaging:  packaging.NewServiceWithWorkspaceStore("", workspaceStoreOne),
+	})
+	serverTwo := NewServer(ServerConfig{
+		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+		Packaging:  packaging.NewServiceWithWorkspaceStore("", workspaceStoreTwo),
+	})
+
+	prepareRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
+		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
+		"target":{"packageName":"@platform.skill/shared-workspace","version":"0.9.3"},
+		"metadata":{"displayName":"Shared Workspace","description":"Cross replica packaging flow","sourceType":"imported"}
+	}`)
+	prepareRequest.Header.Set("X-Role", "publisher")
+	prepareRecorder := httptest.NewRecorder()
+	serverOne.Handler().ServeHTTP(prepareRecorder, prepareRequest)
+	if prepareRecorder.Code != http.StatusOK {
+		t.Fatalf("expected prepare status %d, got %d body=%s", http.StatusOK, prepareRecorder.Code, prepareRecorder.Body.String())
+	}
+
+	var preparePayload struct {
+		WorkspacePath string `json:"workspacePath"`
+	}
+	if err := json.Unmarshal(prepareRecorder.Body.Bytes(), &preparePayload); err != nil {
+		t.Fatalf("decode prepare response: %v", err)
+	}
+	if strings.TrimSpace(preparePayload.WorkspacePath) == "" {
+		t.Fatal("expected non-empty workspacePath")
+	}
+	if _, statErr := os.Stat(preparePayload.WorkspacePath); !os.IsNotExist(statErr) {
+		t.Fatalf("expected persistent workspace handle instead of local directory path, stat err=%v", statErr)
+	}
+
+	validateRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/validate", `{
+		"workspacePath":"`+preparePayload.WorkspacePath+`",
+		"target":{"packageName":"@platform.skill/shared-workspace","version":"0.9.3"}
+	}`)
+	validateRequest.Header.Set("X-Role", "publisher")
+	validateRecorder := httptest.NewRecorder()
+	serverTwo.Handler().ServeHTTP(validateRecorder, validateRequest)
+	if validateRecorder.Code != http.StatusOK {
+		t.Fatalf("expected validate status %d, got %d body=%s", http.StatusOK, validateRecorder.Code, validateRecorder.Body.String())
+	}
+
+	var validatePayload struct {
+		OK bool `json:"ok"`
+	}
+	if err := json.Unmarshal(validateRecorder.Body.Bytes(), &validatePayload); err != nil {
+		t.Fatalf("decode validate response: %v", err)
+	}
+	if !validatePayload.OK {
+		t.Fatalf("expected cross-server validate to succeed, got body=%s", validateRecorder.Body.String())
+	}
+
+	packRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/pack", `{
+		"workspacePath":"`+preparePayload.WorkspacePath+`",
+		"target":{"packageName":"@platform.skill/shared-workspace","version":"0.9.3"},
+		"includeBundle":false
+	}`)
+	packRequest.Header.Set("X-Role", "publisher")
+	packRecorder := httptest.NewRecorder()
+	serverTwo.Handler().ServeHTTP(packRecorder, packRequest)
+	if packRecorder.Code != http.StatusOK {
+		t.Fatalf("expected pack status %d, got %d body=%s", http.StatusOK, packRecorder.Code, packRecorder.Body.String())
+	}
+
+	var packPayload struct {
+		BundlePath string `json:"bundlePath"`
+	}
+	if err := json.Unmarshal(packRecorder.Body.Bytes(), &packPayload); err != nil {
+		t.Fatalf("decode pack response: %v", err)
+	}
+	if !strings.HasPrefix(packPayload.BundlePath, "workspace://") {
+		t.Fatalf("expected persisted bundle handle, got %q", packPayload.BundlePath)
+	}
+
+	downloadRequest := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/skill-packaging/bundle?workspacePath="+url.QueryEscape(preparePayload.WorkspacePath)+"&packageName="+url.QueryEscape("@platform.skill/shared-workspace")+"&version=0.9.3",
+		nil,
+	)
+	downloadRequest.Header.Set("X-Role", "publisher")
+	downloadRecorder := httptest.NewRecorder()
+	serverOne.Handler().ServeHTTP(downloadRecorder, downloadRequest)
+	if downloadRecorder.Code != http.StatusOK {
+		t.Fatalf("expected bundle download status %d, got %d body=%s", http.StatusOK, downloadRecorder.Code, downloadRecorder.Body.String())
+	}
+	scanResult, validationError := artifactadapter.ScanNPMPackageTarballForTest(bytes.NewReader(downloadRecorder.Body.Bytes()), "@platform.skill/shared-workspace", "0.9.3")
+	if validationError != "" {
+		t.Fatalf("expected downloaded bundle to validate, got %s", validationError)
+	}
+	if scanResult.ManifestDigest == "" {
+		t.Fatal("expected downloaded bundle to include a manifest digest")
+	}
+
+	cleanupRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/cleanup", `{
+		"workspacePath":"`+preparePayload.WorkspacePath+`"
+	}`)
+	cleanupRequest.Header.Set("X-Role", "publisher")
+	cleanupRecorder := httptest.NewRecorder()
+	serverOne.Handler().ServeHTTP(cleanupRecorder, cleanupRequest)
+	if cleanupRecorder.Code != http.StatusOK {
+		t.Fatalf("expected cleanup status %d, got %d body=%s", http.StatusOK, cleanupRecorder.Code, cleanupRecorder.Body.String())
+	}
+
+	validateAfterCleanupRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/validate", `{
+		"workspacePath":"`+preparePayload.WorkspacePath+`",
+		"target":{"packageName":"@platform.skill/shared-workspace","version":"0.9.3"}
+	}`)
+	validateAfterCleanupRequest.Header.Set("X-Role", "publisher")
+	validateAfterCleanupRecorder := httptest.NewRecorder()
+	serverTwo.Handler().ServeHTTP(validateAfterCleanupRecorder, validateAfterCleanupRequest)
+	if validateAfterCleanupRecorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected post-cleanup validate status %d, got %d body=%s", http.StatusUnprocessableEntity, validateAfterCleanupRecorder.Code, validateAfterCleanupRecorder.Body.String())
+	}
+	assertErrorCode(t, validateAfterCleanupRecorder, "invalid_request")
+}
+
 func TestSkillPackagingPackWithInlineBundleSkipsIdempotencyPersistence(t *testing.T) {
 	fixtureDir := createPackagingFixture(t)
 	databaseURL := "file:" + filepath.Join(t.TempDir(), "idempotency.db")

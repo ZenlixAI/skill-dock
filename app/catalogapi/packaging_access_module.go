@@ -3,7 +3,6 @@ package catalogapi
 import (
 	"context"
 	"net/http"
-	"os"
 	"strings"
 
 	"skill_registry/app/auth"
@@ -43,7 +42,7 @@ func (m *packagingAccessModule) downloadBundle(ctx context.Context, principal au
 		return nil, err
 	}
 
-	bundlePath, err := m.service.BundlePath(workspacePath, packaging.Target{
+	content, err := m.service.BundleContent(workspacePath, packaging.Target{
 		PackageName: packageName,
 		Version:     version,
 	})
@@ -51,17 +50,6 @@ func (m *packagingAccessModule) downloadBundle(ctx context.Context, principal au
 		catalogErr := catalogErrorFromError(err)
 		m.recordAudit(ctx, principal, "packaging.bundle.download", packageName, version, catalogErr.Status, "failed", map[string]any{"errorCode": catalogErr.Code})
 		return nil, catalogErr
-	}
-
-	content, readErr := os.ReadFile(bundlePath)
-	if readErr != nil {
-		err := catalog.NewError(http.StatusNotFound, "bundle_not_found", "Bundle archive does not exist for the requested workspace.", map[string]any{
-			"workspacePath": workspacePath,
-			"packageName":   packageName,
-			"version":       version,
-		})
-		m.recordAudit(ctx, principal, "packaging.bundle.download", packageName, version, err.Status, "failed", map[string]any{"errorCode": err.Code})
-		return nil, err
 	}
 
 	m.recordAudit(ctx, principal, "packaging.bundle.download", packageName, version, http.StatusOK, "succeeded", nil)

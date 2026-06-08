@@ -37,6 +37,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	workspaceStore, err := persist.NewSQLWorkspaceStore(context.Background(), databaseURL)
+	if err != nil {
+		log.Fatal(err)
+	}
 	auditStore, err := persist.NewSQLAuditStore(context.Background(), databaseURL)
 	if err != nil {
 		log.Fatal(err)
@@ -54,7 +58,7 @@ func main() {
 		SessionUsers:                    configuredSessionUsers(),
 		MockRegistry:                    configuredMockRegistry(sampleData, enableMockRegistry),
 		DisableMockRegistry:             !enableMockRegistry,
-		Packaging:                       packaging.NewService(""),
+		Packaging:                       packaging.NewServiceWithWorkspaceStore("", workspaceStore),
 		Repository:                      repository,
 		Idempotency:                     idempotencyStore,
 		Audit:                           auditStore,

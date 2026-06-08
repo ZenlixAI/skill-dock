@@ -293,9 +293,6 @@ make batch-import MANIFEST=/abs/path/to/import.json NPM_BACKEND=nexus
 - [zarf/k8s/k3s-all-in-one.yaml](zarf/k8s/k3s-all-in-one.yaml)
 - [zarf/charts/skill-registry](zarf/charts/skill-registry)
 
-注意：
-- 当前 packaging `prepare / validate / pack / bundle` workflow 依赖 Catalog Pod 本地临时 workspace，所以生产部署里 `catalog` 先不要横向扩到多副本；默认应保持 `replicas: 1`
-
 ### 8. 重置与清理
 
 ```bash

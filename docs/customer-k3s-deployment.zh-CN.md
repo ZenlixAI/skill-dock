@@ -121,19 +121,6 @@
 - `SKILL_REGISTRY_SESSION_SECRET`
 - `SKILL_REGISTRY_SESSION_USERS_JSON`
 
-### 5.1.1 Catalog 副本数约束
-
-当前 packaging `prepare / validate / pack / bundle download` 依赖 Catalog Pod 本地临时 workspace。
-
-这意味着：
-
-- `catalog` 现在必须先保持 **1 个副本**
-- 不要把 `catalog` 默认部署成 `2+ replicas`
-- 否则一次导入里的 `prepare` 和后续 `validate / pack / bundle` 可能落到不同 Pod，最终报：
-  - `invalid_request: workspacePath must reference an existing directory`
-
-如果你需要 `catalog` 横向扩容，先别扩这一块；要等后面把 packaging workspace 改成共享存储或异步 job。
-
 `SKILL_REGISTRY_SESSION_USERS_JSON` 最小示例：
 
 ```json
@@ -424,7 +411,6 @@ docker build -f zarf/docker/skills-web.Dockerfile -t registry.example.com/skill-
 - host / domain
 - Secret 引用
 - ingressClass / annotation
-- 保持 `catalog.spec.replicas: 1`
 
 ### Step 5. 应用 k3s 清单
 

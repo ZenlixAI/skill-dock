@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"os"
-	"path/filepath"
 
 	"skill_registry/business/catalog"
 	"skill_registry/business/packaging"
@@ -85,16 +83,19 @@ func (s *Server) publishPackagedWorkspace(ctx context.Context, payload packaging
 		return packaging.PublishResponse{}, releaseErr.Status, releaseErr
 	}
 
-	packageMetadata, metadataErr := readWorkspacePackageMetadata(payload.WorkspacePath)
+	packedMetadata, metadataErr := s.packaging.PackageMetadata(payload.WorkspacePath)
 	if metadataErr != nil {
-		return packaging.PublishResponse{}, metadataErr.Status, metadataErr
+		return packaging.PublishResponse{}, catalogErrorFromError(metadataErr).Status, catalogErrorFromError(metadataErr)
+	}
+	var packageMetadata workspacePackageMetadata
+	rawMetadata, _ := json.Marshal(packedMetadata)
+	if err := json.Unmarshal(rawMetadata, &packageMetadata); err != nil {
+		return packaging.PublishResponse{}, http.StatusInternalServerError, catalog.NewError(500, "internal_error", "workspace package metadata could not be decoded.", nil)
 	}
 
-	tarball, readErr := os.ReadFile(packResponse.BundlePath)
+	tarball, readErr := s.packaging.BundleContent(payload.WorkspacePath, payload.Target)
 	if readErr != nil {
-		return packaging.PublishResponse{}, http.StatusInternalServerError, catalog.NewError(500, "internal_error", "Packed bundle could not be read from disk.", map[string]any{
-			"bundlePath": packResponse.BundlePath,
-		})
+		return packaging.PublishResponse{}, http.StatusInternalServerError, catalogErrorFromError(readErr)
 	}
 
 	publisher := artifactadapter.NewNPMPublisher(
@@ -140,24 +141,6 @@ func (s *Server) createReleaseRecord(ctx context.Context, packageName string, ve
 		status = http.StatusCreated
 	}
 	return result, status, nil
-}
-
-func readWorkspacePackageMetadata(workspacePath string) (workspacePackageMetadata, *catalog.Error) {
-	raw, err := os.ReadFile(filepath.Join(workspacePath, "package.json"))
-	if err != nil {
-		return workspacePackageMetadata{}, catalog.NewError(422, "invalid_request", "workspace package.json could not be read.", map[string]any{
-			"workspacePath": workspacePath,
-		})
-	}
-
-	var payload workspacePackageMetadata
-	if err := json.Unmarshal(raw, &payload); err != nil {
-		return workspacePackageMetadata{}, catalog.NewError(422, "invalid_request", "workspace package.json is invalid JSON.", map[string]any{
-			"workspacePath": workspacePath,
-		})
-	}
-
-	return payload, nil
 }
 
 func publishResponseFromPack(packResponse packaging.PackResponse, releaseResult catalog.ReleaseRecordResult, publishedToRegistry bool) packaging.PublishResponse {

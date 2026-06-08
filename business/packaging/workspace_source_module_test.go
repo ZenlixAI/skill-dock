@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"skill_registry/business/catalog"
 )
 
 func TestWorkspaceSourceModulePreparesPlatformAuthoringWorkspace(t *testing.T) {
@@ -40,5 +42,99 @@ func TestWorkspaceSourceModulePreparesPlatformAuthoringWorkspace(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(workspacePath, "docs", "README.md")); err != nil {
 		t.Fatalf("expected authoring file to be materialized, got %v", err)
+	}
+}
+
+func TestWorkspaceSourceModuleGitCloneUsesShallowClone(t *testing.T) {
+	tempRoot := t.TempDir()
+	module := newWorkspaceSourceModule(tempRoot, 0*time.Second)
+
+	fakeBin := t.TempDir()
+	argsLogPath := filepath.Join(t.TempDir(), "git-args.log")
+	gitScript := filepath.Join(fakeBin, "git")
+	if err := os.WriteFile(gitScript, []byte(`#!/bin/sh
+set -eu
+: "${ARGS_LOG_PATH:?}"
+printf '%s\n' "$@" > "$ARGS_LOG_PATH"
+last=""
+for arg in "$@"; do
+  last="$arg"
+done
+mkdir -p "$last/skills/engineering/zoom-out"
+printf '# Zoom Out\n' > "$last/skills/engineering/zoom-out/SKILL.md"
+`), 0o755); err != nil {
+		t.Fatalf("write fake git: %v", err)
+	}
+
+	t.Setenv("ARGS_LOG_PATH", argsLogPath)
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	workspacePath, err := module.prepare(PrepareRequest{
+		Source: Source{
+			Type:     "git",
+			Location: "https://github.com/mattpocock/skills?path=skills/engineering/zoom-out",
+		},
+		Target: Target{
+			PackageName: "@company.skill/zoom-out",
+			Version:     "1.2.0",
+		},
+	})
+	if err != nil {
+		t.Fatalf("prepare workspace: %v", err)
+	}
+
+	argsRaw, err := os.ReadFile(argsLogPath)
+	if err != nil {
+		t.Fatalf("read git args: %v", err)
+	}
+	argsLog := string(argsRaw)
+	if !strings.Contains(argsLog, "--depth\n1\n") {
+		t.Fatalf("expected shallow clone args, got %q", argsLog)
+	}
+	if _, err := os.Stat(filepath.Join(workspacePath, "SKILL.md")); err != nil {
+		t.Fatalf("expected cloned skill to be copied into workspace, got %v", err)
+	}
+}
+
+func TestWorkspaceSourceModuleGitCloneTimeoutReturnsCloneFailure(t *testing.T) {
+	tempRoot := t.TempDir()
+	module := newWorkspaceSourceModule(tempRoot, 0*time.Second)
+
+	fakeBin := t.TempDir()
+	gitScript := filepath.Join(fakeBin, "git")
+	if err := os.WriteFile(gitScript, []byte(`#!/bin/sh
+sleep 0.2
+exit 0
+`), 0o755); err != nil {
+		t.Fatalf("write fake git: %v", err)
+	}
+
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("SKILL_REGISTRY_GIT_CLONE_TIMEOUT_MS", "50")
+
+	_, err := module.prepare(PrepareRequest{
+		Source: Source{
+			Type:     "git",
+			Location: "https://github.com/mattpocock/skills?path=skills/engineering/zoom-out",
+		},
+		Target: Target{
+			PackageName: "@company.skill/zoom-out",
+			Version:     "1.2.0",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected git clone timeout to fail")
+	}
+
+	catalogErr, ok := err.(*catalog.Error)
+	if !ok {
+		t.Fatalf("expected catalog error, got %T", err)
+	}
+	if catalogErr.Message != "Failed to clone git source." {
+		t.Fatalf("unexpected error message: %q", catalogErr.Message)
+	}
+	detail, _ := catalogErr.Details["error"].(string)
+	if !strings.Contains(strings.ToLower(detail), "timed out") {
+		t.Fatalf("expected timeout detail, got %#v", catalogErr.Details)
 	}
 }

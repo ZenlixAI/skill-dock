@@ -4,12 +4,15 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/base64"
+	"errors"
 	"io"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,6 +25,8 @@ var packagingIgnoredDirectories = map[string]struct{}{
 	".dist": {},
 	".git":  {},
 }
+
+const defaultGitCloneTimeout = 45 * time.Second
 
 type workspaceSourceModule struct {
 	tempRoot     string
@@ -298,7 +303,12 @@ func (m workspaceSourceModule) prepareGitSource(source Source, workspacePath str
 	}
 	defer os.RemoveAll(cloneDir)
 
-	if err := runGitCommand("", "clone", cloneURL, cloneDir); err != nil {
+	cloneArgs := []string{"clone"}
+	if strings.TrimSpace(source.Ref) == "" {
+		cloneArgs = append(cloneArgs, "--depth", "1")
+	}
+	cloneArgs = append(cloneArgs, cloneURL, cloneDir)
+	if err := runGitCommand("", cloneArgs...); err != nil {
 		return catalog.NewError(422, "invalid_request", "Failed to clone git source.", map[string]any{"location": location, "error": err.Error()})
 	}
 	if strings.TrimSpace(source.Ref) != "" {
@@ -345,13 +355,31 @@ func isExistingDirectory(path string) bool {
 }
 
 func runGitCommand(directory string, args ...string) error {
-	command := exec.Command("git", args...)
+	ctx, cancel := context.WithTimeout(context.Background(), gitCommandTimeout())
+	defer cancel()
+
+	command := exec.CommandContext(ctx, "git", args...)
 	command.Dir = directory
 	command.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1")
 	if output, err := command.CombinedOutput(); err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return catalog.NewError(500, "internal_error", "git command timed out.", map[string]any{"args": args, "timeoutMs": gitCommandTimeout().Milliseconds()})
+		}
 		return catalog.NewError(500, "internal_error", "git command failed.", map[string]any{"args": args, "output": strings.TrimSpace(string(output))})
 	}
 	return nil
+}
+
+func gitCommandTimeout() time.Duration {
+	raw := strings.TrimSpace(os.Getenv("SKILL_REGISTRY_GIT_CLONE_TIMEOUT_MS"))
+	if raw == "" {
+		return defaultGitCloneTimeout
+	}
+	timeoutMs, err := strconv.Atoi(raw)
+	if err != nil || timeoutMs <= 0 {
+		return defaultGitCloneTimeout
+	}
+	return time.Duration(timeoutMs) * time.Millisecond
 }
 
 func resolveWorkspacePath(root string, name string) (string, error) {
