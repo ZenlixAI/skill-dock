@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"skill_registry/business/catalog"
+	artifactadapter "skill_registry/foundation/artifact"
 	"skill_registry/foundation/persist"
 )
 
@@ -16,6 +17,16 @@ type Service struct {
 	workspaceSource workspaceSourceModule
 	bundleRules     bundleRuleModule
 	workspaceStore  persist.WorkspaceStore
+	releaseRecords  releaseRecordCreator
+	publisher       packagePublisher
+}
+
+type releaseRecordCreator interface {
+	CreateReleaseRecord(ctx context.Context, packageName string, version string, input catalog.ReleaseRecordInput) (catalog.ReleaseRecordResult, error)
+}
+
+type packagePublisher interface {
+	PublishPackage(ctx context.Context, input artifactadapter.NPMPublishInput) error
 }
 
 func NewService(tempRoot string) *Service {
@@ -31,6 +42,11 @@ func NewServiceWithWorkspaceStore(tempRoot string, store persist.WorkspaceStore)
 		bundleRules:     newBundleRuleModule(),
 		workspaceStore:  store,
 	}
+}
+
+func (s *Service) ConfigurePublishWorkflow(repo releaseRecordCreator, publisher packagePublisher) {
+	s.releaseRecords = repo
+	s.publisher = publisher
 }
 
 func (s *Service) Prepare(input PrepareRequest) (PrepareResponse, error) {
@@ -302,6 +318,82 @@ func (s *Service) PackageMetadataContext(ctx context.Context, workspacePath stri
 	return payload, nil
 }
 
+func (s *Service) Publish(input PublishRequest) (PublishResponse, error) {
+	return s.PublishContext(context.Background(), input)
+}
+
+func (s *Service) PublishContext(ctx context.Context, input PublishRequest) (PublishResponse, error) {
+	if err := packagingContextError(ctx); err != nil {
+		return PublishResponse{}, err
+	}
+	if s.releaseRecords == nil || s.publisher == nil {
+		return PublishResponse{}, catalog.NewError(500, "internal_error", "Publish workflow is not configured.", nil)
+	}
+
+	packResponse, err := s.PackContext(ctx, PackRequest{
+		WorkspacePath: input.WorkspacePath,
+		Target:        input.Target,
+	})
+	if err != nil {
+		return PublishResponse{}, err
+	}
+	if len(packResponse.Errors) > 0 {
+		return PublishResponse{}, catalog.NewError(422, "bundle_validation_failed", "Bundle validation failed before publish.", map[string]any{
+			"packageName": input.Target.PackageName,
+			"version":     input.Target.Version,
+			"errors":      packResponse.Errors,
+		})
+	}
+
+	releaseInput := catalog.ReleaseRecordInput{
+		ManifestDigest: stringPtr(packResponse.ManifestDigest),
+		Components:     packResponse.Components,
+	}
+	releaseResult, err := s.releaseRecords.CreateReleaseRecord(ctx, input.Target.PackageName, input.Target.Version, releaseInput)
+	if err == nil {
+		return publishResponseFromPack(packResponse, releaseResult, false), nil
+	}
+
+	releaseErr := packagingCatalogError(err)
+	if releaseErr.Code != "registry_version_not_found" {
+		return PublishResponse{}, releaseErr
+	}
+
+	packageMetadata, err := s.readWorkspacePackageMetadata(ctx, input.WorkspacePath)
+	if err != nil {
+		return PublishResponse{}, err
+	}
+	tarball, err := s.BundleContentContext(ctx, input.WorkspacePath, input.Target)
+	if err != nil {
+		return PublishResponse{}, err
+	}
+
+	publishErr := s.publisher.PublishPackage(ctx, artifactadapter.NPMPublishInput{
+		PackageName: input.Target.PackageName,
+		Version:     input.Target.Version,
+		Description: packageMetadata.Description,
+		DisplayName: packageMetadata.Skill.DisplayName,
+		SourceType:  packageMetadata.Skill.SourceType,
+		Tarball:     tarball,
+	})
+	if publishErr != nil {
+		catalogErr := packagingCatalogError(publishErr)
+		if catalogErr.Code == "registry_version_conflict" {
+			releaseResult, err = s.releaseRecords.CreateReleaseRecord(ctx, input.Target.PackageName, input.Target.Version, releaseInput)
+			if err == nil {
+				return publishResponseFromPack(packResponse, releaseResult, false), nil
+			}
+		}
+		return PublishResponse{}, catalogErr
+	}
+
+	releaseResult, err = s.releaseRecords.CreateReleaseRecord(ctx, input.Target.PackageName, input.Target.Version, releaseInput)
+	if err != nil {
+		return PublishResponse{}, packagingCatalogError(err)
+	}
+	return publishResponseFromPack(packResponse, releaseResult, true), nil
+}
+
 func (s *Service) PruneExpiredWorkspaces(ttl time.Duration) error {
 	if s.workspaceStore != nil && ttl > 0 {
 		if err := s.workspaceStore.DeleteExpired(context.Background(), time.Now().UTC().Add(-ttl)); err != nil {
@@ -323,6 +415,67 @@ func packagingContextError(ctx context.Context) error {
 	default:
 		return catalog.NewError(499, "request_canceled", "Request context was canceled during packaging.", nil)
 	}
+}
+
+type workspacePackageMetadata struct {
+	Description string `json:"description"`
+	Skill       struct {
+		DisplayName string             `json:"displayName"`
+		SourceType  catalog.SourceType `json:"sourceType"`
+	} `json:"skill"`
+}
+
+func (s *Service) readWorkspacePackageMetadata(ctx context.Context, workspacePath string) (workspacePackageMetadata, error) {
+	rawMetadata, err := s.PackageMetadataContext(ctx, workspacePath)
+	if err != nil {
+		return workspacePackageMetadata{}, err
+	}
+	content, err := json.Marshal(rawMetadata)
+	if err != nil {
+		return workspacePackageMetadata{}, catalog.NewError(500, "internal_error", "workspace package metadata could not be decoded.", nil)
+	}
+
+	var payload workspacePackageMetadata
+	if err := json.Unmarshal(content, &payload); err != nil {
+		return workspacePackageMetadata{}, catalog.NewError(500, "internal_error", "workspace package metadata could not be decoded.", nil)
+	}
+	return payload, nil
+}
+
+func publishResponseFromPack(packResponse PackResponse, releaseResult catalog.ReleaseRecordResult, publishedToRegistry bool) PublishResponse {
+	return PublishResponse{
+		WorkspacePath:       packResponse.WorkspacePath,
+		PackageName:         packResponse.PackageName,
+		Version:             packResponse.Version,
+		ManifestDigest:      packResponse.ManifestDigest,
+		Components:          packResponse.Components,
+		PublishedToRegistry: publishedToRegistry,
+		Created:             releaseResult.Created,
+		IdempotentReplay:    releaseResult.IdempotentReplay,
+		VersionStatus:       releaseResult.VersionStatus,
+		InstallPolicy:       releaseResult.InstallPolicy,
+		Warnings:            append([]string(nil), packResponse.Warnings...),
+		WarningDetails:      append([]WarningDetail(nil), packResponse.WarningDetails...),
+		ImportReport:        packResponse.ImportReport,
+		Errors:              append([]string(nil), packResponse.Errors...),
+	}
+}
+
+func packagingCatalogError(err error) *catalog.Error {
+	if err == nil {
+		return nil
+	}
+	if catalogErr, ok := err.(*catalog.Error); ok {
+		return catalogErr
+	}
+	return catalog.NewError(500, "internal_error", "Internal server error.", nil)
+}
+
+func stringPtr(value string) *string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return &value
 }
 
 func ensureManagedWorkspace(workspacePath string, managed bool) error {

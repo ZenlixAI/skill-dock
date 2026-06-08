@@ -94,6 +94,14 @@ func NewServer(config ServerConfig) *Server {
 	auditRecorder := NewAuditRecorder(config.Audit)
 	var packagingSvc packagingService
 	if config.Packaging != nil {
+		config.Packaging.ConfigurePublishWorkflow(
+			config.Repository,
+			artifactadapter.NewNPMPublisher(
+				strings.TrimRight(strings.TrimSpace(config.NPMRegistryURL), "/"),
+				strings.TrimSpace(config.NPMRegistryPublishAuthorization),
+				config.NPMRegistryPublishClient,
+			),
+		)
 		packagingSvc = config.Packaging
 	}
 

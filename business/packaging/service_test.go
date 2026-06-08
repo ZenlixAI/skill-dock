@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"skill_registry/business/catalog"
+	artifactadapter "skill_registry/foundation/artifact"
 	"skill_registry/foundation/persist"
 )
 
@@ -727,6 +728,114 @@ func TestCreateBundleArchiveSkipsPackagingArtifacts(t *testing.T) {
 	if _, ok := entries["package/.dist/bundle.tgz"]; ok {
 		t.Fatalf("expected .dist artifact to be excluded, got keys %v", sortedMapKeys(entries))
 	}
+}
+
+func TestPublishContextPublishesAndCreatesReleaseRecord(t *testing.T) {
+	service := NewService(t.TempDir())
+	repo := &stubReleaseRecordCreator{
+		results: []stubReleaseRecordOutcome{
+			{err: catalog.NewError(404, "registry_version_not_found", "Registry version not found.", nil)},
+			{result: catalog.ReleaseRecordResult{Created: true, VersionStatus: catalog.VersionStatusPublished, InstallPolicy: catalog.InstallPolicyResolvable}},
+		},
+	}
+	publisher := &capturePackagePublisher{}
+	service.ConfigurePublishWorkflow(repo, publisher)
+
+	sourceDir := copyExternalSkillFixture(t, "minimal-imported-skill")
+	prepareResp, err := service.Prepare(PrepareRequest{
+		Source:   Source{Type: "upload_archive", ArchiveBase64: buildSourceArchiveBase64FromDirectory(t, sourceDir)},
+		Target:   Target{PackageName: "@platform.skill/zoom-out", Version: "1.0.0"},
+		Metadata: Metadata{DisplayName: "Zoom Out", Description: "Broader context", SourceType: "imported"},
+	})
+	if err != nil {
+		t.Fatalf("prepare returned error: %v", err)
+	}
+
+	response, err := service.PublishContext(context.Background(), PublishRequest{
+		WorkspacePath: prepareResp.WorkspacePath,
+		Target:        Target{PackageName: "@platform.skill/zoom-out", Version: "1.0.0"},
+	})
+	if err != nil {
+		t.Fatalf("publish returned error: %v", err)
+	}
+	if !response.PublishedToRegistry || !response.Created || response.IdempotentReplay {
+		t.Fatalf("unexpected publish response: %+v", response)
+	}
+	if repo.calls != 2 {
+		t.Fatalf("expected 2 release record attempts, got %d", repo.calls)
+	}
+	if publisher.calls != 1 {
+		t.Fatalf("expected 1 publisher call, got %d", publisher.calls)
+	}
+	if publisher.lastInput.PackageName != "@platform.skill/zoom-out" || publisher.lastInput.Version != "1.0.0" {
+		t.Fatalf("unexpected publisher input: %+v", publisher.lastInput)
+	}
+}
+
+func TestPublishContextSkipsRegistryPublishWhenReleaseAlreadyExists(t *testing.T) {
+	service := NewService(t.TempDir())
+	repo := &stubReleaseRecordCreator{
+		results: []stubReleaseRecordOutcome{
+			{result: catalog.ReleaseRecordResult{Created: false, IdempotentReplay: true, VersionStatus: catalog.VersionStatusPublished, InstallPolicy: catalog.InstallPolicyResolvable}},
+		},
+	}
+	publisher := &capturePackagePublisher{}
+	service.ConfigurePublishWorkflow(repo, publisher)
+
+	sourceDir := copyExternalSkillFixture(t, "minimal-imported-skill")
+	prepareResp, err := service.Prepare(PrepareRequest{
+		Source:   Source{Type: "upload_archive", ArchiveBase64: buildSourceArchiveBase64FromDirectory(t, sourceDir)},
+		Target:   Target{PackageName: "@platform.skill/zoom-out", Version: "1.0.0"},
+		Metadata: Metadata{DisplayName: "Zoom Out", Description: "Broader context", SourceType: "imported"},
+	})
+	if err != nil {
+		t.Fatalf("prepare returned error: %v", err)
+	}
+
+	response, err := service.PublishContext(context.Background(), PublishRequest{
+		WorkspacePath: prepareResp.WorkspacePath,
+		Target:        Target{PackageName: "@platform.skill/zoom-out", Version: "1.0.0"},
+	})
+	if err != nil {
+		t.Fatalf("publish returned error: %v", err)
+	}
+	if response.PublishedToRegistry || response.Created || !response.IdempotentReplay {
+		t.Fatalf("unexpected publish response: %+v", response)
+	}
+	if publisher.calls != 0 {
+		t.Fatalf("expected publisher to be skipped, got %d calls", publisher.calls)
+	}
+}
+
+type stubReleaseRecordOutcome struct {
+	result catalog.ReleaseRecordResult
+	err    error
+}
+
+type stubReleaseRecordCreator struct {
+	calls   int
+	results []stubReleaseRecordOutcome
+}
+
+func (s *stubReleaseRecordCreator) CreateReleaseRecord(ctx context.Context, packageName string, version string, input catalog.ReleaseRecordInput) (catalog.ReleaseRecordResult, error) {
+	s.calls++
+	index := s.calls - 1
+	if index >= len(s.results) {
+		return catalog.ReleaseRecordResult{}, catalog.NewError(500, "internal_error", "unexpected extra release record call", nil)
+	}
+	return s.results[index].result, s.results[index].err
+}
+
+type capturePackagePublisher struct {
+	calls     int
+	lastInput artifactadapter.NPMPublishInput
+	err       error
+}
+
+func (s *capturePackagePublisher) PublishPackage(ctx context.Context, input artifactadapter.NPMPublishInput) error {
+	s.calls++
+	s.lastInput = input
+	return s.err
 }
 
 func writeSkillMarkdownFixture(t *testing.T, dir string) {
