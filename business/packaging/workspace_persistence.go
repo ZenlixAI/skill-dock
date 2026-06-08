@@ -44,25 +44,33 @@ func (s *Service) materializeWorkspace(ctx context.Context, workspacePath string
 		return workspacePath, func() {}, nil
 	}
 
+	record, err := s.loadManagedWorkspaceRecord(ctx, workspacePath)
+	if err != nil {
+		return "", nil, err
+	}
+	return record.WorkspacePath, func() {}, nil
+}
+
+func (s *Service) loadManagedWorkspaceRecord(ctx context.Context, workspacePath string) (persist.WorkspaceRecord, error) {
 	record, err := s.workspaceStore.LoadWorkspace(ctx, workspacePath)
 	if err != nil {
 		if err == persist.ErrWorkspaceRecordNotFound {
-			return "", nil, catalog.NewError(422, "invalid_request", "workspacePath must reference an existing packaging workspace.", map[string]any{"workspacePath": workspacePath})
+			return persist.WorkspaceRecord{}, catalog.NewError(422, "invalid_request", "workspacePath must reference an existing packaging workspace.", map[string]any{"workspacePath": workspacePath})
 		}
-		return "", nil, catalog.NewError(500, "internal_error", "Failed to load packaging workspace.", nil)
+		return persist.WorkspaceRecord{}, catalog.NewError(500, "internal_error", "Failed to load packaging workspace.", nil)
 	}
 	if _, err := s.managedWorkspaceRootFromPath(workspacePath, record.WorkspacePath); err != nil {
-		return "", nil, catalog.NewError(500, "internal_error", "Failed to load packaging workspace.", nil)
+		return persist.WorkspaceRecord{}, catalog.NewError(500, "internal_error", "Failed to load packaging workspace.", nil)
 	}
 	info, err := os.Stat(record.WorkspacePath)
 	if err != nil || !info.IsDir() {
 		if errors.Is(err, os.ErrNotExist) || err == nil {
-			return "", nil, catalog.NewError(422, "invalid_request", "workspacePath must reference an existing packaging workspace.", map[string]any{"workspacePath": workspacePath})
+			return persist.WorkspaceRecord{}, catalog.NewError(422, "invalid_request", "workspacePath must reference an existing packaging workspace.", map[string]any{"workspacePath": workspacePath})
 		}
-		return "", nil, catalog.NewError(500, "internal_error", "Failed to load packaging workspace.", nil)
+		return persist.WorkspaceRecord{}, catalog.NewError(500, "internal_error", "Failed to load packaging workspace.", nil)
 	}
 
-	return record.WorkspacePath, func() {}, nil
+	return record, nil
 }
 
 func (s *Service) managedWorkspacePath(workspaceID string) string {

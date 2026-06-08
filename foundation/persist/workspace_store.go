@@ -3,6 +3,7 @@ package persist
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -15,18 +16,31 @@ type WorkspaceStore interface {
 	SaveWorkspace(ctx context.Context, workspaceID string, workspacePath string, createdAt time.Time) error
 	LoadWorkspace(ctx context.Context, workspaceID string) (WorkspaceRecord, error)
 	SaveBundle(ctx context.Context, workspaceID string, bundlePath string, updatedAt time.Time) error
+	SaveValidationCache(ctx context.Context, workspaceID string, cache WorkspaceValidationCache, updatedAt time.Time) error
+	SavePackageMetadata(ctx context.Context, workspaceID string, packageMetadataJSON []byte, updatedAt time.Time) error
 	LoadBundle(ctx context.Context, workspaceID string) (string, error)
 	ListExpired(ctx context.Context, cutoff time.Time) ([]WorkspaceRecord, error)
 	DeleteWorkspace(ctx context.Context, workspaceID string) error
 	DeleteExpired(ctx context.Context, cutoff time.Time) error
 }
 
+type WorkspaceValidationCache struct {
+	PackageName    string   `json:"packageName"`
+	Version        string   `json:"version"`
+	ManifestDigest string   `json:"manifestDigest,omitempty"`
+	Components     []string `json:"components,omitempty"`
+	Warnings       []string `json:"warnings,omitempty"`
+	Errors         []string `json:"errors,omitempty"`
+}
+
 type WorkspaceRecord struct {
-	WorkspaceID   string
-	WorkspacePath string
-	BundlePath    string
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	WorkspaceID         string
+	WorkspacePath       string
+	BundlePath          string
+	ValidationCache     *WorkspaceValidationCache
+	PackageMetadataJSON []byte
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 type SQLWorkspaceStore struct {
@@ -67,6 +81,8 @@ func workspaceMigrationStatements(dialect string) []string {
 			workspace_id TEXT NOT NULL PRIMARY KEY,
 			workspace_path TEXT NOT NULL,
 			bundle_path TEXT,
+			validation_cache_json TEXT,
+			package_metadata_json TEXT,
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		)`,
@@ -91,6 +107,26 @@ func (s *SQLWorkspaceStore) ensureManagedPathColumns(ctx context.Context) error 
 	}
 	if !hasBundlePath {
 		if _, err := s.db.ExecContext(ctx, `ALTER TABLE packaging_workspaces ADD COLUMN bundle_path TEXT`); err != nil {
+			return err
+		}
+	}
+
+	hasValidationCache, err := s.workspaceColumnExists(ctx, "validation_cache_json")
+	if err != nil {
+		return err
+	}
+	if !hasValidationCache {
+		if _, err := s.db.ExecContext(ctx, `ALTER TABLE packaging_workspaces ADD COLUMN validation_cache_json TEXT`); err != nil {
+			return err
+		}
+	}
+
+	hasPackageMetadata, err := s.workspaceColumnExists(ctx, "package_metadata_json")
+	if err != nil {
+		return err
+	}
+	if !hasPackageMetadata {
+		if _, err := s.db.ExecContext(ctx, `ALTER TABLE packaging_workspaces ADD COLUMN package_metadata_json TEXT`); err != nil {
 			return err
 		}
 	}
@@ -152,12 +188,16 @@ INSERT INTO packaging_workspaces (
 	workspace_id,
 	workspace_path,
 	bundle_path,
+	validation_cache_json,
+	package_metadata_json,
 	created_at,
 	updated_at
-) VALUES (?, ?, NULL, ?, ?)
+) VALUES (?, ?, NULL, NULL, NULL, ?, ?)
 ON CONFLICT(workspace_id) DO UPDATE SET
 	workspace_path = excluded.workspace_path,
 	bundle_path = NULL,
+	validation_cache_json = NULL,
+	package_metadata_json = NULL,
 	updated_at = excluded.updated_at`
 	args := []any{
 		workspaceID,
@@ -173,12 +213,16 @@ INSERT INTO packaging_workspaces (
 	bundle_content,
 	workspace_path,
 	bundle_path,
+	validation_cache_json,
+	package_metadata_json,
 	created_at,
 	updated_at
-) VALUES (?, ?, NULL, ?, NULL, ?, ?)
+) VALUES (?, ?, NULL, ?, NULL, NULL, NULL, ?, ?)
 ON CONFLICT(workspace_id) DO UPDATE SET
 	workspace_path = excluded.workspace_path,
 	bundle_path = NULL,
+	validation_cache_json = NULL,
+	package_metadata_json = NULL,
 	updated_at = excluded.updated_at`
 		args = []any{
 			workspaceID,
@@ -199,18 +243,22 @@ ON CONFLICT(workspace_id) DO UPDATE SET
 
 func (s *SQLWorkspaceStore) LoadWorkspace(ctx context.Context, workspaceID string) (WorkspaceRecord, error) {
 	query := bindSQL(s.dialect, `
-SELECT workspace_path, bundle_path, created_at, updated_at
+SELECT workspace_path, bundle_path, validation_cache_json, package_metadata_json, created_at, updated_at
 FROM packaging_workspaces
 WHERE workspace_id = ?`)
 	var (
-		workspacePath sql.NullString
-		bundlePath    sql.NullString
-		createdAtRaw  string
-		updatedAtRaw  string
+		workspacePath       sql.NullString
+		bundlePath          sql.NullString
+		validationCacheJSON sql.NullString
+		packageMetadataJSON sql.NullString
+		createdAtRaw        string
+		updatedAtRaw        string
 	)
 	err := s.db.QueryRowContext(ctx, query, workspaceID).Scan(
 		&workspacePath,
 		&bundlePath,
+		&validationCacheJSON,
+		&packageMetadataJSON,
 		&createdAtRaw,
 		&updatedAtRaw,
 	)
@@ -220,7 +268,7 @@ WHERE workspace_id = ?`)
 	if err != nil {
 		return WorkspaceRecord{}, err
 	}
-	return scanWorkspaceRecord(workspaceID, workspacePath, bundlePath, createdAtRaw, updatedAtRaw)
+	return scanWorkspaceRecord(workspaceID, workspacePath, bundlePath, validationCacheJSON, packageMetadataJSON, createdAtRaw, updatedAtRaw)
 }
 
 func (s *SQLWorkspaceStore) SaveBundle(ctx context.Context, workspaceID string, bundlePath string, updatedAt time.Time) error {
@@ -232,6 +280,60 @@ WHERE workspace_id = ?`)
 		ctx,
 		query,
 		bundlePath,
+		updatedAt.UTC().Format(time.RFC3339),
+		workspaceID,
+	)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return ErrWorkspaceRecordNotFound
+	}
+	return nil
+}
+
+func (s *SQLWorkspaceStore) SaveValidationCache(ctx context.Context, workspaceID string, cache WorkspaceValidationCache, updatedAt time.Time) error {
+	content, err := json.Marshal(cache)
+	if err != nil {
+		return err
+	}
+	query := bindSQL(s.dialect, `
+UPDATE packaging_workspaces
+SET validation_cache_json = ?, updated_at = ?
+WHERE workspace_id = ?`)
+	result, err := s.db.ExecContext(
+		ctx,
+		query,
+		string(content),
+		updatedAt.UTC().Format(time.RFC3339),
+		workspaceID,
+	)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return ErrWorkspaceRecordNotFound
+	}
+	return nil
+}
+
+func (s *SQLWorkspaceStore) SavePackageMetadata(ctx context.Context, workspaceID string, packageMetadataJSON []byte, updatedAt time.Time) error {
+	query := bindSQL(s.dialect, `
+UPDATE packaging_workspaces
+SET package_metadata_json = ?, updated_at = ?
+WHERE workspace_id = ?`)
+	result, err := s.db.ExecContext(
+		ctx,
+		query,
+		string(packageMetadataJSON),
 		updatedAt.UTC().Format(time.RFC3339),
 		workspaceID,
 	)
@@ -269,7 +371,7 @@ WHERE workspace_id = ?`)
 
 func (s *SQLWorkspaceStore) ListExpired(ctx context.Context, cutoff time.Time) ([]WorkspaceRecord, error) {
 	query := bindSQL(s.dialect, `
-SELECT workspace_id, workspace_path, bundle_path, created_at, updated_at
+SELECT workspace_id, workspace_path, bundle_path, validation_cache_json, package_metadata_json, created_at, updated_at
 FROM packaging_workspaces
 WHERE updated_at < ?
 ORDER BY updated_at ASC`)
@@ -282,16 +384,18 @@ ORDER BY updated_at ASC`)
 	records := []WorkspaceRecord{}
 	for rows.Next() {
 		var (
-			workspaceID   string
-			workspacePath sql.NullString
-			bundlePath    sql.NullString
-			createdAtRaw  string
-			updatedAtRaw  string
+			workspaceID         string
+			workspacePath       sql.NullString
+			bundlePath          sql.NullString
+			validationCacheJSON sql.NullString
+			packageMetadataJSON sql.NullString
+			createdAtRaw        string
+			updatedAtRaw        string
 		)
-		if err := rows.Scan(&workspaceID, &workspacePath, &bundlePath, &createdAtRaw, &updatedAtRaw); err != nil {
+		if err := rows.Scan(&workspaceID, &workspacePath, &bundlePath, &validationCacheJSON, &packageMetadataJSON, &createdAtRaw, &updatedAtRaw); err != nil {
 			return nil, err
 		}
-		record, err := scanWorkspaceRecord(workspaceID, workspacePath, bundlePath, createdAtRaw, updatedAtRaw)
+		record, err := scanWorkspaceRecord(workspaceID, workspacePath, bundlePath, validationCacheJSON, packageMetadataJSON, createdAtRaw, updatedAtRaw)
 		if errors.Is(err, ErrWorkspaceRecordNotFound) {
 			continue
 		}
@@ -306,7 +410,7 @@ ORDER BY updated_at ASC`)
 	return records, nil
 }
 
-func scanWorkspaceRecord(workspaceID string, workspacePath sql.NullString, bundlePath sql.NullString, createdAtRaw string, updatedAtRaw string) (WorkspaceRecord, error) {
+func scanWorkspaceRecord(workspaceID string, workspacePath sql.NullString, bundlePath sql.NullString, validationCacheJSON sql.NullString, packageMetadataJSON sql.NullString, createdAtRaw string, updatedAtRaw string) (WorkspaceRecord, error) {
 	if !workspacePath.Valid || strings.TrimSpace(workspacePath.String) == "" {
 		return WorkspaceRecord{}, ErrWorkspaceRecordNotFound
 	}
@@ -315,6 +419,15 @@ func scanWorkspaceRecord(workspaceID string, workspacePath sql.NullString, bundl
 		WorkspaceID:   workspaceID,
 		WorkspacePath: workspacePath.String,
 		BundlePath:    bundlePath.String,
+	}
+	if validationCacheJSON.Valid && strings.TrimSpace(validationCacheJSON.String) != "" {
+		record.ValidationCache = &WorkspaceValidationCache{}
+		if err := json.Unmarshal([]byte(validationCacheJSON.String), record.ValidationCache); err != nil {
+			return WorkspaceRecord{}, err
+		}
+	}
+	if packageMetadataJSON.Valid && strings.TrimSpace(packageMetadataJSON.String) != "" {
+		record.PackageMetadataJSON = []byte(packageMetadataJSON.String)
 	}
 
 	var err error

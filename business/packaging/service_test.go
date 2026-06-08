@@ -538,6 +538,79 @@ func TestPrepareWithWorkspaceStoreMovesWorkspaceIntoManagedRoot(t *testing.T) {
 	}
 }
 
+func TestValidateWithWorkspaceStoreUsesCachedValidation(t *testing.T) {
+	root := t.TempDir()
+	store := newMemoryWorkspaceStore()
+	service := NewServiceWithWorkspaceStore(root, store)
+
+	managedWorkspace := filepath.Join(root, "ws-cached", "workspace")
+	if err := os.MkdirAll(managedWorkspace, 0o755); err != nil {
+		t.Fatalf("mkdir managed workspace: %v", err)
+	}
+	store.records["ws-cached"] = persist.WorkspaceRecord{
+		WorkspaceID:   "ws-cached",
+		WorkspacePath: managedWorkspace,
+		CreatedAt:     time.Now().UTC(),
+		UpdatedAt:     time.Now().UTC(),
+		ValidationCache: &persist.WorkspaceValidationCache{
+			PackageName:    "@platform.skill/cached",
+			Version:        "1.0.0",
+			ManifestDigest: "sha256:cached",
+			Components:     []string{"docs"},
+			Warnings:       []string{"normalized_missing_package_json"},
+		},
+	}
+
+	response, err := service.Validate(ValidateRequest{
+		WorkspacePath: "ws-cached",
+		Target:        Target{PackageName: "@platform.skill/cached", Version: "1.0.0"},
+	})
+	if err != nil {
+		t.Fatalf("validate cached workspace: %v", err)
+	}
+	if !response.OK {
+		t.Fatalf("expected cached validate to succeed, got %+v", response)
+	}
+	if response.ManifestDigest != "sha256:cached" {
+		t.Fatalf("expected cached manifest digest, got %q", response.ManifestDigest)
+	}
+	if !reflect.DeepEqual(response.Components, []string{"docs"}) {
+		t.Fatalf("expected cached components, got %#v", response.Components)
+	}
+	if !reflect.DeepEqual(response.Warnings, []string{"normalized_missing_package_json"}) {
+		t.Fatalf("expected cached warnings, got %#v", response.Warnings)
+	}
+}
+
+func TestPackageMetadataWithWorkspaceStoreUsesCachedMetadata(t *testing.T) {
+	root := t.TempDir()
+	store := newMemoryWorkspaceStore()
+	service := NewServiceWithWorkspaceStore(root, store)
+
+	managedWorkspace := filepath.Join(root, "ws-cached", "workspace")
+	if err := os.MkdirAll(managedWorkspace, 0o755); err != nil {
+		t.Fatalf("mkdir managed workspace: %v", err)
+	}
+	store.records["ws-cached"] = persist.WorkspaceRecord{
+		WorkspaceID:         "ws-cached",
+		WorkspacePath:       managedWorkspace,
+		CreatedAt:           time.Now().UTC(),
+		UpdatedAt:           time.Now().UTC(),
+		PackageMetadataJSON: []byte(`{"name":"@platform.skill/cached","version":"1.0.0","description":"cached","skill":{"displayName":"Cached","sourceType":"native"}}`),
+	}
+
+	metadata, err := service.PackageMetadata("ws-cached")
+	if err != nil {
+		t.Fatalf("package metadata cached workspace: %v", err)
+	}
+	if metadata["name"] != "@platform.skill/cached" {
+		t.Fatalf("expected cached metadata name, got %#v", metadata["name"])
+	}
+	if metadata["description"] != "cached" {
+		t.Fatalf("expected cached metadata description, got %#v", metadata["description"])
+	}
+}
+
 func TestBundleContentReusesPersistedBundlePath(t *testing.T) {
 	root := t.TempDir()
 	store := newMemoryWorkspaceStore()
@@ -589,6 +662,67 @@ func TestBundleContentReusesPersistedBundlePath(t *testing.T) {
 	}
 	if _, err := os.Stat(record.BundlePath); err != nil {
 		t.Fatalf("expected persisted bundle file to exist: %v", err)
+	}
+}
+
+func TestPackWithWorkspaceStoreReusesExistingBundleWhenWorkspaceUnchanged(t *testing.T) {
+	root := t.TempDir()
+	store := newMemoryWorkspaceStore()
+	service := NewServiceWithWorkspaceStore(root, store)
+
+	prepareResp, err := service.Prepare(PrepareRequest{
+		Source: Source{
+			Type: "platform_authoring",
+			Files: map[string]string{
+				"docs/README.md": "# Capability\n",
+			},
+		},
+		Target:   Target{PackageName: "@platform.skill/managed", Version: "1.0.0"},
+		Metadata: Metadata{DisplayName: "managed", Description: "desc", SourceType: "native"},
+	})
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+
+	first, err := service.Pack(PackRequest{
+		WorkspacePath: prepareResp.WorkspacePath,
+		Target:        Target{PackageName: "@platform.skill/managed", Version: "1.0.0"},
+		IncludeBundle: true,
+	})
+	if err != nil {
+		t.Fatalf("first pack: %v", err)
+	}
+
+	record, err := store.LoadWorkspace(context.Background(), prepareResp.WorkspacePath)
+	if err != nil {
+		t.Fatalf("load stored workspace metadata: %v", err)
+	}
+	frozenTime := time.Date(2026, time.June, 8, 18, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(record.BundlePath, frozenTime, frozenTime); err != nil {
+		t.Fatalf("freeze bundle mtime: %v", err)
+	}
+
+	second, err := service.Pack(PackRequest{
+		WorkspacePath: prepareResp.WorkspacePath,
+		Target:        Target{PackageName: "@platform.skill/managed", Version: "1.0.0"},
+		IncludeBundle: true,
+	})
+	if err != nil {
+		t.Fatalf("second pack: %v", err)
+	}
+
+	info, err := os.Stat(record.BundlePath)
+	if err != nil {
+		t.Fatalf("stat persisted bundle: %v", err)
+	}
+	if !info.ModTime().Equal(frozenTime) {
+		t.Fatalf("expected second pack to reuse existing bundle mtime %s, got %s", frozenTime, info.ModTime())
+	}
+	if first.BundlePath != second.BundlePath {
+		t.Fatalf("expected stable bundle handle, got first=%q second=%q", first.BundlePath, second.BundlePath)
+	}
+	if second.BundleBase64 == "" {
+		t.Fatal("expected reused pack to keep includeBundle payload")
 	}
 }
 
@@ -909,6 +1043,20 @@ func (cancelAwareWorkspaceStore) SaveBundle(ctx context.Context, workspaceID str
 	return nil
 }
 
+func (cancelAwareWorkspaceStore) SaveValidationCache(ctx context.Context, workspaceID string, cache persist.WorkspaceValidationCache, updatedAt time.Time) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (cancelAwareWorkspaceStore) SavePackageMetadata(ctx context.Context, workspaceID string, packageMetadataJSON []byte, updatedAt time.Time) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (cancelAwareWorkspaceStore) LoadBundle(ctx context.Context, workspaceID string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -937,8 +1085,18 @@ type memoryWorkspaceStore struct {
 	records          map[string]persist.WorkspaceRecord
 }
 
+type countingWorkspaceStore struct {
+	*memoryWorkspaceStore
+	loadWorkspaceCalls int
+	loadBundleCalls    int
+}
+
 func newMemoryWorkspaceStore() *memoryWorkspaceStore {
 	return &memoryWorkspaceStore{records: map[string]persist.WorkspaceRecord{}}
+}
+
+func newCountingWorkspaceStore() *countingWorkspaceStore {
+	return &countingWorkspaceStore{memoryWorkspaceStore: newMemoryWorkspaceStore()}
 }
 
 func (s *memoryWorkspaceStore) SaveWorkspace(ctx context.Context, workspaceID string, workspacePath string, createdAt time.Time) error {
@@ -987,6 +1145,44 @@ func (s *memoryWorkspaceStore) SaveBundle(ctx context.Context, workspaceID strin
 		return persist.ErrWorkspaceRecordNotFound
 	}
 	record.BundlePath = bundlePath
+	record.UpdatedAt = updatedAt
+	s.records[workspaceID] = record
+	return nil
+}
+
+func (s *memoryWorkspaceStore) SaveValidationCache(ctx context.Context, workspaceID string, cache persist.WorkspaceValidationCache, updatedAt time.Time) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	record, ok := s.records[workspaceID]
+	if !ok || strings.TrimSpace(record.WorkspacePath) == "" {
+		return persist.ErrWorkspaceRecordNotFound
+	}
+	cacheCopy := cache
+	cacheCopy.Components = append([]string(nil), cache.Components...)
+	cacheCopy.Warnings = append([]string(nil), cache.Warnings...)
+	cacheCopy.Errors = append([]string(nil), cache.Errors...)
+	record.ValidationCache = &cacheCopy
+	record.UpdatedAt = updatedAt
+	s.records[workspaceID] = record
+	return nil
+}
+
+func (s *memoryWorkspaceStore) SavePackageMetadata(ctx context.Context, workspaceID string, packageMetadataJSON []byte, updatedAt time.Time) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	record, ok := s.records[workspaceID]
+	if !ok || strings.TrimSpace(record.WorkspacePath) == "" {
+		return persist.ErrWorkspaceRecordNotFound
+	}
+	record.PackageMetadataJSON = append([]byte(nil), packageMetadataJSON...)
 	record.UpdatedAt = updatedAt
 	s.records[workspaceID] = record
 	return nil
@@ -1052,6 +1248,16 @@ func (s *memoryWorkspaceStore) DeleteExpired(ctx context.Context, cutoff time.Ti
 		}
 	}
 	return nil
+}
+
+func (s *countingWorkspaceStore) LoadWorkspace(ctx context.Context, workspaceID string) (persist.WorkspaceRecord, error) {
+	s.loadWorkspaceCalls++
+	return s.memoryWorkspaceStore.LoadWorkspace(ctx, workspaceID)
+}
+
+func (s *countingWorkspaceStore) LoadBundle(ctx context.Context, workspaceID string) (string, error) {
+	s.loadBundleCalls++
+	return s.memoryWorkspaceStore.LoadBundle(ctx, workspaceID)
 }
 
 func skillMarkdownFixture() string {
@@ -1242,6 +1448,49 @@ func TestPublishContextWithWorkspaceStoreBlocksCleanupUntilPublishCompletes(t *t
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for cleanup to complete")
+	}
+}
+
+func TestPublishContextWithWorkspaceStoreAvoidsRedundantWorkspaceAndBundleLoads(t *testing.T) {
+	root := t.TempDir()
+	store := newCountingWorkspaceStore()
+	service := NewServiceWithWorkspaceStore(root, store)
+	repo := &stubReleaseRecordCreator{
+		results: []stubReleaseRecordOutcome{
+			{err: catalog.NewError(404, "registry_version_not_found", "Registry version not found.", nil)},
+			{result: catalog.ReleaseRecordResult{Created: true, VersionStatus: catalog.VersionStatusPublished, InstallPolicy: catalog.InstallPolicyResolvable}},
+		},
+	}
+	publisher := &capturePackagePublisher{}
+	service.ConfigurePublishWorkflow(repo, publisher)
+
+	prepareResp, err := service.Prepare(PrepareRequest{
+		Source: Source{
+			Type: "platform_authoring",
+			Files: map[string]string{
+				"docs/README.md": "# Capability\n",
+			},
+		},
+		Target:   Target{PackageName: "@platform.skill/managed", Version: "1.0.0"},
+		Metadata: Metadata{DisplayName: "managed", Description: "desc", SourceType: "native"},
+	})
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+
+	_, err = service.PublishContext(context.Background(), PublishRequest{
+		WorkspacePath: prepareResp.WorkspacePath,
+		Target:        Target{PackageName: "@platform.skill/managed", Version: "1.0.0"},
+	})
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	if store.loadWorkspaceCalls != 1 {
+		t.Fatalf("expected 1 workspace load during publish, got %d", store.loadWorkspaceCalls)
+	}
+	if store.loadBundleCalls != 0 {
+		t.Fatalf("expected publish to avoid store bundle reloads, got %d", store.loadBundleCalls)
 	}
 }
 

@@ -2,6 +2,7 @@ package packaging
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -32,6 +33,13 @@ type workspaceLockEntry struct {
 }
 
 type workspaceLockContextKey struct{}
+
+type packExecutionResult struct {
+	response         PackResponse
+	materializedPath string
+	bundlePath       string
+	cleanup          func()
+}
 
 type releaseRecordCreator interface {
 	CreateReleaseRecord(ctx context.Context, packageName string, version string, input catalog.ReleaseRecordInput) (catalog.ReleaseRecordResult, error)
@@ -123,6 +131,25 @@ func (s *Service) ValidateContext(ctx context.Context, input ValidateRequest) (V
 	}
 	defer unlock()
 
+	if s.workspaceStore != nil {
+		record, err := s.loadManagedWorkspaceRecord(ctx, input.WorkspacePath)
+		if err != nil {
+			return ValidateResponse{}, err
+		}
+		if cached, ok := cachedValidationResult(record.ValidationCache, input.Target); ok {
+			return validateResponseFromResult(input, cached, record.WorkspacePath), nil
+		}
+
+		result, err := s.bundleRules.validate(record.WorkspacePath, input.Target)
+		if err != nil {
+			return ValidateResponse{}, err
+		}
+		if saveErr := s.workspaceStore.SaveValidationCache(ctx, input.WorkspacePath, workspaceValidationCacheFromResult(input.Target, result), time.Now().UTC()); saveErr != nil {
+			return ValidateResponse{}, catalog.NewError(500, "internal_error", "Failed to persist packaging workspace validation cache.", nil)
+		}
+		return validateResponseFromResult(input, result, record.WorkspacePath), nil
+	}
+
 	workspacePath, cleanup, err := s.materializeWorkspace(ctx, input.WorkspacePath)
 	if err != nil {
 		return ValidateResponse{}, err
@@ -165,66 +192,13 @@ func (s *Service) PackContext(ctx context.Context, input PackRequest) (PackRespo
 	}
 	defer unlock()
 
-	workspacePath, cleanup, err := s.materializeWorkspace(ctx, input.WorkspacePath)
+	result, err := s.packWorkspaceLocked(ctx, input)
 	if err != nil {
 		return PackResponse{}, err
 	}
-	defer cleanup()
+	defer result.cleanup()
 
-	result, err := s.bundleRules.validate(workspacePath, input.Target)
-	if err != nil {
-		return PackResponse{}, err
-	}
-	if len(result.Errors) > 0 {
-		return PackResponse{
-			WorkspacePath:  input.WorkspacePath,
-			PackageName:    input.Target.PackageName,
-			Version:        input.Target.Version,
-			Warnings:       result.Warnings,
-			WarningDetails: warningDetails(result.Warnings),
-			ImportReport:   readImportReport(workspacePath, result.Warnings),
-			Errors:         result.Errors,
-		}, nil
-	}
-
-	bundlePath, err := s.workspaceSource.bundlePath(workspacePath, input.Target)
-	if s.workspaceStore != nil {
-		bundlePath = s.managedBundlePath(input.WorkspacePath, input.Target)
-		if err := s.validateManagedBundlePath(input.WorkspacePath, input.Target, bundlePath); err != nil {
-			return PackResponse{}, catalog.NewError(500, "internal_error", "Packed bundle could not be persisted.", nil)
-		}
-	} else if err != nil {
-		return PackResponse{}, err
-	}
-	bundleBase64 := ""
-	if s.workspaceStore != nil {
-		bundleBase64, err = s.buildManagedBundle(workspacePath, input.WorkspacePath, input.Target, input.IncludeBundle)
-	} else {
-		bundleBase64, err = s.bundleRules.buildBundle(workspacePath, bundlePath, input.IncludeBundle)
-	}
-	if err != nil {
-		return PackResponse{}, err
-	}
-	if s.workspaceStore != nil {
-		if saveErr := s.workspaceStore.SaveBundle(ctx, input.WorkspacePath, bundlePath, time.Now().UTC()); saveErr != nil {
-			return PackResponse{}, catalog.NewError(500, "internal_error", "Packed bundle could not be persisted.", nil)
-		}
-		bundlePath = workspaceBundleHandle(input.WorkspacePath, input.Target)
-	}
-
-	return PackResponse{
-		WorkspacePath:  input.WorkspacePath,
-		BundlePath:     bundlePath,
-		BundleBase64:   bundleBase64,
-		PackageName:    input.Target.PackageName,
-		Version:        input.Target.Version,
-		ManifestDigest: result.ManifestDigest,
-		Components:     result.Components,
-		Warnings:       result.Warnings,
-		WarningDetails: warningDetails(result.Warnings),
-		ImportReport:   readImportReport(workspacePath, result.Warnings),
-		Errors:         result.Errors,
-	}, nil
+	return result.response, nil
 }
 
 func (s *Service) Cleanup(workspacePath string) error {
@@ -386,6 +360,31 @@ func (s *Service) PackageMetadataContext(ctx context.Context, workspacePath stri
 	}
 	defer unlock()
 
+	if s.workspaceStore != nil {
+		record, err := s.loadManagedWorkspaceRecord(ctx, workspacePath)
+		if err != nil {
+			return nil, err
+		}
+		if len(record.PackageMetadataJSON) > 0 {
+			return decodeWorkspacePackageMetadataJSON(workspacePath, record.PackageMetadataJSON)
+		}
+
+		content, err := os.ReadFile(filepath.Join(record.WorkspacePath, "package.json"))
+		if err != nil {
+			return nil, catalog.NewError(422, "invalid_request", "workspace package.json could not be read.", map[string]any{
+				"workspacePath": workspacePath,
+			})
+		}
+		payload, err := decodeWorkspacePackageMetadataJSON(workspacePath, content)
+		if err != nil {
+			return nil, err
+		}
+		if saveErr := s.workspaceStore.SavePackageMetadata(ctx, workspacePath, content, time.Now().UTC()); saveErr != nil {
+			return nil, catalog.NewError(500, "internal_error", "Failed to persist packaging workspace package metadata cache.", nil)
+		}
+		return payload, nil
+	}
+
 	materializedPath, cleanup, err := s.materializeWorkspace(ctx, workspacePath)
 	if err != nil {
 		return nil, err
@@ -425,13 +424,15 @@ func (s *Service) PublishContext(ctx context.Context, input PublishRequest) (Pub
 	}
 	defer unlock()
 
-	packResponse, err := s.PackContext(ctx, PackRequest{
+	packResult, err := s.packWorkspaceLocked(ctx, PackRequest{
 		WorkspacePath: input.WorkspacePath,
 		Target:        input.Target,
 	})
 	if err != nil {
 		return PublishResponse{}, err
 	}
+	defer packResult.cleanup()
+	packResponse := packResult.response
 	if len(packResponse.Errors) > 0 {
 		return PublishResponse{}, catalog.NewError(422, "bundle_validation_failed", "Bundle validation failed before publish.", map[string]any{
 			"packageName": input.Target.PackageName,
@@ -454,13 +455,13 @@ func (s *Service) PublishContext(ctx context.Context, input PublishRequest) (Pub
 		return PublishResponse{}, releaseErr
 	}
 
-	packageMetadata, err := s.readWorkspacePackageMetadata(ctx, input.WorkspacePath)
+	packageMetadata, err := readWorkspacePackageMetadataFile(input.WorkspacePath, packResult.materializedPath)
 	if err != nil {
 		return PublishResponse{}, err
 	}
-	tarball, err := s.BundleContentContext(ctx, input.WorkspacePath, input.Target)
+	tarball, err := os.ReadFile(packResult.bundlePath)
 	if err != nil {
-		return PublishResponse{}, err
+		return PublishResponse{}, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil)
 	}
 
 	publishErr := s.publisher.PublishPackage(ctx, artifactadapter.NPMPublishInput{
@@ -487,6 +488,154 @@ func (s *Service) PublishContext(ctx context.Context, input PublishRequest) (Pub
 		return PublishResponse{}, packagingCatalogError(err)
 	}
 	return publishResponseFromPack(packResponse, releaseResult, true), nil
+}
+
+func (s *Service) packWorkspaceLocked(ctx context.Context, input PackRequest) (packExecutionResult, error) {
+	if s.workspaceStore != nil {
+		record, err := s.loadManagedWorkspaceRecord(ctx, input.WorkspacePath)
+		if err != nil {
+			return packExecutionResult{}, err
+		}
+
+		result, ok := cachedValidationResult(record.ValidationCache, input.Target)
+		if !ok {
+			result, err = s.bundleRules.validate(record.WorkspacePath, input.Target)
+			if err != nil {
+				return packExecutionResult{}, err
+			}
+			if saveErr := s.workspaceStore.SaveValidationCache(ctx, input.WorkspacePath, workspaceValidationCacheFromResult(input.Target, result), time.Now().UTC()); saveErr != nil {
+				return packExecutionResult{}, catalog.NewError(500, "internal_error", "Failed to persist packaging workspace validation cache.", nil)
+			}
+		}
+
+		response := PackResponse{
+			WorkspacePath:  input.WorkspacePath,
+			PackageName:    input.Target.PackageName,
+			Version:        input.Target.Version,
+			ManifestDigest: result.ManifestDigest,
+			Components:     append([]string(nil), result.Components...),
+			Warnings:       append([]string(nil), result.Warnings...),
+			WarningDetails: warningDetails(result.Warnings),
+			ImportReport:   readImportReport(record.WorkspacePath, result.Warnings),
+			Errors:         append([]string(nil), result.Errors...),
+		}
+		if len(result.Errors) > 0 {
+			return packExecutionResult{
+				response:         response,
+				materializedPath: record.WorkspacePath,
+				cleanup:          func() {},
+			}, nil
+		}
+
+		bundlePath := s.managedBundlePath(input.WorkspacePath, input.Target)
+		if err := s.validateManagedBundlePath(input.WorkspacePath, input.Target, bundlePath); err != nil {
+			return packExecutionResult{}, catalog.NewError(500, "internal_error", "Packed bundle could not be persisted.", nil)
+		}
+		if bundleBase64, ok, err := reuseManagedBundle(record, input, bundlePath); err != nil {
+			return packExecutionResult{}, err
+		} else if ok {
+			response.BundlePath = workspaceBundleHandle(input.WorkspacePath, input.Target)
+			response.BundleBase64 = bundleBase64
+			return packExecutionResult{
+				response:         response,
+				materializedPath: record.WorkspacePath,
+				bundlePath:       bundlePath,
+				cleanup:          func() {},
+			}, nil
+		}
+
+		bundleBase64, err := s.buildManagedBundle(record.WorkspacePath, input.WorkspacePath, input.Target, input.IncludeBundle)
+		if err != nil {
+			return packExecutionResult{}, err
+		}
+		if saveErr := s.workspaceStore.SaveBundle(ctx, input.WorkspacePath, bundlePath, time.Now().UTC()); saveErr != nil {
+			return packExecutionResult{}, catalog.NewError(500, "internal_error", "Packed bundle could not be persisted.", nil)
+		}
+		response.BundlePath = workspaceBundleHandle(input.WorkspacePath, input.Target)
+		response.BundleBase64 = bundleBase64
+		return packExecutionResult{
+			response:         response,
+			materializedPath: record.WorkspacePath,
+			bundlePath:       bundlePath,
+			cleanup:          func() {},
+		}, nil
+	}
+
+	workspacePath, cleanup, err := s.materializeWorkspace(ctx, input.WorkspacePath)
+	if err != nil {
+		return packExecutionResult{}, err
+	}
+
+	result, err := s.bundleRules.validate(workspacePath, input.Target)
+	if err != nil {
+		cleanup()
+		return packExecutionResult{}, err
+	}
+	if s.workspaceStore != nil {
+		if saveErr := s.workspaceStore.SaveValidationCache(ctx, input.WorkspacePath, workspaceValidationCacheFromResult(input.Target, result), time.Now().UTC()); saveErr != nil {
+			cleanup()
+			return packExecutionResult{}, catalog.NewError(500, "internal_error", "Failed to persist packaging workspace validation cache.", nil)
+		}
+	}
+
+	response := PackResponse{
+		WorkspacePath:  input.WorkspacePath,
+		PackageName:    input.Target.PackageName,
+		Version:        input.Target.Version,
+		ManifestDigest: result.ManifestDigest,
+		Components:     result.Components,
+		Warnings:       result.Warnings,
+		WarningDetails: warningDetails(result.Warnings),
+		ImportReport:   readImportReport(workspacePath, result.Warnings),
+		Errors:         result.Errors,
+	}
+	if len(result.Errors) > 0 {
+		return packExecutionResult{
+			response:         response,
+			materializedPath: workspacePath,
+			cleanup:          cleanup,
+		}, nil
+	}
+
+	bundlePath, err := s.workspaceSource.bundlePath(workspacePath, input.Target)
+	if s.workspaceStore != nil {
+		bundlePath = s.managedBundlePath(input.WorkspacePath, input.Target)
+		if err := s.validateManagedBundlePath(input.WorkspacePath, input.Target, bundlePath); err != nil {
+			cleanup()
+			return packExecutionResult{}, catalog.NewError(500, "internal_error", "Packed bundle could not be persisted.", nil)
+		}
+	} else if err != nil {
+		cleanup()
+		return packExecutionResult{}, err
+	}
+
+	bundleBase64 := ""
+	if s.workspaceStore != nil {
+		bundleBase64, err = s.buildManagedBundle(workspacePath, input.WorkspacePath, input.Target, input.IncludeBundle)
+	} else {
+		bundleBase64, err = s.bundleRules.buildBundle(workspacePath, bundlePath, input.IncludeBundle)
+	}
+	if err != nil {
+		cleanup()
+		return packExecutionResult{}, err
+	}
+	if s.workspaceStore != nil {
+		if saveErr := s.workspaceStore.SaveBundle(ctx, input.WorkspacePath, bundlePath, time.Now().UTC()); saveErr != nil {
+			cleanup()
+			return packExecutionResult{}, catalog.NewError(500, "internal_error", "Packed bundle could not be persisted.", nil)
+		}
+		response.BundlePath = workspaceBundleHandle(input.WorkspacePath, input.Target)
+	} else {
+		response.BundlePath = bundlePath
+	}
+	response.BundleBase64 = bundleBase64
+
+	return packExecutionResult{
+		response:         response,
+		materializedPath: workspacePath,
+		bundlePath:       bundlePath,
+		cleanup:          cleanup,
+	}, nil
 }
 
 func (s *Service) PruneExpiredWorkspaces(ttl time.Duration) error {
@@ -621,21 +770,101 @@ type workspacePackageMetadata struct {
 	} `json:"skill"`
 }
 
-func (s *Service) readWorkspacePackageMetadata(ctx context.Context, workspacePath string) (workspacePackageMetadata, error) {
-	rawMetadata, err := s.PackageMetadataContext(ctx, workspacePath)
+func readWorkspacePackageMetadataFile(workspaceHandle string, workspacePath string) (workspacePackageMetadata, error) {
+	content, err := os.ReadFile(filepath.Join(workspacePath, "package.json"))
 	if err != nil {
-		return workspacePackageMetadata{}, err
-	}
-	content, err := json.Marshal(rawMetadata)
-	if err != nil {
-		return workspacePackageMetadata{}, catalog.NewError(500, "internal_error", "workspace package metadata could not be decoded.", nil)
+		return workspacePackageMetadata{}, catalog.NewError(422, "invalid_request", "workspace package.json could not be read.", map[string]any{
+			"workspacePath": workspaceHandle,
+		})
 	}
 
 	var payload workspacePackageMetadata
 	if err := json.Unmarshal(content, &payload); err != nil {
-		return workspacePackageMetadata{}, catalog.NewError(500, "internal_error", "workspace package metadata could not be decoded.", nil)
+		return workspacePackageMetadata{}, catalog.NewError(422, "invalid_request", "workspace package.json is invalid JSON.", map[string]any{
+			"workspacePath": workspaceHandle,
+		})
 	}
 	return payload, nil
+}
+
+func decodeWorkspacePackageMetadataJSON(workspaceHandle string, content []byte) (map[string]any, error) {
+	var payload map[string]any
+	if err := json.Unmarshal(content, &payload); err != nil {
+		return nil, catalog.NewError(422, "invalid_request", "workspace package.json is invalid JSON.", map[string]any{
+			"workspacePath": workspaceHandle,
+		})
+	}
+	return payload, nil
+}
+
+func reuseManagedBundle(record persist.WorkspaceRecord, input PackRequest, expectedBundlePath string) (string, bool, error) {
+	if strings.TrimSpace(record.BundlePath) == "" {
+		return "", false, nil
+	}
+	if filepath.Clean(record.BundlePath) != filepath.Clean(expectedBundlePath) {
+		return "", false, catalog.NewError(500, "internal_error", "Packed bundle could not be persisted.", nil)
+	}
+
+	info, err := os.Stat(record.BundlePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", false, nil
+		}
+		return "", false, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil)
+	}
+	if info.IsDir() {
+		return "", false, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil)
+	}
+	if !input.IncludeBundle {
+		return "", true, nil
+	}
+
+	content, err := os.ReadFile(record.BundlePath)
+	if err != nil {
+		return "", false, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil)
+	}
+	return base64.StdEncoding.EncodeToString(content), true, nil
+}
+
+func workspaceValidationCacheFromResult(target Target, result validationResult) persist.WorkspaceValidationCache {
+	return persist.WorkspaceValidationCache{
+		PackageName:    target.PackageName,
+		Version:        target.Version,
+		ManifestDigest: result.ManifestDigest,
+		Components:     append([]string(nil), result.Components...),
+		Warnings:       append([]string(nil), result.Warnings...),
+		Errors:         append([]string(nil), result.Errors...),
+	}
+}
+
+func cachedValidationResult(cache *persist.WorkspaceValidationCache, target Target) (validationResult, bool) {
+	if cache == nil {
+		return validationResult{}, false
+	}
+	if cache.PackageName != target.PackageName || cache.Version != target.Version {
+		return validationResult{}, false
+	}
+	return validationResult{
+		ManifestDigest: cache.ManifestDigest,
+		Components:     append([]string(nil), cache.Components...),
+		Warnings:       append([]string(nil), cache.Warnings...),
+		Errors:         append([]string(nil), cache.Errors...),
+	}, true
+}
+
+func validateResponseFromResult(input ValidateRequest, result validationResult, workspacePath string) ValidateResponse {
+	return ValidateResponse{
+		OK:             len(result.Errors) == 0,
+		WorkspacePath:  input.WorkspacePath,
+		PackageName:    input.Target.PackageName,
+		Version:        input.Target.Version,
+		ManifestDigest: result.ManifestDigest,
+		Components:     append([]string(nil), result.Components...),
+		Warnings:       append([]string(nil), result.Warnings...),
+		WarningDetails: warningDetails(result.Warnings),
+		ImportReport:   readImportReport(workspacePath, result.Warnings),
+		Errors:         append([]string(nil), result.Errors...),
+	}
 }
 
 func publishResponseFromPack(packResponse PackResponse, releaseResult catalog.ReleaseRecordResult, publishedToRegistry bool) PublishResponse {
