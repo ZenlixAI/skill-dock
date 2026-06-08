@@ -38,11 +38,16 @@ func NewSQLWorkspaceStore(ctx context.Context, databaseURL string) (*SQLWorkspac
 	if err != nil {
 		return nil, err
 	}
-	store := &SQLWorkspaceStore{db: db, dialect: dialect}
+	store := newSQLWorkspaceStore(db, dialect)
 	if err := store.Migrate(ctx); err != nil {
+		_ = db.Close()
 		return nil, err
 	}
 	return store, nil
+}
+
+func newSQLWorkspaceStore(db *sql.DB, dialect string) *SQLWorkspaceStore {
+	return &SQLWorkspaceStore{db: db, dialect: dialect}
 }
 
 func (s *SQLWorkspaceStore) Migrate(ctx context.Context) error {

@@ -59,7 +59,7 @@ export function derivePackagingViewState({
         label: '就绪',
       }
     : {
-        detail: '等待工作目录',
+        detail: '等待 workspace handle',
         tone: 'warn',
         label: '等待中',
       };
@@ -102,7 +102,7 @@ export function derivePackagingViewState({
         : currentStage === 'validated'
           ? '校验完成，等待打包。'
           : currentStage === 'prepared'
-            ? 'workspace 已准备，建议继续 validate。'
+            ? 'workspace handle 已准备，建议继续 validate。'
             : '先填写 source 和 target。',
     activeStepIndex: publishResult || packResult ? 3 : validateResult ? 2 : prepareResult ? 1 : 0,
     canValidate: Boolean(prepareResult?.workspacePath),

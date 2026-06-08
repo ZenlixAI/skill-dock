@@ -84,15 +84,19 @@ func NewSQLAuditStore(ctx context.Context, databaseURL string) (*SQLAuditStore, 
 	if err != nil {
 		return nil, err
 	}
-	store := &SQLAuditStore{
-		db:      db,
-		dialect: auditSQLDialectForDriver(driver),
-	}
+	store := newSQLAuditStore(db, auditSQLDialectForDriver(driver))
 	if err := store.migrate(ctx); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
 	return store, nil
+}
+
+func newSQLAuditStore(db *sql.DB, dialect string) *SQLAuditStore {
+	return &SQLAuditStore{
+		db:      db,
+		dialect: dialect,
+	}
 }
 
 func (s *SQLAuditStore) Append(ctx context.Context, event AuditEvent) error {

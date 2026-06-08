@@ -39,15 +39,20 @@ func NewSQLIdempotencyStore(ctx context.Context, databaseURL string, ttl time.Du
 	if err != nil {
 		return nil, err
 	}
-	store := &SQLIdempotencyStore{
+	store := newSQLIdempotencyStore(db, dialect, ttl)
+	if err := store.Migrate(ctx); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return store, nil
+}
+
+func newSQLIdempotencyStore(db *sql.DB, dialect string, ttl time.Duration) *SQLIdempotencyStore {
+	return &SQLIdempotencyStore{
 		db:      db,
 		dialect: dialect,
 		ttl:     ttl,
 	}
-	if err := store.Migrate(ctx); err != nil {
-		return nil, err
-	}
-	return store, nil
 }
 
 func (s *SQLIdempotencyStore) Migrate(ctx context.Context) error {

@@ -384,7 +384,7 @@ export function ImportPage() {
     };
   }
 
-  async function runPrepare(successMessage = 'prepare 完成，已经拿到 workspacePath 和 import review 数据。') {
+  async function runPrepare(successMessage = 'prepare 完成，已经拿到 workspace handle 和 import review 数据。') {
     if (sourceType === 'platform_authoring' && authoringError) {
       setOperationState({
         loading: false,
@@ -1070,9 +1070,9 @@ export function ImportPage() {
                     <p>{workflow.currentStageSummary}</p>
                   </article>
                   <article className="console-signal">
-                    <span>工作目录</span>
+                    <span>workspace handle</span>
                     <strong>{workflow.workspaceStatus}</strong>
-                    <p>{prepareResult?.workspacePath || 'prepare 之后这里会出现临时工作目录。'}</p>
+                    <p>{prepareResult?.workspacePath || 'prepare 之后这里会出现 workspace handle。'}</p>
                   </article>
                   <article className="console-signal">
                     <span>发布交接</span>
@@ -1142,7 +1142,7 @@ export function ImportPage() {
                       onClick={() => void handleCleanup()}
                       type="button"
                     >
-                      {operationState.loading === 'cleanup' ? '清理中…' : '丢弃工作目录'}
+                      {operationState.loading === 'cleanup' ? '清理中…' : '清理 workspace'}
                     </button>
                   </PermissionGate>
                 </div>
@@ -1297,7 +1297,7 @@ export function ImportPage() {
               >
                 <dl className="property-list">
                   <div>
-                    <dt>工作目录</dt>
+                    <dt>workspace handle</dt>
                     <dd>{reviewData.workspacePath}</dd>
                   </div>
                   {hasBundlePath(reviewData) ? (

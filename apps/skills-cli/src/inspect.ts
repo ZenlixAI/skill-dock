@@ -96,7 +96,7 @@ export async function runInspect(args: string[] = []): Promise<void> {
     console.log(`version: ${result.version}`);
   }
   if (isRegistryPackagingSuccess(result)) {
-    console.log(`workspace: ${result.workspacePath}`);
+    console.log(`workspace_handle: ${result.workspacePath}`);
     const importSummary = formatImportReportSummary(result.importReport);
     if (importSummary.length > 0) {
       console.log('Import summary:');

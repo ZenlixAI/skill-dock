@@ -187,8 +187,9 @@ export const mockClient: RegistryApiClient = {
   async preparePackaging(request: PackagingPrepareRequest) {
     const warningDetails = request.options.strict ? [] : previewWarningDetails;
     const warnings = warningDetails.map((item) => item.code);
+    const workspaceHandle = `ws_${request.target.packageName.split('/').pop() || 'skill'}_${request.target.version.replaceAll('.', '_')}`;
     const response: PackagingPrepareResponse = {
-      workspacePath: `/tmp/skill-packager/${request.target.packageName.split('/').pop() || 'skill'}`,
+      workspacePath: workspaceHandle,
       packageName: request.target.packageName,
       version: request.target.version,
       warnings,
@@ -257,7 +258,7 @@ export const mockClient: RegistryApiClient = {
   async packSkill(request: PackagingPackRequest) {
     const response: PackagingPackResponse = {
       workspacePath: request.workspacePath,
-      bundlePath: `/tmp/skill-packager/${request.target.packageName.split('/').pop() || 'skill'}-${request.target.version}.tgz`,
+      bundlePath: `bundle://${request.target.packageName}/${request.target.version}`,
       bundleBase64: request.includeBundle ? 'c2tpbGwtYnVuZGxl' : undefined,
       packageName: request.target.packageName,
       version: request.target.version,

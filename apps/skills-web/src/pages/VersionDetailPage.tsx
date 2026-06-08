@@ -288,7 +288,7 @@ export function VersionDetailPage() {
         >
           <dl className="property-list">
             <div>
-              <dt>工作目录</dt>
+              <dt>workspace handle</dt>
               <dd>{handoff.workspacePath || '—'}</dd>
             </div>
             <div>

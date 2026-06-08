@@ -111,6 +111,22 @@ describe('packaging workflow view state', () => {
     });
   });
 
+  it('describes the draft state with an opaque workspace handle instead of a local directory', () => {
+    const state = derivePackagingViewState({
+      prepareResult: null,
+      validateResult: null,
+      packResult: null,
+      publishResult: null,
+      publishRegistry: 'https://npm.internal.example.com',
+    });
+
+    expect(state.prepareReadiness).toEqual({
+      detail: '等待 workspace handle',
+      tone: 'warn',
+      label: '等待中',
+    });
+  });
+
   it('shows the published stage once backend publish succeeds', () => {
     const state = derivePackagingViewState({
       prepareResult: {

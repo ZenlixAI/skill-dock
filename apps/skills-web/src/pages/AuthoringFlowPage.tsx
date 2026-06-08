@@ -144,7 +144,7 @@ export function AuthoringFlowPage() {
               <dd>{handoff.version || '—'}</dd>
             </div>
             <div>
-              <dt>工作目录</dt>
+              <dt>workspace handle</dt>
               <dd>{handoff.workspacePath || '—'}</dd>
             </div>
             <div>

@@ -212,7 +212,7 @@ description: API-backed inspect
       publishRegistry: undefined,
       components: ['commands'],
       errors: [],
-      workspacePath: '/tmp/workspace',
+      workspacePath: 'ws_shared_123',
       idempotencyKey: 'packaging-test-key',
       manifestDigest: 'sha256:test',
     });
@@ -224,6 +224,7 @@ description: API-backed inspect
       registry: 'https://flag.example.com',
     });
     expect(logSpy).toHaveBeenCalledWith('Inspect OK');
+    expect(logSpy).toHaveBeenCalledWith('workspace_handle: ws_shared_123');
     expect(process.exitCode).toBeUndefined();
   });
 
