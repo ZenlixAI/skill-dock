@@ -118,7 +118,7 @@ make cli-update CLI_ARGS="@company.skill/pdf-skill -g"
   - `init` / `inspect` 走 `authoring-secret`
   - `publish` / `import-local` 走 `publisher-secret`
 - 对支持 Catalog 的命令，`make cli` 会自动补 `--registry http://127.0.0.1:18080`
-- 对 `import-local + NPM_BACKEND=nexus`，`make cli` 会自动补 `--npm-registry http://127.0.0.1:18080/repository/skills-npm/`
+- 对 `import-local + NPM_BACKEND=nexus`，`make cli` 会自动补 `--npm-registry http://127.0.0.1:8081/repository/skills-npm/`
 - `make cli-find` / `cli-add` / `cli-publish` / `cli-import-local` / `cli-list` / `cli-remove` / `cli-update` / `cli-init` / `cli-inspect` 都保留着，但现在只是对 `make cli` 的薄封装
 - 需要切换 npm 仓场景时，通过 `NPM_BACKEND=nexus`
 - 安装内容会落到当前工作目录下的 `./.agents/skills/`
