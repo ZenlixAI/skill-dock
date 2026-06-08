@@ -137,7 +137,7 @@ make cli-update CLI_ARGS="@company.skill/pdf-skill -g"
 真实用户通常这样用：
 
 ```bash
-export SKILLS_REGISTRY_URL=https://skills.example.com/api
+export SKILLS_REGISTRY_URL=https://skills.example.com
 export SKILLS_REGISTRY_TOKEN=reader-or-publisher-token
 
 skills find pdf

@@ -48,7 +48,7 @@
 - `skill_registry_public_npm_registry_url`
   - 这是返回给外部 CLI 的地址
   - 推荐值：`https://skills.example.com/repository/skills-npm/`
-  - 它和 `SKILLS_REGISTRY_URL=https://skills.example.com/api` 共用同一个公共 host
+  - 它和 `SKILLS_REGISTRY_URL=https://skills.example.com` 共用同一个公共 host
 
 ## 2. 部署命令
 
@@ -203,7 +203,7 @@ kubectl -n skill-registry get ingressroute
 ### 4.1 查询 / 安装
 
 ```bash
-export SKILLS_REGISTRY_URL=https://skills.example.com/api
+export SKILLS_REGISTRY_URL=https://skills.example.com
 export SKILLS_REGISTRY_TOKEN=<reader-token>
 
 npx --registry https://skills.example.com/repository/skills-npm/ skills --help
@@ -216,7 +216,7 @@ skills add @company.skill/pdf-skill -y
 ### 4.2 发布 / 导入
 
 ```bash
-export SKILLS_REGISTRY_URL=https://skills.example.com/api
+export SKILLS_REGISTRY_URL=https://skills.example.com
 export SKILLS_REGISTRY_TOKEN=<publisher-token>
 export NPM_CONFIG_USERCONFIG=/path/to/.npmrc
 

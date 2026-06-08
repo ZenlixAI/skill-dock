@@ -154,7 +154,7 @@
   - `http://nexus.repo.svc.cluster.local/repository/skills-npm/`
 - CLI 外部地址：
   - `https://skills.example.com/repository/skills-npm/`
-  - 它和 `SKILLS_REGISTRY_URL=https://skills.example.com/api` 共用同一个公共 host
+  - 它和 `SKILLS_REGISTRY_URL=https://skills.example.com` 共用同一个公共 host
   - 兼容模式：如果你已经单独暴露 `nexus.example.com`，仍可继续把 `SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL` 指向 `https://nexus.example.com/repository/skills-npm/`；统一入口只是新的默认推荐。
 
 如果这两个值配反，最常见表现是：
@@ -322,15 +322,15 @@ npm install -g skills --registry https://skills.example.com/repository/skills-np
 给 CLI 配 Catalog 地址和 token：
 
 ```bash
-export SKILLS_REGISTRY_URL=https://skills.example.com/api
+export SKILLS_REGISTRY_URL=https://skills.example.com
 export SKILLS_REGISTRY_TOKEN=<reader-token>
 ```
 
 或显式传参：
 
 ```bash
-skills find pdf --registry https://skills.example.com/api
-skills add @company.skill/pdf-skill --registry https://skills.example.com/api
+skills find pdf --registry https://skills.example.com
+skills add @company.skill/pdf-skill --registry https://skills.example.com
 ```
 
 适用命令：
@@ -355,7 +355,7 @@ registry=https://skills.example.com/repository/skills-npm/
 典型环境变量：
 
 ```bash
-export SKILLS_REGISTRY_URL=https://skills.example.com/api
+export SKILLS_REGISTRY_URL=https://skills.example.com
 export SKILLS_REGISTRY_TOKEN=<publisher-token>
 export NPM_CONFIG_USERCONFIG=/abs/path/to/.npmrc
 ```
@@ -458,7 +458,7 @@ skills --help
 ### Step 8. 验证只读链路
 
 ```bash
-export SKILLS_REGISTRY_URL=https://skills.example.com/api
+export SKILLS_REGISTRY_URL=https://skills.example.com
 export SKILLS_REGISTRY_TOKEN=<reader-token>
 
 skills find pdf
@@ -479,7 +479,7 @@ skills add @company.skill/pdf-skill -a codex -y
 ### Step 10. 验证发布链路
 
 ```bash
-export SKILLS_REGISTRY_URL=https://skills.example.com/api
+export SKILLS_REGISTRY_URL=https://skills.example.com
 export SKILLS_REGISTRY_TOKEN=<publisher-token>
 export NPM_CONFIG_USERCONFIG=/abs/path/to/.npmrc
 
@@ -492,7 +492,7 @@ skills publish /abs/path/to/skill
 skills import-local /abs/path/to/legacy-skill \
   --package-name @company.skill/legacy-skill \
   --version 0.1.0 \
-  --registry https://skills.example.com/api \
+  --registry https://skills.example.com \
   --npm-registry https://skills.example.com/repository/skills-npm/ \
   --publish-registry https://skills.example.com/repository/skills-npm/
 ```
@@ -502,7 +502,7 @@ skills import-local /abs/path/to/legacy-skill \
 ### 10.1 只读验证
 
 ```bash
-export SKILLS_REGISTRY_URL=https://skills.example.com/api
+export SKILLS_REGISTRY_URL=https://skills.example.com
 export SKILLS_REGISTRY_TOKEN=<reader-token>
 
 skills find pdf
