@@ -70,6 +70,10 @@ function isNetworkMessage(message: string) {
   );
 }
 
+function isMissingPackagingWorkspaceMessage(message: string) {
+  return message.toLowerCase().includes('workspacepath must reference an existing directory');
+}
+
 export function normalizeRegistryError(input: {
   status?: number;
   message: string;
@@ -103,6 +107,15 @@ export function normalizeRegistryError(input: {
     return {
       kind: 'server',
       message: input.message,
+      requestId: input.requestId,
+    };
+  }
+
+  if (input.status === 422 && isMissingPackagingWorkspaceMessage(input.message)) {
+    return {
+      kind: 'unknown',
+      message:
+        'Packaging workspace is no longer available. If Catalog is running with multiple replicas, scale `catalog` down to 1 replica for prepare/validate/pack flows, then retry.',
       requestId: input.requestId,
     };
   }

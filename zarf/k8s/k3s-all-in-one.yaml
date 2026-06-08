@@ -336,7 +336,9 @@ metadata:
   name: catalog
   namespace: skill-registry
 spec:
-  replicas: 2
+  # Packaging workspaces live on the Catalog pod local filesystem, so
+  # prepare/validate/pack flows currently require a single Catalog replica.
+  replicas: 1
   selector:
     matchLabels:
       app: catalog

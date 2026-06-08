@@ -58,6 +58,21 @@ describe('normalizeRegistryError', () => {
       requestId: undefined,
     });
   });
+
+  it('turns missing packaging workspace errors into an actionable operator hint', () => {
+    expect(
+      normalizeRegistryError({
+        status: 422,
+        message: 'invalid_request: workspacePath must reference an existing directory.',
+        requestId: 'req-789',
+      })
+    ).toEqual({
+      kind: 'unknown',
+      message:
+        'Packaging workspace is no longer available. If Catalog is running with multiple replicas, scale `catalog` down to 1 replica for prepare/validate/pack flows, then retry.',
+      requestId: 'req-789',
+    });
+  });
 });
 
 describe('normalizeThrownRegistryError', () => {
