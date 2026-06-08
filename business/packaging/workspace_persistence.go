@@ -1,11 +1,8 @@
 package packaging
 
 import (
-	"archive/tar"
-	"bytes"
-	"compress/gzip"
 	"context"
-	"io"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,19 +12,28 @@ import (
 	"skill_registry/foundation/persist"
 )
 
-func (s *Service) persistWorkspaceSnapshot(ctx context.Context, workspacePath string) (string, error) {
+func (s *Service) persistManagedWorkspace(ctx context.Context, workspacePath string) (string, string, error) {
 	if err := packagingContextError(ctx); err != nil {
-		return "", err
+		return "", "", err
 	}
-	snapshot, err := archiveWorkspace(ctx, workspacePath)
-	if err != nil {
-		return "", catalog.NewError(500, "internal_error", "Failed to persist packaging workspace.", nil)
-	}
+
 	workspaceID := workspaceHandle()
-	if err := s.workspaceStore.SaveWorkspace(ctx, workspaceID, snapshot, time.Now().UTC()); err != nil {
-		return "", catalog.NewError(500, "internal_error", "Failed to persist packaging workspace.", nil)
+	managedWorkspace := s.managedWorkspacePath(workspaceID)
+	managedRoot, err := s.managedWorkspaceRootFromPath(workspaceID, managedWorkspace)
+	if err != nil {
+		return "", "", catalog.NewError(500, "internal_error", "Failed to persist packaging workspace.", nil)
 	}
-	return workspaceID, nil
+	if err := os.MkdirAll(managedRoot, 0o755); err != nil {
+		return "", "", catalog.NewError(500, "internal_error", "Failed to persist packaging workspace.", nil)
+	}
+	if err := os.Rename(workspacePath, managedWorkspace); err != nil {
+		return "", "", catalog.NewError(500, "internal_error", "Failed to persist packaging workspace.", nil)
+	}
+	if err := s.workspaceStore.SaveWorkspace(ctx, workspaceID, managedWorkspace, time.Now().UTC()); err != nil {
+		_ = os.RemoveAll(managedRoot)
+		return "", "", catalog.NewError(500, "internal_error", "Failed to persist packaging workspace.", nil)
+	}
+	return workspaceID, managedWorkspace, nil
 }
 
 func (s *Service) materializeWorkspace(ctx context.Context, workspacePath string) (string, func(), error) {
@@ -45,155 +51,66 @@ func (s *Service) materializeWorkspace(ctx context.Context, workspacePath string
 		}
 		return "", nil, catalog.NewError(500, "internal_error", "Failed to load packaging workspace.", nil)
 	}
-
-	tempWorkspace, err := os.MkdirTemp(s.workspaceSource.tempRoot, "skill-packaging-materialized-*")
-	if err != nil {
-		return "", nil, catalog.NewError(500, "internal_error", "Failed to materialize packaging workspace.", nil)
+	if _, err := s.managedWorkspaceRootFromPath(workspacePath, record.WorkspacePath); err != nil {
+		return "", nil, catalog.NewError(500, "internal_error", "Failed to load packaging workspace.", nil)
 	}
-	if err := extractWorkspaceArchive(ctx, record.Snapshot, tempWorkspace); err != nil {
-		_ = os.RemoveAll(tempWorkspace)
-		return "", nil, err
+	info, err := os.Stat(record.WorkspacePath)
+	if err != nil || !info.IsDir() {
+		if errors.Is(err, os.ErrNotExist) || err == nil {
+			return "", nil, catalog.NewError(422, "invalid_request", "workspacePath must reference an existing packaging workspace.", map[string]any{"workspacePath": workspacePath})
+		}
+		return "", nil, catalog.NewError(500, "internal_error", "Failed to load packaging workspace.", nil)
 	}
 
-	return tempWorkspace, func() { _ = os.RemoveAll(tempWorkspace) }, nil
+	return record.WorkspacePath, func() {}, nil
 }
 
-func archiveWorkspace(ctx context.Context, workspacePath string) ([]byte, error) {
-	var compressed bytes.Buffer
-	gzipWriter := gzip.NewWriter(&compressed)
-	tarWriter := tar.NewWriter(gzipWriter)
+func (s *Service) managedWorkspacePath(workspaceID string) string {
+	return filepath.Join(s.workspaceRoot, workspaceID, "workspace")
+}
 
-	walkErr := filepath.WalkDir(workspacePath, func(path string, entry os.DirEntry, err error) error {
-		if ctxErr := packagingContextError(ctx); ctxErr != nil {
-			return ctxErr
-		}
-		if err != nil {
-			return err
-		}
-		if path == workspacePath {
-			return nil
-		}
-		relativePath, err := filepath.Rel(workspacePath, path)
-		if err != nil {
-			return err
-		}
-		relativePath = filepath.ToSlash(relativePath)
-		if shouldIgnoreWorkspaceSnapshotPath(relativePath) {
-			if entry.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
+func (s *Service) managedBundlePath(workspaceID string, target Target) string {
+	return filepath.Join(s.workspaceRoot, workspaceID, ".dist", packageBasename(target.PackageName)+"-"+target.Version+".tgz")
+}
 
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-
-		header, err := tar.FileInfoHeader(info, "")
-		if err != nil {
-			return err
-		}
-		header.Name = relativePath
-		if entry.IsDir() && !strings.HasSuffix(header.Name, "/") {
-			header.Name += "/"
-		}
-		if err := tarWriter.WriteHeader(header); err != nil {
-			return err
-		}
-		if entry.IsDir() {
-			return nil
-		}
-
-		if ctxErr := packagingContextError(ctx); ctxErr != nil {
-			return ctxErr
-		}
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		_, err = tarWriter.Write(content)
+func ensureManagedPathWithinRoot(root string, path string) error {
+	if strings.TrimSpace(root) == "" || strings.TrimSpace(path) == "" {
+		return errors.New("managed path is required")
+	}
+	relativePath, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
+	if err != nil {
 		return err
-	})
-	if walkErr != nil {
-		_ = tarWriter.Close()
-		_ = gzipWriter.Close()
-		return nil, walkErr
 	}
-	if err := tarWriter.Close(); err != nil {
-		_ = gzipWriter.Close()
-		return nil, err
+	if relativePath == ".." || strings.HasPrefix(relativePath, ".."+string(filepath.Separator)) {
+		return errors.New("managed path must stay within root")
 	}
-	if err := gzipWriter.Close(); err != nil {
-		return nil, err
-	}
-	return compressed.Bytes(), nil
+	return nil
 }
 
-func extractWorkspaceArchive(ctx context.Context, archive []byte, workspacePath string) error {
-	gzipReader, err := gzip.NewReader(bytes.NewReader(archive))
-	if err != nil {
-		return catalog.NewError(500, "internal_error", "Persisted packaging workspace is unreadable.", nil)
-	}
-	defer gzipReader.Close()
-
-	tarReader := tar.NewReader(gzipReader)
-	for {
-		if ctxErr := packagingContextError(ctx); ctxErr != nil {
-			return ctxErr
-		}
-		header, err := tarReader.Next()
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return catalog.NewError(500, "internal_error", "Persisted packaging workspace is unreadable.", nil)
-		}
-
-		targetPath, resolveErr := resolveWorkspacePath(workspacePath, header.Name)
-		if resolveErr != nil {
-			return resolveErr
-		}
-
-		switch header.Typeflag {
-		case tar.TypeDir:
-			if err := os.MkdirAll(targetPath, 0o755); err != nil {
-				return catalog.NewError(500, "internal_error", "Failed to materialize packaging workspace.", nil)
-			}
-		case tar.TypeReg, tar.TypeRegA:
-			if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
-				return catalog.NewError(500, "internal_error", "Failed to materialize packaging workspace.", nil)
-			}
-			if ctxErr := packagingContextError(ctx); ctxErr != nil {
-				return ctxErr
-			}
-			content, err := io.ReadAll(tarReader)
-			if err != nil {
-				return catalog.NewError(500, "internal_error", "Failed to materialize packaging workspace.", nil)
-			}
-			if ctxErr := packagingContextError(ctx); ctxErr != nil {
-				return ctxErr
-			}
-			if err := os.WriteFile(targetPath, content, 0o644); err != nil {
-				return catalog.NewError(500, "internal_error", "Failed to materialize packaging workspace.", nil)
-			}
-		default:
-			return catalog.NewError(500, "internal_error", "Persisted packaging workspace contains an unsupported entry.", nil)
-		}
-	}
+func (s *Service) managedWorkspaceRoot(workspaceID string) string {
+	return filepath.Join(s.workspaceRoot, workspaceID)
 }
 
-func shouldIgnoreWorkspaceSnapshotPath(relativePath string) bool {
-	cleanPath := filepath.ToSlash(filepath.Clean(strings.TrimSpace(relativePath)))
-	if cleanPath == "." || cleanPath == "" {
-		return false
+func (s *Service) managedWorkspaceRootFromPath(workspaceID string, workspacePath string) (string, error) {
+	expectedWorkspace := filepath.Clean(s.managedWorkspacePath(workspaceID))
+	actualWorkspace := filepath.Clean(workspacePath)
+	if actualWorkspace != expectedWorkspace {
+		return "", errors.New("managed workspace path must match canonical layout")
 	}
-	for _, segment := range strings.Split(cleanPath, "/") {
-		if segment == ".dist" {
-			return true
-		}
+	managedRoot := s.managedWorkspaceRoot(workspaceID)
+	if err := ensureManagedPathWithinRoot(s.workspaceRoot, managedRoot); err != nil {
+		return "", err
 	}
-	return false
+	return managedRoot, nil
+}
+
+func (s *Service) validateManagedBundlePath(workspaceID string, target Target, bundlePath string) error {
+	expectedBundle := filepath.Clean(s.managedBundlePath(workspaceID, target))
+	actualBundle := filepath.Clean(bundlePath)
+	if actualBundle != expectedBundle {
+		return errors.New("managed bundle path must match canonical layout")
+	}
+	return ensureManagedPathWithinRoot(s.workspaceRoot, actualBundle)
 }
 
 func workspaceHandle() string {

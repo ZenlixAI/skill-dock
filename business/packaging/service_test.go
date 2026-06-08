@@ -7,12 +7,14 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -480,6 +482,280 @@ func TestCleanupExpiredWorkspaces(t *testing.T) {
 	}
 }
 
+func TestPrepareWithWorkspaceStoreMovesWorkspaceIntoManagedRoot(t *testing.T) {
+	root := t.TempDir()
+	store := newMemoryWorkspaceStore()
+	service := NewServiceWithWorkspaceStore(root, store)
+
+	resp, err := service.Prepare(PrepareRequest{
+		Source: Source{
+			Type: "platform_authoring",
+			Files: map[string]string{
+				"docs/README.md": "# Capability\n",
+			},
+		},
+		Target:   Target{PackageName: "@platform.skill/managed", Version: "1.0.0"},
+		Metadata: Metadata{DisplayName: "managed", Description: "desc", SourceType: "native"},
+	})
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+
+	if filepath.IsAbs(resp.WorkspacePath) {
+		t.Fatalf("expected workspace handle, got absolute path %q", resp.WorkspacePath)
+	}
+
+	managedWorkspace := filepath.Join(root, resp.WorkspacePath, "workspace")
+	if _, err := os.Stat(filepath.Join(managedWorkspace, "SKILL.md")); err != nil {
+		t.Fatalf("expected managed workspace SKILL.md: %v", err)
+	}
+
+	validateResp, err := service.Validate(ValidateRequest{
+		WorkspacePath: resp.WorkspacePath,
+		Target:        Target{PackageName: "@platform.skill/managed", Version: "1.0.0"},
+	})
+	if err != nil {
+		t.Fatalf("validate managed workspace: %v", err)
+	}
+	if !validateResp.OK {
+		t.Fatalf("expected managed workspace validate to succeed, got errors %#v", validateResp.Errors)
+	}
+
+	metadata, err := service.PackageMetadata(resp.WorkspacePath)
+	if err != nil {
+		t.Fatalf("package metadata from managed workspace: %v", err)
+	}
+	if metadata["name"] != "@platform.skill/managed" {
+		t.Fatalf("expected package metadata name, got %#v", metadata["name"])
+	}
+
+	record, err := store.LoadWorkspace(context.Background(), resp.WorkspacePath)
+	if err != nil {
+		t.Fatalf("load stored workspace metadata: %v", err)
+	}
+	if record.WorkspacePath != managedWorkspace {
+		t.Fatalf("expected stored managed workspace path %q, got %q", managedWorkspace, record.WorkspacePath)
+	}
+}
+
+func TestBundleContentReusesPersistedBundlePath(t *testing.T) {
+	root := t.TempDir()
+	store := newMemoryWorkspaceStore()
+	service := NewServiceWithWorkspaceStore(root, store)
+
+	prepareResp, err := service.Prepare(PrepareRequest{
+		Source: Source{
+			Type: "platform_authoring",
+			Files: map[string]string{
+				"docs/README.md": "# Capability\n",
+			},
+		},
+		Target:   Target{PackageName: "@platform.skill/managed", Version: "1.0.0"},
+		Metadata: Metadata{DisplayName: "managed", Description: "desc", SourceType: "native"},
+	})
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+
+	packResp, err := service.Pack(PackRequest{
+		WorkspacePath: prepareResp.WorkspacePath,
+		Target:        Target{PackageName: "@platform.skill/managed", Version: "1.0.0"},
+	})
+	if err != nil {
+		t.Fatalf("pack: %v", err)
+	}
+	if !strings.HasPrefix(packResp.BundlePath, "workspace://") {
+		t.Fatalf("expected external bundle handle, got %q", packResp.BundlePath)
+	}
+
+	first, err := service.BundleContent(prepareResp.WorkspacePath, Target{PackageName: "@platform.skill/managed", Version: "1.0.0"})
+	if err != nil {
+		t.Fatalf("first bundle read: %v", err)
+	}
+	second, err := service.BundleContent(prepareResp.WorkspacePath, Target{PackageName: "@platform.skill/managed", Version: "1.0.0"})
+	if err != nil {
+		t.Fatalf("second bundle read: %v", err)
+	}
+	if !bytes.Equal(first, second) {
+		t.Fatal("expected stable persisted bundle content")
+	}
+
+	record, err := store.LoadWorkspace(context.Background(), prepareResp.WorkspacePath)
+	if err != nil {
+		t.Fatalf("load stored workspace metadata: %v", err)
+	}
+	if record.BundlePath == "" {
+		t.Fatal("expected persisted bundle path")
+	}
+	if _, err := os.Stat(record.BundlePath); err != nil {
+		t.Fatalf("expected persisted bundle file to exist: %v", err)
+	}
+}
+
+func TestCleanupWithWorkspaceStoreRemovesManagedWorkspaceTree(t *testing.T) {
+	root := t.TempDir()
+	store := newMemoryWorkspaceStore()
+	service := NewServiceWithWorkspaceStore(root, store)
+
+	prepareResp, err := service.Prepare(PrepareRequest{
+		Source: Source{
+			Type: "platform_authoring",
+			Files: map[string]string{
+				"docs/README.md": "# Capability\n",
+			},
+		},
+		Target:   Target{PackageName: "@platform.skill/managed", Version: "1.0.0"},
+		Metadata: Metadata{DisplayName: "managed", Description: "desc", SourceType: "native"},
+	})
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+
+	if _, err := service.Pack(PackRequest{
+		WorkspacePath: prepareResp.WorkspacePath,
+		Target:        Target{PackageName: "@platform.skill/managed", Version: "1.0.0"},
+	}); err != nil {
+		t.Fatalf("pack: %v", err)
+	}
+
+	managedRoot := filepath.Join(root, prepareResp.WorkspacePath)
+	if err := service.Cleanup(prepareResp.WorkspacePath); err != nil {
+		t.Fatalf("cleanup with workspace store: %v", err)
+	}
+	if _, err := os.Stat(managedRoot); !os.IsNotExist(err) {
+		t.Fatalf("expected managed root to be removed, got err=%v", err)
+	}
+	if _, err := store.LoadWorkspace(context.Background(), prepareResp.WorkspacePath); !errors.Is(err, persist.ErrWorkspaceRecordNotFound) {
+		t.Fatalf("expected store row to be removed, got %v", err)
+	}
+}
+
+func TestCleanupWithWorkspaceStoreRejectsNonCanonicalManagedWorkspacePath(t *testing.T) {
+	root := t.TempDir()
+	store := newMemoryWorkspaceStore()
+	service := NewServiceWithWorkspaceStore(root, store)
+
+	poisonRoot := filepath.Join(root, "ws-poison")
+	poisonPath := filepath.Join(poisonRoot, "unexpected")
+	if err := os.MkdirAll(poisonPath, 0o755); err != nil {
+		t.Fatalf("mkdir poison path: %v", err)
+	}
+	store.records["ws-poison"] = persist.WorkspaceRecord{
+		WorkspaceID:   "ws-poison",
+		WorkspacePath: poisonPath,
+		CreatedAt:     time.Now().UTC(),
+		UpdatedAt:     time.Now().UTC(),
+	}
+
+	err := service.Cleanup("ws-poison")
+	if err == nil {
+		t.Fatal("expected cleanup to reject non-canonical managed path")
+	}
+	if _, statErr := os.Stat(poisonRoot); statErr != nil {
+		t.Fatalf("expected poison root to remain after failed cleanup, got %v", statErr)
+	}
+}
+
+func TestPruneExpiredWorkspacesWithWorkspaceStoreRemovesManagedWorkspaceTree(t *testing.T) {
+	root := t.TempDir()
+	store := newMemoryWorkspaceStore()
+	service := NewServiceWithWorkspaceStore(root, store)
+
+	expiredResp, err := service.Prepare(PrepareRequest{
+		Source: Source{
+			Type: "platform_authoring",
+			Files: map[string]string{
+				"docs/README.md": "# Capability\n",
+			},
+		},
+		Target:   Target{PackageName: "@platform.skill/expired", Version: "1.0.0"},
+		Metadata: Metadata{DisplayName: "expired", Description: "desc", SourceType: "native"},
+	})
+	if err != nil {
+		t.Fatalf("prepare expired workspace: %v", err)
+	}
+	freshResp, err := service.Prepare(PrepareRequest{
+		Source: Source{
+			Type: "platform_authoring",
+			Files: map[string]string{
+				"docs/README.md": "# Capability\n",
+			},
+		},
+		Target:   Target{PackageName: "@platform.skill/fresh", Version: "1.0.0"},
+		Metadata: Metadata{DisplayName: "fresh", Description: "desc", SourceType: "native"},
+	})
+	if err != nil {
+		t.Fatalf("prepare fresh workspace: %v", err)
+	}
+
+	expiredRecord := store.records[expiredResp.WorkspacePath]
+	expiredRecord.UpdatedAt = time.Now().UTC().Add(-2 * time.Hour)
+	store.records[expiredResp.WorkspacePath] = expiredRecord
+
+	if err := service.PruneExpiredWorkspaces(time.Hour); err != nil {
+		t.Fatalf("prune expired managed workspaces: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(root, expiredResp.WorkspacePath)); !os.IsNotExist(err) {
+		t.Fatalf("expected expired managed root to be removed, got err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, freshResp.WorkspacePath)); err != nil {
+		t.Fatalf("expected fresh managed root to remain, got err=%v", err)
+	}
+	if _, err := store.LoadWorkspace(context.Background(), expiredResp.WorkspacePath); !errors.Is(err, persist.ErrWorkspaceRecordNotFound) {
+		t.Fatalf("expected expired store row to be removed, got %v", err)
+	}
+}
+
+func TestPruneExpiredWorkspacesWithWorkspaceStoreSkipsWorkspaceRefreshedAfterListing(t *testing.T) {
+	root := t.TempDir()
+	store := newMemoryWorkspaceStore()
+	service := NewServiceWithWorkspaceStore(root, store)
+
+	resp, err := service.Prepare(PrepareRequest{
+		Source: Source{
+			Type: "platform_authoring",
+			Files: map[string]string{
+				"docs/README.md": "# Capability\n",
+			},
+		},
+		Target:   Target{PackageName: "@platform.skill/refreshed", Version: "1.0.0"},
+		Metadata: Metadata{DisplayName: "refreshed", Description: "desc", SourceType: "native"},
+	})
+	if err != nil {
+		t.Fatalf("prepare refreshed workspace: %v", err)
+	}
+
+	store.mu.Lock()
+	record := store.records[resp.WorkspacePath]
+	record.UpdatedAt = time.Now().UTC().Add(-2 * time.Hour)
+	store.records[resp.WorkspacePath] = record
+	store.afterListExpired = func() {
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		refreshed := store.records[resp.WorkspacePath]
+		refreshed.UpdatedAt = time.Now().UTC()
+		store.records[resp.WorkspacePath] = refreshed
+	}
+	store.mu.Unlock()
+
+	if err := service.PruneExpiredWorkspaces(time.Hour); err != nil {
+		t.Fatalf("prune refreshed managed workspace: %v", err)
+	}
+
+	managedRoot := filepath.Join(root, resp.WorkspacePath)
+	if _, err := os.Stat(managedRoot); err != nil {
+		t.Fatalf("expected refreshed managed root to remain, got %v", err)
+	}
+	record, err = store.LoadWorkspace(context.Background(), resp.WorkspacePath)
+	if err != nil {
+		t.Fatalf("expected refreshed store row to remain, got %v", err)
+	}
+	if !record.UpdatedAt.After(time.Now().UTC().Add(-time.Minute)) {
+		t.Fatalf("expected refreshed updated_at to stay fresh, got %s", record.UpdatedAt)
+	}
+}
+
 func TestPrepareRejectsUnsafeInlineFilePath(t *testing.T) {
 	service := NewService(t.TempDir())
 
@@ -578,11 +854,17 @@ func TestPrepareContextPropagatesCancellationToWorkspaceStore(t *testing.T) {
 }
 
 func TestPackContextPropagatesCancellationToWorkspaceStore(t *testing.T) {
-	store := memoryWorkspaceStore{
-		record: persist.WorkspaceRecord{
-			WorkspaceID: "ws-canceled",
-			Snapshot:    buildWorkspaceArchive(t, map[string]string{"SKILL.md": skillMarkdownFixture(), "package.json": `{"name":"@platform.skill/zoom-out","version":"1.0.0"}`}),
-		},
+	workspaceDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspaceDir, "SKILL.md"), []byte(skillMarkdownFixture()), 0o644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workspaceDir, "package.json"), []byte(`{"name":"@platform.skill/zoom-out","version":"1.0.0"}`), 0o644); err != nil {
+		t.Fatalf("write package.json: %v", err)
+	}
+	store := newMemoryWorkspaceStore()
+	store.records["ws-canceled"] = persist.WorkspaceRecord{
+		WorkspaceID:   "ws-canceled",
+		WorkspacePath: workspaceDir,
 	}
 	service := NewServiceWithWorkspaceStore(t.TempDir(), store)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -606,7 +888,7 @@ func TestPackContextPropagatesCancellationToWorkspaceStore(t *testing.T) {
 
 type cancelAwareWorkspaceStore struct{}
 
-func (cancelAwareWorkspaceStore) SaveWorkspace(ctx context.Context, workspaceID string, snapshot []byte, createdAt time.Time) error {
+func (cancelAwareWorkspaceStore) SaveWorkspace(ctx context.Context, workspaceID string, workspacePath string, createdAt time.Time) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -620,18 +902,25 @@ func (cancelAwareWorkspaceStore) LoadWorkspace(ctx context.Context, workspaceID 
 	return persist.WorkspaceRecord{}, persist.ErrWorkspaceRecordNotFound
 }
 
-func (cancelAwareWorkspaceStore) SaveBundle(ctx context.Context, workspaceID string, bundle []byte, updatedAt time.Time) error {
+func (cancelAwareWorkspaceStore) SaveBundle(ctx context.Context, workspaceID string, bundlePath string, updatedAt time.Time) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (cancelAwareWorkspaceStore) LoadBundle(ctx context.Context, workspaceID string) ([]byte, error) {
+func (cancelAwareWorkspaceStore) LoadBundle(ctx context.Context, workspaceID string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	return "", persist.ErrWorkspaceBundleNotFound
+}
+
+func (cancelAwareWorkspaceStore) ListExpired(ctx context.Context, cutoff time.Time) ([]persist.WorkspaceRecord, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return nil, persist.ErrWorkspaceBundleNotFound
+	return nil, nil
 }
 
 func (cancelAwareWorkspaceStore) DeleteWorkspace(ctx context.Context, workspaceID string) error {
@@ -643,58 +932,126 @@ func (cancelAwareWorkspaceStore) DeleteExpired(ctx context.Context, cutoff time.
 }
 
 type memoryWorkspaceStore struct {
-	record persist.WorkspaceRecord
+	mu               sync.Mutex
+	afterListExpired func()
+	records          map[string]persist.WorkspaceRecord
 }
 
-func (s memoryWorkspaceStore) SaveWorkspace(ctx context.Context, workspaceID string, snapshot []byte, createdAt time.Time) error {
-	return ctx.Err()
+func newMemoryWorkspaceStore() *memoryWorkspaceStore {
+	return &memoryWorkspaceStore{records: map[string]persist.WorkspaceRecord{}}
 }
 
-func (s memoryWorkspaceStore) LoadWorkspace(ctx context.Context, workspaceID string) (persist.WorkspaceRecord, error) {
+func (s *memoryWorkspaceStore) SaveWorkspace(ctx context.Context, workspaceID string, workspacePath string, createdAt time.Time) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	record := persist.WorkspaceRecord{
+		WorkspaceID:   workspaceID,
+		WorkspacePath: workspacePath,
+		CreatedAt:     createdAt,
+		UpdatedAt:     createdAt,
+	}
+	if existing, ok := s.records[workspaceID]; ok {
+		record.CreatedAt = existing.CreatedAt
+	}
+	s.records[workspaceID] = record
+	return nil
+}
+
+func (s *memoryWorkspaceStore) LoadWorkspace(ctx context.Context, workspaceID string) (persist.WorkspaceRecord, error) {
 	if err := ctx.Err(); err != nil {
 		return persist.WorkspaceRecord{}, err
 	}
-	return s.record, nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	record, ok := s.records[workspaceID]
+	if !ok || strings.TrimSpace(record.WorkspacePath) == "" {
+		return persist.WorkspaceRecord{}, persist.ErrWorkspaceRecordNotFound
+	}
+	return record, nil
 }
 
-func (s memoryWorkspaceStore) SaveBundle(ctx context.Context, workspaceID string, bundle []byte, updatedAt time.Time) error {
-	return ctx.Err()
+func (s *memoryWorkspaceStore) SaveBundle(ctx context.Context, workspaceID string, bundlePath string, updatedAt time.Time) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	record, ok := s.records[workspaceID]
+	if !ok || strings.TrimSpace(record.WorkspacePath) == "" {
+		return persist.ErrWorkspaceRecordNotFound
+	}
+	record.BundlePath = bundlePath
+	record.UpdatedAt = updatedAt
+	s.records[workspaceID] = record
+	return nil
 }
 
-func (s memoryWorkspaceStore) LoadBundle(ctx context.Context, workspaceID string) ([]byte, error) {
+func (s *memoryWorkspaceStore) LoadBundle(ctx context.Context, workspaceID string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	record, ok := s.records[workspaceID]
+	if !ok || strings.TrimSpace(record.WorkspacePath) == "" {
+		return "", persist.ErrWorkspaceRecordNotFound
+	}
+	if strings.TrimSpace(record.BundlePath) == "" {
+		return "", persist.ErrWorkspaceBundleNotFound
+	}
+	return record.BundlePath, nil
+}
+
+func (s *memoryWorkspaceStore) ListExpired(ctx context.Context, cutoff time.Time) ([]persist.WorkspaceRecord, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return nil, persist.ErrWorkspaceBundleNotFound
-}
-
-func (s memoryWorkspaceStore) DeleteWorkspace(ctx context.Context, workspaceID string) error {
-	return ctx.Err()
-}
-
-func (s memoryWorkspaceStore) DeleteExpired(ctx context.Context, cutoff time.Time) error {
-	return ctx.Err()
-}
-
-func buildWorkspaceArchive(t *testing.T, files map[string]string) []byte {
-	t.Helper()
-
-	workspaceDir := t.TempDir()
-	for relativePath, content := range files {
-		absolutePath := filepath.Join(workspaceDir, filepath.FromSlash(relativePath))
-		if err := os.MkdirAll(filepath.Dir(absolutePath), 0o755); err != nil {
-			t.Fatalf("mkdir %s: %v", relativePath, err)
-		}
-		if err := os.WriteFile(absolutePath, []byte(content), 0o644); err != nil {
-			t.Fatalf("write %s: %v", relativePath, err)
+	s.mu.Lock()
+	records := []persist.WorkspaceRecord{}
+	for _, record := range s.records {
+		if !record.UpdatedAt.IsZero() && record.UpdatedAt.Before(cutoff) {
+			records = append(records, record)
 		}
 	}
-
-	archive, err := archiveWorkspace(context.Background(), workspaceDir)
-	if err != nil {
-		t.Fatalf("archive workspace: %v", err)
+	hook := s.afterListExpired
+	s.mu.Unlock()
+	if hook != nil {
+		hook()
 	}
-	return archive
+	return records, nil
+}
+
+func (s *memoryWorkspaceStore) DeleteWorkspace(ctx context.Context, workspaceID string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.records, workspaceID)
+	return nil
+}
+
+func (s *memoryWorkspaceStore) DeleteExpired(ctx context.Context, cutoff time.Time) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for workspaceID, record := range s.records {
+		if !record.UpdatedAt.IsZero() && record.UpdatedAt.Before(cutoff) {
+			delete(s.records, workspaceID)
+		}
+	}
+	return nil
 }
 
 func skillMarkdownFixture() string {
@@ -807,6 +1164,87 @@ func TestPublishContextSkipsRegistryPublishWhenReleaseAlreadyExists(t *testing.T
 	}
 }
 
+func TestPublishContextWithWorkspaceStoreBlocksCleanupUntilPublishCompletes(t *testing.T) {
+	root := t.TempDir()
+	store := newMemoryWorkspaceStore()
+	service := NewServiceWithWorkspaceStore(root, store)
+	repo := &stubReleaseRecordCreator{
+		results: []stubReleaseRecordOutcome{
+			{err: catalog.NewError(404, "registry_version_not_found", "Registry version not found.", nil)},
+			{result: catalog.ReleaseRecordResult{Created: true, VersionStatus: catalog.VersionStatusPublished, InstallPolicy: catalog.InstallPolicyResolvable}},
+		},
+	}
+	publisher := &capturePackagePublisher{
+		started: make(chan struct{}),
+		block:   make(chan struct{}),
+	}
+	service.ConfigurePublishWorkflow(repo, publisher)
+
+	prepareResp, err := service.Prepare(PrepareRequest{
+		Source: Source{
+			Type: "platform_authoring",
+			Files: map[string]string{
+				"docs/README.md": "# Capability\n",
+			},
+		},
+		Target:   Target{PackageName: "@platform.skill/managed", Version: "1.0.0"},
+		Metadata: Metadata{DisplayName: "managed", Description: "desc", SourceType: "native"},
+	})
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+
+	publishDone := make(chan error, 1)
+	go func() {
+		_, publishErr := service.PublishContext(context.Background(), PublishRequest{
+			WorkspacePath: prepareResp.WorkspacePath,
+			Target:        Target{PackageName: "@platform.skill/managed", Version: "1.0.0"},
+		})
+		publishDone <- publishErr
+	}()
+
+	select {
+	case <-publisher.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for publisher to start")
+	}
+
+	cleanupDone := make(chan error, 1)
+	go func() {
+		cleanupDone <- service.Cleanup(prepareResp.WorkspacePath)
+	}()
+
+	select {
+	case err := <-cleanupDone:
+		t.Fatalf("expected cleanup to wait for publish completion, got %v", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	if _, err := os.Stat(filepath.Join(root, prepareResp.WorkspacePath)); err != nil {
+		t.Fatalf("expected managed root to remain during publish, got %v", err)
+	}
+
+	close(publisher.block)
+
+	select {
+	case err := <-publishDone:
+		if err != nil {
+			t.Fatalf("publish returned error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for publish to complete")
+	}
+
+	select {
+	case err := <-cleanupDone:
+		if err != nil {
+			t.Fatalf("cleanup returned error after publish: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for cleanup to complete")
+	}
+}
+
 type stubReleaseRecordOutcome struct {
 	result catalog.ReleaseRecordResult
 	err    error
@@ -830,11 +1268,26 @@ type capturePackagePublisher struct {
 	calls     int
 	lastInput artifactadapter.NPMPublishInput
 	err       error
+	started   chan struct{}
+	block     chan struct{}
+	once      sync.Once
 }
 
 func (s *capturePackagePublisher) PublishPackage(ctx context.Context, input artifactadapter.NPMPublishInput) error {
 	s.calls++
 	s.lastInput = input
+	if s.started != nil {
+		s.once.Do(func() {
+			close(s.started)
+		})
+	}
+	if s.block != nil {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-s.block:
+		}
+	}
 	return s.err
 }
 

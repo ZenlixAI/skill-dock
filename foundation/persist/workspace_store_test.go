@@ -116,3 +116,104 @@ func TestSQLWorkspaceStoreRoundTripsManagedPaths(t *testing.T) {
 		t.Fatalf("expected bundle path to round-trip, got %q", bundlePath)
 	}
 }
+
+func TestSQLWorkspaceStoreMigratesLegacySchemaToManagedPaths(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "workspace-store-legacy.db"))
+	if err != nil {
+		t.Fatalf("open sqlite db: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = db.Close()
+	})
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE packaging_workspaces (
+	workspace_id TEXT NOT NULL PRIMARY KEY,
+	workspace_snapshot BLOB NOT NULL,
+	bundle_content BLOB,
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL
+)`)
+	if err != nil {
+		t.Fatalf("create legacy schema: %v", err)
+	}
+	_, err = db.ExecContext(ctx, `
+INSERT INTO packaging_workspaces (workspace_id, workspace_snapshot, bundle_content, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?)`,
+		"legacy-ws",
+		[]byte("snapshot"),
+		[]byte("bundle"),
+		"2026-06-08T10:00:00Z",
+		"2026-06-08T10:00:00Z",
+	)
+	if err != nil {
+		t.Fatalf("insert legacy row: %v", err)
+	}
+
+	store := newSQLWorkspaceStore(db, "sqlite")
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("migrate legacy workspace store: %v", err)
+	}
+
+	legacyRecord, err := store.LoadWorkspace(ctx, "legacy-ws")
+	if !errors.Is(err, ErrWorkspaceRecordNotFound) {
+		t.Fatalf("expected legacy row without workspace_path to be treated as missing, got record=%#v err=%v", legacyRecord, err)
+	}
+
+	createdAt := time.Date(2026, time.June, 8, 11, 0, 0, 0, time.UTC)
+	updatedAt := createdAt.Add(time.Minute)
+	if err := store.SaveWorkspace(ctx, "legacy-ws", "/managed/root/legacy-ws/workspace", createdAt); err != nil {
+		t.Fatalf("save migrated workspace: %v", err)
+	}
+	if err := store.SaveBundle(ctx, "legacy-ws", "/managed/root/legacy-ws/.dist/bundle.tgz", updatedAt); err != nil {
+		t.Fatalf("save migrated bundle: %v", err)
+	}
+
+	record, err := store.LoadWorkspace(ctx, "legacy-ws")
+	if err != nil {
+		t.Fatalf("load migrated workspace: %v", err)
+	}
+	if record.WorkspacePath != "/managed/root/legacy-ws/workspace" {
+		t.Fatalf("expected migrated workspace path, got %q", record.WorkspacePath)
+	}
+	if record.BundlePath != "/managed/root/legacy-ws/.dist/bundle.tgz" {
+		t.Fatalf("expected migrated bundle path, got %q", record.BundlePath)
+	}
+}
+
+func TestSQLWorkspaceStoreListsExpiredManagedWorkspaces(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "workspace-store-expired.db"))
+	if err != nil {
+		t.Fatalf("open sqlite db: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = db.Close()
+	})
+
+	store := newSQLWorkspaceStore(db, "sqlite")
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("migrate workspace store: %v", err)
+	}
+
+	expiredAt := time.Date(2026, time.June, 8, 9, 0, 0, 0, time.UTC)
+	freshAt := expiredAt.Add(2 * time.Hour)
+	if err := store.SaveWorkspace(ctx, "expired-ws", "/managed/root/expired-ws/workspace", expiredAt); err != nil {
+		t.Fatalf("save expired workspace: %v", err)
+	}
+	if err := store.SaveWorkspace(ctx, "fresh-ws", "/managed/root/fresh-ws/workspace", freshAt); err != nil {
+		t.Fatalf("save fresh workspace: %v", err)
+	}
+
+	records, err := store.ListExpired(ctx, expiredAt.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("list expired workspaces: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("expected 1 expired workspace, got %#v", records)
+	}
+	if records[0].WorkspaceID != "expired-ws" {
+		t.Fatalf("expected expired workspace ID, got %#v", records[0])
+	}
+}
