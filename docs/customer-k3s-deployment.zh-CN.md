@@ -151,9 +151,11 @@
 常见正确示例：
 
 - Pod 内地址：
-  - `http://nexus.repo.svc.cluster.local/repository/npm-hosted/`
+  - `http://nexus.repo.svc.cluster.local/repository/skills-npm/`
 - CLI 外部地址：
-  - `https://nexus.customer.com/repository/npm-hosted/`
+  - `https://skills.example.com/repository/skills-npm/`
+  - 它和 `SKILLS_REGISTRY_URL=https://skills.example.com/api` 共用同一个公共 host
+  - 兼容模式：如果你已经单独暴露 `nexus.example.com`，仍可继续把 `SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL` 指向 `https://nexus.example.com/repository/skills-npm/`；统一入口只是新的默认推荐。
 
 如果这两个值配反，最常见表现是：
 
@@ -259,7 +261,7 @@ helm upgrade --install skill-registry ./zarf/charts/skill-registry \
 - 客户开发机安装工具
 - 发布机 / 运维机发布工具
 
-### 7.1 方式 A：发到客户已有 npm 仓
+### 7.1 方式 A：走统一公网入口
 
 这是默认推荐路径。
 
@@ -270,13 +272,14 @@ cd apps/skills-cli
 corepack enable
 pnpm install --frozen-lockfile
 pnpm run build
-npm publish --registry https://nexus.example.com/repository/npm-hosted
+npm publish --registry https://skills.example.com/repository/skills-npm/
 ```
 
 客户安装：
 
 ```bash
-npm install -g skills --registry https://nexus.example.com/repository/npm-hosted
+npx --registry https://skills.example.com/repository/skills-npm/ skills --help
+npm install -g skills --registry https://skills.example.com/repository/skills-npm/
 ```
 
 ### 7.2 方式 B：离线下发 `.tgz`
@@ -304,7 +307,7 @@ npm install -g ./skills-1.5.9.tgz
 如果 CLI 只给少数人使用，可以直接预装：
 
 ```bash
-npm install -g skills --registry https://nexus.example.com/repository/npm-hosted
+npm install -g skills --registry https://skills.example.com/repository/skills-npm/
 ```
 
 ## 8. CLI 需要改哪些配置
@@ -319,15 +322,15 @@ npm install -g skills --registry https://nexus.example.com/repository/npm-hosted
 给 CLI 配 Catalog 地址和 token：
 
 ```bash
-export SKILLS_REGISTRY_URL=https://catalog.example.com
+export SKILLS_REGISTRY_URL=https://skills.example.com/api
 export SKILLS_REGISTRY_TOKEN=<reader-token>
 ```
 
 或显式传参：
 
 ```bash
-skills find pdf --registry https://catalog.example.com
-skills add @company.skill/pdf-skill --registry https://catalog.example.com
+skills find pdf --registry https://skills.example.com/api
+skills add @company.skill/pdf-skill --registry https://skills.example.com/api
 ```
 
 适用命令：
@@ -345,14 +348,14 @@ skills add @company.skill/pdf-skill --registry https://catalog.example.com
 准备 `.npmrc`：
 
 ```ini
-registry=https://nexus.example.com/repository/npm-hosted/
-//nexus.example.com/repository/npm-hosted/:_authToken=REPLACE_ME
+registry=https://skills.example.com/repository/skills-npm/
+//skills.example.com/repository/skills-npm/:_authToken=REPLACE_ME
 ```
 
 典型环境变量：
 
 ```bash
-export SKILLS_REGISTRY_URL=https://catalog.example.com
+export SKILLS_REGISTRY_URL=https://skills.example.com/api
 export SKILLS_REGISTRY_TOKEN=<publisher-token>
 export NPM_CONFIG_USERCONFIG=/abs/path/to/.npmrc
 ```
@@ -362,7 +365,7 @@ export NPM_CONFIG_USERCONFIG=/abs/path/to/.npmrc
 - `--registry`
   - 指向 Catalog
 - `--npm-registry`
-  - 指向 Nexus npm hosted 仓
+  - 指向统一公网 npm 入口
 - `--publish-registry`
   - 写入 package metadata / release-record 的 registry 地址
 
@@ -376,7 +379,7 @@ export NPM_CONFIG_USERCONFIG=/abs/path/to/.npmrc
 
 - Postgres 已可连通
 - Nexus npm hosted 仓已创建
-- CLI 外部访问 Nexus 地址已确定
+- CLI 公网 npm 入口地址已确定
 - k3s Ingress 路径已确定
 
 ### Step 2. 构建并推送镜像
@@ -455,7 +458,7 @@ skills --help
 ### Step 8. 验证只读链路
 
 ```bash
-export SKILLS_REGISTRY_URL=https://catalog.example.com
+export SKILLS_REGISTRY_URL=https://skills.example.com/api
 export SKILLS_REGISTRY_TOKEN=<reader-token>
 
 skills find pdf
@@ -476,7 +479,7 @@ skills add @company.skill/pdf-skill -a codex -y
 ### Step 10. 验证发布链路
 
 ```bash
-export SKILLS_REGISTRY_URL=https://catalog.example.com
+export SKILLS_REGISTRY_URL=https://skills.example.com/api
 export SKILLS_REGISTRY_TOKEN=<publisher-token>
 export NPM_CONFIG_USERCONFIG=/abs/path/to/.npmrc
 
@@ -489,9 +492,9 @@ skills publish /abs/path/to/skill
 skills import-local /abs/path/to/legacy-skill \
   --package-name @company.skill/legacy-skill \
   --version 0.1.0 \
-  --registry https://catalog.example.com \
-  --npm-registry https://nexus.example.com/repository/npm-hosted/ \
-  --publish-registry https://nexus.example.com/repository/npm-hosted/
+  --registry https://skills.example.com/api \
+  --npm-registry https://skills.example.com/repository/skills-npm/ \
+  --publish-registry https://skills.example.com/repository/skills-npm/
 ```
 
 ## 10. 现场标准验证命令
@@ -499,7 +502,7 @@ skills import-local /abs/path/to/legacy-skill \
 ### 10.1 只读验证
 
 ```bash
-export SKILLS_REGISTRY_URL=https://catalog.example.com
+export SKILLS_REGISTRY_URL=https://skills.example.com/api
 export SKILLS_REGISTRY_TOKEN=<reader-token>
 
 skills find pdf

@@ -7,7 +7,7 @@
 - `catalog`
 - `skills-web`
 
-`skills` CLI 仍然部署在集群外机器上，通过 Ingress 暴露的 `skills-web/api` 与 `nexus` 工作。
+`skills` CLI 仍然部署在集群外机器上，通过同一个公网 host 暴露的 `/api` 与 `/repository/skills-npm/` 工作。
 
 主清单：
 
@@ -39,7 +39,6 @@
 ### 1.3 域名
 
 - `skills.example.com`
-- `nexus.example.com`
 
 ### 1.4 Nexus 地址
 
@@ -48,7 +47,8 @@
   - 默认值应保持集群内 service 地址
 - `skill_registry_public_npm_registry_url`
   - 这是返回给外部 CLI 的地址
-  - 必须是集群外机器可访问的 Nexus 地址
+  - 推荐值：`https://skills.example.com/repository/skills-npm/`
+  - 它和 `SKILLS_REGISTRY_URL=https://skills.example.com/api` 共用同一个公共 host
 
 ## 2. 部署命令
 
@@ -96,15 +96,17 @@ helm upgrade --install skill-registry ./zarf/charts/skill-registry \
   -f /tmp/skill-registry-values.yaml
 ```
 
-如果你不想给 Nexus 单独开 Ingress，而是已经有现成外部地址，至少覆盖：
+如果你已经有统一公网入口，至少覆盖：
 
 ```yaml
 nexus:
-  publicRepositoryUrl: https://nexus.example.com/repository/skills-npm/
+  publicRepositoryUrl: https://skills.example.com/repository/skills-npm/
 
 ingress:
+  web:
+    host: skills.example.com
   nexus:
-    enabled: false
+    host: skills.example.com
 ```
 
 如果你的 k3s 现场不是走标准 `Ingress`，而是走 Traefik `IngressRoute + entrypoint`，可以改成：
@@ -204,6 +206,9 @@ kubectl -n skill-registry get ingressroute
 export SKILLS_REGISTRY_URL=https://skills.example.com/api
 export SKILLS_REGISTRY_TOKEN=<reader-token>
 
+npx --registry https://skills.example.com/repository/skills-npm/ skills --help
+npm install -g skills --registry https://skills.example.com/repository/skills-npm/
+
 skills find pdf
 skills add @company.skill/pdf-skill -y
 ```
@@ -219,7 +224,7 @@ skills publish /abs/path/to/skill
 skills import-local /abs/path/to/legacy-skill \
   --package-name @company.skill/legacy-skill \
   --version 0.1.0 \
-  --npm-registry https://nexus.example.com/repository/skills-npm/
+  --npm-registry https://skills.example.com/repository/skills-npm/
 ```
 
 ## 5. 验收顺序
@@ -228,7 +233,7 @@ skills import-local /abs/path/to/legacy-skill \
 
 1. 浏览器打开 `https://skills.example.com`
 2. 用浏览器账号登录一次，并确认切换账号 / 退出登录生效
-3. 浏览器打开 `https://nexus.example.com`
+3. 执行 `npx --registry https://skills.example.com/repository/skills-npm/ skills --help`
 4. CLI 执行 `skills find`
 5. CLI 执行 `skills publish`
 6. CLI 执行 `skills add`

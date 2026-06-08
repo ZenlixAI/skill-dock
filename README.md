@@ -118,7 +118,7 @@ make cli-update CLI_ARGS="@company.skill/pdf-skill -g"
   - `init` / `inspect` 走 `authoring-secret`
   - `publish` / `import-local` 走 `publisher-secret`
 - 对支持 Catalog 的命令，`make cli` 会自动补 `--registry http://127.0.0.1:18080`
-- 对 `import-local + NPM_BACKEND=nexus`，`make cli` 会自动补 `--npm-registry http://127.0.0.1:8081/repository/skills-npm/`
+- 对 `import-local + NPM_BACKEND=nexus`，`make cli` 会自动补 `--npm-registry http://127.0.0.1:18080/repository/skills-npm/`
 - `make cli-find` / `cli-add` / `cli-publish` / `cli-import-local` / `cli-list` / `cli-remove` / `cli-update` / `cli-init` / `cli-inspect` 都保留着，但现在只是对 `make cli` 的薄封装
 - 需要切换 npm 仓场景时，通过 `NPM_BACKEND=nexus`
 - 安装内容会落到当前工作目录下的 `./.agents/skills/`
@@ -137,13 +137,13 @@ make cli-update CLI_ARGS="@company.skill/pdf-skill -g"
 真实用户通常这样用：
 
 ```bash
-export SKILLS_REGISTRY_URL=http://catalog.example.com
+export SKILLS_REGISTRY_URL=https://skills.example.com/api
 export SKILLS_REGISTRY_TOKEN=reader-or-publisher-token
 
 skills find pdf
 skills add @company.skill/pdf-skill -y
 skills publish /abs/path/to/skill
-skills import-local /abs/path/to/skill --package-name @company.skill/legacy-skill --version 0.1.0 --npm-registry https://nexus.example.com/repository/skills-npm/
+skills import-local /abs/path/to/skill --package-name @company.skill/legacy-skill --version 0.1.0 --npm-registry https://skills.example.com/repository/skills-npm/
 ```
 
 也就是说：
