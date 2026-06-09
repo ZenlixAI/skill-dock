@@ -112,7 +112,7 @@ func (w *publishedReleaseWorkflow) Publish(ctx context.Context, input PublishReq
 		if releaseAttempt.state == releaseRecordWorkflowStateReady {
 			return publishResponseFromPack(packResponse, releaseAttempt.result, false), nil
 		}
-		return PublishResponse{}, publishAttempt.err
+		return PublishResponse{}, releaseAttempt.err
 	case packagePublishWorkflowStateFailed:
 		return PublishResponse{}, publishAttempt.err
 	}

@@ -154,6 +154,88 @@ func TestPublishedReleaseWorkflowReplaysWhenArtifactAlreadyExists(t *testing.T) 
 	}
 }
 
+func TestPublishedReleaseWorkflowReturnsReleaseRecordRetryFailureAfterArtifactAlreadyExists(t *testing.T) {
+	runtime := newPackagingWorkspaceRuntime(t.TempDir(), nil)
+	workflow := newPublishedReleaseWorkflow(runtime)
+	retryErr := catalog.NewError(503, "release_record_retry_failed", "Release record retry failed.", nil)
+	repo := &stubReleaseRecordCreator{
+		results: []stubReleaseRecordOutcome{
+			{err: errReleaseArtifactMissing},
+			{err: retryErr},
+		},
+	}
+	publisher := &capturePackagePublisher{
+		err: errPackageArtifactAlreadyExists,
+	}
+	workflow.Configure(repo, publisher)
+
+	prepareResp, err := runtime.Prepare(context.Background(), PrepareRequest{
+		Source: Source{
+			Type: "platform_authoring",
+			Files: map[string]string{
+				"docs/README.md": "# Capability\n",
+			},
+		},
+		Target:   Target{PackageName: "@platform.skill/retry-failure", Version: "1.0.0"},
+		Metadata: Metadata{DisplayName: "retry-failure", Description: "desc", SourceType: "native"},
+	})
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+
+	_, err = workflow.Publish(context.Background(), PublishRequest{
+		WorkspacePath: prepareResp.WorkspacePath,
+		Target:        Target{PackageName: "@platform.skill/retry-failure", Version: "1.0.0"},
+	})
+	if err == nil {
+		t.Fatal("expected publish to fail")
+	}
+	catalogErr := packagingCatalogError(err)
+	if catalogErr.Code != "release_record_retry_failed" {
+		t.Fatalf("expected retry failure error, got %#v", catalogErr)
+	}
+}
+
+func TestPublishedReleaseWorkflowReplaysWhenWrappedCatalogErrorsAppear(t *testing.T) {
+	runtime := newPackagingWorkspaceRuntime(t.TempDir(), nil)
+	workflow := newPublishedReleaseWorkflow(runtime)
+	repo := &stubReleaseRecordCreator{
+		results: []stubReleaseRecordOutcome{
+			{err: wrappedReleaseArtifactMissingError()},
+			{result: catalog.ReleaseRecordResult{Created: false, IdempotentReplay: true, VersionStatus: catalog.VersionStatusPublished, InstallPolicy: catalog.InstallPolicyResolvable}},
+		},
+	}
+	publisher := &capturePackagePublisher{
+		err: wrappedPackageArtifactAlreadyExistsError(),
+	}
+	workflow.Configure(repo, publisher)
+
+	prepareResp, err := runtime.Prepare(context.Background(), PrepareRequest{
+		Source: Source{
+			Type: "platform_authoring",
+			Files: map[string]string{
+				"docs/README.md": "# Capability\n",
+			},
+		},
+		Target:   Target{PackageName: "@platform.skill/wrapped-replay", Version: "1.0.0"},
+		Metadata: Metadata{DisplayName: "wrapped-replay", Description: "desc", SourceType: "native"},
+	})
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+
+	response, err := workflow.Publish(context.Background(), PublishRequest{
+		WorkspacePath: prepareResp.WorkspacePath,
+		Target:        Target{PackageName: "@platform.skill/wrapped-replay", Version: "1.0.0"},
+	})
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if response.PublishedToRegistry || response.Created || !response.IdempotentReplay {
+		t.Fatalf("unexpected publish response: %+v", response)
+	}
+}
+
 func TestClassifyReleaseRecordErrorTreatsWrappedCatalogArtifactMissingAsMissing(t *testing.T) {
 	state, catalogErr := classifyReleaseRecordError(wrappedReleaseArtifactMissingError())
 	if state != releaseRecordWorkflowStateArtifactMissing {
