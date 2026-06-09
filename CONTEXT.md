@@ -77,6 +77,10 @@ _Avoid_: Aggregate writer, mutation owner
 The managed temporary directory created during skill packaging flows and reused across prepare, validate, pack, and cleanup.
 _Avoid_: Published artifact, source identity
 
+**Packaging Workspace Runtime**:
+The internal packaging module whose interface owns **Packaging Workspace** preparation, materialization, validation cache, bundle access, package metadata access, cleanup, and expiry pruning across managed and ephemeral adapters.
+_Avoid_: Generic packaging service, temp-dir helper
+
 **Source Export**:
 An optional conversion that renders an internal skill package into a source-first layout for ecosystems such as skills.sh.
 _Avoid_: Native publish path
@@ -128,6 +132,10 @@ _Avoid_: Core domain object
 **Published Release**:
 A **Skill Version** that has both a stored **Skill Bundle** and a successful catalog registration.
 _Avoid_: Tarball exists, npm-only publish
+
+**Published Release Workflow**:
+The internal packaging module that turns a packed **Packaging Workspace** into a **Published Release** by coordinating package-repository publish and **Release Record** registration with idempotent recovery.
+_Avoid_: Raw npm publish, release helper
 
 **Release Record**:
 The catalog-side registration of a published artifact that already exists in the package repository.
@@ -246,6 +254,7 @@ _Avoid_: Mutable internal revision
 - One **State Store** persists one **Agent Skill Aggregate** as the catalog repository's concurrency unit
 - One **Query Store** serves read projections and install-resolution inputs without owning aggregate mutation rules
 - One **Packaging Workspace** is a managed temporary directory rather than a published artifact
+- One **Packaging Workspace Runtime** owns lifecycle and access rules for one or more **Packaging Workspace** instances behind one seam
 - One **Source Export** is an optional downstream adaptation, not the native registry publish model
 - One **Source Export** is a **Lossy Export** rather than a full round-trip representation of catalog state
 - One **Agent Skill** has one or more **Skill Versions**
@@ -255,6 +264,7 @@ _Avoid_: Mutable internal revision
 - One `plugin.json` in V1 is a **Compatibility Attachment**, not a first-class catalog concept
 - One **Agent Skill** may reference zero or one **Upstream Source**
 - One **Published Release** requires both bundle storage and catalog registration
+- One **Published Release Workflow** depends on a **Packaging Workspace Runtime** to supply a packaged **Skill Bundle** and then completes the **Published Release**
 - One **Release Record** registers an existing artifact rather than uploading it through the catalog
 - One **Idempotent Registration** is allowed only when repeated registration points to the same artifact content
 - One **Orphaned Artifact** is not searchable or installable through normal catalog flows
