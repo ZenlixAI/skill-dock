@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -27,6 +28,9 @@ func TestSQLRepositoryListSkillsAppliesSortAndPageInStore(t *testing.T) {
 	}
 	if page.Items[0].PackageName != "@platform.skill/pdf-skill" {
 		t.Fatalf("expected second lexicographic package, got %q", page.Items[0].PackageName)
+	}
+	if page.PageInfo.HasNextPage {
+		t.Fatalf("expected second page to be terminal, got page info %+v", page.PageInfo)
 	}
 }
 
@@ -51,6 +55,72 @@ func TestSQLRepositoryListGovernanceChangesPagesInStore(t *testing.T) {
 	}
 	if len(page.Items) != 1 {
 		t.Fatalf("expected one governance item, got %d", len(page.Items))
+	}
+	if page.Items[0].ID != "gov_01hxyank" {
+		t.Fatalf("expected paged governance record gov_01hxyank, got %q", page.Items[0].ID)
+	}
+	if page.Items[0].Version == nil || *page.Items[0].Version != "1.3.0" {
+		t.Fatalf("expected paged governance version 1.3.0, got %#v", page.Items[0].Version)
+	}
+	if page.PageInfo.HasNextPage {
+		t.Fatalf("expected second page to be terminal, got page info %+v", page.PageInfo)
+	}
+}
+
+func TestSQLStateStoreListSkillsSQLAppliesSortLimitOffset(t *testing.T) {
+	store := &SQLStateStore{dialect: "sqlite"}
+	query := SkillQuery{
+		Sort:     "package_name_asc",
+		PageSize: 1,
+		Cursor:   1,
+	}
+
+	sortKey, err := normalizedSkillsSort(query.Sort, query.Query)
+	if err != nil {
+		t.Fatalf("normalize sort: %v", err)
+	}
+
+	sqlText := store.listSkillsSQL(query, sortKey)
+	if !strings.Contains(sqlText, "ORDER BY package_name ASC") {
+		t.Fatalf("expected package sort in SQL, got %q", sqlText)
+	}
+	if !strings.Contains(sqlText, "LIMIT ?") {
+		t.Fatalf("expected SQL limit clause, got %q", sqlText)
+	}
+	if !strings.Contains(sqlText, "OFFSET ?") {
+		t.Fatalf("expected SQL offset clause, got %q", sqlText)
+	}
+
+	args := store.listSkillsArgs(query, sortKey)
+	want := []any{2, 1}
+	if !reflect.DeepEqual(args, want) {
+		t.Fatalf("expected limit/offset args %v, got %v", want, args)
+	}
+}
+
+func TestSQLStateStoreListGovernanceSQLAppliesLimitOffset(t *testing.T) {
+	store := &SQLStateStore{dialect: "sqlite"}
+	query := GovernanceQuery{
+		PackageName: "@platform.skill/pdf-skill",
+		PageSize:    1,
+		Cursor:      1,
+	}
+
+	sqlText := store.listGovernanceSQL(query)
+	if !strings.Contains(sqlText, "ORDER BY changed_at DESC, id ASC") {
+		t.Fatalf("expected governance ordering in SQL, got %q", sqlText)
+	}
+	if !strings.Contains(sqlText, "LIMIT ?") {
+		t.Fatalf("expected SQL limit clause, got %q", sqlText)
+	}
+	if !strings.Contains(sqlText, "OFFSET ?") {
+		t.Fatalf("expected SQL offset clause, got %q", sqlText)
+	}
+
+	args := store.listGovernanceArgs(query)
+	want := []any{"@platform.skill/pdf-skill", 2, 1}
+	if !reflect.DeepEqual(args, want) {
+		t.Fatalf("expected governance args %v, got %v", want, args)
 	}
 }
 
