@@ -51,6 +51,53 @@ func TestServerRoutesSkillsThroughReadAPIModule(t *testing.T) {
 	}
 }
 
+func TestServerReadModeDoesNotRegisterPackagingRoutes(t *testing.T) {
+	server := newTestServer()
+	server.mode = ServerModeRead
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", strings.NewReader(`{}`))
+	request.Header.Set("X-Role", "publisher")
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusNotFound, recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestServerWriteModeDoesNotRegisterCatalogListRoutes(t *testing.T) {
+	server := newTestServer()
+	server.mode = ServerModeWrite
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills/search?q=pdf", nil)
+	request.Header.Set("X-Role", "reader")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusNotFound, recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestServerReadModeDoesNotServeReleaseRecordMutation(t *testing.T) {
+	server := newTestServer()
+	server.mode = ServerModeRead
+
+	request := httptest.NewRequest(http.MethodPut, "/api/v1/skills/%40platform.skill%2Fpdf-skill/versions/1.2.0/release-record", strings.NewReader(`{}`))
+	request.Header.Set("X-Role", "publisher")
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusNotFound, recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestServerRoutesReadyzThroughSystemModule(t *testing.T) {
 	module := &systemModuleStub{}
 	server := newTestServer()

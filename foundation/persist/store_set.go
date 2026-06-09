@@ -19,7 +19,15 @@ func NewSQLStoreSet(ctx context.Context, databaseURL string, idempotencyTTL time
 	if err != nil {
 		return nil, err
 	}
+	storeSet, err := NewSQLStoreSetWithDB(ctx, db, driver, idempotencyTTL)
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return storeSet, nil
+}
 
+func NewSQLStoreSetWithDB(ctx context.Context, db *sql.DB, driver string, idempotencyTTL time.Duration) (*SQLStoreSet, error) {
 	storeSet := &SQLStoreSet{
 		DB:          db,
 		Idempotency: newSQLIdempotencyStore(db, driver, idempotencyTTL),

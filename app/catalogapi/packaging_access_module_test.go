@@ -4,18 +4,35 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"skill_registry/app/auth"
+	"skill_registry/business/catalog"
 	"skill_registry/business/packaging"
 )
 
-func TestPackagingAccessModuleDownloadsBundleAndRecordsAudit(t *testing.T) {
-	service := packaging.NewService(t.TempDir())
-	workspacePath, _ := prepareManagedWorkspaceForTest(t, service, "@platform.skill/fixture-skill", "0.2.0")
+type bundlePathOnlyPackagingService struct {
+	bundlePath string
+}
+
+func (s *bundlePathOnlyPackagingService) CleanupContext(context.Context, string) error {
+	return nil
+}
+
+func (s *bundlePathOnlyPackagingService) BundleFilePathContext(context.Context, string, packaging.Target) (string, error) {
+	return s.bundlePath, nil
+}
+
+func TestPackagingAccessModuleResolvesBundlePathAndRecordsAudit(t *testing.T) {
+	tempDir := t.TempDir()
+	bundlePath := filepath.Join(tempDir, "fixture.tgz")
+	if err := os.WriteFile(bundlePath, []byte("bundle"), 0o644); err != nil {
+		t.Fatalf("write bundle: %v", err)
+	}
 	store := &captureAuditStore{}
 	module := &packagingAccessModule{
-		service: service,
+		service: &bundlePathOnlyPackagingService{bundlePath: bundlePath},
 		audit:   NewAuditRecorder(store),
 	}
 	principal := auth.Principal{
@@ -25,19 +42,33 @@ func TestPackagingAccessModuleDownloadsBundleAndRecordsAudit(t *testing.T) {
 	}
 	ctx := contextWithRequestMetadataForTest(context.Background(), "req_bundle", "trace_bundle")
 
-	content, err := module.downloadBundle(ctx, principal, workspacePath, "@platform.skill/fixture-skill", "0.2.0")
+	resolvedPath, err := module.downloadBundle(ctx, principal, "ws_fixture", "@platform.skill/fixture-skill", "0.2.0")
 
 	if err != nil {
 		t.Fatalf("download bundle: %v", err)
 	}
-	if len(content) == 0 {
-		t.Fatal("expected bundle content")
+	if resolvedPath != bundlePath {
+		t.Fatalf("expected resolved bundle path %q, got %q", bundlePath, resolvedPath)
 	}
 	if len(store.events) != 1 {
 		t.Fatalf("expected one audit event, got %d", len(store.events))
 	}
 	if store.events[0].Action != "packaging.bundle.download" || store.events[0].StatusCode != http.StatusOK {
 		t.Fatalf("unexpected audit event: %+v", store.events[0])
+	}
+}
+
+func TestPackagingAccessModuleReturnsBundleLoadError(t *testing.T) {
+	module := &packagingAccessModule{
+		service: &bundlePathOnlyPackagingService{bundlePath: ""},
+	}
+
+	_, err := module.downloadBundle(context.Background(), auth.Principal{}, "", "@platform.skill/fixture-skill", "0.2.0")
+	if err == nil {
+		t.Fatal("expected invalid request error")
+	}
+	if err.Code != "invalid_request" && err.Code != catalog.NewError(http.StatusUnprocessableEntity, "invalid_request", "", nil).Code {
+		t.Fatalf("unexpected error: %#v", err)
 	}
 }
 

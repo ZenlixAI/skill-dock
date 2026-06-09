@@ -1,0 +1,20 @@
+postgresql:
+  enabled: true
+  auth:
+    password: test-pass
+
+catalog:
+  auth:
+    readerToken: reader
+    authoringToken: author
+    publisherToken: publisher
+  session:
+    secret: session
+    usersJson: |
+      {"reader":{"password":"x","role":"reader","actor":"reader"}}
+
+nexus:
+  admin:
+    password: nexus-pass
+  repository:
+    publicUrl: https://skills.example.com/repository/skills-npm/

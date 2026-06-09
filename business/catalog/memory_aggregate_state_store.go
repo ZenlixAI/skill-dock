@@ -105,6 +105,9 @@ func (s *MemoryAggregateStateStore) ListSkills(_ context.Context, query SkillQue
 		if query.SourceType != "" && string(skill.SourceType) != query.SourceType {
 			continue
 		}
+		if !matchesAllowedPackagePatterns(query.AllowedPackages, skill.PackageName) {
+			continue
+		}
 		if query.Query != "" && !matchesSkillQuery(skill, query.Query) {
 			continue
 		}
@@ -118,12 +121,12 @@ func (s *MemoryAggregateStateStore) ListSkills(_ context.Context, query SkillQue
 	return SkillsPage{Items: paged, PageInfo: pageInfo}, nil
 }
 
-func (s *MemoryAggregateStateStore) ListCuratedSkills(_ context.Context, pageSize int, cursor int) (CuratedSkillsPage, error) {
-	if pageSize <= 0 {
-		pageSize = 20
+func (s *MemoryAggregateStateStore) ListCuratedSkills(_ context.Context, query CuratedSkillQuery) (CuratedSkillsPage, error) {
+	if query.PageSize <= 0 {
+		query.PageSize = 20
 	}
-	if pageSize > 100 {
-		return CuratedSkillsPage{}, NewError(400, "invalid_request", "pageSize must be less than or equal to 100.", map[string]any{"pageSize": pageSize})
+	if query.PageSize > 100 {
+		return CuratedSkillsPage{}, NewError(400, "invalid_request", "pageSize must be less than or equal to 100.", map[string]any{"pageSize": query.PageSize})
 	}
 
 	s.mu.RLock()
@@ -134,6 +137,9 @@ func (s *MemoryAggregateStateStore) ListCuratedSkills(_ context.Context, pageSiz
 		if aggregate.Skill.CurationReason == "" || aggregate.Skill.Detail.Status == SkillStatusRetired {
 			continue
 		}
+		if !matchesAllowedPackagePatterns(query.AllowedPackages, aggregate.Skill.Detail.PackageName) {
+			continue
+		}
 		items = append(items, CuratedSkillSummary{
 			SkillSummary:   aggregate.Skill.Detail.SkillSummary,
 			CurationReason: aggregate.Skill.CurationReason,
@@ -142,7 +148,7 @@ func (s *MemoryAggregateStateStore) ListCuratedSkills(_ context.Context, pageSiz
 	sort.Slice(items, func(i int, j int) bool {
 		return items[i].UpdatedAt.After(items[j].UpdatedAt)
 	})
-	paged, pageInfo, err := paginate(items, cursor, pageSize)
+	paged, pageInfo, err := paginate(items, query.Cursor, query.PageSize)
 	if err != nil {
 		return CuratedSkillsPage{}, err
 	}
@@ -216,6 +222,31 @@ func (s *MemoryAggregateStateStore) GetVersion(_ context.Context, packageName st
 		"packageName": packageName,
 		"version":     version,
 	})
+}
+
+func (s *MemoryAggregateStateStore) GetLatestResolvableVersion(_ context.Context, packageName string) (SkillVersionDetail, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	aggregate, ok := s.aggregates[packageName]
+	if !ok {
+		return SkillVersionDetail{}, NewError(404, "skill_not_found", "Skill not found.", map[string]any{"packageName": packageName})
+	}
+
+	var target *SkillVersionDetail
+	for _, item := range aggregate.Skill.Versions {
+		if item.VersionStatus != VersionStatusPublished || item.InstallPolicy != InstallPolicyResolvable {
+			continue
+		}
+		if target == nil || compareExactVersions(item.Version, target.Version) > 0 {
+			candidate := item
+			target = &candidate
+		}
+	}
+	if target == nil {
+		return SkillVersionDetail{}, errNoResolvableVersion
+	}
+	return *target, nil
 }
 
 func (s *MemoryAggregateStateStore) ListPackageVersions(_ context.Context, packageName string) ([]SkillVersionDetail, error) {

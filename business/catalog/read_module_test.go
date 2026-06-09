@@ -10,7 +10,12 @@ type readModuleQueryStoreStub struct {
 	versions           map[string][]SkillVersionDetail
 	governance         map[string][]GovernanceRecord
 	getSkillCalls      int
+	getVersionCalls    int
 	listPackageVersion struct {
+		calls       int
+		packageName string
+	}
+	getLatestResolvable struct {
 		calls       int
 		packageName string
 	}
@@ -49,7 +54,7 @@ func (s *readModuleQueryStoreStub) ListSkills(context.Context, SkillQuery) (Skil
 	panic("unexpected call to ListSkills")
 }
 
-func (s *readModuleQueryStoreStub) ListCuratedSkills(context.Context, int, int) (CuratedSkillsPage, error) {
+func (s *readModuleQueryStoreStub) ListCuratedSkills(context.Context, CuratedSkillQuery) (CuratedSkillsPage, error) {
 	panic("unexpected call to ListCuratedSkills")
 }
 
@@ -66,8 +71,21 @@ func (s *readModuleQueryStoreStub) ListVersions(context.Context, VersionQuery) (
 	panic("unexpected call to ListVersions")
 }
 
-func (s *readModuleQueryStoreStub) GetVersion(context.Context, string, string) (SkillVersionDetail, error) {
-	panic("unexpected call to GetVersion")
+func (s *readModuleQueryStoreStub) GetVersion(_ context.Context, packageName string, version string) (SkillVersionDetail, error) {
+	s.getVersionCalls++
+	versions, ok := s.versions[packageName]
+	if !ok {
+		return SkillVersionDetail{}, NewError(404, "skill_not_found", "Skill not found.", map[string]any{"packageName": packageName})
+	}
+	for _, item := range versions {
+		if item.Version == version {
+			return item, nil
+		}
+	}
+	return SkillVersionDetail{}, NewError(404, "version_not_found", "Version not found.", map[string]any{
+		"packageName": packageName,
+		"version":     version,
+	})
 }
 
 func (s *readModuleQueryStoreStub) ListGovernanceChanges(context.Context, GovernanceQuery) (GovernancePage, error) {
@@ -83,6 +101,30 @@ func (s *readModuleQueryStoreStub) ListPackageVersions(_ context.Context, packag
 		return nil, NewError(404, "skill_not_found", "Skill not found.", map[string]any{"packageName": packageName})
 	}
 	return append([]SkillVersionDetail(nil), versions...), nil
+}
+
+func (s *readModuleQueryStoreStub) GetLatestResolvableVersion(_ context.Context, packageName string) (SkillVersionDetail, error) {
+	s.getLatestResolvable.calls++
+	s.getLatestResolvable.packageName = packageName
+
+	versions, ok := s.versions[packageName]
+	if !ok {
+		return SkillVersionDetail{}, NewError(404, "skill_not_found", "Skill not found.", map[string]any{"packageName": packageName})
+	}
+	var target *SkillVersionDetail
+	for _, item := range versions {
+		if item.VersionStatus != VersionStatusPublished || item.InstallPolicy != InstallPolicyResolvable {
+			continue
+		}
+		if target == nil || compareExactVersions(item.Version, target.Version) > 0 {
+			candidate := item
+			target = &candidate
+		}
+	}
+	if target == nil {
+		return SkillVersionDetail{}, NewError(409, "not_resolvable_by_policy", "No installable version is currently resolvable.", map[string]any{"packageName": packageName})
+	}
+	return *target, nil
 }
 
 func (s *readModuleQueryStoreStub) ListPackageGovernance(_ context.Context, packageName string, targetType GovernanceTargetType, version *string) ([]GovernanceRecord, error) {
@@ -130,11 +172,14 @@ func TestReadModuleResolvesInstallTargetFromQueryableState(t *testing.T) {
 	if store.getSkillCalls != 1 {
 		t.Fatalf("expected one GetSkill call, got %d", store.getSkillCalls)
 	}
-	if store.listPackageVersion.calls != 1 {
-		t.Fatalf("expected one package-version projection call, got %d", store.listPackageVersion.calls)
+	if store.getLatestResolvable.calls != 1 {
+		t.Fatalf("expected one latest-resolvable lookup, got %d", store.getLatestResolvable.calls)
 	}
-	if store.listPackageVersion.packageName != "@platform.skill/pdf-skill" {
-		t.Fatalf("unexpected package-version lookup %q", store.listPackageVersion.packageName)
+	if store.getLatestResolvable.packageName != "@platform.skill/pdf-skill" {
+		t.Fatalf("unexpected latest-resolvable lookup %q", store.getLatestResolvable.packageName)
+	}
+	if store.listPackageVersion.calls != 0 {
+		t.Fatalf("did not expect legacy package-version scan, got %d calls", store.listPackageVersion.calls)
 	}
 	if store.listPackageGovernance.calls != 0 {
 		t.Fatalf("did not expect governance lookup for successful resolution, got %d calls", store.listPackageGovernance.calls)
@@ -160,11 +205,11 @@ func TestReadModuleResolveInstallTargetIncludesReplacementRecommendationForYanke
 	if got := catalogErr.Details["replacementRecommendation"]; got != "1.2.0" {
 		t.Fatalf("unexpected replacement recommendation %#v", got)
 	}
-	if store.listPackageVersion.calls != 1 {
-		t.Fatalf("expected one package-version projection call, got %d", store.listPackageVersion.calls)
+	if store.getVersionCalls != 1 {
+		t.Fatalf("expected one direct version lookup, got %d", store.getVersionCalls)
 	}
-	if store.listPackageVersion.packageName != "@platform.skill/pdf-skill" {
-		t.Fatalf("unexpected package-version lookup %q", store.listPackageVersion.packageName)
+	if store.listPackageVersion.calls != 0 {
+		t.Fatalf("did not expect legacy package-version scan, got %d calls", store.listPackageVersion.calls)
 	}
 	if store.listPackageGovernance.calls != 1 {
 		t.Fatalf("expected one package-governance projection call, got %d", store.listPackageGovernance.calls)

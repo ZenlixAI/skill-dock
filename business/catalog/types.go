@@ -170,10 +170,17 @@ type SkillQuery struct {
 	Query          string
 	PackageName    string
 	SourceType     string
+	AllowedPackages []string
 	IncludeRetired bool
 	Sort           string
 	PageSize       int
 	Cursor         int
+}
+
+type CuratedSkillQuery struct {
+	AllowedPackages []string
+	PageSize        int
+	Cursor          int
 }
 
 type VersionQuery struct {

@@ -2,12 +2,16 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"skill_registry/app/auth"
@@ -23,22 +27,35 @@ func main() {
 	enableSampleData := envBoolOrDefault("SKILL_REGISTRY_ENABLE_SAMPLE_DATA", false)
 	enableMockRegistry := envBoolOrDefault("SKILL_REGISTRY_ENABLE_MOCK_REGISTRY", false)
 	sampleData := configuredSampleData(enableSampleData)
+	sharedWorkspaceRoot := envOrDefault("SKILL_REGISTRY_SHARED_WORKSPACE_ROOT", filepath.Join("data", "packaging-workspaces"))
 
 	artifactSource := configuredArtifactSource(sampleData, enableSampleData)
 	databaseURL := envOrDefault("SKILL_REGISTRY_DATABASE_URL", "file:"+filepath.Join("data", "skill-registry.db"))
-	repository, err := catalog.NewSQLRepository(context.Background(), databaseURL, sampleData, catalog.SQLRepositoryOptions{
+	driverName := sharedSQLDriverNameForURL(databaseURL)
+	db, err := sql.Open(driverName, databaseURL)
+	if err != nil {
+		log.Fatal(err)
+	}
+	configureDBPool(db)
+
+	repository, err := catalog.NewSQLRepositoryWithDB(context.Background(), db, driverName, sampleData, catalog.SQLRepositoryOptions{
 		ArtifactSource: artifactSource,
 		DisableSeed:    !enableSampleData,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	storeSet, err := persist.NewSQLStoreSet(context.Background(), databaseURL, 10*time.Minute)
+	storeSet, err := persist.NewSQLStoreSetWithDB(context.Background(), db, driverName, 10*time.Minute)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	server := catalogapi.NewServer(catalogapi.ServerConfig{
+		Mode:                            catalogapi.ServerMode(os.Getenv("SKILL_REGISTRY_SERVER_MODE")),
+		ReadListCacheTTL:                envDurationOrDefault("SKILL_REGISTRY_READ_CACHE_LIST_TTL", 2*time.Second),
+		ReadDetailCacheTTL:              envDurationOrDefault("SKILL_REGISTRY_READ_CACHE_DETAIL_TTL", 5*time.Second),
+		ReadMaxInFlight:                 envIntOrDefault("SKILL_REGISTRY_READ_MAX_IN_FLIGHT", 64),
+		WriteMaxInFlight:                envIntOrDefault("SKILL_REGISTRY_WRITE_MAX_IN_FLIGHT", 4),
 		ReaderToken:                     os.Getenv("SKILL_REGISTRY_READER_TOKEN"),
 		AuthoringToken:                  os.Getenv("SKILL_REGISTRY_AUTHORING_TOKEN"),
 		PublisherToken:                  os.Getenv("SKILL_REGISTRY_PUBLISHER_TOKEN"),
@@ -50,15 +67,22 @@ func main() {
 		SessionUsers:                    configuredSessionUsers(),
 		MockRegistry:                    configuredMockRegistry(sampleData, enableMockRegistry),
 		DisableMockRegistry:             !enableMockRegistry,
-		Packaging:                       packaging.NewServiceWithWorkspaceStore("", storeSet.Workspace),
+		Packaging:                       packaging.NewServiceWithWorkspaceStore(sharedWorkspaceRoot, storeSet.Workspace),
 		Repository:                      repository,
 		Idempotency:                     storeSet.Idempotency,
 		Audit:                           storeSet.Audit,
 		Logger:                          log.New(os.Stderr, "", 0),
 	})
 
+	httpServer := catalogapi.NewHTTPServer(addr, server.Handler(), catalogapi.HTTPServerConfig{
+		ReadHeaderTimeout: envDurationOrDefault("SKILL_REGISTRY_HTTP_READ_HEADER_TIMEOUT", 2*time.Second),
+		ReadTimeout:       envDurationOrDefault("SKILL_REGISTRY_HTTP_READ_TIMEOUT", 15*time.Second),
+		WriteTimeout:      envDurationOrDefault("SKILL_REGISTRY_HTTP_WRITE_TIMEOUT", 60*time.Second),
+		IdleTimeout:       envDurationOrDefault("SKILL_REGISTRY_HTTP_IDLE_TIMEOUT", 60*time.Second),
+	})
+
 	log.Printf("skill registry listening on %s", addr)
-	if err := http.ListenAndServe(addr, server.Handler()); err != nil {
+	if err := serveHTTPServer(httpServer); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -149,6 +173,30 @@ func envBoolOrDefault(key string, fallback bool) bool {
 	}
 }
 
+func envIntOrDefault(key string, fallback int) int {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		log.Fatalf("parse %s: expected integer value, got %q", key, value)
+	}
+	return parsed
+}
+
+func envDurationOrDefault(key string, fallback time.Duration) time.Duration {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := time.ParseDuration(value)
+	if err != nil {
+		log.Fatalf("parse %s: expected duration value, got %q", key, value)
+	}
+	return parsed
+}
+
 func configuredNPMPublishAuthorization() string {
 	if value := strings.TrimSpace(os.Getenv("SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION")); value != "" {
 		return value
@@ -157,4 +205,57 @@ func configuredNPMPublishAuthorization() string {
 		return "Bearer " + token
 	}
 	return ""
+}
+
+func configureDBPool(db *sql.DB) {
+	if db == nil {
+		return
+	}
+	db.SetMaxOpenConns(envIntOrDefault("SKILL_REGISTRY_DB_MAX_OPEN_CONNS", 20))
+	db.SetMaxIdleConns(envIntOrDefault("SKILL_REGISTRY_DB_MAX_IDLE_CONNS", 20))
+	db.SetConnMaxLifetime(envDurationOrDefault("SKILL_REGISTRY_DB_CONN_MAX_LIFETIME", time.Hour))
+	db.SetConnMaxIdleTime(envDurationOrDefault("SKILL_REGISTRY_DB_CONN_MAX_IDLE_TIME", 15*time.Minute))
+}
+
+func serveHTTPServer(httpServer *http.Server) error {
+	if httpServer == nil {
+		return nil
+	}
+
+	serverErr := make(chan error, 1)
+	go func() {
+		serverErr <- httpServer.ListenAndServe()
+	}()
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	select {
+	case err := <-serverErr:
+		if err == nil || err == http.ErrServerClosed {
+			return nil
+		}
+		return err
+	case <-ctx.Done():
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), envDurationOrDefault("SKILL_REGISTRY_HTTP_SHUTDOWN_TIMEOUT", 20*time.Second))
+	defer cancel()
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		return err
+	}
+
+	if err := <-serverErr; err != nil && err != http.ErrServerClosed {
+		return err
+	}
+	return nil
+}
+
+func sharedSQLDriverNameForURL(databaseURL string) string {
+	switch {
+	case strings.HasPrefix(databaseURL, "postgres://"), strings.HasPrefix(databaseURL, "postgresql://"):
+		return "pgx"
+	default:
+		return "sqlite"
+	}
 }

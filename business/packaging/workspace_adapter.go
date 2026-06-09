@@ -162,7 +162,7 @@ func (a *ephemeralWorkspaceAdapter) cleanupLocked(_ context.Context, workspacePa
 }
 
 func (a *managedWorkspaceAdapter) bundlePathLocked(ctx context.Context, workspacePath string, target Target) (string, error) {
-	bundlePath, err := a.workspace.workspaceStore.LoadBundle(ctx, workspacePath)
+	_, err := a.workspace.workspaceStore.LoadBundle(ctx, workspacePath)
 	if err != nil {
 		if err == persist.ErrWorkspaceRecordNotFound {
 			return "", catalog.NewError(422, "invalid_request", "workspacePath must reference an existing packaging workspace.", map[string]any{"workspacePath": workspacePath})
@@ -172,6 +172,7 @@ func (a *managedWorkspaceAdapter) bundlePathLocked(ctx context.Context, workspac
 		}
 		return "", catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil)
 	}
+	bundlePath := a.workspace.managedBundlePath(workspacePath, target)
 	if err := a.workspace.validateManagedBundlePath(workspacePath, target, bundlePath); err != nil {
 		return "", catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil)
 	}
@@ -190,7 +191,8 @@ func (a *ephemeralWorkspaceAdapter) bundlePathLocked(_ context.Context, workspac
 }
 
 func (a *managedWorkspaceAdapter) bundleContentLocked(ctx context.Context, workspacePath string, target Target, pack func(context.Context, PackRequest) (PackResponse, error)) ([]byte, error) {
-	bundlePath, err := a.workspace.workspaceStore.LoadBundle(ctx, workspacePath)
+	_, err := a.workspace.workspaceStore.LoadBundle(ctx, workspacePath)
+	bundlePath := a.workspace.managedBundlePath(workspacePath, target)
 	if err == nil {
 		if err := a.workspace.validateManagedBundlePath(workspacePath, target, bundlePath); err != nil {
 			return nil, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil)
@@ -218,7 +220,7 @@ func (a *managedWorkspaceAdapter) bundleContentLocked(ctx context.Context, works
 	if len(packed.Errors) > 0 {
 		return nil, catalog.NewError(404, "bundle_not_found", "Bundle archive does not exist for the requested workspace.", map[string]any{"workspacePath": workspacePath})
 	}
-	bundlePath, err = a.workspace.workspaceStore.LoadBundle(ctx, workspacePath)
+	_, err = a.workspace.workspaceStore.LoadBundle(ctx, workspacePath)
 	if err != nil {
 		return nil, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil)
 	}
@@ -300,7 +302,7 @@ func (a *managedWorkspaceAdapter) pruneExpired(ctx context.Context, ttl time.Dur
 			current, loadErr := a.workspace.workspaceStore.LoadWorkspace(lockCtx, record.WorkspaceID)
 			if loadErr == nil {
 				if current.UpdatedAt.Before(cutoff) {
-					managedRoot, rootErr := a.workspace.managedWorkspaceRootFromPath(current.WorkspaceID, current.WorkspacePath)
+					managedRoot, rootErr := a.workspace.canonicalManagedWorkspaceRoot(current.WorkspaceID)
 					if rootErr != nil {
 						unlock()
 						return rootErr

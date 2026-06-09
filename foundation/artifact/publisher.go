@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 
 	"skill_registry/business/catalog"
@@ -28,6 +29,7 @@ type NPMPublishInput struct {
 	Description string
 	DisplayName string
 	SourceType  catalog.SourceType
+	TarballPath string
 	Tarball     []byte
 }
 
@@ -105,7 +107,11 @@ func (p *NPMPublisher) PublishPackage(ctx context.Context, input NPMPublishInput
 }
 
 func buildNPMPublishPayload(baseURL string, input NPMPublishInput) ([]byte, error) {
-	integrity, shasum := digestTarball(input.Tarball)
+	tarball, err := loadPublishTarball(input)
+	if err != nil {
+		return nil, err
+	}
+	integrity, shasum := digestTarball(tarball)
 	attachmentName := packageAttachmentName(input.PackageName, input.Version)
 	tarballURL := strings.TrimRight(baseURL, "/") + "/" + strings.TrimPrefix(input.PackageName, "@") + "/-/" + packageBasename(input.PackageName) + "-" + input.Version + ".tgz"
 
@@ -143,13 +149,23 @@ func buildNPMPublishPayload(baseURL string, input NPMPublishInput) ([]byte, erro
 		"_attachments": map[string]any{
 			attachmentName: map[string]any{
 				"content_type": "application/octet-stream",
-				"data":         base64.StdEncoding.EncodeToString(input.Tarball),
-				"length":       len(input.Tarball),
+				"data":         base64.StdEncoding.EncodeToString(tarball),
+				"length":       len(tarball),
 			},
 		},
 	}
 
 	return json.Marshal(payload)
+}
+
+func loadPublishTarball(input NPMPublishInput) ([]byte, error) {
+	if len(input.Tarball) > 0 {
+		return input.Tarball, nil
+	}
+	if strings.TrimSpace(input.TarballPath) == "" {
+		return nil, os.ErrNotExist
+	}
+	return os.ReadFile(input.TarballPath)
 }
 
 func digestTarball(content []byte) (string, string) {

@@ -157,46 +157,12 @@ func (s *SQLAuditStore) List(ctx context.Context, query AuditQuery) (AuditPage, 
 		return AuditPage{}, catalog.NewError(400, "invalid_request", "cursor must be greater than or equal to 0.", map[string]any{"cursor": query.Cursor})
 	}
 
-	queryText := `
-SELECT
-	id,
-	request_id,
-	trace_id,
-	action,
-	actor,
-	role,
-	auth_mechanism,
-	auth_decision,
-	endpoint,
-	method,
-	package_name,
-	version,
-	outcome,
-	status_code,
-	details_json,
-	created_at
-FROM audit_events
-WHERE (? = '' OR action = ?)
-  AND (? = '' OR actor = ?)
-  AND (? = '' OR auth_decision = ?)
-  AND (? = '' OR package_name = ?)
-  AND (? = '' OR COALESCE(version, '') = ?)
-  AND (? = '' OR outcome = ?)
-ORDER BY created_at DESC
-LIMIT ? OFFSET ?`
-	queryText = auditBindSQL(s.dialect, queryText)
+	queryText := s.listSQL(query)
 
 	rows, err := s.db.QueryContext(
 		ctx,
 		queryText,
-		query.Action, query.Action,
-		query.Actor, query.Actor,
-		query.AuthDecision, query.AuthDecision,
-		query.PackageName, query.PackageName,
-		query.Version, query.Version,
-		query.Outcome, query.Outcome,
-		query.PageSize+1,
-		query.Cursor,
+		s.listArgs(query)...,
 	)
 	if err != nil {
 		return AuditPage{}, err
@@ -268,6 +234,73 @@ LIMIT ? OFFSET ?`
 			HasNextPage: hasNextPage,
 		},
 	}, nil
+}
+
+func (s *SQLAuditStore) listSQL(query AuditQuery) string {
+	parts := []string{`
+SELECT
+	id,
+	request_id,
+	trace_id,
+	action,
+	actor,
+	role,
+	auth_mechanism,
+	auth_decision,
+	endpoint,
+	method,
+	package_name,
+	version,
+	outcome,
+	status_code,
+	details_json,
+	created_at
+FROM audit_events
+WHERE 1 = 1`}
+	if strings.TrimSpace(query.Action) != "" {
+		parts = append(parts, `AND action = ?`)
+	}
+	if strings.TrimSpace(query.Actor) != "" {
+		parts = append(parts, `AND actor = ?`)
+	}
+	if strings.TrimSpace(query.AuthDecision) != "" {
+		parts = append(parts, `AND auth_decision = ?`)
+	}
+	if strings.TrimSpace(query.PackageName) != "" {
+		parts = append(parts, `AND package_name = ?`)
+	}
+	if strings.TrimSpace(query.Version) != "" {
+		parts = append(parts, `AND version = ?`)
+	}
+	if strings.TrimSpace(query.Outcome) != "" {
+		parts = append(parts, `AND outcome = ?`)
+	}
+	parts = append(parts, `ORDER BY created_at DESC`, `LIMIT ?`, `OFFSET ?`)
+	return auditBindSQL(s.dialect, strings.Join(parts, "\n"))
+}
+
+func (s *SQLAuditStore) listArgs(query AuditQuery) []any {
+	args := make([]any, 0, 8)
+	if strings.TrimSpace(query.Action) != "" {
+		args = append(args, query.Action)
+	}
+	if strings.TrimSpace(query.Actor) != "" {
+		args = append(args, query.Actor)
+	}
+	if strings.TrimSpace(query.AuthDecision) != "" {
+		args = append(args, query.AuthDecision)
+	}
+	if strings.TrimSpace(query.PackageName) != "" {
+		args = append(args, query.PackageName)
+	}
+	if strings.TrimSpace(query.Version) != "" {
+		args = append(args, query.Version)
+	}
+	if strings.TrimSpace(query.Outcome) != "" {
+		args = append(args, query.Outcome)
+	}
+	args = append(args, query.PageSize+1, query.Cursor)
+	return args
 }
 
 func (s *SQLAuditStore) Ping(ctx context.Context) error {

@@ -573,6 +573,46 @@ func TestPackageLevelAuthzAllowsAuthorizedPackageReadAndWrite(t *testing.T) {
 	}
 }
 
+func TestPackageScopedSkillsListReturnsAuthorizedPageWindow(t *testing.T) {
+	server := NewServer(ServerConfig{
+		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+		AuthTokens: map[string]auth.TokenConfig{
+			"reader-secret": {
+				Role:            "reader",
+				Actor:           "scoped-reader",
+				AllowedPackages: []string{"@platform.skill/pdf-skill"},
+			},
+		},
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills?sort=package_name_asc&pageSize=1", nil)
+	request.Header.Set("Authorization", "Bearer reader-secret")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+
+	var response struct {
+		Items    []catalog.SkillSummary `json:"items"`
+		PageInfo catalog.PageInfo       `json:"pageInfo"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.Items) != 1 {
+		t.Fatalf("expected one authorized item, got %d (%#v)", len(response.Items), response.Items)
+	}
+	if response.Items[0].PackageName != "@platform.skill/pdf-skill" {
+		t.Fatalf("expected authorized package @platform.skill/pdf-skill, got %q", response.Items[0].PackageName)
+	}
+	if response.PageInfo.HasNextPage || response.PageInfo.NextCursor != nil {
+		t.Fatalf("expected authorized page window to be terminal, got %+v", response.PageInfo)
+	}
+}
+
 func TestGovernanceUsesConfiguredActorInsteadOfSpoofableHeader(t *testing.T) {
 	server := NewServer(ServerConfig{
 		Repository: catalog.NewMemoryRepository(catalog.SampleData()),

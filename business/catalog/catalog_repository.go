@@ -30,8 +30,8 @@ func (r *CatalogRepository) ListSkills(ctx context.Context, query SkillQuery) (S
 	return r.reads.ListSkills(ctx, query)
 }
 
-func (r *CatalogRepository) ListCuratedSkills(ctx context.Context, pageSize int, cursor int) (CuratedSkillsPage, error) {
-	return r.reads.ListCuratedSkills(ctx, pageSize, cursor)
+func (r *CatalogRepository) ListCuratedSkills(ctx context.Context, query CuratedSkillQuery) (CuratedSkillsPage, error) {
+	return r.reads.ListCuratedSkills(ctx, query)
 }
 
 func (r *CatalogRepository) GetSkill(ctx context.Context, packageName string) (SkillDetail, error) {

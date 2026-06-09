@@ -2,10 +2,8 @@ package packaging
 
 import (
 	"context"
-	"os"
 	"time"
 
-	"skill_registry/business/catalog"
 	"skill_registry/foundation/persist"
 )
 
@@ -18,7 +16,7 @@ type packagingWorkspaceRuntime struct {
 type publishedReleaseMaterial struct {
 	packResponse PackResponse
 	metadata     workspacePackageMetadata
-	tarball      []byte
+	tarballPath  string
 	cleanup      func()
 }
 
@@ -116,6 +114,29 @@ func (r *packagingWorkspaceRuntime) BundlePath(ctx context.Context, workspacePat
 	return r.adapter.bundlePathLocked(ctx, workspacePath, target)
 }
 
+func (r *packagingWorkspaceRuntime) BundleFilePath(ctx context.Context, workspacePath string, target Target) (string, error) {
+	if err := validateTarget(target); err != nil {
+		return "", err
+	}
+	if err := packagingContextError(ctx); err != nil {
+		return "", err
+	}
+	ctx, unlock, err := r.workspace.lockWorkspace(ctx, workspacePath)
+	if err != nil {
+		return "", err
+	}
+	defer unlock()
+
+	bundlePath, err := r.adapter.bundlePathLocked(ctx, workspacePath, target)
+	if err != nil {
+		return "", err
+	}
+	if r.workspace.workspaceStore != nil {
+		return r.workspace.managedBundlePath(workspacePath, target), nil
+	}
+	return bundlePath, nil
+}
+
 func (r *packagingWorkspaceRuntime) BundleContent(ctx context.Context, workspacePath string, target Target) ([]byte, error) {
 	if err := validateTarget(target); err != nil {
 		return nil, err
@@ -182,14 +203,8 @@ func (r *packagingWorkspaceRuntime) preparePublishedRelease(ctx context.Context,
 		material.cleanup()
 		return publishedReleaseMaterial{}, err
 	}
-	tarball, err := os.ReadFile(packResult.bundlePath)
-	if err != nil {
-		material.cleanup()
-		return publishedReleaseMaterial{}, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil)
-	}
-
 	material.metadata = metadata
-	material.tarball = tarball
+	material.tarballPath = packResult.bundlePath
 	return material, nil
 }
 

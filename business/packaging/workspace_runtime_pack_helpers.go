@@ -180,11 +180,8 @@ func reuseManagedBundle(record persist.WorkspaceRecord, input PackRequest, expec
 	if strings.TrimSpace(record.BundlePath) == "" {
 		return "", false, nil
 	}
-	if filepath.Clean(record.BundlePath) != filepath.Clean(expectedBundlePath) {
-		return "", false, catalog.NewError(500, "internal_error", "Packed bundle could not be persisted.", nil)
-	}
 
-	info, err := os.Stat(record.BundlePath)
+	info, err := os.Stat(expectedBundlePath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return "", false, nil
@@ -198,7 +195,7 @@ func reuseManagedBundle(record persist.WorkspaceRecord, input PackRequest, expec
 		return "", true, nil
 	}
 
-	content, err := os.ReadFile(record.BundlePath)
+	content, err := os.ReadFile(expectedBundlePath)
 	if err != nil {
 		return "", false, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil)
 	}

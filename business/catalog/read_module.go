@@ -2,7 +2,10 @@ package catalog
 
 import (
 	"context"
+	"errors"
 )
+
+var errNoResolvableVersion = errors.New("no resolvable version")
 
 type ReadModule struct {
 	store QueryStore
@@ -16,8 +19,8 @@ func (m *ReadModule) ListSkills(ctx context.Context, query SkillQuery) (SkillsPa
 	return m.store.ListSkills(ctx, query)
 }
 
-func (m *ReadModule) ListCuratedSkills(ctx context.Context, pageSize int, cursor int) (CuratedSkillsPage, error) {
-	return m.store.ListCuratedSkills(ctx, pageSize, cursor)
+func (m *ReadModule) ListCuratedSkills(ctx context.Context, query CuratedSkillQuery) (CuratedSkillsPage, error) {
+	return m.store.ListCuratedSkills(ctx, query)
 }
 
 func (m *ReadModule) GetSkill(ctx context.Context, packageName string) (SkillDetail, error) {
@@ -48,12 +51,7 @@ func (m *ReadModule) ResolveInstallTarget(ctx context.Context, packageName strin
 		return InstallResolution{}, NewError(409, "skill_retired", "Skill is retired.", map[string]any{"packageName": packageName})
 	}
 
-	versions, err := m.store.ListPackageVersions(ctx, packageName)
-	if err != nil {
-		return InstallResolution{}, err
-	}
-
-	target, err := m.resolveInstallVersion(packageName, version, versions)
+	target, err := m.resolveInstallVersion(ctx, packageName, version)
 	if err != nil {
 		return InstallResolution{}, err
 	}
@@ -76,36 +74,22 @@ func (m *ReadModule) ResolveInstallTarget(ctx context.Context, packageName strin
 	}, nil
 }
 
-func (m *ReadModule) resolveInstallVersion(packageName string, version string, versions []SkillVersionDetail) (SkillVersionDetail, error) {
+func (m *ReadModule) resolveInstallVersion(ctx context.Context, packageName string, version string) (SkillVersionDetail, error) {
 	if version != "" {
 		if !isExactVersion(version) {
 			return SkillVersionDetail{}, NewError(422, "invalid_request", "version must be an exact semver string.", map[string]any{"version": version})
 		}
-		for _, item := range versions {
-			if item.Version == version {
-				return item, nil
-			}
-		}
-		return SkillVersionDetail{}, NewError(404, "version_not_found", "Version not found.", map[string]any{
-			"packageName": packageName,
-			"version":     version,
-		})
+		return m.store.GetVersion(ctx, packageName, version)
 	}
 
-	var target *SkillVersionDetail
-	for _, item := range versions {
-		if item.VersionStatus != VersionStatusPublished || item.InstallPolicy != InstallPolicyResolvable {
-			continue
-		}
-		if target == nil || compareExactVersions(item.Version, target.Version) > 0 {
-			candidate := item
-			target = &candidate
-		}
+	target, err := m.store.GetLatestResolvableVersion(ctx, packageName)
+	if err == nil {
+		return target, nil
 	}
-	if target == nil {
+	if errors.Is(err, errNoResolvableVersion) {
 		return SkillVersionDetail{}, NewError(409, "not_resolvable_by_policy", "No installable version is currently resolvable.", map[string]any{"packageName": packageName})
 	}
-	return *target, nil
+	return SkillVersionDetail{}, err
 }
 
 func (m *ReadModule) versionErrorDetails(ctx context.Context, skill SkillDetail, version string) map[string]any {

@@ -251,34 +251,24 @@ func (s *SQLStateStore) ListSkills(ctx context.Context, query SkillQuery) (Skill
 	return SkillsPage{Items: pageWindow(items, query.Cursor, query.PageSize), PageInfo: pageInfoForWindow(items, query.Cursor, query.PageSize)}, nil
 }
 
-func (s *SQLStateStore) ListCuratedSkills(ctx context.Context, pageSize int, cursor int) (CuratedSkillsPage, error) {
-	if pageSize <= 0 {
-		pageSize = 20
+func (s *SQLStateStore) ListCuratedSkills(ctx context.Context, query CuratedSkillQuery) (CuratedSkillsPage, error) {
+	if query.PageSize <= 0 {
+		query.PageSize = 20
 	}
-	if pageSize > 100 {
-		return CuratedSkillsPage{}, NewError(400, "invalid_request", "pageSize must be less than or equal to 100.", map[string]any{"pageSize": pageSize})
+	if query.PageSize > 100 {
+		return CuratedSkillsPage{}, NewError(400, "invalid_request", "pageSize must be less than or equal to 100.", map[string]any{"pageSize": query.PageSize})
+	}
+	if err := validateCursor(query.Cursor); err != nil {
+		return CuratedSkillsPage{}, err
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
-SELECT
-	package_name,
-	display_name,
-	description,
-	source_type,
-	status,
-	latest_version,
-	latest_version_status,
-	updated_at,
-	curation_reason
-FROM skills
-WHERE curation_reason <> '' AND status <> 'retired'
-ORDER BY updated_at DESC`)
+	rows, err := s.db.QueryContext(ctx, bindSQL(s.dialect, s.listCuratedSkillsSQL(query)), s.listCuratedSkillsArgs(query)...)
 	if err != nil {
 		return CuratedSkillsPage{}, err
 	}
 	defer rows.Close()
 
-	items := make([]CuratedSkillSummary, 0)
+	items := make([]CuratedSkillSummary, 0, query.PageSize+1)
 	for rows.Next() {
 		var (
 			latestVersion       sql.NullString
@@ -311,12 +301,10 @@ ORDER BY updated_at DESC`)
 	if err := rows.Err(); err != nil {
 		return CuratedSkillsPage{}, err
 	}
-
-	paged, pageInfo, err := paginate(items, cursor, pageSize)
-	if err != nil {
+	if err := s.validateCursorWindow(ctx, s.listCuratedSkillsSelectSQL(query), s.listCuratedSkillsFilterArgs(query), query.Cursor, len(items)); err != nil {
 		return CuratedSkillsPage{}, err
 	}
-	return CuratedSkillsPage{Items: paged, PageInfo: pageInfo}, nil
+	return CuratedSkillsPage{Items: pageWindow(items, query.Cursor, query.PageSize), PageInfo: pageInfoForWindow(items, query.Cursor, query.PageSize)}, nil
 }
 
 func (s *SQLStateStore) GetSkill(ctx context.Context, packageName string) (SkillDetail, error) {
@@ -431,6 +419,37 @@ WHERE package_name = ? AND version = ?`)
 			"packageName": packageName,
 			"version":     version,
 		})
+	}
+	if err != nil {
+		return SkillVersionDetail{}, err
+	}
+	return detail, nil
+}
+
+func (s *SQLStateStore) GetLatestResolvableVersion(ctx context.Context, packageName string) (SkillVersionDetail, error) {
+	query := bindSQL(s.dialect, strings.Join([]string{`
+SELECT
+	package_name,
+	version,
+	version_status,
+	install_policy,
+	published_at,
+	npm_registry,
+	tarball_url,
+	integrity,
+	shasum,
+	dist_tags_json,
+	skill_manifest_digest,
+	components_json
+FROM skill_versions
+WHERE package_name = ?
+  AND version_status = 'published'
+  AND install_policy = 'resolvable'
+`, s.versionOrderBySQL(), `LIMIT 1`}, "\n"))
+
+	detail, err := scanSkillVersionDetail(s.db.QueryRowContext(ctx, query, packageName))
+	if errors.Is(err, sql.ErrNoRows) {
+		return SkillVersionDetail{}, errNoResolvableVersion
 	}
 	if err != nil {
 		return SkillVersionDetail{}, err
@@ -973,6 +992,9 @@ WHERE 1 = 1`}
 	if query.SourceType != "" {
 		parts = append(parts, `AND source_type = ?`)
 	}
+	if len(query.AllowedPackages) > 0 {
+		parts = append(parts, allowedPackageFilterSQL(query.AllowedPackages))
+	}
 	if strings.TrimSpace(query.Query) != "" {
 		parts = append(parts, `AND (LOWER(package_name) LIKE ? OR LOWER(display_name) LIKE ? OR LOWER(description) LIKE ?)`)
 	}
@@ -992,6 +1014,7 @@ func (s *SQLStateStore) listSkillsFilterArgs(query SkillQuery) []any {
 	if query.SourceType != "" {
 		args = append(args, query.SourceType)
 	}
+	args = append(args, allowedPackageFilterArgs(query.AllowedPackages)...)
 	if strings.TrimSpace(query.Query) != "" {
 		needle := "%" + strings.ToLower(strings.TrimSpace(query.Query)) + "%"
 		args = append(args, needle, needle, needle)
@@ -1005,6 +1028,40 @@ func (s *SQLStateStore) listSkillsArgs(query SkillQuery, sortKey string) []any {
 	if sortKey == "relevance" && strings.TrimSpace(query.Query) != "" {
 		args = append(args, needle, needle, needle)
 	}
+	args = append(args, query.PageSize+1, query.Cursor)
+	return args
+}
+
+func (s *SQLStateStore) listCuratedSkillsSelectSQL(query CuratedSkillQuery) string {
+	parts := []string{`
+SELECT
+	package_name,
+	display_name,
+	description,
+	source_type,
+	status,
+	latest_version,
+	latest_version_status,
+	updated_at,
+	curation_reason
+FROM skills
+WHERE curation_reason <> '' AND status <> 'retired'`}
+	if len(query.AllowedPackages) > 0 {
+		parts = append(parts, allowedPackageFilterSQL(query.AllowedPackages))
+	}
+	return strings.Join(parts, "\n")
+}
+
+func (s *SQLStateStore) listCuratedSkillsSQL(query CuratedSkillQuery) string {
+	return strings.Join([]string{s.listCuratedSkillsSelectSQL(query), `ORDER BY updated_at DESC`, `LIMIT ?`, `OFFSET ?`}, "\n")
+}
+
+func (s *SQLStateStore) listCuratedSkillsFilterArgs(query CuratedSkillQuery) []any {
+	return allowedPackageFilterArgs(query.AllowedPackages)
+}
+
+func (s *SQLStateStore) listCuratedSkillsArgs(query CuratedSkillQuery) []any {
+	args := s.listCuratedSkillsFilterArgs(query)
 	args = append(args, query.PageSize+1, query.Cursor)
 	return args
 }
@@ -1146,6 +1203,63 @@ func validateCursor(cursor int) error {
 		return NewError(400, "invalid_request", "cursor must be greater than or equal to 0.", map[string]any{"cursor": cursor})
 	}
 	return nil
+}
+
+func allowedPackageFilterSQL(patterns []string) string {
+	clauses := make([]string, 0, len(patterns))
+	for _, pattern := range patterns {
+		pattern = strings.TrimSpace(pattern)
+		if pattern == "" {
+			continue
+		}
+		if strings.HasSuffix(pattern, "*") {
+			clauses = append(clauses, `package_name LIKE ?`)
+			continue
+		}
+		clauses = append(clauses, `package_name = ?`)
+	}
+	if len(clauses) == 0 {
+		return ""
+	}
+	return `AND (` + strings.Join(clauses, ` OR `) + `)`
+}
+
+func allowedPackageFilterArgs(patterns []string) []any {
+	args := make([]any, 0, len(patterns))
+	for _, pattern := range patterns {
+		pattern = strings.TrimSpace(pattern)
+		if pattern == "" {
+			continue
+		}
+		if strings.HasSuffix(pattern, "*") {
+			args = append(args, strings.TrimSuffix(pattern, "*")+"%")
+			continue
+		}
+		args = append(args, pattern)
+	}
+	return args
+}
+
+func matchesAllowedPackagePatterns(patterns []string, packageName string) bool {
+	if len(patterns) == 0 {
+		return true
+	}
+	for _, pattern := range patterns {
+		pattern = strings.TrimSpace(pattern)
+		if pattern == "" {
+			continue
+		}
+		if strings.HasSuffix(pattern, "*") {
+			if strings.HasPrefix(packageName, strings.TrimSuffix(pattern, "*")) {
+				return true
+			}
+			continue
+		}
+		if packageName == pattern {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *SQLStateStore) validateCursorWindow(ctx context.Context, selectSQL string, args []any, cursor int, loaded int) error {

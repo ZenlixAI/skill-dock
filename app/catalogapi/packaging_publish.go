@@ -24,6 +24,12 @@ func (s *Server) handlePackagingPublish(writer http.ResponseWriter, request *htt
 	if !s.authorizePackageAccess(writer, request, payload.Target.PackageName) {
 		return
 	}
+	release, limitErr := s.writeLimiter.acquire()
+	if limitErr != nil {
+		writeCatalogError(writer, request, limitErr)
+		return
+	}
+	defer release()
 
 	response, err := s.packaging.PublishContext(request.Context(), payload)
 	if err != nil {

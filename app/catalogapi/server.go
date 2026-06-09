@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -26,6 +27,11 @@ import (
 
 type ServerConfig struct {
 	Repository                      catalog.Repository
+	Mode                            ServerMode
+	ReadListCacheTTL                time.Duration
+	ReadDetailCacheTTL              time.Duration
+	ReadMaxInFlight                 int
+	WriteMaxInFlight                int
 	ReaderToken                     string
 	AuthoringToken                  string
 	PublisherToken                  string
@@ -66,6 +72,12 @@ type Server struct {
 	logger                *log.Logger
 	metrics               *observability.Collector
 	requestID             atomic.Uint64
+	mode                  ServerMode
+	readListCacheTTL      time.Duration
+	readDetailCacheTTL    time.Duration
+	readCache             *readCache
+	readLimiter           *requestLimiter
+	writeLimiter          *requestLimiter
 }
 
 type contextKey string
@@ -79,6 +91,15 @@ func NewServer(config ServerConfig) *Server {
 	logger := config.Logger
 	if logger == nil {
 		logger = log.New(os.Stderr, "", 0)
+	}
+	mode := normalizeServerMode(config.Mode)
+	readListCacheTTL := config.ReadListCacheTTL
+	if readListCacheTTL <= 0 {
+		readListCacheTTL = 2 * time.Second
+	}
+	readDetailCacheTTL := config.ReadDetailCacheTTL
+	if readDetailCacheTTL <= 0 {
+		readDetailCacheTTL = 5 * time.Second
 	}
 
 	authorizer := auth.NewAuthorizer(auth.Config{
@@ -112,6 +133,12 @@ func NewServer(config ServerConfig) *Server {
 		auditRecorder:        auditRecorder,
 		logger:               logger,
 		metrics:              observability.NewCollector(),
+		mode:                 mode,
+		readListCacheTTL:     readListCacheTTL,
+		readDetailCacheTTL:   readDetailCacheTTL,
+		readCache:            newReadCache(),
+		readLimiter:          newRequestLimiter(config.ReadMaxInFlight),
+		writeLimiter:         newRequestLimiter(config.WriteMaxInFlight),
 	}
 	server.catalogReadModule = &catalogReadModule{
 		repo: config.Repository,
@@ -170,21 +197,29 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/healthz", http.HandlerFunc(s.handleHealthz))
 	mux.Handle("/readyz", http.HandlerFunc(s.handleReadyz))
 	mux.Handle("/metrics", http.HandlerFunc(s.handleMetrics))
-	mux.Handle("/api/v1/audit-events", s.requireAction(s.handleAuditEvents, auth.ActionReadAuditEvents))
 	mux.Handle("/api/v1/session", http.HandlerFunc(s.handleSession))
 	mux.Handle("/api/v1/session/login", http.HandlerFunc(s.handleSessionLogin))
 	mux.Handle("/api/v1/session/logout", http.HandlerFunc(s.handleSessionLogout))
-	mux.Handle("/api/v1/skills", s.requireAction(s.handleSkills, auth.ActionReadCatalog))
-	mux.Handle("/api/v1/skills/search", s.requireAction(s.handleSkills, auth.ActionReadCatalog))
-	mux.Handle("/api/v1/skills/curated", s.requireAction(s.handleCuratedSkills, auth.ActionReadCatalog))
-	mux.Handle("/api/v1/governance-changes", s.requireAction(s.handleGovernanceChanges, auth.ActionReadCatalog))
-	mux.Handle("/api/v1/skills/", s.requireAction(s.handleSkillSubtree, auth.ActionReadCatalog))
-	mux.Handle("/api/v1/skill-packaging/prepare", s.requireAction(s.handlePackagingPrepare, auth.ActionPackagingPrepare))
-	mux.Handle("/api/v1/skill-packaging/validate", s.requireAction(s.handlePackagingValidate, auth.ActionPackagingValidate))
-	mux.Handle("/api/v1/skill-packaging/pack", s.requireAction(s.handlePackagingPack, auth.ActionPackagingPack))
-	mux.Handle("/api/v1/skill-packaging/publish", s.requireAction(s.handlePackagingPublish, auth.ActionPackagingPublish))
-	mux.Handle("/api/v1/skill-packaging/cleanup", s.requireAction(s.handlePackagingCleanup, auth.ActionPackagingPack))
-	mux.Handle("/api/v1/skill-packaging/bundle", s.requireAction(s.handlePackagingBundleDownload, auth.ActionPackagingPack))
+	if s.mode.servesWriteRoutes() {
+		mux.Handle("/api/v1/audit-events", s.requireAction(s.handleAuditEvents, auth.ActionReadAuditEvents))
+	}
+	if s.mode.servesReadRoutes() {
+		mux.Handle("/api/v1/skills", s.requireAction(s.handleSkills, auth.ActionReadCatalog))
+		mux.Handle("/api/v1/skills/search", s.requireAction(s.handleSkills, auth.ActionReadCatalog))
+		mux.Handle("/api/v1/skills/curated", s.requireAction(s.handleCuratedSkills, auth.ActionReadCatalog))
+		mux.Handle("/api/v1/governance-changes", s.requireAction(s.handleGovernanceChanges, auth.ActionReadCatalog))
+	}
+	if s.mode.servesReadRoutes() || s.mode.servesWriteRoutes() {
+		mux.Handle("/api/v1/skills/", s.requireAction(s.handleSkillSubtree, auth.ActionReadCatalog))
+	}
+	if s.mode.servesWriteRoutes() {
+		mux.Handle("/api/v1/skill-packaging/prepare", s.requireAction(s.handlePackagingPrepare, auth.ActionPackagingPrepare))
+		mux.Handle("/api/v1/skill-packaging/validate", s.requireAction(s.handlePackagingValidate, auth.ActionPackagingValidate))
+		mux.Handle("/api/v1/skill-packaging/pack", s.requireAction(s.handlePackagingPack, auth.ActionPackagingPack))
+		mux.Handle("/api/v1/skill-packaging/publish", s.requireAction(s.handlePackagingPublish, auth.ActionPackagingPublish))
+		mux.Handle("/api/v1/skill-packaging/cleanup", s.requireAction(s.handlePackagingCleanup, auth.ActionPackagingPack))
+		mux.Handle("/api/v1/skill-packaging/bundle", s.requireAction(s.handlePackagingBundleDownload, auth.ActionPackagingPack))
+	}
 	if !s.disableMockRegistry {
 		mux.Handle("/mock-npm/", http.HandlerFunc(s.handleMockRegistry))
 	}
@@ -292,12 +327,9 @@ func (s *Server) handleSkills(writer http.ResponseWriter, request *http.Request)
 		}
 	}
 
-	response, repoErr := s.readAPIModule.listSkills(request.Context(), auth.PrincipalFromContext(request.Context()), request.URL.Query())
-	if repoErr != nil {
-		writeCatalogError(writer, request, repoErr)
-		return
-	}
-	writeJSON(writer, http.StatusOK, response)
+	s.serveCachedReadJSON(writer, request, s.readListCacheTTL, func() (any, *catalog.Error) {
+		return s.readAPIModule.listSkills(request.Context(), auth.PrincipalFromContext(request.Context()), request.URL.Query())
+	})
 }
 
 func (s *Server) handleCuratedSkills(writer http.ResponseWriter, request *http.Request) {
@@ -312,12 +344,9 @@ func (s *Server) handleCuratedSkills(writer http.ResponseWriter, request *http.R
 		return
 	}
 
-	response, repoErr := s.catalogReadModule.listCuratedSkills(request.Context(), auth.PrincipalFromContext(request.Context()), pageSize, cursor)
-	if repoErr != nil {
-		writeCatalogError(writer, request, repoErr)
-		return
-	}
-	writeJSON(writer, http.StatusOK, response)
+	s.serveCachedReadJSON(writer, request, s.readListCacheTTL, func() (any, *catalog.Error) {
+		return s.catalogReadModule.listCuratedSkills(request.Context(), auth.PrincipalFromContext(request.Context()), pageSize, cursor)
+	})
 }
 
 func (s *Server) handleHealthz(writer http.ResponseWriter, request *http.Request) {
@@ -349,12 +378,9 @@ func (s *Server) handleAuditEvents(writer http.ResponseWriter, request *http.Req
 		return
 	}
 
-	response, err := s.auditQueryModule.listEvents(request.Context(), auth.PrincipalFromContext(request.Context()), request.URL.Query())
-	if err != nil {
-		writeCatalogError(writer, request, err)
-		return
-	}
-	writeJSON(writer, http.StatusOK, response)
+	s.serveCachedReadJSON(writer, request, s.readListCacheTTL, func() (any, *catalog.Error) {
+		return s.auditQueryModule.listEvents(request.Context(), auth.PrincipalFromContext(request.Context()), request.URL.Query())
+	})
 }
 
 func (s *Server) handleGovernanceChanges(writer http.ResponseWriter, request *http.Request) {
@@ -384,18 +410,15 @@ func (s *Server) handleGovernanceChanges(writer http.ResponseWriter, request *ht
 		return
 	}
 
-	response, repoErr := s.governanceModule.listChanges(request.Context(), auth.PrincipalFromContext(request.Context()), catalog.GovernanceQuery{
-		PackageName: request.URL.Query().Get("package_name"),
-		Version:     versionFilter,
-		TargetType:  targetType,
-		PageSize:    pageSize,
-		Cursor:      cursor,
+	s.serveCachedReadJSON(writer, request, s.readListCacheTTL, func() (any, *catalog.Error) {
+		return s.governanceModule.listChanges(request.Context(), auth.PrincipalFromContext(request.Context()), catalog.GovernanceQuery{
+			PackageName: request.URL.Query().Get("package_name"),
+			Version:     versionFilter,
+			TargetType:  targetType,
+			PageSize:    pageSize,
+			Cursor:      cursor,
+		})
 	})
-	if repoErr != nil {
-		writeCatalogError(writer, request, repoErr)
-		return
-	}
-	writeJSON(writer, http.StatusOK, response)
 }
 
 func (s *Server) handleSkillSubtree(writer http.ResponseWriter, request *http.Request) {
@@ -409,25 +432,25 @@ func (s *Server) handleSkillSubtree(writer http.ResponseWriter, request *http.Re
 	}
 
 	switch {
-	case len(tail) == 0 && request.Method == http.MethodGet:
+	case len(tail) == 0 && request.Method == http.MethodGet && s.mode.servesReadRoutes():
 		s.handleSkillDetail(writer, request, packageName)
-	case len(tail) == 1 && tail[0] == "versions" && request.Method == http.MethodGet:
+	case len(tail) == 1 && tail[0] == "versions" && request.Method == http.MethodGet && s.mode.servesReadRoutes():
 		s.handleVersionList(writer, request, packageName)
-	case len(tail) == 1 && tail[0] == "install-target" && request.Method == http.MethodGet:
+	case len(tail) == 1 && tail[0] == "install-target" && request.Method == http.MethodGet && s.mode.servesReadRoutes():
 		s.handleInstallTarget(writer, request, packageName)
-	case len(tail) == 1 && tail[0] == "governance-changes" && request.Method == http.MethodPost:
+	case len(tail) == 1 && tail[0] == "governance-changes" && request.Method == http.MethodPost && s.mode.servesWriteRoutes():
 		if !s.authorizeActionAccess(writer, request, auth.ActionApplySkillGovernance, packageName, "") {
 			return
 		}
 		s.handleSkillGovernanceChange(writer, request, packageName)
-	case len(tail) == 2 && tail[0] == "versions" && request.Method == http.MethodGet:
+	case len(tail) == 2 && tail[0] == "versions" && request.Method == http.MethodGet && s.mode.servesReadRoutes():
 		s.handleVersionDetail(writer, request, packageName, tail[1])
-	case len(tail) == 3 && tail[0] == "versions" && tail[2] == "release-record" && request.Method == http.MethodPut:
+	case len(tail) == 3 && tail[0] == "versions" && tail[2] == "release-record" && request.Method == http.MethodPut && s.mode.servesWriteRoutes():
 		if !s.authorizeActionAccess(writer, request, auth.ActionCreateReleaseRecord, packageName, tail[1]) {
 			return
 		}
 		s.handleReleaseRecord(writer, request, packageName, tail[1])
-	case len(tail) == 3 && tail[0] == "versions" && tail[2] == "governance-changes" && request.Method == http.MethodPost:
+	case len(tail) == 3 && tail[0] == "versions" && tail[2] == "governance-changes" && request.Method == http.MethodPost && s.mode.servesWriteRoutes():
 		if !s.authorizeActionAccess(writer, request, auth.ActionApplyVersionGovernance, packageName, tail[1]) {
 			return
 		}
@@ -438,12 +461,13 @@ func (s *Server) handleSkillSubtree(writer http.ResponseWriter, request *http.Re
 }
 
 func (s *Server) handleSkillDetail(writer http.ResponseWriter, request *http.Request, packageName string) {
-	response, err := s.repo.GetSkill(request.Context(), packageName)
-	if err != nil {
-		writeCatalogError(writer, request, err)
-		return
-	}
-	writeJSON(writer, http.StatusOK, response)
+	s.serveCachedReadJSON(writer, request, s.readDetailCacheTTL, func() (any, *catalog.Error) {
+		response, err := s.repo.GetSkill(request.Context(), packageName)
+		if err != nil {
+			return nil, catalogErrorFromError(err)
+		}
+		return response, nil
+	})
 }
 
 func (s *Server) handleVersionList(writer http.ResponseWriter, request *http.Request, packageName string) {
@@ -468,19 +492,19 @@ func (s *Server) handleVersionList(writer http.ResponseWriter, request *http.Req
 		return
 	}
 
-	response, repoErr := s.repo.ListVersions(request.Context(), catalog.VersionQuery{
-		PackageName:       packageName,
-		IncludeDeprecated: includeDeprecated,
-		IncludeYanked:     includeYanked,
-		PageSize:          pageSize,
-		Cursor:            cursor,
+	s.serveCachedReadJSON(writer, request, s.readDetailCacheTTL, func() (any, *catalog.Error) {
+		response, err := s.repo.ListVersions(request.Context(), catalog.VersionQuery{
+			PackageName:       packageName,
+			IncludeDeprecated: includeDeprecated,
+			IncludeYanked:     includeYanked,
+			PageSize:          pageSize,
+			Cursor:            cursor,
+		})
+		if err != nil {
+			return nil, catalogErrorFromError(err)
+		}
+		return response, nil
 	})
-	if repoErr != nil {
-		writeCatalogError(writer, request, repoErr)
-		return
-	}
-
-	writeJSON(writer, http.StatusOK, response)
 }
 
 func (s *Server) handleVersionDetail(writer http.ResponseWriter, request *http.Request, packageName string, version string) {
@@ -490,12 +514,13 @@ func (s *Server) handleVersionDetail(writer http.ResponseWriter, request *http.R
 		return
 	}
 
-	response, err := s.repo.GetVersion(request.Context(), packageName, decodedVersion)
-	if err != nil {
-		writeCatalogError(writer, request, err)
-		return
-	}
-	writeJSON(writer, http.StatusOK, response)
+	s.serveCachedReadJSON(writer, request, s.readDetailCacheTTL, func() (any, *catalog.Error) {
+		response, err := s.repo.GetVersion(request.Context(), packageName, decodedVersion)
+		if err != nil {
+			return nil, catalogErrorFromError(err)
+		}
+		return response, nil
+	})
 }
 
 func (s *Server) handleMockRegistry(writer http.ResponseWriter, request *http.Request) {
@@ -507,13 +532,13 @@ func (s *Server) handleMockRegistry(writer http.ResponseWriter, request *http.Re
 }
 
 func (s *Server) handleInstallTarget(writer http.ResponseWriter, request *http.Request, packageName string) {
-	response, err := s.repo.ResolveInstallTarget(request.Context(), packageName, request.URL.Query().Get("version"))
-	if err != nil {
-		writeCatalogError(writer, request, err)
-		return
-	}
-	response = s.publicInstallTarget(response)
-	writeJSON(writer, http.StatusOK, response)
+	s.serveCachedReadJSON(writer, request, s.readDetailCacheTTL, func() (any, *catalog.Error) {
+		response, err := s.repo.ResolveInstallTarget(request.Context(), packageName, request.URL.Query().Get("version"))
+		if err != nil {
+			return nil, catalogErrorFromError(err)
+		}
+		return s.publicInstallTarget(response), nil
+	})
 }
 
 func (s *Server) publicInstallTarget(response catalog.InstallResolution) catalog.InstallResolution {
@@ -592,7 +617,7 @@ func (s *Server) handlePackagingBundleDownload(writer http.ResponseWriter, reque
 		return
 	}
 
-	content, err := s.packagingAccessModule.downloadBundle(
+	bundlePath, err := s.packagingAccessModule.downloadBundle(
 		request.Context(),
 		auth.PrincipalFromContext(request.Context()),
 		strings.TrimSpace(request.URL.Query().Get("workspacePath")),
@@ -604,12 +629,31 @@ func (s *Server) handlePackagingBundleDownload(writer http.ResponseWriter, reque
 		return
 	}
 
+	bundleFile, openErr := os.Open(bundlePath)
+	if openErr != nil {
+		writeCatalogError(writer, request, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil))
+		return
+	}
+	defer bundleFile.Close()
+
+	info, statErr := bundleFile.Stat()
+	if statErr != nil || info.IsDir() {
+		writeCatalogError(writer, request, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil))
+		return
+	}
+
 	writer.Header().Set("Content-Type", "application/octet-stream")
-	writer.WriteHeader(http.StatusOK)
-	_, _ = writer.Write(content)
+	http.ServeContent(writer, request, filepath.Base(bundlePath), info.ModTime(), bundleFile)
 }
 
 func (s *Server) handleReleaseRecord(writer http.ResponseWriter, request *http.Request, packageName string, versionPath string) {
+	release, limitErr := s.writeLimiter.acquire()
+	if limitErr != nil {
+		writeCatalogError(writer, request, limitErr)
+		return
+	}
+	defer release()
+
 	rawBody, readErr := io.ReadAll(request.Body)
 	if readErr != nil {
 		writeCatalogError(writer, request, catalog.NewError(422, "invalid_request", "request body is invalid JSON.", map[string]any{"error": readErr.Error()}))
@@ -631,6 +675,13 @@ func (s *Server) handleReleaseRecord(writer http.ResponseWriter, request *http.R
 }
 
 func (s *Server) handleSkillGovernanceChange(writer http.ResponseWriter, request *http.Request, packageName string) {
+	release, limitErr := s.writeLimiter.acquire()
+	if limitErr != nil {
+		writeCatalogError(writer, request, limitErr)
+		return
+	}
+	defer release()
+
 	rawBody, readErr := io.ReadAll(request.Body)
 	if readErr != nil {
 		writeCatalogError(writer, request, catalog.NewError(422, "invalid_request", "request body is invalid JSON.", map[string]any{"error": readErr.Error()}))
@@ -651,6 +702,13 @@ func (s *Server) handleSkillGovernanceChange(writer http.ResponseWriter, request
 }
 
 func (s *Server) handleVersionGovernanceChange(writer http.ResponseWriter, request *http.Request, packageName string, versionPath string) {
+	release, limitErr := s.writeLimiter.acquire()
+	if limitErr != nil {
+		writeCatalogError(writer, request, limitErr)
+		return
+	}
+	defer release()
+
 	rawBody, readErr := io.ReadAll(request.Body)
 	if readErr != nil {
 		writeCatalogError(writer, request, catalog.NewError(422, "invalid_request", "request body is invalid JSON.", map[string]any{"error": readErr.Error()}))
@@ -933,6 +991,12 @@ func handlePackagingEndpoint[T interface {
 			return
 		}
 	}
+	release, limitErr := s.writeLimiter.acquire()
+	if limitErr != nil {
+		writeCatalogError(writer, request, limitErr)
+		return
+	}
+	defer release()
 	response, status, err := execute(request.Context(), principal, payload)
 	if err != nil {
 		writeCatalogError(writer, request, err)
@@ -948,6 +1012,48 @@ func hashRequestPayload(payload any) (string, error) {
 	}
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:]), nil
+}
+
+func (s *Server) serveCachedReadJSON(writer http.ResponseWriter, request *http.Request, ttl time.Duration, load func() (any, *catalog.Error)) {
+	release, limitErr := s.readLimiter.acquire()
+	if limitErr != nil {
+		writeCatalogError(writer, request, limitErr)
+		return
+	}
+	defer release()
+
+	cacheKey := s.readCacheKey(request, auth.PrincipalFromContext(request.Context()))
+	if cached, ok := s.readCache.lookup(cacheKey); ok {
+		writeJSONBytes(writer, http.StatusOK, cached)
+		return
+	}
+
+	response, err := load()
+	if err != nil {
+		writeCatalogError(writer, request, err)
+		return
+	}
+
+	raw, marshalErr := json.Marshal(response)
+	if marshalErr != nil {
+		writeCatalogError(writer, request, marshalErr)
+		return
+	}
+	s.readCache.store(cacheKey, raw, ttl)
+	writeJSONBytes(writer, http.StatusOK, raw)
+}
+
+func (s *Server) readCacheKey(request *http.Request, principal auth.Principal) string {
+	if request == nil || request.URL == nil {
+		return ""
+	}
+	return strings.Join([]string{
+		request.Method,
+		request.URL.EscapedPath(),
+		request.URL.Query().Encode(),
+		principal.Role,
+		strings.Join(principal.AllowedPackages, ","),
+	}, "\x00")
 }
 
 func (s *Server) recordMutationAudit(request *http.Request, action string, packageName string, version string, status int, outcome string, details map[string]any) {

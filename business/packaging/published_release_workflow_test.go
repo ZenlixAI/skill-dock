@@ -56,6 +56,12 @@ func TestPublishedReleaseWorkflowPublishesWhenArtifactMissing(t *testing.T) {
 	if publisher.calls != 1 {
 		t.Fatalf("expected 1 publisher call, got %d", publisher.calls)
 	}
+	if publisher.lastInput.TarballPath == "" {
+		t.Fatal("expected publish workflow to pass a tarball path")
+	}
+	if len(publisher.lastInput.Tarball) != 0 {
+		t.Fatal("expected publish workflow to avoid preloading tarball bytes into publisher input")
+	}
 	if publisher.lastInput.Description != "desc" {
 		t.Fatalf("expected publish description from workspace file, got %q", publisher.lastInput.Description)
 	}

@@ -74,6 +74,14 @@ func (s *Service) BundlePathContext(ctx context.Context, workspacePath string, t
 	return s.workspaceRuntime.BundlePath(ctx, workspacePath, target)
 }
 
+func (s *Service) BundleFilePath(workspacePath string, target Target) (string, error) {
+	return s.BundleFilePathContext(context.Background(), workspacePath, target)
+}
+
+func (s *Service) BundleFilePathContext(ctx context.Context, workspacePath string, target Target) (string, error) {
+	return s.workspaceRuntime.BundleFilePath(ctx, workspacePath, target)
+}
+
 func (s *Service) BundleContent(workspacePath string, target Target) ([]byte, error) {
 	return s.BundleContentContext(context.Background(), workspacePath, target)
 }

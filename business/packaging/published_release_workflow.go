@@ -104,7 +104,7 @@ func (w *publishedReleaseWorkflow) Publish(ctx context.Context, input PublishReq
 		Description: material.metadata.Description,
 		DisplayName: material.metadata.Skill.DisplayName,
 		SourceType:  material.metadata.Skill.SourceType,
-		Tarball:     material.tarball,
+		TarballPath: material.tarballPath,
 	})
 	switch publishAttempt.state {
 	case packagePublishWorkflowStateArtifactAlreadyExists:

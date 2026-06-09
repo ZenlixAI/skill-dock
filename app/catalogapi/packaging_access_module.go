@@ -11,13 +11,18 @@ import (
 )
 
 type packagingAccessModule struct {
-	service *packaging.Service
+	service packagingAccessService
 	audit   *AuditRecorder
+}
+
+type packagingAccessService interface {
+	CleanupContext(ctx context.Context, workspacePath string) error
+	BundleFilePathContext(ctx context.Context, workspacePath string, target packaging.Target) (string, error)
 }
 
 type packagingAccessWorkflow interface {
 	cleanup(ctx context.Context, principal auth.Principal, payload packaging.CleanupRequest) (packaging.CleanupResponse, int, *catalog.Error)
-	downloadBundle(ctx context.Context, principal auth.Principal, workspacePath string, packageName string, version string) ([]byte, *catalog.Error)
+	downloadBundle(ctx context.Context, principal auth.Principal, workspacePath string, packageName string, version string) (string, *catalog.Error)
 }
 
 func (m *packagingAccessModule) cleanup(ctx context.Context, principal auth.Principal, payload packaging.CleanupRequest) (packaging.CleanupResponse, int, *catalog.Error) {
@@ -35,25 +40,25 @@ func (m *packagingAccessModule) cleanup(ctx context.Context, principal auth.Prin
 	return packaging.CleanupResponse{WorkspacePath: payload.WorkspacePath, Removed: true}, http.StatusOK, nil
 }
 
-func (m *packagingAccessModule) downloadBundle(ctx context.Context, principal auth.Principal, workspacePath string, packageName string, version string) ([]byte, *catalog.Error) {
+func (m *packagingAccessModule) downloadBundle(ctx context.Context, principal auth.Principal, workspacePath string, packageName string, version string) (string, *catalog.Error) {
 	if strings.TrimSpace(workspacePath) == "" || strings.TrimSpace(packageName) == "" || strings.TrimSpace(version) == "" {
 		err := catalog.NewError(http.StatusUnprocessableEntity, "invalid_request", "workspacePath, packageName, and version are required.", nil)
 		m.recordAudit(ctx, principal, "packaging.bundle.download", packageName, version, err.Status, "failed", map[string]any{"errorCode": err.Code})
-		return nil, err
+		return "", err
 	}
 
-	content, err := m.service.BundleContentContext(ctx, workspacePath, packaging.Target{
+	bundlePath, err := m.service.BundleFilePathContext(ctx, workspacePath, packaging.Target{
 		PackageName: packageName,
 		Version:     version,
 	})
 	if err != nil {
 		catalogErr := catalogErrorFromError(err)
 		m.recordAudit(ctx, principal, "packaging.bundle.download", packageName, version, catalogErr.Status, "failed", map[string]any{"errorCode": catalogErr.Code})
-		return nil, catalogErr
+		return "", catalogErr
 	}
 
 	m.recordAudit(ctx, principal, "packaging.bundle.download", packageName, version, http.StatusOK, "succeeded", nil)
-	return content, nil
+	return bundlePath, nil
 }
 
 func (m *packagingAccessModule) recordAudit(ctx context.Context, principal auth.Principal, action string, packageName string, version string, status int, outcome string, details map[string]any) {

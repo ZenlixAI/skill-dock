@@ -20,7 +20,15 @@ func NewSQLRepository(ctx context.Context, databaseURL string, seedData SampleCa
 	if err != nil {
 		return nil, err
 	}
+	repository, err := NewSQLRepositoryWithDB(ctx, db, driverName, seedData, options)
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return repository, nil
+}
 
+func NewSQLRepositoryWithDB(ctx context.Context, db *sql.DB, driverName string, seedData SampleCatalogData, options SQLRepositoryOptions) (*CatalogRepository, error) {
 	store := NewSQLStateStore(db, driverName)
 	if err := store.Migrate(ctx); err != nil {
 		return nil, err

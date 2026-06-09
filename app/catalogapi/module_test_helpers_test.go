@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -311,10 +313,19 @@ func (m *catalogMutationModuleStub) applyVersionGovernanceCallCount() int {
 type packagingAccessModuleStub struct {
 	cleanupCalls        atomic.Int64
 	downloadBundleCalls atomic.Int64
+	bundlePath          string
 }
 
-func newPackagingAccessModuleStubForTest(_ interface{ Helper() }) *packagingAccessModuleStub {
-	return &packagingAccessModuleStub{}
+func newPackagingAccessModuleStubForTest(t interface {
+	Helper()
+	TempDir() string
+}) *packagingAccessModuleStub {
+	t.Helper()
+	bundlePath := filepath.Join(t.TempDir(), "bundle.tgz")
+	if err := os.WriteFile(bundlePath, []byte("bundle"), 0o644); err != nil {
+		panic(err)
+	}
+	return &packagingAccessModuleStub{bundlePath: bundlePath}
 }
 
 func (m *packagingAccessModuleStub) cleanup(context.Context, auth.Principal, packaging.CleanupRequest) (packaging.CleanupResponse, int, *catalog.Error) {
@@ -322,9 +333,9 @@ func (m *packagingAccessModuleStub) cleanup(context.Context, auth.Principal, pac
 	return packaging.CleanupResponse{Removed: true}, http.StatusOK, nil
 }
 
-func (m *packagingAccessModuleStub) downloadBundle(context.Context, auth.Principal, string, string, string) ([]byte, *catalog.Error) {
+func (m *packagingAccessModuleStub) downloadBundle(context.Context, auth.Principal, string, string, string) (string, *catalog.Error) {
 	m.downloadBundleCalls.Add(1)
-	return []byte("bundle"), nil
+	return m.bundlePath, nil
 }
 
 func (m *packagingAccessModuleStub) downloadBundleCallCount() int {

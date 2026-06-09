@@ -170,6 +170,52 @@ func TestPackagingWorkspaceRuntimePreparePersistsManagedWorkspaceAndReturnsHandl
 	}
 }
 
+func TestPackagingWorkspaceRuntimeValidateReopensManagedWorkspaceFromDifferentConfiguredRoot(t *testing.T) {
+	originalRoot := t.TempDir()
+	relocatedRoot := t.TempDir()
+	store := newMemoryWorkspaceStore()
+	originalRuntime := newPackagingWorkspaceRuntime(originalRoot, store)
+
+	prepareResp, err := originalRuntime.Prepare(context.Background(), PrepareRequest{
+		Source: Source{
+			Type: "platform_authoring",
+			Files: map[string]string{
+				"docs/README.md": "# Capability\n",
+			},
+		},
+		Target:   Target{PackageName: "@platform.skill/runtime-relocated-root", Version: "1.0.0"},
+		Metadata: Metadata{DisplayName: "runtime-relocated-root", Description: "desc", SourceType: "native"},
+	})
+	if err != nil {
+		t.Fatalf("prepare returned error: %v", err)
+	}
+
+	if _, err := originalRuntime.Validate(context.Background(), ValidateRequest{
+		WorkspacePath: prepareResp.WorkspacePath,
+		Target:        Target{PackageName: "@platform.skill/runtime-relocated-root", Version: "1.0.0"},
+	}); err != nil {
+		t.Fatalf("prime validate returned error: %v", err)
+	}
+
+	workspaceRoot := filepath.Join(originalRoot, prepareResp.WorkspacePath)
+	relocatedWorkspaceRoot := filepath.Join(relocatedRoot, prepareResp.WorkspacePath)
+	if err := os.Rename(workspaceRoot, relocatedWorkspaceRoot); err != nil {
+		t.Fatalf("relocate managed workspace: %v", err)
+	}
+
+	relocatedRuntime := newPackagingWorkspaceRuntime(relocatedRoot, store)
+	validateResp, err := relocatedRuntime.Validate(context.Background(), ValidateRequest{
+		WorkspacePath: prepareResp.WorkspacePath,
+		Target:        Target{PackageName: "@platform.skill/runtime-relocated-root", Version: "1.0.0"},
+	})
+	if err != nil {
+		t.Fatalf("validate relocated workspace: %v", err)
+	}
+	if !validateResp.OK {
+		t.Fatalf("expected relocated workspace validate to succeed, got %#v", validateResp)
+	}
+}
+
 func TestPackagingWorkspaceRuntimeValidateUsesCachedValidationResultFromWorkspaceStore(t *testing.T) {
 	root := t.TempDir()
 	store := newCountingWorkspaceStore()
