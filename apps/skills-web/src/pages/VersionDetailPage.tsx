@@ -13,6 +13,7 @@ import {
   MutationResultPanel,
   readMutationResultSearchParams,
 } from '../components/MutationResultPanel';
+import { InstallCommandPanel } from '../components/InstallCommandPanel';
 import { PermissionGate } from '../components/PermissionGate';
 import { SectionHeading } from '../components/SectionHeading';
 import { StatusPill } from '../components/StatusPill';
@@ -276,36 +277,21 @@ export function VersionDetailPage() {
         </StatusPill>
       </div>
 
-      {hasHandoff ? (
-        <SurfaceCard
-          title="发布交接"
-          variant="spotlight"
-          action={
-            <Link className="button button--secondary" to={authoringPath}>
-              返回作者流程
-            </Link>
-          }
-        >
-          <dl className="property-list">
-            <div>
-              <dt>workspace handle</dt>
-              <dd>{handoff.workspacePath || '—'}</dd>
-            </div>
-            <div>
-              <dt>bundle 路径</dt>
-              <dd>{handoff.bundlePath || '—'}</dd>
-            </div>
-            <div>
-              <dt>manifest 摘要</dt>
-              <dd>{handoff.manifestDigest || '—'}</dd>
-            </div>
-            <div>
-              <dt>components</dt>
-              <dd>{handoff.components?.join(', ') || '—'}</dd>
-            </div>
-          </dl>
+      {detail.data?.registry.npmRegistry ? (
+        <InstallCommandPanel
+          title="安装这个版本"
+          packageName={decodedPackage}
+          version={version}
+          npmRegistry={detail.data.registry.npmRegistry}
+          installPolicy={detail.data.installPolicy || 'catalog_only'}
+          tarballUrl={detail.data.registry.tarballUrl}
+          integrity={detail.data.registry.integrity}
+        />
+      ) : (
+        <SurfaceCard description="等仓库元数据返回后，这里会显示可直接复制的版本安装命令。" title="安装状态" variant="hero">
+          <div className="empty-box">当前还没有可用的 registry 安装信息。</div>
         </SurfaceCard>
-      ) : null}
+      )}
 
       <div className="console-strip">
         <article className="console-signal">
@@ -359,29 +345,7 @@ export function VersionDetailPage() {
           </div>
         </SurfaceCard>
 
-        <SurfaceCard title="执行日志">
-          <div className="list-stack">
-            {activityLog.length ? (
-              activityLog.map((entry) => (
-                <article className="list-card" key={entry.id}>
-                  <div className="list-card__head">
-                    <div>
-                      <strong>{entry.action}</strong>
-                      <span>{entry.summary}</span>
-                    </div>
-                    <StatusPill tone={entry.outcome === 'succeeded' ? 'good' : 'bad'}>{entry.outcome}</StatusPill>
-                  </div>
-                </article>
-              ))
-            ) : (
-              <div className="empty-box">这个会话里还没有执行过动作。</div>
-            )}
-          </div>
-        </SurfaceCard>
-      </div>
-
-      <div className="two-column">
-        <SurfaceCard title="仓信息与 Bundle">
+        <SurfaceCard description="复制命令前，先核对 registry 与 bundle 摘要。" title="仓信息与 Bundle">
           <dl className="property-list">
             <div>
               <dt>版本状态</dt>
@@ -421,8 +385,62 @@ export function VersionDetailPage() {
             </div>
           </dl>
         </SurfaceCard>
+      </div>
 
-        <MutationResultPanel result={mutationResult} />
+      {hasHandoff ? (
+        <SurfaceCard
+          action={
+            <Link className="button button--secondary" to={authoringPath}>
+              返回作者流程
+            </Link>
+          }
+          description="交接信息保留给发布登记流程，不再抢占安装首屏。"
+          title="发布交接"
+          variant="spotlight"
+        >
+          <dl className="property-list">
+            <div>
+              <dt>workspace handle</dt>
+              <dd>{handoff.workspacePath || '—'}</dd>
+            </div>
+            <div>
+              <dt>bundle 路径</dt>
+              <dd>{handoff.bundlePath || '—'}</dd>
+            </div>
+            <div>
+              <dt>manifest 摘要</dt>
+              <dd>{handoff.manifestDigest || '—'}</dd>
+            </div>
+            <div>
+              <dt>components</dt>
+              <dd>{handoff.components?.join(', ') || '—'}</dd>
+            </div>
+          </dl>
+        </SurfaceCard>
+      ) : null}
+
+      <MutationResultPanel result={mutationResult} />
+
+      <div className="two-column">
+        <SurfaceCard title="执行日志">
+          <div className="list-stack">
+            {activityLog.length ? (
+              activityLog.map((entry) => (
+                <article className="list-card" key={entry.id}>
+                  <div className="list-card__head">
+                    <div>
+                      <strong>{entry.action}</strong>
+                      <span>{entry.summary}</span>
+                    </div>
+                    <StatusPill tone={entry.outcome === 'succeeded' ? 'good' : 'bad'}>{entry.outcome}</StatusPill>
+                  </div>
+                </article>
+              ))
+            ) : (
+              <div className="empty-box">这个会话里还没有执行过动作。</div>
+            )}
+          </div>
+        </SurfaceCard>
       </div>
 
       <div className="two-column">

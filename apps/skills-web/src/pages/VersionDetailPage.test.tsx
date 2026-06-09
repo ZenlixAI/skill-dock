@@ -79,6 +79,62 @@ describe('VersionDetailPage', () => {
     await waitFor(() => expect(client.getSession).toHaveBeenCalledTimes(1));
   });
 
+  it('shows the install command panel ahead of release and governance forms', async () => {
+    vi.mocked(client.getSession).mockResolvedValue({
+      role: 'operator',
+      actor: 'operator',
+      authMechanism: 'session',
+      allowedActions: ['session.read'],
+      allowedPackages: [],
+    });
+    vi.mocked(client.getVersionDetail).mockResolvedValue({
+      packageName: '@platform.skill/agent-notes',
+      version: '1.0.0',
+      versionStatus: 'published',
+      installPolicy: 'resolvable',
+      publishedAt: '2026-01-01T00:00:00Z',
+      registry: {
+        npmRegistry: 'https://npm.internal.example.com',
+        tarballUrl: 'https://npm.internal.example.com/agent-notes-1.0.0.tgz',
+        integrity: 'sha512-test',
+        shasum: 'test',
+        publishedAt: '2026-01-01T00:00:00Z',
+        distTags: ['latest'],
+      },
+      bundle: {
+        skillManifestDigest: 'sha256:test',
+        components: ['commands'],
+      },
+    });
+    vi.mocked(client.listGovernanceChanges).mockResolvedValue({
+      items: [],
+      pageInfo: {
+        hasNextPage: false,
+        nextCursor: null,
+      },
+    });
+
+    render(
+      <SessionProvider>
+        <MemoryRouter initialEntries={['/skills/%40platform.skill%2Fagent-notes/versions/1.0.0']}>
+          <Routes>
+            <Route path="/skills/:packageName/versions/:version" element={<VersionDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </SessionProvider>
+    );
+
+    const installHeading = await screen.findByRole('heading', { name: '安装这个版本' });
+    const releaseHeading = screen.getByRole('heading', { name: '发布登记' });
+    const governanceHeading = screen.getByRole('heading', { name: '版本治理' });
+
+    expect(
+      screen.getByText('npm install @platform.skill/agent-notes@1.0.0 --registry=https://npm.internal.example.com')
+    ).toBeInTheDocument();
+    expect(installHeading.compareDocumentPosition(releaseHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(installHeading.compareDocumentPosition(governanceHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('requires manual publish confirmation before enabling release-record submission', async () => {
     vi.mocked(client.getSession).mockResolvedValue({
       role: 'operator',

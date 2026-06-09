@@ -13,6 +13,7 @@ import {
   MutationResultPanel,
   readMutationResultSearchParams,
 } from '../components/MutationResultPanel';
+import { InstallCommandPanel } from '../components/InstallCommandPanel';
 import { PermissionGate } from '../components/PermissionGate';
 import { SectionHeading } from '../components/SectionHeading';
 import { StatusPill } from '../components/StatusPill';
@@ -53,6 +54,8 @@ export function SkillDetailPage() {
   );
   const latestVersionItem = versionList.data?.items[0];
   const statusTone = detail.data?.status === 'active' ? 'good' : 'bad';
+  const installVersion = installTarget.data?.version || detail.data?.latestVersion || '';
+  const installRegistry = installTarget.data?.npmRegistry || '';
   const canRetireSkill = retireReason.trim() !== '' && retireConfirmed && !submitState.loading;
   const governancePosture = getPosture({
     packageName: decodedPackage,
@@ -180,6 +183,22 @@ export function SkillDetailPage() {
         </StatusPill>
       </div>
 
+      {installVersion && installRegistry ? (
+        <InstallCommandPanel
+          title="安装这个技能"
+          packageName={decodedPackage}
+          version={installVersion}
+          npmRegistry={installRegistry}
+          installPolicy={latestVersionItem?.installPolicy || 'catalog_only'}
+          tarballUrl={installTarget.data?.tarballUrl}
+          integrity={installTarget.data?.integrity}
+        />
+      ) : (
+        <SurfaceCard description="等安装目标被 registry 解析出来后，这里会显示可直接复制的命令。" title="安装状态" variant="hero">
+          <div className="empty-box">当前还没有可用的安装目标。请先检查最新版本是否已经发布并可解析。</div>
+        </SurfaceCard>
+      )}
+
       <div className="console-strip">
         <article className="console-signal">
               <span>状态</span>
@@ -220,8 +239,12 @@ export function SkillDetailPage() {
           </dl>
         </SurfaceCard>
 
-        <SurfaceCard title="安装目标" variant="rail">
+        <SurfaceCard description="安装来源和摘要数据放在首屏，方便在复制命令前先做核对。" title="安装摘要" variant="rail">
           <dl className="property-list">
+            <div>
+              <dt>安装版本</dt>
+              <dd>{installVersion || '—'}</dd>
+            </div>
             <div>
               <dt>仓地址</dt>
               <dd>{installTarget.data?.npmRegistry || '—'}</dd>
@@ -237,6 +260,10 @@ export function SkillDetailPage() {
             <div>
               <dt>manifest digest</dt>
               <dd>{installTarget.data?.skillManifestDigest || '—'}</dd>
+            </div>
+            <div>
+              <dt>安装策略</dt>
+              <dd>{latestVersionItem?.installPolicy || '—'}</dd>
             </div>
           </dl>
           <div className="list-card__actions">

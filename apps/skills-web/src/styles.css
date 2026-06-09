@@ -742,6 +742,63 @@ textarea {
   line-height: 1.58;
 }
 
+.install-command-panel-card .surface-card__header {
+  align-items: center;
+}
+
+.install-command-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.install-command-panel code {
+  display: block;
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: rgba(3, 9, 18, 0.86);
+  color: #f7fbff;
+  overflow-x: auto;
+  font-family: "SFMono-Regular", "Menlo", "Consolas", monospace;
+  font-size: 0.94rem;
+  line-height: 1.6;
+  font-variant-numeric: tabular-nums;
+}
+
+.install-command-panel__meta {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.install-command-panel__meta div {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(30, 21, 14, 0.08);
+}
+
+.install-command-panel__meta dt {
+  color: var(--muted);
+}
+
+.install-command-panel__meta dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.install-command-panel__feedback {
+  font-size: 0.92rem;
+}
+
+.install-command-panel__feedback--success {
+  color: var(--good);
+}
+
+.install-command-panel__feedback--error {
+  color: var(--bad);
+}
+
 .list-card {
   padding: 16px;
   border-radius: var(--radius-md);

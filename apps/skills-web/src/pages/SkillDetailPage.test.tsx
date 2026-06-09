@@ -83,4 +83,75 @@ describe('SkillDetailPage', () => {
     expect(await screen.findByText('只读')).toBeInTheDocument();
     await waitFor(() => expect(client.getSession).toHaveBeenCalledTimes(1));
   });
+
+  it('shows the install command panel above the version list when install target data is present', async () => {
+    vi.mocked(client.getSession).mockResolvedValue({
+      role: 'operator',
+      actor: 'operator',
+      authMechanism: 'session',
+      allowedActions: ['session.read'],
+      allowedPackages: [],
+    });
+    vi.mocked(client.getSkillDetail).mockResolvedValue({
+      packageName: '@platform.skill/agent-notes',
+      displayName: 'Agent Notes',
+      description: 'Detail view',
+      sourceType: 'native',
+      status: 'active',
+      latestVersion: '1.0.0',
+      latestVersionStatus: 'published',
+      updatedAt: '2026-01-01T00:00:00Z',
+      createdAt: '2026-01-01T00:00:00Z',
+    });
+    vi.mocked(client.getSkillVersions).mockResolvedValue({
+      items: [
+        {
+          packageName: '@platform.skill/agent-notes',
+          version: '1.0.0',
+          versionStatus: 'published',
+          installPolicy: 'resolvable',
+          publishedAt: '2026-01-01T00:00:00Z',
+        },
+      ],
+      pageInfo: {
+        hasNextPage: false,
+        nextCursor: null,
+      },
+    });
+    vi.mocked(client.getInstallTarget).mockResolvedValue({
+      packageName: '@platform.skill/agent-notes',
+      version: '1.0.0',
+      npmRegistry: 'https://npm.internal.example.com',
+      tarballUrl: 'https://npm.internal.example.com/agent-notes.tgz',
+      integrity: 'sha512-test',
+      skillManifestDigest: 'sha256:test',
+      versionStatus: 'published',
+    });
+    vi.mocked(client.listGovernanceChanges).mockResolvedValue({
+      items: [],
+      pageInfo: {
+        hasNextPage: false,
+        nextCursor: null,
+      },
+    });
+
+    render(
+      <SessionProvider>
+        <MemoryRouter initialEntries={['/skills/%40platform.skill%2Fagent-notes']}>
+          <Routes>
+            <Route path="/skills/:packageName" element={<SkillDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </SessionProvider>
+    );
+
+    const installHeading = await screen.findByRole('heading', { name: '安装这个技能' });
+    const versionsHeading = screen.getByRole('heading', { name: '版本列表' });
+
+    expect(
+      screen.getByText('npm install @platform.skill/agent-notes@1.0.0 --registry=https://npm.internal.example.com')
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '复制安装命令' })).toBeInTheDocument();
+    expect(installHeading.compareDocumentPosition(versionsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });
