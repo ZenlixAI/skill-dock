@@ -32,6 +32,14 @@ function getVersionLabel(versionStatus: SkillSummary['latestVersionStatus']) {
   return '未知';
 }
 
+function getSkillStatusTone(status: SkillSummary['status']) {
+  return status === 'retired' ? 'bad' : 'good';
+}
+
+function getSkillStatusLabel(status: SkillSummary['status']) {
+  return status === 'retired' ? '退役' : '启用';
+}
+
 function getSourceTypeLabel(sourceType: SkillSummary['sourceType']) {
   if (sourceType === 'native') {
     return '原生';
@@ -61,6 +69,7 @@ export function SkillSummaryCard({ skill, curationReason }: SkillSummaryCardProp
       {curationReason ? <p className="skill-summary-card__reason">{curationReason}</p> : null}
 
       <div className="skill-summary-card__install">
+        <StatusPill tone={getSkillStatusTone(skill.status)}>{getSkillStatusLabel(skill.status)}</StatusPill>
         <StatusPill tone={getVersionTone(skill.latestVersionStatus)}>{getVersionLabel(skill.latestVersionStatus)}</StatusPill>
         <StatusPill tone="accent">{getSourceTypeLabel(skill.sourceType)}</StatusPill>
         {skill.latestVersion ? <StatusPill>最新 {skill.latestVersion}</StatusPill> : null}

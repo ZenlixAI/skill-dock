@@ -47,19 +47,39 @@ describe('OverviewPage', () => {
     vi.mocked(client.listSkills).mockResolvedValue({
       items: [
         {
-          packageName: '@platform.skill/release-audit',
-          displayName: 'Release Audit',
-          description: 'Trace who changed a registry package.',
+          packageName: '@platform.skill/legacy-audit',
+          displayName: '旧版审计',
+          description: '用于回看更早的注册表活动。',
           sourceType: 'native',
+          status: 'active',
+          latestVersion: '1.0.0',
+          latestVersionStatus: 'published',
+          updatedAt: '2026-06-01T10:00:00Z',
+        },
+        {
+          packageName: '@platform.skill/release-audit',
+          displayName: '发布审计',
+          description: '追踪谁改动了注册表包。',
+          sourceType: 'imported',
           status: 'active',
           latestVersion: '1.3.0',
           latestVersionStatus: 'published',
           updatedAt: '2026-06-08T10:00:00Z',
         },
         {
+          packageName: '@platform.skill/queue-review',
+          displayName: '队列评审',
+          description: '帮助整理待评审的技能变更。',
+          sourceType: 'native',
+          status: 'retired',
+          latestVersion: '0.8.0',
+          latestVersionStatus: 'deprecated',
+          updatedAt: '2026-06-05T10:00:00Z',
+        },
+        {
           packageName: '@platform.skill/dependency-map',
-          displayName: 'Dependency Map',
-          description: 'Inspect upstream package relationships.',
+          displayName: '依赖地图',
+          description: '查看上游包之间的关系。',
           sourceType: 'imported',
           status: 'active',
           latestVersion: '0.9.1',
@@ -72,8 +92,8 @@ describe('OverviewPage', () => {
     vi.mocked(client.listCuratedSkills).mockResolvedValue([
       {
         packageName: '@platform.skill/review-helper',
-        displayName: 'Review Helper',
-        description: 'Summarize PR-level skill changes for reviewers.',
+        displayName: '评审助手',
+        description: '为评审者汇总 PR 级别的技能变更。',
         sourceType: 'native',
         status: 'active',
         latestVersion: '2.4.0',
@@ -103,18 +123,29 @@ describe('OverviewPage', () => {
       throw new Error('Expected overview sections to render');
     }
 
-    expect(await within(recommendedSection).findByText('Review Helper')).toBeInTheDocument();
+    expect(await within(recommendedSection).findByText('评审助手')).toBeInTheDocument();
     expect(within(recommendedSection).getByText('适合按能力优先进行代码评审分流。')).toBeInTheDocument();
-    expect(await within(recentSection).findByText('Release Audit')).toBeInTheDocument();
+    expect(await within(recentSection).findByText('发布审计')).toBeInTheDocument();
 
-    const recommendedCard = within(recommendedSection).getByText('Review Helper').closest('.skill-summary-card');
+    const recommendedCard = within(recommendedSection).getByText('评审助手').closest('.skill-summary-card');
     expect(recommendedCard).not.toBeNull();
 
     if (!recommendedCard) {
       throw new Error('Expected recommended card to render');
     }
 
-    const cardText = recommendedCard.textContent ?? '';
-    expect(cardText.indexOf('适合按能力优先进行代码评审分流。')).toBeLessThan(cardText.indexOf('最新 2.4.0'));
+    const reason = recommendedCard.querySelector('.skill-summary-card__reason');
+    const install = recommendedCard.querySelector('.skill-summary-card__install');
+    expect(reason).not.toBeNull();
+    expect(install).not.toBeNull();
+
+    if (!reason || !install) {
+      throw new Error('Expected recommended card structure');
+    }
+
+    expect(reason.compareDocumentPosition(install) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    const recentCards = Array.from(recentSection.querySelectorAll('.skill-summary-card strong')).map((node) => node.textContent);
+    expect(recentCards).toEqual(['发布审计', '依赖地图', '队列评审']);
   });
 });

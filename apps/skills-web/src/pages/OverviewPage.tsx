@@ -18,7 +18,9 @@ export function OverviewPage() {
   const governance = useAsyncData(() => listGovernanceChanges({ pageSize: 5 }), []);
   const audit = useAsyncData(() => listAuditEvents({ pageSize: 5 }), []);
   const shownSkills = skills.data?.items.length || 0;
-  const recentSkills = skills.data?.items.slice(0, 3) || [];
+  const recentSkills = [...(skills.data?.items || [])]
+    .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
+    .slice(0, 3);
   const loadingDiscovery = skills.loading || curated.loading;
   const pageError = [skills.errorDetail, curated.errorDetail, governance.errorDetail, audit.errorDetail].find(Boolean) || null;
 
@@ -147,15 +149,15 @@ export function OverviewPage() {
             <div className="list-stack">
               {recentSkills.map((skill) => (
                 <SkillSummaryCard key={skill.packageName} skill={skill} />
-            ))}
-            {!skills.loading && !skills.errorDetail && recentSkills.length === 0 ? (
-              <div className="empty-box">
-                <strong>当前没有最近更新。</strong>
-                <p>可以先浏览更广的目录，或在新版本发布后再回来查看。</p>
-              </div>
-            ) : null}
-          </div>
-        </SurfaceCard>
+              ))}
+              {!skills.loading && !skills.errorDetail && recentSkills.length === 0 ? (
+                <div className="empty-box">
+                  <strong>当前没有最近更新。</strong>
+                  <p>可以先浏览更广的目录，或在新版本发布后再回来查看。</p>
+                </div>
+              ) : null}
+            </div>
+          </SurfaceCard>
 
           <SurfaceCard description="最近治理变更有助于解释包状态为何发生变化。" title="最新治理" variant="console">
             <TimelineList

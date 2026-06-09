@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import * as client from '../api/client';
@@ -38,10 +38,10 @@ describe('CatalogPage', () => {
       items: [
         {
           packageName: '@platform.skill/release-audit',
-          displayName: 'Release Audit',
-          description: 'Trace who changed a registry package.',
+          displayName: '发布审计',
+          description: '追踪谁改动了注册表包。',
           sourceType: 'native',
-          status: 'active',
+          status: 'retired',
           latestVersion: '1.3.0',
           latestVersionStatus: 'published',
           updatedAt: '2026-06-08T10:00:00Z',
@@ -59,16 +59,32 @@ describe('CatalogPage', () => {
       </MemoryRouter>
     );
 
-    const card = (await screen.findByText('Release Audit')).closest('.skill-summary-card');
+    const card = (await screen.findByText('发布审计')).closest('.skill-summary-card');
     expect(card).not.toBeNull();
 
     if (!card) {
       throw new Error('Expected a catalog result card');
     }
 
-    const cardText = card.textContent ?? '';
-    expect(cardText.indexOf('Trace who changed a registry package.')).toBeLessThan(cardText.indexOf('已发布'));
-    expect(cardText.indexOf('已发布')).toBeLessThan(cardText.indexOf('更新于'));
-    expect(cardText.indexOf('更新于')).toBeLessThan(cardText.indexOf('查看技能'));
+    const description = card.querySelector<HTMLElement>('.skill-summary-card__description');
+    const install = card.querySelector<HTMLElement>('.skill-summary-card__install');
+    const footer = card.querySelector<HTMLElement>('.skill-summary-card__footer');
+    const actions = card.querySelector<HTMLElement>('.skill-summary-card__actions');
+
+    expect(description).not.toBeNull();
+    expect(install).not.toBeNull();
+    expect(footer).not.toBeNull();
+    expect(actions).not.toBeNull();
+
+    if (!description || !install || !footer || !actions) {
+      throw new Error('Expected discovery card structure');
+    }
+
+    expect(within(install).getByText('退役')).toBeInTheDocument();
+    expect(within(install).getByText('已发布')).toBeInTheDocument();
+    expect(within(footer).getByText(/更新于/)).toBeInTheDocument();
+    expect(within(actions).getByRole('link', { name: '查看技能' })).toBeInTheDocument();
+    expect(description.compareDocumentPosition(install) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(install.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
