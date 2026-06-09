@@ -280,6 +280,88 @@ LIMIT 1`), "@platform.skill/pdf-skill", "user_123").Scan(&targetType, &version, 
 	}
 }
 
+func TestSQLRepositoryApplyVersionGovernanceChangePreservesExistingGovernanceRows(t *testing.T) {
+	ctx := context.Background()
+	databaseURL := "file:" + filepath.Join(t.TempDir(), "catalog.db")
+
+	repo, err := NewSQLRepository(ctx, databaseURL, SampleData(), SQLRepositoryOptions{
+		ArtifactSource: NewStaticArtifactSource(SampleData().Artifacts),
+	})
+	if err != nil {
+		t.Fatalf("create repository: %v", err)
+	}
+
+	db := openCatalogTestDB(t, databaseURL)
+	defer db.Close()
+
+	for _, statement := range []string{
+		`CREATE TABLE governance_audit (
+			id TEXT NOT NULL,
+			package_name TEXT NOT NULL,
+			op TEXT NOT NULL
+		)`,
+		`CREATE TRIGGER governance_audit_insert
+		AFTER INSERT ON governance_records
+		BEGIN
+			INSERT INTO governance_audit (id, package_name, op) VALUES (NEW.id, NEW.package_name, 'insert');
+		END`,
+		`CREATE TRIGGER governance_audit_update
+		AFTER UPDATE ON governance_records
+		BEGIN
+			INSERT INTO governance_audit (id, package_name, op) VALUES (NEW.id, NEW.package_name, 'update');
+		END`,
+		`CREATE TRIGGER governance_audit_delete
+		AFTER DELETE ON governance_records
+		BEGIN
+			INSERT INTO governance_audit (id, package_name, op) VALUES (OLD.id, OLD.package_name, 'delete');
+		END`,
+	} {
+		if _, err := db.ExecContext(ctx, statement); err != nil {
+			t.Fatalf("install governance audit trigger: %v", err)
+		}
+	}
+
+	if _, err := repo.ApplyVersionGovernanceChange(ctx, "@platform.skill/pdf-skill", "1.2.0", VersionGovernanceChangeInput{
+		Action: GovernanceActionDeprecate,
+		Reason: "legacy",
+	}, "operator"); err != nil {
+		t.Fatalf("apply governance change: %v", err)
+	}
+
+	var deletedExistingCount int
+	if err := db.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM governance_audit
+WHERE id = ? AND op = 'delete'`, "gov_01hxyank").Scan(&deletedExistingCount); err != nil {
+		t.Fatalf("count deleted existing governance rows: %v", err)
+	}
+	if deletedExistingCount != 0 {
+		t.Fatalf("expected existing governance rows to be preserved, got %d delete operations", deletedExistingCount)
+	}
+
+	var insertedPackageCount int
+	if err := db.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM governance_audit
+WHERE package_name = ? AND op = 'insert'`, "@platform.skill/pdf-skill").Scan(&insertedPackageCount); err != nil {
+		t.Fatalf("count inserted governance rows: %v", err)
+	}
+	if insertedPackageCount != 1 {
+		t.Fatalf("expected exactly 1 inserted governance row for the appended change, got %d", insertedPackageCount)
+	}
+
+	var count int
+	if err := db.QueryRowContext(ctx, bindSQL(sqlDriverNameForURL(databaseURL), `
+SELECT COUNT(*)
+FROM governance_records
+WHERE package_name = ?`), "@platform.skill/pdf-skill").Scan(&count); err != nil {
+		t.Fatalf("count governance rows: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("expected 2 governance rows for package after append-only change, got %d", count)
+	}
+}
+
 func TestSQLStateStorePersistsAggregateRevision(t *testing.T) {
 	ctx := context.Background()
 	databaseURL := "file:" + filepath.Join(t.TempDir(), "catalog.db")

@@ -199,10 +199,12 @@ func (s *SQLStateStore) PutAggregate(ctx context.Context, aggregate AgentSkillAg
 		return ErrAggregateRevisionConflict
 	}
 
-	if err = s.deleteAggregateRowsTx(ctx, tx, aggregate.Skill.Detail.PackageName); err != nil {
-		return err
-	}
-	if err = s.insertAggregateTx(ctx, tx, cloneAggregate(aggregate), expectedRevision+1); err != nil {
+	aggregate = cloneAggregate(aggregate)
+	if exists {
+		if err = s.updateAggregateTx(ctx, tx, aggregate, expectedRevision+1); err != nil {
+			return err
+		}
+	} else if err = s.insertAggregateTx(ctx, tx, aggregate, expectedRevision+1); err != nil {
 		return err
 	}
 
@@ -613,6 +615,16 @@ func (s *SQLStateStore) deleteAggregateRowsTx(ctx context.Context, tx *sql.Tx, p
 	return nil
 }
 
+func (s *SQLStateStore) updateAggregateTx(ctx context.Context, tx *sql.Tx, aggregate AgentSkillAggregate, revision uint64) error {
+	if err := s.updateSkillSnapshotTx(ctx, tx, aggregate, revision); err != nil {
+		return err
+	}
+	if err := s.replaceVersionRowsTx(ctx, tx, aggregate.Skill.Detail.PackageName, aggregate.Skill.Versions); err != nil {
+		return err
+	}
+	return s.upsertGovernanceRowsTx(ctx, tx, aggregate.Governance)
+}
+
 func (s *SQLStateStore) insertAggregateTx(ctx context.Context, tx *sql.Tx, aggregate AgentSkillAggregate, revision uint64) error {
 	insertSkillSQL := bindSQL(s.dialect, `
 INSERT INTO skills (
@@ -656,15 +668,6 @@ INSERT INTO governance_records (
 	changed_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 
-	var latestVersion any
-	if aggregate.Skill.Detail.LatestVersion != nil {
-		latestVersion = *aggregate.Skill.Detail.LatestVersion
-	}
-	var latestVersionStatus any
-	if aggregate.Skill.Detail.LatestVersionStatus != nil {
-		latestVersionStatus = *aggregate.Skill.Detail.LatestVersionStatus
-	}
-
 	if _, err := tx.ExecContext(
 		ctx,
 		insertSkillSQL,
@@ -674,8 +677,8 @@ INSERT INTO governance_records (
 		aggregate.Skill.Detail.Description,
 		string(aggregate.Skill.Detail.SourceType),
 		string(aggregate.Skill.Detail.Status),
-		latestVersion,
-		latestVersionStatus,
+		nullableStringValue(aggregate.Skill.Detail.LatestVersion),
+		nullableStringValue(aggregate.Skill.Detail.LatestVersionStatus),
 		aggregate.Skill.Detail.CreatedAt.UTC().Format(time.RFC3339),
 		aggregate.Skill.Detail.UpdatedAt.UTC().Format(time.RFC3339),
 		aggregate.Skill.CurationReason,
@@ -684,61 +687,163 @@ INSERT INTO governance_records (
 	}
 
 	for _, version := range aggregate.Skill.Versions {
-		distTagsJSON, err := json.Marshal(version.Registry.DistTags)
-		if err != nil {
-			return err
-		}
-		componentsJSON, err := json.Marshal(version.Bundle.Components)
-		if err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(
-			ctx,
-			insertVersionSQL,
-			version.PackageName,
-			version.Version,
-			string(version.VersionStatus),
-			string(version.InstallPolicy),
-			version.PublishedAt.UTC().Format(time.RFC3339),
-			version.Registry.NPMRegistry,
-			version.Registry.TarballURL,
-			version.Registry.Integrity,
-			version.Registry.Shasum,
-			string(distTagsJSON),
-			version.Bundle.SkillManifestDigest,
-			string(componentsJSON),
-		); err != nil {
+		if err := insertVersionRowTx(ctx, tx, insertVersionSQL, version); err != nil {
 			return err
 		}
 	}
 
 	for _, record := range aggregate.Governance {
-		var version any
-		if record.Version != nil {
-			version = *record.Version
-		}
-		var replacementRecommendation any
-		if record.ReplacementRecommendation != nil {
-			replacementRecommendation = *record.ReplacementRecommendation
-		}
-		if _, err := tx.ExecContext(
-			ctx,
-			insertGovernanceSQL,
-			record.ID,
-			string(record.TargetType),
-			record.PackageName,
-			version,
-			string(record.Action),
-			record.Reason,
-			replacementRecommendation,
-			record.ChangedBy,
-			record.ChangedAt.UTC().Format(time.RFC3339),
-		); err != nil {
+		if err := insertGovernanceRowTx(ctx, tx, insertGovernanceSQL, record); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func (s *SQLStateStore) updateSkillSnapshotTx(ctx context.Context, tx *sql.Tx, aggregate AgentSkillAggregate, revision uint64) error {
+	updateSkillSQL := bindSQL(s.dialect, `
+UPDATE skills
+SET
+	revision = ?,
+	display_name = ?,
+	description = ?,
+	source_type = ?,
+	status = ?,
+	latest_version = ?,
+	latest_version_status = ?,
+	created_at = ?,
+	updated_at = ?,
+	curation_reason = ?
+WHERE package_name = ?`)
+
+	_, err := tx.ExecContext(
+		ctx,
+		updateSkillSQL,
+		revision,
+		aggregate.Skill.Detail.DisplayName,
+		aggregate.Skill.Detail.Description,
+		string(aggregate.Skill.Detail.SourceType),
+		string(aggregate.Skill.Detail.Status),
+		nullableStringValue(aggregate.Skill.Detail.LatestVersion),
+		nullableStringValue(aggregate.Skill.Detail.LatestVersionStatus),
+		aggregate.Skill.Detail.CreatedAt.UTC().Format(time.RFC3339),
+		aggregate.Skill.Detail.UpdatedAt.UTC().Format(time.RFC3339),
+		aggregate.Skill.CurationReason,
+		aggregate.Skill.Detail.PackageName,
+	)
+	return err
+}
+
+func (s *SQLStateStore) replaceVersionRowsTx(ctx context.Context, tx *sql.Tx, packageName string, versions []SkillVersionDetail) error {
+	if _, err := tx.ExecContext(ctx, bindSQL(s.dialect, `DELETE FROM skill_versions WHERE package_name = ?`), packageName); err != nil {
+		return err
+	}
+
+	insertVersionSQL := bindSQL(s.dialect, `
+INSERT INTO skill_versions (
+	package_name,
+	version,
+	version_status,
+	install_policy,
+	published_at,
+	npm_registry,
+	tarball_url,
+	integrity,
+	shasum,
+	dist_tags_json,
+	skill_manifest_digest,
+	components_json
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	for _, version := range versions {
+		if err := insertVersionRowTx(ctx, tx, insertVersionSQL, version); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *SQLStateStore) upsertGovernanceRowsTx(ctx context.Context, tx *sql.Tx, records []GovernanceRecord) error {
+	upsertGovernanceSQL := bindSQL(s.dialect, `
+INSERT INTO governance_records (
+	id,
+	target_type,
+	package_name,
+	version,
+	action,
+	reason,
+	replacement_recommendation,
+	changed_by,
+	changed_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (id) DO UPDATE SET
+	target_type = excluded.target_type,
+	package_name = excluded.package_name,
+	version = excluded.version,
+	action = excluded.action,
+	reason = excluded.reason,
+	replacement_recommendation = excluded.replacement_recommendation,
+	changed_by = excluded.changed_by,
+	changed_at = excluded.changed_at`)
+
+	for _, record := range records {
+		if err := insertGovernanceRowTx(ctx, tx, upsertGovernanceSQL, record); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func insertVersionRowTx(ctx context.Context, tx *sql.Tx, insertVersionSQL string, version SkillVersionDetail) error {
+	distTagsJSON, err := json.Marshal(version.Registry.DistTags)
+	if err != nil {
+		return err
+	}
+	componentsJSON, err := json.Marshal(version.Bundle.Components)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(
+		ctx,
+		insertVersionSQL,
+		version.PackageName,
+		version.Version,
+		string(version.VersionStatus),
+		string(version.InstallPolicy),
+		version.PublishedAt.UTC().Format(time.RFC3339),
+		version.Registry.NPMRegistry,
+		version.Registry.TarballURL,
+		version.Registry.Integrity,
+		version.Registry.Shasum,
+		string(distTagsJSON),
+		version.Bundle.SkillManifestDigest,
+		string(componentsJSON),
+	)
+	return err
+}
+
+func insertGovernanceRowTx(ctx context.Context, tx *sql.Tx, insertGovernanceSQL string, record GovernanceRecord) error {
+	_, err := tx.ExecContext(
+		ctx,
+		insertGovernanceSQL,
+		record.ID,
+		string(record.TargetType),
+		record.PackageName,
+		nullableStringValue(record.Version),
+		string(record.Action),
+		record.Reason,
+		nullableStringValue(record.ReplacementRecommendation),
+		record.ChangedBy,
+		record.ChangedAt.UTC().Format(time.RFC3339),
+	)
+	return err
+}
+
+func nullableStringValue(value *string) any {
+	if value == nil {
+		return nil
+	}
+	return *value
 }
 
 func (s *SQLStateStore) skillExists(ctx context.Context, packageName string) (bool, error) {
