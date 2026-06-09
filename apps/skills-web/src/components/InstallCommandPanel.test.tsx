@@ -32,6 +32,9 @@ describe('InstallCommandPanel', () => {
       )
     );
     expect(screen.getByText('已复制')).toBeInTheDocument();
+    expect(screen.getByText('制品包地址')).toBeInTheDocument();
+    expect(screen.getByText('完整性校验')).toBeInTheDocument();
+    expect(screen.getByText('可直接安装')).toBeInTheDocument();
   });
 
   it('disables copying and shows a blocked install warning', () => {
@@ -47,5 +50,21 @@ describe('InstallCommandPanel', () => {
 
     expect(screen.getByRole('button', { name: '复制安装命令' })).toBeDisabled();
     expect(screen.getByText('当前版本已被阻断，不应继续作为安装目标。')).toBeInTheDocument();
+  });
+
+  it('shows Chinese fallback copy when install metadata is missing', () => {
+    render(
+      <InstallCommandPanel
+        title="安装这个版本"
+        packageName="@platform.skill/agent-notes"
+        version="1.2.3"
+        npmRegistry="https://npm.internal.example.com"
+        installPolicy="catalog_only"
+      />
+    );
+
+    expect(screen.getByText('当前未返回制品包地址。')).toBeInTheDocument();
+    expect(screen.getByText('当前未返回完整性校验值。')).toBeInTheDocument();
+    expect(screen.getByText('仅目录可见')).toBeInTheDocument();
   });
 });

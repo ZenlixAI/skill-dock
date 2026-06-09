@@ -131,8 +131,59 @@ describe('VersionDetailPage', () => {
     expect(
       screen.getByText('npm install @platform.skill/agent-notes@1.0.0 --registry=https://npm.internal.example.com')
     ).toBeInTheDocument();
+    expect(screen.getAllByText('可直接安装').length).toBeGreaterThan(0);
     expect(installHeading.compareDocumentPosition(releaseHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(installHeading.compareDocumentPosition(governanceHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('uses Chinese fallback copy when registry install data is unavailable', async () => {
+    vi.mocked(client.getSession).mockResolvedValue({
+      role: 'operator',
+      actor: 'operator',
+      authMechanism: 'session',
+      allowedActions: ['session.read'],
+      allowedPackages: [],
+    });
+    vi.mocked(client.getVersionDetail).mockResolvedValue({
+      packageName: '@platform.skill/agent-notes',
+      version: '1.0.0',
+      versionStatus: 'published',
+      installPolicy: 'catalog_only',
+      publishedAt: '2026-01-01T00:00:00Z',
+      registry: {
+        npmRegistry: '',
+        tarballUrl: '',
+        integrity: '',
+        shasum: 'test',
+        publishedAt: '2026-01-01T00:00:00Z',
+        distTags: ['latest'],
+      },
+      bundle: {
+        skillManifestDigest: 'sha256:test',
+        components: ['commands'],
+      },
+    });
+    vi.mocked(client.listGovernanceChanges).mockResolvedValue({
+      items: [],
+      pageInfo: {
+        hasNextPage: false,
+        nextCursor: null,
+      },
+    });
+
+    render(
+      <SessionProvider>
+        <MemoryRouter initialEntries={['/skills/%40platform.skill%2Fagent-notes/versions/1.0.0']}>
+          <Routes>
+            <Route path="/skills/:packageName/versions/:version" element={<VersionDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </SessionProvider>
+    );
+
+    expect(await screen.findByRole('heading', { name: '安装状态' })).toBeInTheDocument();
+    expect(screen.getByText('等仓库元数据返回后，这里会显示可直接复制的版本安装命令。')).toBeInTheDocument();
+    expect(screen.getByText('当前还没有可用的仓库安装信息。')).toBeInTheDocument();
   });
 
   it('requires manual publish confirmation before enabling release-record submission', async () => {

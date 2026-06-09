@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { InstallPolicy } from '../api/types';
-import { buildInstallCommand } from '../lib/installCommand';
+import { buildInstallCommand, getInstallPolicyLabel } from '../lib/installCommand';
 import { StatusPill } from './StatusPill';
 import { SurfaceCard } from './SurfaceCard';
 
@@ -27,15 +27,7 @@ function getInstallTone(installPolicy: InstallPolicy) {
 }
 
 function getInstallLabel(installPolicy: InstallPolicy) {
-  if (installPolicy === 'resolvable') {
-    return '可直接安装';
-  }
-
-  if (installPolicy === 'catalog_only') {
-    return '仅目录可见';
-  }
-
-  return '已阻断安装';
+  return getInstallPolicyLabel(installPolicy);
 }
 
 function getInstallGuidance(installPolicy: InstallPolicy) {
@@ -92,16 +84,16 @@ export function InstallCommandPanel({
         <code>{command}</code>
         <dl className="install-command-panel__meta">
           <div>
-            <dt>安装源</dt>
+            <dt>仓库地址</dt>
             <dd>{npmRegistry}</dd>
           </div>
           <div>
-            <dt>tarball</dt>
-            <dd>{tarballUrl || '当前未返回 tarball 地址。'}</dd>
+            <dt>制品包地址</dt>
+            <dd>{tarballUrl || '当前未返回制品包地址。'}</dd>
           </div>
           <div>
-            <dt>integrity</dt>
-            <dd>{integrity || '当前未返回 integrity。'}</dd>
+            <dt>完整性校验</dt>
+            <dd>{integrity || '当前未返回完整性校验值。'}</dd>
           </div>
         </dl>
         <div className="list-card__actions">

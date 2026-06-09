@@ -25,6 +25,7 @@ import {
 } from '../features/catalog-mutations/useCatalogMutation';
 import { useAsyncData } from '../lib/useAsyncData';
 import { formatDate } from '../lib/format';
+import { getInstallPolicyLabel } from '../lib/installCommand';
 import { useRegistrySession } from '../session/SessionProvider';
 
 type SkillLogEntry = {
@@ -33,6 +34,10 @@ type SkillLogEntry = {
   outcome: 'succeeded' | 'failed';
   summary: string;
 };
+
+function describeSkillInstallPolicy(installPolicy?: 'catalog_only' | 'resolvable' | 'blocked' | null) {
+  return installPolicy ? getInstallPolicyLabel(installPolicy) : '—';
+}
 
 export function SkillDetailPage() {
   const { packageName = '' } = useParams();
@@ -194,7 +199,7 @@ export function SkillDetailPage() {
           integrity={installTarget.data?.integrity}
         />
       ) : (
-        <SurfaceCard description="等安装目标被 registry 解析出来后，这里会显示可直接复制的命令。" title="安装状态" variant="hero">
+        <SurfaceCard description="等安装目标被仓库解析出来后，这里会显示可直接复制的命令。" title="安装状态" variant="hero">
           <div className="empty-box">当前还没有可用的安装目标。请先检查最新版本是否已经发布并可解析。</div>
         </SurfaceCard>
       )}
@@ -246,24 +251,24 @@ export function SkillDetailPage() {
               <dd>{installVersion || '—'}</dd>
             </div>
             <div>
-              <dt>仓地址</dt>
+              <dt>仓库地址</dt>
               <dd>{installTarget.data?.npmRegistry || '—'}</dd>
             </div>
             <div>
-              <dt>tarball</dt>
+              <dt>制品包地址</dt>
               <dd>{installTarget.data?.tarballUrl || '—'}</dd>
             </div>
             <div>
-              <dt>integrity</dt>
+              <dt>完整性校验</dt>
               <dd>{installTarget.data?.integrity || '—'}</dd>
             </div>
             <div>
-              <dt>manifest digest</dt>
+              <dt>manifest 摘要</dt>
               <dd>{installTarget.data?.skillManifestDigest || '—'}</dd>
             </div>
             <div>
               <dt>安装策略</dt>
-              <dd>{latestVersionItem?.installPolicy || '—'}</dd>
+              <dd>{describeSkillInstallPolicy(latestVersionItem?.installPolicy)}</dd>
             </div>
           </dl>
           <div className="list-card__actions">

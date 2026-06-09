@@ -25,6 +25,7 @@ import {
 } from '../features/catalog-mutations/useCatalogMutation';
 import { useAsyncData } from '../lib/useAsyncData';
 import { formatDate } from '../lib/format';
+import { getInstallPolicyLabel } from '../lib/installCommand';
 import { buildReleaseHandoffPath, readReleaseHandoff } from '../lib/releaseHandoff';
 import { useRegistrySession } from '../session/SessionProvider';
 
@@ -34,6 +35,26 @@ type VersionLogEntry = {
   outcome: 'succeeded' | 'failed';
   summary: string;
 };
+
+function getVersionStatusLabel(versionStatus?: 'published' | 'deprecated' | 'yanked' | 'unknown' | null) {
+  if (versionStatus === 'published') {
+    return '已发布';
+  }
+
+  if (versionStatus === 'deprecated') {
+    return '已弃用';
+  }
+
+  if (versionStatus === 'yanked') {
+    return '已撤回';
+  }
+
+  return '未知';
+}
+
+function getGovernanceActionLabel(action: 'deprecate' | 'yank') {
+  return action === 'yank' ? '撤回' : '弃用';
+}
 
 export function VersionDetailPage() {
   const { packageName = '', version = '' } = useParams();
@@ -268,8 +289,12 @@ export function VersionDetailPage() {
       />
 
       <div className="context-strip">
-        <StatusPill tone={versionTone}>{currentVersionStatus}</StatusPill>
-        {detail.data?.installPolicy ? <StatusPill tone={detail.data.installPolicy === 'resolvable' ? 'good' : detail.data.installPolicy === 'catalog_only' ? 'warn' : 'bad'}>{detail.data.installPolicy}</StatusPill> : null}
+        <StatusPill tone={versionTone}>{getVersionStatusLabel(currentVersionStatus)}</StatusPill>
+        {detail.data?.installPolicy ? (
+          <StatusPill tone={detail.data.installPolicy === 'resolvable' ? 'good' : detail.data.installPolicy === 'catalog_only' ? 'warn' : 'bad'}>
+            {getInstallPolicyLabel(detail.data.installPolicy)}
+          </StatusPill>
+        ) : null}
         {detail.data?.registry.npmRegistry ? <StatusPill>{detail.data.registry.npmRegistry}</StatusPill> : null}
         <StatusPill tone={hasHandoff ? 'accent' : undefined}>{hasHandoff ? '已附带交接' : '直接打开'}</StatusPill>
         <StatusPill tone={releasePosture === 'write_enabled' ? 'accent' : releasePosture === 'package_filter_required' ? 'warn' : 'default'}>
@@ -289,7 +314,7 @@ export function VersionDetailPage() {
         />
       ) : (
         <SurfaceCard description="等仓库元数据返回后，这里会显示可直接复制的版本安装命令。" title="安装状态" variant="hero">
-          <div className="empty-box">当前还没有可用的 registry 安装信息。</div>
+          <div className="empty-box">当前还没有可用的仓库安装信息。</div>
         </SurfaceCard>
       )}
 
@@ -318,17 +343,17 @@ export function VersionDetailPage() {
               <div className="list-card__head">
                 <div>
                   <strong>当前解析态势</strong>
-                  <span>{detail.data?.installPolicy || '未知'}</span>
+                  <span>{detail.data?.installPolicy ? getInstallPolicyLabel(detail.data.installPolicy) : '未知'}</span>
                 </div>
                 <StatusPill tone={detail.data?.installPolicy === 'resolvable' ? 'good' : detail.data?.installPolicy === 'catalog_only' ? 'warn' : 'bad'}>
-                    {detail.data?.installPolicy || '未知'}
+                    {detail.data?.installPolicy ? getInstallPolicyLabel(detail.data.installPolicy) : '未知'}
                   </StatusPill>
               </div>
               <p>
                 {detail.data?.installPolicy === 'blocked'
                   ? '下游安装解析应被阻断。'
                   : detail.data?.installPolicy === 'catalog_only'
-                    ? '版本存在于 catalog，但不应该被当成普通 install target。'
+                    ? '版本保留在目录中，但不应再作为默认安装目标。'
                     : '当前版本仍可被正常解析和安装。'}
               </p>
             </article>
@@ -336,23 +361,23 @@ export function VersionDetailPage() {
               <div className="list-card__head">
                 <div>
                   <strong>当前治理影响</strong>
-                  <span>{governanceAction}</span>
+                  <span>{getGovernanceActionLabel(governanceAction)}</span>
                 </div>
-                <StatusPill tone={governanceAction === 'yank' ? 'bad' : 'warn'}>{governanceAction}</StatusPill>
+                <StatusPill tone={governanceAction === 'yank' ? 'bad' : 'warn'}>{getGovernanceActionLabel(governanceAction)}</StatusPill>
               </div>
               <p>{governanceImpact}</p>
             </article>
           </div>
         </SurfaceCard>
 
-        <SurfaceCard description="复制命令前，先核对 registry 与 bundle 摘要。" title="仓信息与 Bundle">
+        <SurfaceCard description="复制命令前，先核对仓库与 bundle 摘要。" title="仓信息与 Bundle">
           <dl className="property-list">
             <div>
               <dt>版本状态</dt>
               <dd>
                 {detail.data ? (
                   <StatusPill tone={detail.data.versionStatus === 'published' ? 'good' : detail.data.versionStatus === 'deprecated' ? 'warn' : 'bad'}>
-                    {detail.data.versionStatus}
+                    {getVersionStatusLabel(detail.data.versionStatus)}
                   </StatusPill>
                 ) : (
                   '—'
@@ -361,7 +386,7 @@ export function VersionDetailPage() {
             </div>
             <div>
               <dt>安装策略</dt>
-              <dd>{detail.data?.installPolicy || '—'}</dd>
+              <dd>{detail.data?.installPolicy ? getInstallPolicyLabel(detail.data.installPolicy) : '—'}</dd>
             </div>
             <div>
               <dt>npm 仓地址</dt>
