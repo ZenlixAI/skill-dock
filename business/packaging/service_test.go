@@ -1127,6 +1127,56 @@ func TestServiceFacadePublishWithWorkspaceStorePreservesBehavior(t *testing.T) {
 	}
 }
 
+func TestServiceFacadePublishWithWorkspaceStoreSupportsWrappedCatalogErrors(t *testing.T) {
+	root := t.TempDir()
+	store := newMemoryWorkspaceStore()
+	service := NewServiceWithWorkspaceStore(root, store)
+	repo := &stubReleaseRecordCreator{
+		results: []stubReleaseRecordOutcome{
+			{err: wrappedReleaseArtifactMissingError()},
+			{result: catalog.ReleaseRecordResult{Created: false, IdempotentReplay: true, VersionStatus: catalog.VersionStatusPublished, InstallPolicy: catalog.InstallPolicyResolvable}},
+		},
+	}
+	publisher := &capturePackagePublisher{
+		err: wrappedPackageArtifactAlreadyExistsError(),
+	}
+	service.ConfigurePublishWorkflow(repo, publisher)
+
+	prepareResp, err := service.Prepare(PrepareRequest{
+		Source: Source{
+			Type: "platform_authoring",
+			Files: map[string]string{
+				"docs/README.md": "# Capability\n",
+			},
+		},
+		Target:   Target{PackageName: "@platform.skill/wrapped-managed", Version: "1.0.0"},
+		Metadata: Metadata{DisplayName: "wrapped-managed", Description: "desc", SourceType: "native"},
+	})
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+
+	response, err := service.PublishContext(context.Background(), PublishRequest{
+		WorkspacePath: prepareResp.WorkspacePath,
+		Target:        Target{PackageName: "@platform.skill/wrapped-managed", Version: "1.0.0"},
+	})
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if response.WorkspacePath != prepareResp.WorkspacePath {
+		t.Fatalf("expected workspace handle to survive facade publish, got %q want %q", response.WorkspacePath, prepareResp.WorkspacePath)
+	}
+	if response.PublishedToRegistry || response.Created || !response.IdempotentReplay {
+		t.Fatalf("unexpected publish response: %+v", response)
+	}
+	if repo.calls != 2 {
+		t.Fatalf("expected 2 release record attempts, got %d", repo.calls)
+	}
+	if publisher.calls != 1 {
+		t.Fatalf("expected 1 publisher call, got %d", publisher.calls)
+	}
+}
+
 func TestServiceFacadeWithWorkspaceStoreBlocksCleanupUntilPublishCompletes(t *testing.T) {
 	root := t.TempDir()
 	store := newMemoryWorkspaceStore()
