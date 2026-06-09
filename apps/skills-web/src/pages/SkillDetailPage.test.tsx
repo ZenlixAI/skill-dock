@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import * as client from '../api/client';
@@ -163,7 +163,65 @@ describe('SkillDetailPage', () => {
     expect(installHeading.compareDocumentPosition(versionsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('uses Chinese fallback copy when no install target is available', async () => {
+  it('shows a loading hero while install target data is still loading', () => {
+    vi.mocked(client.getSession).mockResolvedValue({
+      role: 'operator',
+      actor: 'operator',
+      authMechanism: 'session',
+      allowedActions: ['session.read'],
+      allowedPackages: [],
+    });
+    vi.mocked(client.getSkillDetail).mockResolvedValue({
+      packageName: '@platform.skill/agent-notes',
+      displayName: 'Agent Notes',
+      description: 'Detail view',
+      sourceType: 'native',
+      status: 'active',
+      latestVersion: '1.0.0',
+      latestVersionStatus: 'published',
+      updatedAt: '2026-01-01T00:00:00Z',
+      createdAt: '2026-01-01T00:00:00Z',
+    });
+    vi.mocked(client.getSkillVersions).mockResolvedValue({
+      items: [
+        {
+          packageName: '@platform.skill/agent-notes',
+          version: '1.0.0',
+          versionStatus: 'published',
+          installPolicy: 'resolvable',
+          publishedAt: '2026-01-01T00:00:00Z',
+        },
+      ],
+      pageInfo: {
+        hasNextPage: false,
+        nextCursor: null,
+      },
+    });
+    vi.mocked(client.getInstallTarget).mockReturnValue(new Promise(() => {}));
+    vi.mocked(client.listGovernanceChanges).mockResolvedValue({
+      items: [],
+      pageInfo: {
+        hasNextPage: false,
+        nextCursor: null,
+      },
+    });
+
+    render(
+      <SessionProvider>
+        <MemoryRouter initialEntries={['/skills/%40platform.skill%2Fagent-notes']}>
+          <Routes>
+            <Route path="/skills/:packageName" element={<SkillDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </SessionProvider>
+    );
+
+    expect(screen.getByRole('heading', { name: '安装状态' })).toBeInTheDocument();
+    expect(screen.getByText('正在等待安装目标返回，安装命令会在解析完成后显示在这里。')).toBeInTheDocument();
+    expect(screen.getByText('正在加载安装目标，请稍候。')).toBeInTheDocument();
+  });
+
+  it('shows an error hero when the install target request fails', async () => {
     vi.mocked(client.getSession).mockResolvedValue({
       role: 'operator',
       actor: 'operator',
@@ -190,6 +248,56 @@ describe('SkillDetailPage', () => {
       },
     });
     vi.mocked(client.getInstallTarget).mockRejectedValue(new Error('not available'));
+    vi.mocked(client.listGovernanceChanges).mockResolvedValue({
+      items: [],
+      pageInfo: {
+        hasNextPage: false,
+        nextCursor: null,
+      },
+    });
+
+    render(
+      <SessionProvider>
+        <MemoryRouter initialEntries={['/skills/%40platform.skill%2Fagent-notes']}>
+          <Routes>
+            <Route path="/skills/:packageName" element={<SkillDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </SessionProvider>
+    );
+
+    expect(await screen.findByRole('heading', { name: '安装状态' })).toBeInTheDocument();
+    expect(screen.getByText('安装目标请求失败，暂时无法生成可复制的默认安装命令。')).toBeInTheDocument();
+    expect(screen.getByText('not available')).toBeInTheDocument();
+  });
+
+  it('shows an unavailable hero when install target data is absent', async () => {
+    vi.mocked(client.getSession).mockResolvedValue({
+      role: 'operator',
+      actor: 'operator',
+      authMechanism: 'session',
+      allowedActions: ['session.read'],
+      allowedPackages: [],
+    });
+    vi.mocked(client.getSkillDetail).mockResolvedValue({
+      packageName: '@platform.skill/agent-notes',
+      displayName: 'Agent Notes',
+      description: 'Detail view',
+      sourceType: 'native',
+      status: 'active',
+      latestVersion: null,
+      latestVersionStatus: null,
+      updatedAt: '2026-01-01T00:00:00Z',
+      createdAt: '2026-01-01T00:00:00Z',
+    });
+    vi.mocked(client.getSkillVersions).mockResolvedValue({
+      items: [],
+      pageInfo: {
+        hasNextPage: false,
+        nextCursor: null,
+      },
+    });
+    vi.mocked(client.getInstallTarget).mockResolvedValue(null as never);
     vi.mocked(client.listGovernanceChanges).mockResolvedValue({
       items: [],
       pageInfo: {
@@ -280,5 +388,82 @@ describe('SkillDetailPage', () => {
     expect(
       screen.getByText('npm install @platform.skill/agent-notes@1.0.0 --registry=<待补充 npm 仓库地址>')
     ).toBeInTheDocument();
+  });
+
+  it('uses the install policy that matches the surfaced install target version', async () => {
+    vi.mocked(client.getSession).mockResolvedValue({
+      role: 'operator',
+      actor: 'operator',
+      authMechanism: 'session',
+      allowedActions: ['session.read'],
+      allowedPackages: [],
+    });
+    vi.mocked(client.getSkillDetail).mockResolvedValue({
+      packageName: '@platform.skill/agent-notes',
+      displayName: 'Agent Notes',
+      description: 'Detail view',
+      sourceType: 'native',
+      status: 'active',
+      latestVersion: '2.0.0',
+      latestVersionStatus: 'published',
+      updatedAt: '2026-01-01T00:00:00Z',
+      createdAt: '2026-01-01T00:00:00Z',
+    });
+    vi.mocked(client.getSkillVersions).mockResolvedValue({
+      items: [
+        {
+          packageName: '@platform.skill/agent-notes',
+          version: '2.0.0',
+          versionStatus: 'published',
+          installPolicy: 'blocked',
+          publishedAt: '2026-02-01T00:00:00Z',
+        },
+        {
+          packageName: '@platform.skill/agent-notes',
+          version: '1.9.0',
+          versionStatus: 'published',
+          installPolicy: 'resolvable',
+          publishedAt: '2026-01-15T00:00:00Z',
+        },
+      ],
+      pageInfo: {
+        hasNextPage: false,
+        nextCursor: null,
+      },
+    });
+    vi.mocked(client.getInstallTarget).mockResolvedValue({
+      packageName: '@platform.skill/agent-notes',
+      version: '1.9.0',
+      npmRegistry: 'https://npm.internal.example.com',
+      tarballUrl: 'https://npm.internal.example.com/agent-notes-1.9.0.tgz',
+      integrity: 'sha512-test',
+      skillManifestDigest: 'sha256:test',
+      versionStatus: 'published',
+    });
+    vi.mocked(client.listGovernanceChanges).mockResolvedValue({
+      items: [],
+      pageInfo: {
+        hasNextPage: false,
+        nextCursor: null,
+      },
+    });
+
+    render(
+      <SessionProvider>
+        <MemoryRouter initialEntries={['/skills/%40platform.skill%2Fagent-notes']}>
+          <Routes>
+            <Route path="/skills/:packageName" element={<SkillDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </SessionProvider>
+    );
+
+    const installHeading = await screen.findByRole('heading', { name: '安装这个技能' });
+    const installPanel = installHeading.closest('section');
+
+    expect(installPanel).not.toBeNull();
+    expect(within(installPanel as HTMLElement).getByText('npm install @platform.skill/agent-notes@1.9.0 --registry=https://npm.internal.example.com')).toBeInTheDocument();
+    expect(within(installPanel as HTMLElement).getByText('可直接安装')).toBeInTheDocument();
+    expect(within(installPanel as HTMLElement).queryByText('已阻断安装')).not.toBeInTheDocument();
   });
 });

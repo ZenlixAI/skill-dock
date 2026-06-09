@@ -145,6 +145,102 @@ describe('VersionDetailPage', () => {
     expect(installHeading.compareDocumentPosition(governanceHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it('shows a loading hero while version install data is still loading', () => {
+    vi.mocked(client.getSession).mockResolvedValue({
+      role: 'operator',
+      actor: 'operator',
+      authMechanism: 'session',
+      allowedActions: ['session.read'],
+      allowedPackages: [],
+    });
+    vi.mocked(client.getVersionDetail).mockReturnValue(new Promise(() => {}));
+    vi.mocked(client.listGovernanceChanges).mockResolvedValue({
+      items: [],
+      pageInfo: {
+        hasNextPage: false,
+        nextCursor: null,
+      },
+    });
+
+    render(
+      <SessionProvider>
+        <MemoryRouter initialEntries={['/skills/%40platform.skill%2Fagent-notes/versions/1.0.0']}>
+          <Routes>
+            <Route path="/skills/:packageName/versions/:version" element={<VersionDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </SessionProvider>
+    );
+
+    expect(screen.getByRole('heading', { name: '安装状态' })).toBeInTheDocument();
+    expect(screen.getByText('正在等待版本安装数据返回，安装命令会在解析完成后显示在这里。')).toBeInTheDocument();
+    expect(screen.getByText('正在加载这个版本的安装信息，请稍候。')).toBeInTheDocument();
+  });
+
+  it('shows an error hero when the version install request fails', async () => {
+    vi.mocked(client.getSession).mockResolvedValue({
+      role: 'operator',
+      actor: 'operator',
+      authMechanism: 'session',
+      allowedActions: ['session.read'],
+      allowedPackages: [],
+    });
+    vi.mocked(client.getVersionDetail).mockRejectedValue(new Error('detail unavailable'));
+    vi.mocked(client.listGovernanceChanges).mockResolvedValue({
+      items: [],
+      pageInfo: {
+        hasNextPage: false,
+        nextCursor: null,
+      },
+    });
+
+    render(
+      <SessionProvider>
+        <MemoryRouter initialEntries={['/skills/%40platform.skill%2Fagent-notes/versions/1.0.0']}>
+          <Routes>
+            <Route path="/skills/:packageName/versions/:version" element={<VersionDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </SessionProvider>
+    );
+
+    expect(await screen.findByRole('heading', { name: '安装状态' })).toBeInTheDocument();
+    expect(screen.getByText('版本安装数据请求失败，暂时无法生成可复制的安装命令。')).toBeInTheDocument();
+    expect(screen.getByText('detail unavailable')).toBeInTheDocument();
+  });
+
+  it('shows an unavailable hero when version install data is absent', async () => {
+    vi.mocked(client.getSession).mockResolvedValue({
+      role: 'operator',
+      actor: 'operator',
+      authMechanism: 'session',
+      allowedActions: ['session.read'],
+      allowedPackages: [],
+    });
+    vi.mocked(client.getVersionDetail).mockResolvedValue(null as never);
+    vi.mocked(client.listGovernanceChanges).mockResolvedValue({
+      items: [],
+      pageInfo: {
+        hasNextPage: false,
+        nextCursor: null,
+      },
+    });
+
+    render(
+      <SessionProvider>
+        <MemoryRouter initialEntries={['/skills/%40platform.skill%2Fagent-notes/versions/1.0.0']}>
+          <Routes>
+            <Route path="/skills/:packageName/versions/:version" element={<VersionDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </SessionProvider>
+    );
+
+    expect(await screen.findByRole('heading', { name: '安装状态' })).toBeInTheDocument();
+    expect(screen.getByText('等仓库元数据返回后，这里会显示可直接复制的版本安装命令。')).toBeInTheDocument();
+    expect(screen.getByText('当前还没有可用的仓库安装信息。')).toBeInTheDocument();
+  });
+
   it('keeps the shared install panel when registry install data is unavailable', async () => {
     vi.mocked(client.getSession).mockResolvedValue({
       role: 'operator',

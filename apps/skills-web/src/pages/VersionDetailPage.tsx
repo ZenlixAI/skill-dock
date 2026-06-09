@@ -129,6 +129,52 @@ export function VersionDetailPage() {
   };
   const installRegistry = getInstallRegistryLabel(detail.data?.registry.npmRegistry);
 
+  function renderInstallSurface() {
+    if (detail.loading) {
+      return (
+        <SurfaceCard
+          description="正在等待版本安装数据返回，安装命令会在解析完成后显示在这里。"
+          title="安装状态"
+          variant="hero"
+        >
+          <div className="empty-box">正在加载这个版本的安装信息，请稍候。</div>
+        </SurfaceCard>
+      );
+    }
+
+    if (detail.error) {
+      return (
+        <SurfaceCard
+          description="版本安装数据请求失败，暂时无法生成可复制的安装命令。"
+          title="安装状态"
+          variant="hero"
+        >
+          <div className="error-box">{detail.error}</div>
+        </SurfaceCard>
+      );
+    }
+
+    if (!detail.data) {
+      return (
+        <SurfaceCard description="等仓库元数据返回后，这里会显示可直接复制的版本安装命令。" title="安装状态" variant="hero">
+          <div className="empty-box">当前还没有可用的仓库安装信息。</div>
+        </SurfaceCard>
+      );
+    }
+
+    return (
+      <InstallCommandPanel
+        title="安装这个版本"
+        packageName={decodedPackage}
+        version={version}
+        npmRegistry={installRegistry}
+        installPolicy={detail.data.installPolicy || 'catalog_only'}
+        tarballUrl={detail.data.registry.tarballUrl}
+        integrity={detail.data.registry.integrity}
+      />
+    );
+  }
+
   function appendLog(action: VersionLogEntry['action'], outcome: VersionLogEntry['outcome'], summary: string) {
     setActivityLog((current) => [
       {
@@ -297,21 +343,7 @@ export function VersionDetailPage() {
         </StatusPill>
       </div>
 
-      {detail.data ? (
-        <InstallCommandPanel
-          title="安装这个版本"
-          packageName={decodedPackage}
-          version={version}
-          npmRegistry={installRegistry}
-          installPolicy={detail.data.installPolicy || 'catalog_only'}
-          tarballUrl={detail.data.registry.tarballUrl}
-          integrity={detail.data.registry.integrity}
-        />
-      ) : (
-        <SurfaceCard description="等仓库元数据返回后，这里会显示可直接复制的版本安装命令。" title="安装状态" variant="hero">
-          <div className="empty-box">当前还没有可用的仓库安装信息。</div>
-        </SurfaceCard>
-      )}
+      {renderInstallSurface()}
 
       <div className="console-strip">
         <article className="console-signal">

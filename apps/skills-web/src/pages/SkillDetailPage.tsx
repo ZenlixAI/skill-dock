@@ -70,9 +70,13 @@ export function SkillDetailPage() {
     [decodedPackage, refreshKey]
   );
   const latestVersionItem = versionList.data?.items[0];
+  const installTargetVersionItem =
+    installTarget.data && versionList.data?.items
+      ? versionList.data.items.find((item) => item.version === installTarget.data?.version) || null
+      : null;
   const statusTone = detail.data?.status === 'active' ? 'good' : 'bad';
   const hasInstallTarget = Boolean(installTarget.data);
-  const installVersion = installTarget.data?.version || detail.data?.latestVersion || '待确认版本';
+  const installVersion = installTargetVersionItem?.version || installTarget.data?.version || '待确认版本';
   const installRegistry = getInstallRegistryLabel(installTarget.data?.npmRegistry);
   const canRetireSkill = retireReason.trim() !== '' && retireConfirmed && !submitState.loading;
   const governancePosture = getPosture({
@@ -99,6 +103,76 @@ export function SkillDetailPage() {
     version: null,
     actor: session.data?.actor ?? null,
   };
+
+  function renderInstallSurface() {
+    if (installTarget.loading || (installTarget.data && versionList.loading)) {
+      return (
+        <SurfaceCard
+          description="正在等待安装目标返回，安装命令会在解析完成后显示在这里。"
+          title="安装状态"
+          variant="hero"
+        >
+          <div className="empty-box">正在加载安装目标，请稍候。</div>
+        </SurfaceCard>
+      );
+    }
+
+    if (installTarget.error) {
+      return (
+        <SurfaceCard
+          description="安装目标请求失败，暂时无法生成可复制的默认安装命令。"
+          title="安装状态"
+          variant="hero"
+        >
+          <div className="error-box">{installTarget.error}</div>
+        </SurfaceCard>
+      );
+    }
+
+    if (!installTarget.data) {
+      return (
+        <SurfaceCard description="等安装目标被仓库解析出来后，这里会显示可直接复制的命令。" title="安装状态" variant="hero">
+          <div className="empty-box">当前还没有可用的安装目标。请先检查最新版本是否已经发布并可解析。</div>
+        </SurfaceCard>
+      );
+    }
+
+    if (versionList.error) {
+      return (
+        <SurfaceCard
+          description="安装目标已解析，但对应版本策略请求失败，暂时无法生成可复制的默认安装命令。"
+          title="安装状态"
+          variant="hero"
+        >
+          <div className="error-box">{versionList.error}</div>
+        </SurfaceCard>
+      );
+    }
+
+    if (!installTargetVersionItem) {
+      return (
+        <SurfaceCard
+          description="安装目标已经解析，但还没有拿到对应版本的安装策略。"
+          title="安装状态"
+          variant="hero"
+        >
+          <div className="empty-box">当前安装目标缺少对应的版本策略，请先检查版本列表是否完整返回。</div>
+        </SurfaceCard>
+      );
+    }
+
+    return (
+      <InstallCommandPanel
+        title="安装这个技能"
+        packageName={decodedPackage}
+        version={installTargetVersionItem.version}
+        npmRegistry={installRegistry}
+        installPolicy={installTargetVersionItem.installPolicy}
+        tarballUrl={installTarget.data.tarballUrl}
+        integrity={installTarget.data.integrity}
+      />
+    );
+  }
 
   function appendLog(outcome: SkillLogEntry['outcome'], summary: string) {
     setActivityLog((current) => [
@@ -201,21 +275,7 @@ export function SkillDetailPage() {
         </StatusPill>
       </div>
 
-      {hasInstallTarget ? (
-        <InstallCommandPanel
-          title="安装这个技能"
-          packageName={decodedPackage}
-          version={installVersion}
-          npmRegistry={installRegistry}
-          installPolicy={latestVersionItem?.installPolicy || 'catalog_only'}
-          tarballUrl={installTarget.data?.tarballUrl}
-          integrity={installTarget.data?.integrity}
-        />
-      ) : (
-        <SurfaceCard description="等安装目标被仓库解析出来后，这里会显示可直接复制的命令。" title="安装状态" variant="hero">
-          <div className="empty-box">当前还没有可用的安装目标。请先检查最新版本是否已经发布并可解析。</div>
-        </SurfaceCard>
-      )}
+      {renderInstallSurface()}
 
       <div className="console-strip">
         <article className="console-signal">
@@ -287,7 +347,7 @@ export function SkillDetailPage() {
             </div>
             <div>
               <dt>安装策略</dt>
-              <dd>{describeSkillInstallPolicy(latestVersionItem?.installPolicy)}</dd>
+              <dd>{describeSkillInstallPolicy(installTargetVersionItem?.installPolicy)}</dd>
             </div>
           </dl>
           <div className="list-card__actions">
