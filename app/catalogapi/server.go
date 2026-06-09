@@ -50,12 +50,15 @@ type Server struct {
 	sessionManager                  *auth.SessionManager
 	accessWorkflow                  accessWorkflowHandler
 	catalogReadModule               catalogReadWorkflow
+	readAPIModule                   readAPIWorkflow
 	auditQueryModule                auditQueryWorkflow
 	catalogMutationModule           catalogMutationWorkflow
 	governanceModule                *governanceModule
 	packagingModule                 *packagingModule
 	packagingAccessModule           packagingAccessWorkflow
 	sessionModule                   sessionWorkflow
+	systemModule                    systemWorkflow
+	mockRegistryModule              mockRegistryWorkflow
 	npmRegistryURL                  string
 	npmRegistryPublishAuthorization string
 	npmRegistryPublishClient        *http.Client
@@ -128,6 +131,9 @@ func NewServer(config ServerConfig) *Server {
 	server.catalogReadModule = &catalogReadModule{
 		repo: config.Repository,
 	}
+	server.readAPIModule = &readAPIModule{
+		catalogReadModule: server.catalogReadModule,
+	}
 	server.accessWorkflow = &accessWorkflow{
 		authorizer: authorizer,
 		audit:      auditRecorder,
@@ -159,6 +165,17 @@ func NewServer(config ServerConfig) *Server {
 	server.sessionModule = &sessionModule{
 		authorizer:     authorizer,
 		sessionManager: sessionManager,
+	}
+	server.systemModule = &systemModule{
+		repository: namedReadinessDependency{name: "repository", pinger: dependencyPinger(config.Repository)},
+		audit:      namedReadinessDependency{name: "audit", pinger: dependencyPinger(config.Audit)},
+		idempotency: namedReadinessDependency{
+			name:   "idempotency",
+			pinger: dependencyPinger(config.Idempotency),
+		},
+	}
+	server.mockRegistryModule = &mockRegistryModule{
+		registry: config.MockRegistry,
 	}
 	return server
 }
@@ -289,41 +306,8 @@ func (s *Server) handleSkills(writer http.ResponseWriter, request *http.Request)
 			return
 		}
 	}
-	sourceType, sourceTypeErr := parseSourceTypeFilter(request.URL.Query().Get("source_type"))
-	if sourceTypeErr != nil {
-		writeCatalogError(writer, request, sourceTypeErr)
-		return
-	}
-	includeRetired, includeRetiredErr := parseBooleanQueryParam(request.URL.Query().Get("include_retired"), "include_retired", false)
-	if includeRetiredErr != nil {
-		writeCatalogError(writer, request, includeRetiredErr)
-		return
-	}
-	sortValue, sortErr := parseSkillsSort(request.URL.Query().Get("sort"))
-	if sortErr != nil {
-		writeCatalogError(writer, request, sortErr)
-		return
-	}
-	pageSize, err := parsePageSize(request.URL.Query())
-	if err != nil {
-		writeCatalogError(writer, request, err)
-		return
-	}
-	cursor, err := parseCursor(request.URL.Query())
-	if err != nil {
-		writeCatalogError(writer, request, err)
-		return
-	}
 
-	response, repoErr := s.catalogReadModule.listSkills(request.Context(), auth.PrincipalFromContext(request.Context()), catalog.SkillQuery{
-		Query:          request.URL.Query().Get("q"),
-		PackageName:    request.URL.Query().Get("package_name"),
-		SourceType:     sourceType,
-		IncludeRetired: includeRetired,
-		Sort:           sortValue,
-		PageSize:       pageSize,
-		Cursor:         cursor,
-	})
+	response, repoErr := s.readAPIModule.listSkills(request.Context(), auth.PrincipalFromContext(request.Context()), request.URL.Query())
 	if repoErr != nil {
 		writeCatalogError(writer, request, repoErr)
 		return
@@ -362,39 +346,7 @@ func (s *Server) handleHealthz(writer http.ResponseWriter, request *http.Request
 func (s *Server) handleReadyz(writer http.ResponseWriter, request *http.Request) {
 	observability.SetObservedAction(writer, string(auth.ActionReadReadyz))
 	observability.SetObservedAuthDecision(writer, observability.AuthDecisionAllowed)
-	checks := map[string]string{
-		"repository":  "ok",
-		"audit":       "ok",
-		"idempotency": "ok",
-	}
-	status := http.StatusOK
-
-	if pinger, ok := s.repo.(readinessPinger); ok {
-		if err := pinger.Ping(request.Context()); err != nil {
-			checks["repository"] = err.Error()
-			status = http.StatusServiceUnavailable
-		}
-	}
-	if pinger, ok := s.audit.(readinessPinger); ok {
-		if err := pinger.Ping(request.Context()); err != nil {
-			checks["audit"] = err.Error()
-			status = http.StatusServiceUnavailable
-		}
-	}
-	if pinger, ok := s.idempotency.(readinessPinger); ok {
-		if err := pinger.Ping(request.Context()); err != nil {
-			checks["idempotency"] = err.Error()
-			status = http.StatusServiceUnavailable
-		}
-	}
-
-	payload := map[string]any{
-		"status": "ready",
-		"checks": checks,
-	}
-	if status != http.StatusOK {
-		payload["status"] = "degraded"
-	}
+	payload, status := s.systemModule.readyz(request.Context())
 	writeJSON(writer, status, payload)
 }
 
@@ -562,65 +514,11 @@ func (s *Server) handleVersionDetail(writer http.ResponseWriter, request *http.R
 }
 
 func (s *Server) handleMockRegistry(writer http.ResponseWriter, request *http.Request) {
-	if s.mockRegistry == nil {
+	if s.mockRegistryModule == nil {
 		http.NotFound(writer, request)
 		return
 	}
-
-	remainder := strings.TrimPrefix(request.URL.EscapedPath(), "/mock-npm/")
-	if strings.Contains(remainder, "/-/") {
-		if request.Method != http.MethodGet {
-			writer.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		packagePart, filePart, ok := strings.Cut(remainder, "/-/")
-		if !ok {
-			http.NotFound(writer, request)
-			return
-		}
-		packageName := "@" + packagePart
-		version := strings.TrimSuffix(strings.TrimPrefix(filePart, packageBasename(packageName)+"-"), ".tgz")
-		tarball, found := s.mockRegistry.Tarball(packageName, version)
-		if !found {
-			http.NotFound(writer, request)
-			return
-		}
-		writer.Header().Set("Content-Type", "application/octet-stream")
-		writer.WriteHeader(http.StatusOK)
-		_, _ = writer.Write(tarball)
-		return
-	}
-
-	packageName, err := url.PathUnescape(remainder)
-	if err != nil {
-		http.NotFound(writer, request)
-		return
-	}
-
-	switch request.Method {
-	case http.MethodGet:
-		payload, found := s.mockRegistry.PackageMetadata(mockRegistryBaseURL(request), packageName)
-		if !found {
-			http.NotFound(writer, request)
-			return
-		}
-		writer.Header().Set("Content-Type", "application/json")
-		writer.WriteHeader(http.StatusOK)
-		_, _ = writer.Write(payload)
-	case http.MethodPut:
-		body, readErr := io.ReadAll(request.Body)
-		if readErr != nil {
-			http.Error(writer, "failed to read request body", http.StatusBadRequest)
-			return
-		}
-		if !s.mockRegistry.PublishPackage(packageName, body) {
-			http.Error(writer, "invalid publish payload", http.StatusBadRequest)
-			return
-		}
-		writer.WriteHeader(http.StatusCreated)
-	default:
-		writer.WriteHeader(http.StatusMethodNotAllowed)
-	}
+	s.mockRegistryModule.handleRequest(writer, request)
 }
 
 func (s *Server) handleInstallTarget(writer http.ResponseWriter, request *http.Request, packageName string) {

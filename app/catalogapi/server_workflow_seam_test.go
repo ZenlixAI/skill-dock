@@ -1,10 +1,16 @@
 package catalogapi
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
+
+	"skill_registry/app/auth"
+	"skill_registry/business/catalog"
 )
 
 func TestServerRoutesAuditEventsThroughAuditQueryModule(t *testing.T) {
@@ -23,6 +29,43 @@ func TestServerRoutesAuditEventsThroughAuditQueryModule(t *testing.T) {
 	}
 	if got := module.listEventsCallCount(); got != 1 {
 		t.Fatalf("expected audit query module to be called once, got %d", got)
+	}
+}
+
+func TestServerRoutesSkillsThroughReadAPIModule(t *testing.T) {
+	module := &readAPIModuleStub{}
+	server := newTestServer()
+	server.readAPIModule = module
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills?q=pdf", nil)
+	request.Header.Set("X-Role", "reader")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+	if got := module.listSkillsCallCount(); got != 1 {
+		t.Fatalf("expected read API module to be called once, got %d", got)
+	}
+}
+
+func TestServerRoutesReadyzThroughSystemModule(t *testing.T) {
+	module := &systemModuleStub{}
+	server := newTestServer()
+	server.systemModule = module
+
+	request := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+	if got := module.readyzCallCount(); got != 1 {
+		t.Fatalf("expected system module to be called once, got %d", got)
 	}
 }
 
@@ -139,4 +182,68 @@ func TestServerSessionDeniedPathUsesSharedAccessWorkflow(t *testing.T) {
 	if got := workflow.denyCallCount(); got != 1 {
 		t.Fatalf("expected shared access workflow to deny once, got %d", got)
 	}
+}
+
+func TestServerRoutesMockRegistryThroughMockRegistryModule(t *testing.T) {
+	module := &mockRegistryModuleStub{}
+	server := newTestServer()
+	server.mockRegistryModule = module
+
+	request := httptest.NewRequest(http.MethodGet, "/mock-npm/%40platform.skill%2Fpdf-skill", nil)
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+	if got := module.handleCallCount(); got != 1 {
+		t.Fatalf("expected mock registry module to be called once, got %d", got)
+	}
+}
+
+type readAPIModuleStub struct {
+	listSkillsCalls atomic.Int64
+}
+
+func (m *readAPIModuleStub) listSkills(context.Context, auth.Principal, url.Values) (catalog.SkillsPage, *catalog.Error) {
+	m.listSkillsCalls.Add(1)
+	return catalog.SkillsPage{}, nil
+}
+
+func (m *readAPIModuleStub) listSkillsCallCount() int {
+	return int(m.listSkillsCalls.Load())
+}
+
+type systemModuleStub struct {
+	readyzCalls atomic.Int64
+}
+
+func (m *systemModuleStub) readyz(context.Context) (readyzResponse, int) {
+	m.readyzCalls.Add(1)
+	return readyzResponse{
+		Status: "ready",
+		Checks: map[string]string{
+			"repository":  "ok",
+			"audit":       "ok",
+			"idempotency": "ok",
+		},
+	}, http.StatusOK
+}
+
+func (m *systemModuleStub) readyzCallCount() int {
+	return int(m.readyzCalls.Load())
+}
+
+type mockRegistryModuleStub struct {
+	handleCalls atomic.Int64
+}
+
+func (m *mockRegistryModuleStub) handleRequest(writer http.ResponseWriter, _ *http.Request) {
+	m.handleCalls.Add(1)
+	writer.WriteHeader(http.StatusOK)
+}
+
+func (m *mockRegistryModuleStub) handleCallCount() int {
+	return int(m.handleCalls.Load())
 }

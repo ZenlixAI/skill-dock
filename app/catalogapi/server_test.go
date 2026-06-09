@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -50,7 +51,11 @@ func TestSkillsRequiresAuthentication(t *testing.T) {
 
 func TestServerRoutesSkillsThroughCatalogReadModule(t *testing.T) {
 	module := newCatalogReadModuleStubForTest(t)
-	server := newTestServerWithCatalogReadModule(t, module)
+	server := newTestServer()
+	server.catalogReadModule = module
+	server.readAPIModule = &readAPIModule{
+		catalogReadModule: module,
+	}
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills", nil)
 	request.Header.Set("X-Role", "reader")
 	recorder := httptest.NewRecorder()
@@ -62,6 +67,84 @@ func TestServerRoutesSkillsThroughCatalogReadModule(t *testing.T) {
 	}
 	if got := module.listSkillsCallCount(); got != 1 {
 		t.Fatalf("expected catalog read module to handle one list request, got %d", got)
+	}
+}
+
+func TestReadAPIModuleListsSkillsFromParsedQuery(t *testing.T) {
+	workflow := &capturingCatalogReadWorkflow{
+		response: catalog.SkillsPage{
+			Items: []catalog.SkillSummary{
+				{PackageName: "@platform.skill/pdf-skill"},
+			},
+		},
+	}
+	module := &readAPIModule{
+		catalogReadModule: workflow,
+	}
+	principal := auth.Principal{
+		Role:  "reader",
+		Actor: "reader",
+	}
+
+	response, err := module.listSkills(context.Background(), principal, url.Values{
+		"q":               []string{"pdf"},
+		"package_name":    []string{"@platform.skill/pdf-skill"},
+		"source_type":     []string{string(catalog.SourceTypeImported)},
+		"include_retired": []string{"true"},
+		"sort":            []string{"package_name_asc"},
+		"pageSize":        []string{"7"},
+		"cursor":          []string{"cursor_12"},
+	})
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if got := workflow.listSkillsCallCount(); got != 1 {
+		t.Fatalf("expected catalog read workflow to be called once, got %d", got)
+	}
+	if !reflect.DeepEqual(workflow.principal, principal) {
+		t.Fatalf("unexpected principal (-want +got):\nwant: %#v\ngot:  %#v", principal, workflow.principal)
+	}
+
+	wantQuery := catalog.SkillQuery{
+		Query:          "pdf",
+		PackageName:    "@platform.skill/pdf-skill",
+		SourceType:     string(catalog.SourceTypeImported),
+		IncludeRetired: true,
+		Sort:           "package_name_asc",
+		PageSize:       7,
+		Cursor:         12,
+	}
+	if !reflect.DeepEqual(workflow.query, wantQuery) {
+		t.Fatalf("unexpected parsed query (-want +got):\nwant: %#v\ngot:  %#v", wantQuery, workflow.query)
+	}
+	if !reflect.DeepEqual(response, workflow.response) {
+		t.Fatalf("expected response passthrough, got %#v", response)
+	}
+}
+
+func TestSystemModuleReadyzCollectsDependencyChecks(t *testing.T) {
+	module := &systemModule{
+		repository:  namedReadinessDependency{name: "repository", pinger: stubReadinessPinger{err: errors.New("repository unavailable")}},
+		audit:       namedReadinessDependency{name: "audit", pinger: stubReadinessPinger{err: errors.New("audit unavailable")}},
+		idempotency: namedReadinessDependency{name: "idempotency", pinger: stubReadinessPinger{}},
+	}
+
+	payload, status := module.readyz(context.Background())
+
+	if status != http.StatusServiceUnavailable {
+		t.Fatalf("expected status %d, got %d", http.StatusServiceUnavailable, status)
+	}
+
+	wantChecks := map[string]string{
+		"repository":  "repository unavailable",
+		"audit":       "audit unavailable",
+		"idempotency": "ok",
+	}
+	if payload.Status != "degraded" {
+		t.Fatalf("expected degraded status, got %#v", payload)
+	}
+	if !reflect.DeepEqual(payload.Checks, wantChecks) {
+		t.Fatalf("unexpected readiness checks (-want +got):\nwant: %#v\ngot:  %#v", wantChecks, payload.Checks)
 	}
 }
 
@@ -3623,6 +3706,37 @@ func (s stubIdempotencyStore) DeleteExpired(context.Context) error {
 
 func (s stubIdempotencyStore) Ping(context.Context) error {
 	return s.pingErr
+}
+
+type capturingCatalogReadWorkflow struct {
+	listSkillsCalls atomic.Int64
+	principal       auth.Principal
+	query           catalog.SkillQuery
+	response        catalog.SkillsPage
+	err             *catalog.Error
+}
+
+func (w *capturingCatalogReadWorkflow) listSkills(_ context.Context, principal auth.Principal, query catalog.SkillQuery) (catalog.SkillsPage, *catalog.Error) {
+	w.listSkillsCalls.Add(1)
+	w.principal = principal
+	w.query = query
+	return w.response, w.err
+}
+
+func (w *capturingCatalogReadWorkflow) listCuratedSkills(context.Context, auth.Principal, int, int) (catalog.CuratedSkillsPage, *catalog.Error) {
+	return catalog.CuratedSkillsPage{}, nil
+}
+
+func (w *capturingCatalogReadWorkflow) listSkillsCallCount() int {
+	return int(w.listSkillsCalls.Load())
+}
+
+type stubReadinessPinger struct {
+	err error
+}
+
+func (p stubReadinessPinger) Ping(context.Context) error {
+	return p.err
 }
 
 type testAuditRecord struct {
