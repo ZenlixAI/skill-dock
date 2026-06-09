@@ -187,6 +187,9 @@ func (s *MemoryAggregateStateStore) ListVersions(_ context.Context, query Versio
 		items = append(items, version.SkillVersionSummary)
 	}
 	sort.Slice(items, func(i int, j int) bool {
+		if !items[i].PublishedAt.Equal(items[j].PublishedAt) {
+			return items[i].PublishedAt.After(items[j].PublishedAt)
+		}
 		return compareExactVersions(items[i].Version, items[j].Version) > 0
 	})
 	paged, pageInfo, err := paginate(items, query.Cursor, query.PageSize)
