@@ -622,7 +622,7 @@ func (s *SQLStateStore) updateAggregateTx(ctx context.Context, tx *sql.Tx, aggre
 	if err := s.replaceVersionRowsTx(ctx, tx, aggregate.Skill.Detail.PackageName, aggregate.Skill.Versions); err != nil {
 		return err
 	}
-	return s.upsertGovernanceRowsTx(ctx, tx, aggregate.Governance)
+	return s.syncGovernanceRowsTx(ctx, tx, aggregate.Skill.Detail.PackageName, aggregate.Governance)
 }
 
 func (s *SQLStateStore) insertAggregateTx(ctx context.Context, tx *sql.Tx, aggregate AgentSkillAggregate, revision uint64) error {
@@ -763,8 +763,33 @@ INSERT INTO skill_versions (
 	return nil
 }
 
-func (s *SQLStateStore) upsertGovernanceRowsTx(ctx context.Context, tx *sql.Tx, records []GovernanceRecord) error {
-	upsertGovernanceSQL := bindSQL(s.dialect, `
+func (s *SQLStateStore) syncGovernanceRowsTx(ctx context.Context, tx *sql.Tx, packageName string, records []GovernanceRecord) error {
+	existingRecords, err := s.loadGovernanceByPackageTx(ctx, tx, packageName)
+	if err != nil {
+		return err
+	}
+
+	existingByID := make(map[string]GovernanceRecord, len(existingRecords))
+	for _, record := range existingRecords {
+		existingByID[record.ID] = record
+	}
+
+	nextByID := make(map[string]GovernanceRecord, len(records))
+	for _, record := range records {
+		nextByID[record.ID] = record
+	}
+
+	deleteGovernanceSQL := bindSQL(s.dialect, `DELETE FROM governance_records WHERE id = ?`)
+	for _, record := range existingRecords {
+		if _, ok := nextByID[record.ID]; ok {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, deleteGovernanceSQL, record.ID); err != nil {
+			return err
+		}
+	}
+
+	insertGovernanceSQL := bindSQL(s.dialect, `
 INSERT INTO governance_records (
 	id,
 	target_type,
@@ -775,23 +800,68 @@ INSERT INTO governance_records (
 	replacement_recommendation,
 	changed_by,
 	changed_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT (id) DO UPDATE SET
-	target_type = excluded.target_type,
-	package_name = excluded.package_name,
-	version = excluded.version,
-	action = excluded.action,
-	reason = excluded.reason,
-	replacement_recommendation = excluded.replacement_recommendation,
-	changed_by = excluded.changed_by,
-	changed_at = excluded.changed_at`)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	updateGovernanceSQL := bindSQL(s.dialect, `
+UPDATE governance_records
+SET
+	target_type = ?,
+	package_name = ?,
+	version = ?,
+	action = ?,
+	reason = ?,
+	replacement_recommendation = ?,
+	changed_by = ?,
+	changed_at = ?
+WHERE id = ?`)
 
 	for _, record := range records {
-		if err := insertGovernanceRowTx(ctx, tx, upsertGovernanceSQL, record); err != nil {
+		existing, ok := existingByID[record.ID]
+		if !ok {
+			if err := insertGovernanceRowTx(ctx, tx, insertGovernanceSQL, record); err != nil {
+				return err
+			}
+			continue
+		}
+		if governanceRecordEqual(existing, record) {
+			continue
+		}
+		if err := updateGovernanceRowTx(ctx, tx, updateGovernanceSQL, record); err != nil {
 			return err
 		}
 	}
+
 	return nil
+}
+
+func (s *SQLStateStore) loadGovernanceByPackageTx(ctx context.Context, tx *sql.Tx, packageName string) ([]GovernanceRecord, error) {
+	rows, err := tx.QueryContext(ctx, bindSQL(s.dialect, `
+SELECT
+	id,
+	target_type,
+	package_name,
+	version,
+	action,
+	reason,
+	replacement_recommendation,
+	changed_by,
+	changed_at
+FROM governance_records
+WHERE package_name = ?
+ORDER BY changed_at DESC, id ASC`), packageName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	records := make([]GovernanceRecord, 0)
+	for rows.Next() {
+		record, err := scanGovernanceRecord(rows)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	return records, rows.Err()
 }
 
 func insertVersionRowTx(ctx context.Context, tx *sql.Tx, insertVersionSQL string, version SkillVersionDetail) error {
@@ -837,6 +907,46 @@ func insertGovernanceRowTx(ctx context.Context, tx *sql.Tx, insertGovernanceSQL 
 		record.ChangedAt.UTC().Format(time.RFC3339),
 	)
 	return err
+}
+
+func updateGovernanceRowTx(ctx context.Context, tx *sql.Tx, updateGovernanceSQL string, record GovernanceRecord) error {
+	_, err := tx.ExecContext(
+		ctx,
+		updateGovernanceSQL,
+		string(record.TargetType),
+		record.PackageName,
+		nullableStringValue(record.Version),
+		string(record.Action),
+		record.Reason,
+		nullableStringValue(record.ReplacementRecommendation),
+		record.ChangedBy,
+		record.ChangedAt.UTC().Format(time.RFC3339),
+		record.ID,
+	)
+	return err
+}
+
+func governanceRecordEqual(left GovernanceRecord, right GovernanceRecord) bool {
+	return left.ID == right.ID &&
+		left.TargetType == right.TargetType &&
+		left.PackageName == right.PackageName &&
+		nullableStringEqual(left.Version, right.Version) &&
+		left.Action == right.Action &&
+		left.Reason == right.Reason &&
+		nullableStringEqual(left.ReplacementRecommendation, right.ReplacementRecommendation) &&
+		left.ChangedBy == right.ChangedBy &&
+		left.ChangedAt.Equal(right.ChangedAt)
+}
+
+func nullableStringEqual(left *string, right *string) bool {
+	switch {
+	case left == nil && right == nil:
+		return true
+	case left == nil || right == nil:
+		return false
+	default:
+		return *left == *right
+	}
 }
 
 func nullableStringValue(value *string) any {
