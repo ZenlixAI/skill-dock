@@ -139,10 +139,126 @@ func TestCatalogRepositoryListVersionsUsesConsistentQueryStoreOrdering(t *testin
 	}
 }
 
+func TestSortSkillsBreaksUpdatedAtTiesByPackageName(t *testing.T) {
+	tiedAt := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
+	items := []SkillSummary{
+		{PackageName: "@platform.skill/zeta", UpdatedAt: tiedAt},
+		{PackageName: "@platform.skill/alpha", UpdatedAt: tiedAt},
+		{PackageName: "@platform.skill/mid", UpdatedAt: tiedAt},
+	}
+
+	sortSkills(items, "updated_at_desc", "")
+
+	got := skillPagePackageNames(SkillsPage{Items: items})
+	want := []string{"@platform.skill/alpha", "@platform.skill/mid", "@platform.skill/zeta"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected tied updated_at rows ordered by package name, got %v", got)
+	}
+}
+
+func TestCatalogRepositoryListSkillsUsesConsistentQueryStoreOrdering(t *testing.T) {
+	tiedAt := time.Date(2026, 6, 4, 12, 0, 0, 0, time.UTC)
+	data := SampleCatalogData{
+		Skills: []skillRecord{
+			{
+				Detail: SkillDetail{
+					SkillSummary: SkillSummary{
+						PackageName:         "@platform.skill/zeta",
+						DisplayName:         "Tie Zeta",
+						Description:         "Locks tied skill ordering",
+						SourceType:          SourceTypeImported,
+						Status:              SkillStatusActive,
+						LatestVersion:       stringPtr("1.0.0"),
+						LatestVersionStatus: stringPtr(string(VersionStatusPublished)),
+						UpdatedAt:           tiedAt,
+					},
+					CreatedAt: tiedAt.Add(-time.Hour),
+				},
+				Versions: []SkillVersionDetail{
+					newMaterializedVersion("https://npm.internal.example.com", "@platform.skill/zeta", "1.0.0", VersionStatusPublished, InstallPolicyResolvable, tiedAt, "Tie Zeta", "Locks tied skill ordering", []string{"commands"}),
+				},
+			},
+			{
+				Detail: SkillDetail{
+					SkillSummary: SkillSummary{
+						PackageName:         "@platform.skill/alpha",
+						DisplayName:         "Tie Alpha",
+						Description:         "Locks tied skill ordering",
+						SourceType:          SourceTypeImported,
+						Status:              SkillStatusActive,
+						LatestVersion:       stringPtr("1.0.0"),
+						LatestVersionStatus: stringPtr(string(VersionStatusPublished)),
+						UpdatedAt:           tiedAt,
+					},
+					CreatedAt: tiedAt.Add(-time.Hour),
+				},
+				Versions: []SkillVersionDetail{
+					newMaterializedVersion("https://npm.internal.example.com", "@platform.skill/alpha", "1.0.0", VersionStatusPublished, InstallPolicyResolvable, tiedAt, "Tie Alpha", "Locks tied skill ordering", []string{"commands"}),
+				},
+			},
+			{
+				Detail: SkillDetail{
+					SkillSummary: SkillSummary{
+						PackageName:         "@platform.skill/mid",
+						DisplayName:         "Tie Mid",
+						Description:         "Locks tied skill ordering",
+						SourceType:          SourceTypeImported,
+						Status:              SkillStatusActive,
+						LatestVersion:       stringPtr("1.0.0"),
+						LatestVersionStatus: stringPtr(string(VersionStatusPublished)),
+						UpdatedAt:           tiedAt,
+					},
+					CreatedAt: tiedAt.Add(-time.Hour),
+				},
+				Versions: []SkillVersionDetail{
+					newMaterializedVersion("https://npm.internal.example.com", "@platform.skill/mid", "1.0.0", VersionStatusPublished, InstallPolicyResolvable, tiedAt, "Tie Mid", "Locks tied skill ordering", []string{"commands"}),
+				},
+			},
+		},
+	}
+
+	memoryRepo := NewCatalogRepository(CatalogRepositoryConfig{
+		StateStore:     NewMemoryAggregateStateStore(data, MemoryAggregateStateStoreOptions{}),
+		ArtifactSource: NewStaticArtifactSource(data.Artifacts),
+	})
+	sqlRepo := newSQLRepositoryForTest(t, data)
+
+	query := SkillQuery{
+		Sort:     "updated_at_desc",
+		PageSize: 3,
+	}
+	sqlPage, err := sqlRepo.ListSkills(context.Background(), query)
+	if err != nil {
+		t.Fatalf("list sql skills: %v", err)
+	}
+	want := []string{"@platform.skill/alpha", "@platform.skill/mid", "@platform.skill/zeta"}
+	if got := skillPagePackageNames(sqlPage); !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected sql skills %v, got %v", want, got)
+	}
+
+	for i := 0; i < 20; i++ {
+		memoryPage, err := memoryRepo.ListSkills(context.Background(), query)
+		if err != nil {
+			t.Fatalf("list memory skills: %v", err)
+		}
+		if got := skillPagePackageNames(memoryPage); !reflect.DeepEqual(got, want) {
+			t.Fatalf("expected memory skills %v, got %v", want, got)
+		}
+	}
+}
+
 func versionPageVersions(page VersionsPage) []string {
 	versions := make([]string, 0, len(page.Items))
 	for _, item := range page.Items {
 		versions = append(versions, item.Version)
 	}
 	return versions
+}
+
+func skillPagePackageNames(page SkillsPage) []string {
+	names := make([]string, 0, len(page.Items))
+	for _, item := range page.Items {
+		names = append(names, item.PackageName)
+	}
+	return names
 }

@@ -123,12 +123,18 @@ func sortSkills(items []SkillSummary, sortKey string, query string) {
 		case "package_name_asc":
 			return items[i].PackageName < items[j].PackageName
 		case "updated_at_desc":
-			return items[i].UpdatedAt.After(items[j].UpdatedAt)
+			if !items[i].UpdatedAt.Equal(items[j].UpdatedAt) {
+				return items[i].UpdatedAt.After(items[j].UpdatedAt)
+			}
+			return items[i].PackageName < items[j].PackageName
 		default:
 			scoreI := skillRelevanceScore(items[i], query)
 			scoreJ := skillRelevanceScore(items[j], query)
 			if scoreI == scoreJ {
-				return items[i].UpdatedAt.After(items[j].UpdatedAt)
+				if !items[i].UpdatedAt.Equal(items[j].UpdatedAt) {
+					return items[i].UpdatedAt.After(items[j].UpdatedAt)
+				}
+				return items[i].PackageName < items[j].PackageName
 			}
 			return scoreI > scoreJ
 		}
