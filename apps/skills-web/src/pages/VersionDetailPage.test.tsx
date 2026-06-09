@@ -132,6 +132,15 @@ describe('VersionDetailPage', () => {
       screen.getByText('npm install @platform.skill/agent-notes@1.0.0 --registry=https://npm.internal.example.com')
     ).toBeInTheDocument();
     expect(screen.getAllByText('可直接安装').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('已发布').length).toBeGreaterThan(0);
+    expect(screen.getByText('仓库与打包产物')).toBeInTheDocument();
+    expect(screen.getAllByText('完整性校验').length).toBeGreaterThan(0);
+    expect(screen.getByText('校验摘要')).toBeInTheDocument();
+    expect(screen.getByText('组件清单')).toBeInTheDocument();
+    expect(screen.queryByText('integrity')).not.toBeInTheDocument();
+    expect(screen.queryByText('shasum')).not.toBeInTheDocument();
+    expect(screen.queryByText('components')).not.toBeInTheDocument();
+    expect(screen.queryByText('published')).not.toBeInTheDocument();
     expect(installHeading.compareDocumentPosition(releaseHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(installHeading.compareDocumentPosition(governanceHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
@@ -231,10 +240,10 @@ describe('VersionDetailPage', () => {
       </SessionProvider>
     );
 
-    const submitButton = await screen.findByRole('button', { name: '创建 release record' });
+    const submitButton = await screen.findByRole('button', { name: '写入发布记录' });
     expect(submitButton).toBeDisabled();
 
-    fireEvent.click(screen.getByLabelText('我确认这个版本已经完成 npm publish，可继续写 release record。'));
+    fireEvent.click(screen.getByLabelText('我确认这个版本已经完成 npm publish，可继续写入发布记录。'));
 
     expect(submitButton).not.toBeDisabled();
   });
@@ -289,8 +298,12 @@ describe('VersionDetailPage', () => {
     );
 
     expect(await screen.findByText('发布前检查清单')).toBeInTheDocument();
+    expect(screen.getByText('工作区路径')).toBeInTheDocument();
+    expect(screen.getByText('打包产物路径')).toBeInTheDocument();
     expect(
-      screen.getByText('先下载 bundle，并在你自己的终端里对目标 npm registry 执行 publish。')
+      screen.getByText('先下载打包产物，并在你自己的终端里对目标 npm 仓库执行 `npm publish`。')
     ).toBeInTheDocument();
+    expect(screen.queryByText('workspace handle')).not.toBeInTheDocument();
+    expect(screen.queryByText('bundle')).not.toBeInTheDocument();
   });
 });

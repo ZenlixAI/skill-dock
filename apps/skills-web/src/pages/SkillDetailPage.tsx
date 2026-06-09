@@ -25,7 +25,14 @@ import {
 } from '../features/catalog-mutations/useCatalogMutation';
 import { useAsyncData } from '../lib/useAsyncData';
 import { formatDate } from '../lib/format';
-import { getInstallPolicyLabel } from '../lib/installCommand';
+import {
+  getGovernanceActionLabel,
+  getGovernanceTargetTypeLabel,
+  getInstallPolicyLabel,
+  getSkillStatusLabel,
+  getSourceTypeLabel,
+  getVersionStatusLabel,
+} from '../lib/installCommand';
 import { useRegistrySession } from '../session/SessionProvider';
 
 type SkillLogEntry = {
@@ -37,6 +44,10 @@ type SkillLogEntry = {
 
 function describeSkillInstallPolicy(installPolicy?: 'catalog_only' | 'resolvable' | 'blocked' | null) {
   return installPolicy ? getInstallPolicyLabel(installPolicy) : '—';
+}
+
+function getLogOutcomeLabel(outcome: SkillLogEntry['outcome']) {
+  return outcome === 'succeeded' ? '成功' : '失败';
 }
 
 export function SkillDetailPage() {
@@ -109,7 +120,7 @@ export function SkillDetailPage() {
         action: 'retire',
         reason: retireReason.trim(),
       });
-      const successMessage = `已提交 skill retire。当前状态：${response.resultingState.status || 'retired'}`;
+      const successMessage = `已提交技能退役。当前状态：${getSkillStatusLabel(response.resultingState.status || 'retired')}`;
       setSubmitState({
         loading: false,
         error: null,
@@ -119,7 +130,7 @@ export function SkillDetailPage() {
         persistCatalogMutation(
           searchParams,
           {
-            action: 'retire',
+            action: getGovernanceActionLabel('retire'),
             outcome: 'succeeded',
             message: successMessage,
           },
@@ -142,7 +153,7 @@ export function SkillDetailPage() {
         persistCatalogMutation(
           searchParams,
           {
-            action: 'retire',
+            action: getGovernanceActionLabel('retire'),
             outcome,
             message: normalizedError.message,
             requestId: normalizedError.requestId,
@@ -179,8 +190,8 @@ export function SkillDetailPage() {
       />
 
       <div className="context-strip">
-        <StatusPill tone={statusTone}>{detail.data?.status || 'unknown'}</StatusPill>
-        {detail.data?.sourceType ? <StatusPill tone="accent">{detail.data.sourceType}</StatusPill> : null}
+        <StatusPill tone={statusTone}>{detail.data?.status ? getSkillStatusLabel(detail.data.status) : '未知'}</StatusPill>
+        {detail.data?.sourceType ? <StatusPill tone="accent">{getSourceTypeLabel(detail.data.sourceType)}</StatusPill> : null}
         {detail.data?.latestVersion ? <StatusPill>最新 {detail.data.latestVersion}</StatusPill> : null}
         {installTarget.data?.version ? <StatusPill tone="good">安装目标 {installTarget.data.version}</StatusPill> : null}
         <StatusPill tone={governancePosture === 'write_enabled' ? 'accent' : governancePosture === 'package_filter_required' ? 'warn' : 'default'}>
@@ -231,11 +242,17 @@ export function SkillDetailPage() {
             </div>
             <div>
               <dt>来源类型</dt>
-              <dd>{detail.data?.sourceType || '—'}</dd>
+              <dd>{detail.data?.sourceType ? getSourceTypeLabel(detail.data.sourceType) : '—'}</dd>
             </div>
             <div>
               <dt>技能状态</dt>
-              <dd>{detail.data ? <StatusPill tone={detail.data.status === 'active' ? 'good' : 'bad'}>{detail.data.status}</StatusPill> : '—'}</dd>
+              <dd>
+                {detail.data ? (
+                  <StatusPill tone={detail.data.status === 'active' ? 'good' : 'bad'}>{getSkillStatusLabel(detail.data.status)}</StatusPill>
+                ) : (
+                  '—'
+                )}
+              </dd>
             </div>
             <div>
               <dt>最新版本</dt>
@@ -263,7 +280,7 @@ export function SkillDetailPage() {
               <dd>{installTarget.data?.integrity || '—'}</dd>
             </div>
             <div>
-              <dt>manifest 摘要</dt>
+              <dt>清单摘要</dt>
               <dd>{installTarget.data?.skillManifestDigest || '—'}</dd>
             </div>
             <div>
@@ -298,12 +315,12 @@ export function SkillDetailPage() {
                     <span>{formatDate(item.publishedAt)}</span>
                   </div>
                   <StatusPill tone={item.versionStatus === 'published' ? 'good' : item.versionStatus === 'deprecated' ? 'warn' : 'bad'}>
-                    {item.versionStatus}
+                    {getVersionStatusLabel(item.versionStatus)}
                   </StatusPill>
                 </div>
                 <div className="pill-row">
                   <StatusPill tone={item.installPolicy === 'resolvable' ? 'good' : item.installPolicy === 'catalog_only' ? 'warn' : 'bad'}>
-                    {item.installPolicy}
+                    {getInstallPolicyLabel(item.installPolicy)}
                   </StatusPill>
                 </div>
                 <div className="list-card__actions">
@@ -332,7 +349,7 @@ export function SkillDetailPage() {
                 <textarea
                   value={retireReason}
                   onChange={(event) => setRetireReason(event.target.value)}
-                  placeholder="merged into successor skill / no longer allowed in catalog"
+                  placeholder="已合并到后继技能 / 不再允许出现在目录中"
                 />
               </label>
               <label className="checkbox-row">
@@ -369,7 +386,7 @@ export function SkillDetailPage() {
                     <span>{latestVersionItem?.version || '未找到版本'}</span>
                   </div>
                   <StatusPill tone={latestVersionItem?.versionStatus === 'published' ? 'good' : latestVersionItem?.versionStatus === 'deprecated' ? 'warn' : 'bad'}>
-                    {latestVersionItem?.versionStatus || 'unknown'}
+                    {getVersionStatusLabel(latestVersionItem?.versionStatus || 'unknown')}
                   </StatusPill>
                 </div>
                 <p>继续查看最新版本的详细状态。</p>
@@ -377,11 +394,11 @@ export function SkillDetailPage() {
               <article className="list-card">
                 <div className="list-card__head">
                   <div>
-                    <strong>Catalog 安装态势</strong>
+                    <strong>仓库安装态势</strong>
                     <span>{installTarget.data?.version || '未解析'}</span>
                   </div>
                   <StatusPill tone={detail.data?.status === 'active' ? 'good' : 'bad'}>
-                    {detail.data?.status || 'unknown'}
+                    {detail.data?.status ? getSkillStatusLabel(detail.data.status) : '未知'}
                   </StatusPill>
                 </div>
                 <p>检查当前安装解析是否正常。</p>
@@ -396,10 +413,12 @@ export function SkillDetailPage() {
                   <article className="list-card" key={item.id}>
                     <div className="list-card__head">
                       <div>
-                        <strong>{item.action}</strong>
+                        <strong>{getGovernanceActionLabel(item.action)}</strong>
                         <span>{formatDate(item.changedAt)}</span>
                       </div>
-                      <StatusPill tone={item.targetType === 'skill' ? 'bad' : 'warn'}>{item.targetType}</StatusPill>
+                      <StatusPill tone={item.targetType === 'skill' ? 'bad' : 'warn'}>
+                        {getGovernanceTargetTypeLabel(item.targetType)}
+                      </StatusPill>
                     </div>
                     <p>{item.reason}</p>
                   </article>
@@ -417,10 +436,10 @@ export function SkillDetailPage() {
                   <article className="list-card" key={entry.id}>
                     <div className="list-card__head">
                       <div>
-                        <strong>{entry.action}</strong>
+                        <strong>{getGovernanceActionLabel(entry.action)}</strong>
                         <span>{entry.summary}</span>
                       </div>
-                      <StatusPill tone={entry.outcome === 'succeeded' ? 'good' : 'bad'}>{entry.outcome}</StatusPill>
+                      <StatusPill tone={entry.outcome === 'succeeded' ? 'good' : 'bad'}>{getLogOutcomeLabel(entry.outcome)}</StatusPill>
                     </div>
                   </article>
                 ))

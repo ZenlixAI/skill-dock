@@ -153,6 +153,13 @@ describe('SkillDetailPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '复制安装命令' })).toBeInTheDocument();
     expect(screen.getAllByText('可直接安装').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('已发布').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('原生').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('启用').length).toBeGreaterThan(0);
+    expect(screen.getByText('仓库安装态势')).toBeInTheDocument();
+    expect(screen.queryByText('published')).not.toBeInTheDocument();
+    expect(screen.queryByText('resolvable')).not.toBeInTheDocument();
+    expect(screen.queryByText('native')).not.toBeInTheDocument();
     expect(installHeading.compareDocumentPosition(versionsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
