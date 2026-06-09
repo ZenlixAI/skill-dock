@@ -19,8 +19,7 @@ func NewService(tempRoot string) *Service {
 }
 
 func NewServiceWithWorkspaceStore(tempRoot string, store persist.WorkspaceStore) *Service {
-	workspace := newPackagingWorkspaceBacking(tempRoot, store)
-	runtime := newPackagingWorkspaceRuntimeWithBacking(workspace)
+	runtime := newPackagingWorkspaceRuntime(tempRoot, store)
 	return &Service{
 		workspaceRuntime: runtime,
 		publishWorkflow:  newPublishedReleaseWorkflow(runtime),

@@ -12,6 +12,59 @@ import (
 	"skill_registry/foundation/persist"
 )
 
+func TestPackagingWorkspaceRuntimeUsesManagedAdapterWhenWorkspaceStoreExists(t *testing.T) {
+	root := t.TempDir()
+	store := newMemoryWorkspaceStore()
+	runtime := newPackagingWorkspaceRuntime(root, store)
+
+	if _, ok := runtime.adapter.(*managedWorkspaceAdapter); !ok {
+		t.Fatalf("expected managed workspace adapter, got %T", runtime.adapter)
+	}
+
+	response, err := runtime.Prepare(context.Background(), PrepareRequest{
+		Source: Source{
+			Type: "platform_authoring",
+			Files: map[string]string{
+				"docs/README.md": "# Capability\n",
+			},
+		},
+		Target:   Target{PackageName: "@platform.skill/runtime-managed-adapter", Version: "1.0.0"},
+		Metadata: Metadata{DisplayName: "runtime-managed-adapter", Description: "desc", SourceType: "native"},
+	})
+	if err != nil {
+		t.Fatalf("prepare returned error: %v", err)
+	}
+	if response.WorkspacePath == "" || filepath.IsAbs(response.WorkspacePath) {
+		t.Fatalf("expected managed workspace handle, got %q", response.WorkspacePath)
+	}
+}
+
+func TestPackagingWorkspaceRuntimeUsesEphemeralAdapterWithoutWorkspaceStore(t *testing.T) {
+	root := t.TempDir()
+	runtime := newPackagingWorkspaceRuntime(root, nil)
+
+	if _, ok := runtime.adapter.(*ephemeralWorkspaceAdapter); !ok {
+		t.Fatalf("expected ephemeral workspace adapter, got %T", runtime.adapter)
+	}
+
+	response, err := runtime.Prepare(context.Background(), PrepareRequest{
+		Source: Source{
+			Type: "platform_authoring",
+			Files: map[string]string{
+				"docs/README.md": "# Capability\n",
+			},
+		},
+		Target:   Target{PackageName: "@platform.skill/runtime-ephemeral-adapter", Version: "1.0.0"},
+		Metadata: Metadata{DisplayName: "runtime-ephemeral-adapter", Description: "desc", SourceType: "native"},
+	})
+	if err != nil {
+		t.Fatalf("prepare returned error: %v", err)
+	}
+	if !filepath.IsAbs(response.WorkspacePath) {
+		t.Fatalf("expected filesystem workspace path, got %q", response.WorkspacePath)
+	}
+}
+
 func TestPackagingWorkspaceRuntimePreparePersistsManagedWorkspaceAndReturnsHandle(t *testing.T) {
 	root := t.TempDir()
 	store := newMemoryWorkspaceStore()
