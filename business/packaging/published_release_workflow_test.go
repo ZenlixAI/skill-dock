@@ -16,7 +16,7 @@ func TestPublishedReleaseWorkflowPublishesWhenArtifactMissing(t *testing.T) {
 	workflow := newPublishedReleaseWorkflow(runtime)
 	repo := &stubReleaseRecordCreator{
 		results: []stubReleaseRecordOutcome{
-			{err: wrappedReleaseArtifactMissingError()},
+			{err: errReleaseArtifactMissing},
 			{result: catalog.ReleaseRecordResult{Created: true, VersionStatus: catalog.VersionStatusPublished, InstallPolicy: catalog.InstallPolicyResolvable}},
 		},
 	}
@@ -113,12 +113,12 @@ func TestPublishedReleaseWorkflowReplaysWhenArtifactAlreadyExists(t *testing.T) 
 	workflow := newPublishedReleaseWorkflow(runtime)
 	repo := &stubReleaseRecordCreator{
 		results: []stubReleaseRecordOutcome{
-			{err: wrappedReleaseArtifactMissingError()},
+			{err: errReleaseArtifactMissing},
 			{result: catalog.ReleaseRecordResult{Created: false, IdempotentReplay: true, VersionStatus: catalog.VersionStatusPublished, InstallPolicy: catalog.InstallPolicyResolvable}},
 		},
 	}
 	publisher := &capturePackagePublisher{
-		err: wrappedPackageArtifactAlreadyExistsError(),
+		err: errPackageArtifactAlreadyExists,
 	}
 	workflow.Configure(repo, publisher)
 
@@ -151,6 +151,26 @@ func TestPublishedReleaseWorkflowReplaysWhenArtifactAlreadyExists(t *testing.T) 
 	}
 	if publisher.calls != 1 {
 		t.Fatalf("expected one publisher attempt before replay, got %d", publisher.calls)
+	}
+}
+
+func TestClassifyReleaseRecordErrorTreatsWrappedCatalogArtifactMissingAsMissing(t *testing.T) {
+	state, catalogErr := classifyReleaseRecordError(wrappedReleaseArtifactMissingError())
+	if state != releaseRecordWorkflowStateArtifactMissing {
+		t.Fatalf("expected artifact-missing state, got %v", state)
+	}
+	if catalogErr == nil || catalogErr.Code != "registry_version_not_found" {
+		t.Fatalf("expected registry_version_not_found error, got %#v", catalogErr)
+	}
+}
+
+func TestClassifyPackagePublishErrorTreatsWrappedCatalogConflictAsAlreadyExists(t *testing.T) {
+	state, catalogErr := classifyPackagePublishError(wrappedPackageArtifactAlreadyExistsError())
+	if state != packagePublishWorkflowStateArtifactAlreadyExists {
+		t.Fatalf("expected artifact-already-exists state, got %v", state)
+	}
+	if catalogErr == nil || catalogErr.Code != "registry_version_conflict" {
+		t.Fatalf("expected registry_version_conflict error, got %#v", catalogErr)
 	}
 }
 

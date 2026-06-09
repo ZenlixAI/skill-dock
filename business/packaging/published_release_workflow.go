@@ -129,17 +129,8 @@ func (w *publishedReleaseWorkflow) createReleaseRecord(ctx context.Context, pack
 	if err == nil {
 		return releaseRecordAttempt{result: result, state: releaseRecordWorkflowStateReady}
 	}
-	catalogErr := packagingCatalogError(err)
-	if errors.Is(err, errReleaseArtifactMissing) {
-		if catalogErr.Code == "internal_error" {
-			catalogErr = catalog.NewError(404, "registry_version_not_found", "Registry version not found.", nil)
-		}
-		return releaseRecordAttempt{state: releaseRecordWorkflowStateArtifactMissing, err: catalogErr}
-	}
-	if catalogErr.Code == "registry_version_not_found" {
-		return releaseRecordAttempt{state: releaseRecordWorkflowStateArtifactMissing, err: catalogErr}
-	}
-	return releaseRecordAttempt{state: releaseRecordWorkflowStateFailed, err: catalogErr}
+	state, catalogErr := classifyReleaseRecordError(err)
+	return releaseRecordAttempt{state: state, err: catalogErr}
 }
 
 func (w *publishedReleaseWorkflow) publishPackage(ctx context.Context, input artifactadapter.NPMPublishInput) packagePublishAttempt {
@@ -147,15 +138,50 @@ func (w *publishedReleaseWorkflow) publishPackage(ctx context.Context, input art
 	if err == nil {
 		return packagePublishAttempt{state: packagePublishWorkflowStatePublished}
 	}
+	state, catalogErr := classifyPackagePublishError(err)
+	return packagePublishAttempt{state: state, err: catalogErr}
+}
+
+func classifyReleaseRecordError(err error) (releaseRecordWorkflowState, *catalog.Error) {
+	if errors.Is(err, errReleaseArtifactMissing) {
+		return releaseRecordWorkflowStateArtifactMissing, releaseArtifactMissingCatalogError(err)
+	}
+
 	catalogErr := packagingCatalogError(err)
+	switch catalogErr.Code {
+	case "registry_version_not_found":
+		return releaseRecordWorkflowStateArtifactMissing, catalogErr
+	default:
+		return releaseRecordWorkflowStateFailed, catalogErr
+	}
+}
+
+func classifyPackagePublishError(err error) (packagePublishWorkflowState, *catalog.Error) {
 	if errors.Is(err, errPackageArtifactAlreadyExists) {
-		if catalogErr.Code == "internal_error" {
-			catalogErr = catalog.NewError(409, "registry_version_conflict", "Registry already contains this package version or rejected an overwrite.", nil)
-		}
-		return packagePublishAttempt{state: packagePublishWorkflowStateArtifactAlreadyExists, err: catalogErr}
+		return packagePublishWorkflowStateArtifactAlreadyExists, packageArtifactAlreadyExistsCatalogError(err)
 	}
-	if catalogErr.Code == "registry_version_conflict" {
-		return packagePublishAttempt{state: packagePublishWorkflowStateArtifactAlreadyExists, err: catalogErr}
+
+	catalogErr := packagingCatalogError(err)
+	switch catalogErr.Code {
+	case "registry_version_conflict":
+		return packagePublishWorkflowStateArtifactAlreadyExists, catalogErr
+	default:
+		return packagePublishWorkflowStateFailed, catalogErr
 	}
-	return packagePublishAttempt{state: packagePublishWorkflowStateFailed, err: catalogErr}
+}
+
+func releaseArtifactMissingCatalogError(err error) *catalog.Error {
+	catalogErr := packagingCatalogError(err)
+	if catalogErr.Code != "internal_error" {
+		return catalogErr
+	}
+	return catalog.NewError(404, "registry_version_not_found", "Registry version not found.", nil)
+}
+
+func packageArtifactAlreadyExistsCatalogError(err error) *catalog.Error {
+	catalogErr := packagingCatalogError(err)
+	if catalogErr.Code != "internal_error" {
+		return catalogErr
+	}
+	return catalog.NewError(409, "registry_version_conflict", "Registry already contains this package version or rejected an overwrite.", nil)
 }
