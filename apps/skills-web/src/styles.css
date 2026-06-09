@@ -599,6 +599,13 @@ textarea {
   gap: 16px;
 }
 
+.console-home-grid,
+.console-skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
 .portal-skeleton {
   min-height: 140px;
   border-radius: 22px;
@@ -1358,7 +1365,9 @@ textarea {
   .button-row,
   .hero-band,
   .portal-hero__search,
-  .authoring-editor__layout {
+  .authoring-editor__layout,
+  .console-home-grid,
+  .console-skeleton-grid {
     grid-template-columns: 1fr;
   }
 }

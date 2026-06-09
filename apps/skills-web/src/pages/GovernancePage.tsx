@@ -23,13 +23,13 @@ function buildGovernanceLayers(records: GovernanceRecord[]): GovernanceLayer[] {
   return [
     {
       key: 'blocking',
-      title: 'Blocking / hard-stop actions',
+      title: '阻断类动作',
       description: '这些动作会直接改变下游是否还能继续装、继续引用或继续宣传这个 skill。',
       items: blocking,
     },
     {
       key: 'migration',
-      title: 'Migration / replacement actions',
+      title: '迁移与替换建议',
       description: '这些动作更偏向迁移引导，告诉消费方该去哪个 replacement，而不是立即强阻断。',
       items: migration,
     },
@@ -109,19 +109,19 @@ export function GovernancePage() {
   return (
     <div className="page-grid">
       <SectionHeading
-        eyebrow="Governance"
-        title="把 retire / deprecate / yank 从后端状态机翻译成可操作的治理控制台。"
-        description="这页不只是一条时间线，而是先回答影响面，再让人按 target / action / package 缩小范围。"
+        eyebrow="控制台 / 治理"
+        title="治理影响面"
+        description="先判断动作影响的是整包还是单版本，再沿着治理事件流追溯原因与替换建议。"
         tone="backstage"
       />
 
       <div className="context-strip">
-        <StatusPill tone="accent">{packageName.trim() || 'all packages'}</StatusPill>
-        <StatusPill>{targetType || 'all targets'}</StatusPill>
+        <StatusPill tone="accent">{packageName.trim() || '全部包'}</StatusPill>
+        <StatusPill>{targetType || '全部目标'}</StatusPill>
         <StatusPill tone={action === 'yank' || action === 'retire' ? 'bad' : action === 'deprecate' ? 'warn' : undefined}>
-          {action || 'all actions'}
+          {action || '全部动作'}
         </StatusPill>
-        <StatusPill tone="good">{filteredItems.length} shown</StatusPill>
+        <StatusPill tone="good">展示 {filteredItems.length} 条</StatusPill>
         <StatusPill tone={governancePosture === 'write_enabled' ? 'accent' : governancePosture === 'package_filter_required' ? 'warn' : 'default'}>
           {governancePostureLabel}
         </StatusPill>
@@ -166,17 +166,17 @@ export function GovernancePage() {
 
       <div className="console-strip">
         <article className="console-signal">
-          <span>Blocking actions</span>
+          <span>阻断动作</span>
           <strong>{blockingCount}</strong>
           <p>这些动作会显式改变 install / adoption 的可行性，属于优先关注的治理事件。</p>
         </article>
         <article className="console-signal">
-          <span>Replacement guidance</span>
+          <span>替换建议</span>
           <strong>{replacementCount}</strong>
           <p>这些事件已经给出了 replacement recommendation，更适合做迁移引导而不是只给 warning。</p>
         </article>
         <article className="console-signal">
-          <span>Version-scoped</span>
+          <span>版本级范围</span>
           <strong>{versionCount}</strong>
           <p>version 级治理通常对应 release 线上的局部调整，不一定意味着整个 skill 线应该退场。</p>
         </article>
@@ -211,17 +211,20 @@ export function GovernancePage() {
           </label>
           <div className="action-row">
             <div className="action-row__copy">
-                  <strong>阅读建议</strong>
-                  <p>先看 blocking / replacement 影响面，再看具体 timeline；不要把所有治理事件都当成同一种严重度。</p>
-                </div>
-              </div>
+              <strong>阅读建议</strong>
+              <p>先看阻断与替换影响面，再看具体时间线；不要把所有治理事件都当成同一种严重度。</p>
+            </div>
+          </div>
         </SurfaceCard>
 
         <div className="stack-column">
           {governance.loading ? <div className="empty-box">正在加载治理记录…</div> : null}
           {governance.error ? <div className="error-box">{governance.error}</div> : null}
           {!governance.loading && !governance.error && filteredItems.length === 0 ? (
-            <div className="empty-box">当前筛选条件下没有治理记录。</div>
+            <div className="empty-box">
+              <strong>当前视图下没有匹配的治理事件。</strong>
+              <p>请调整包名、目标类型或动作筛选条件，以扩大影响面视图。</p>
+            </div>
           ) : null}
 
           {layers.map((layer) => (
@@ -247,7 +250,7 @@ export function GovernancePage() {
                     <p>{item.reason}</p>
                     {item.replacementRecommendation ? (
                       <div className="pill-row">
-                        <StatusPill tone="accent">replacement {item.replacementRecommendation}</StatusPill>
+                        <StatusPill tone="accent">替换为 {item.replacementRecommendation}</StatusPill>
                       </div>
                     ) : null}
                   </article>

@@ -24,19 +24,19 @@ function buildAuditLayers(records: AuditEventRecord[]): AuditLayer[] {
   return [
     {
       key: 'failures',
-      title: 'Failures / denied / blocked',
+      title: '失败 / 拒绝 / 阻断',
       description: '先看失败动作，因为这些最直接决定当前控制台是否可用、是否被策略拦住。',
       items: failures,
     },
     {
       key: 'mutations',
-      title: 'Mutating operations',
+      title: '写操作',
       description: '这些动作真的改变了 Catalog / packaging / governance 状态，应该和只读事件区分开看。',
       items: mutations,
     },
     {
       key: 'reads',
-      title: 'Read-side trace',
+      title: '只读追踪',
       description: '只读请求同样重要，但更适合放到最后看，用于追溯谁查过什么。',
       items: reads,
     },
@@ -88,40 +88,42 @@ export function AuditPage() {
   return (
     <div className="page-grid">
       <SectionHeading
-        eyebrow="Audit"
-        title="让人追溯‘谁在什么时候对哪个 skill/version 做了哪一步’，并先看真正重要的失败面。"
-        description="审计页不再只是堆 feed，而是把 denied / failed / mutating / read-side trace 分层展开。"
+        eyebrow="控制台 / 审计"
+        title="审计追踪"
+        description="先看范围与结果摘要，再下钻到每一条事件记录，回答是谁在什么时候做了什么。"
         tone="backstage"
       />
 
       <div className="context-strip">
-        <StatusPill tone="accent">{packageName.trim() || 'all packages'}</StatusPill>
-        <StatusPill>{version.trim() || 'all versions'}</StatusPill>
-        <StatusPill>{actor.trim() || 'all actors'}</StatusPill>
-        <StatusPill tone={outcome === 'succeeded' ? 'good' : outcome ? 'bad' : undefined}>{outcome || 'all outcomes'}</StatusPill>
-        <StatusPill tone={authDecision === 'denied' ? 'bad' : authDecision === 'allowed' ? 'good' : undefined}>{authDecision || 'all auth decisions'}</StatusPill>
+        <StatusPill tone="accent">{packageName.trim() || '全部包'}</StatusPill>
+        <StatusPill>{version.trim() || '全部版本'}</StatusPill>
+        <StatusPill>{actor.trim() || '全部操作者'}</StatusPill>
+        <StatusPill tone={outcome === 'succeeded' ? 'good' : outcome ? 'bad' : undefined}>{outcome || '全部结果'}</StatusPill>
+        <StatusPill tone={authDecision === 'denied' ? 'bad' : authDecision === 'allowed' ? 'good' : undefined}>
+          {authDecision || '全部鉴权结果'}
+        </StatusPill>
       </div>
 
       <div className="console-strip">
         <article className="console-signal">
-          <span>Denied requests</span>
+          <span>拒绝请求</span>
           <strong>{deniedCount}</strong>
           <p>如果 denied 持续偏高，说明控制台当前暴露的动作和权限模型之间还有错位。</p>
         </article>
         <article className="console-signal">
-          <span>Failed operations</span>
+          <span>失败操作</span>
           <strong>{failedCount}</strong>
           <p>失败不是噪音，它们直接决定用户现在能不能完成发布、治理或安装相关操作。</p>
         </article>
         <article className="console-signal">
-          <span>Mutations</span>
+          <span>写操作</span>
           <strong>{mutatingCount}</strong>
           <p>写操作是 audit 里最值得优先看的那部分，因为它们真的改变了系统状态。</p>
         </article>
       </div>
 
       <div className="two-column two-column--wide-right">
-        <SurfaceCard title="筛选" description="先缩小 actor / outcome / package，再读时间轴。" variant="console">
+        <SurfaceCard title="筛选" description="先缩小操作者、结果与包范围，再读时间轴。" variant="console">
           <label className="field">
             <span>包名</span>
             <input
@@ -135,7 +137,7 @@ export function AuditPage() {
             <input onChange={(event) => updateFilter('version', event.target.value)} placeholder="1.2.0" value={version} />
           </label>
           <label className="field">
-            <span>Actor</span>
+            <span>操作者</span>
             <input
               onChange={(event) => updateFilter('actor', event.target.value)}
               placeholder="svc-publisher / web-ui / user_214"
@@ -146,33 +148,36 @@ export function AuditPage() {
             <span>结果</span>
             <select value={outcome} onChange={(event) => updateFilter('outcome', event.target.value)}>
               <option value="">全部</option>
-              <option value="succeeded">succeeded</option>
-              <option value="failed">failed</option>
-              <option value="forbidden">forbidden</option>
-              <option value="unauthorized">unauthorized</option>
+              <option value="succeeded">成功</option>
+              <option value="failed">失败</option>
+              <option value="forbidden">禁止</option>
+              <option value="unauthorized">未授权</option>
             </select>
           </label>
           <label className="field">
             <span>鉴权结果</span>
             <select value={authDecision} onChange={(event) => updateFilter('authDecision', event.target.value)}>
               <option value="">全部</option>
-              <option value="allowed">allowed</option>
-              <option value="denied">denied</option>
+              <option value="allowed">允许</option>
+              <option value="denied">拒绝</option>
             </select>
           </label>
           <div className="action-row">
             <div className="action-row__copy">
-                  <strong>阅读建议</strong>
-                  <p>先看 failures / denied，再看 mutating operations，最后再回头看 reads；不要把所有请求当同一种追溯粒度。</p>
-                </div>
-              </div>
+              <strong>阅读建议</strong>
+              <p>先看失败与拒绝，再看写操作，最后回头看只读请求；不要把所有请求当成同一种追溯粒度。</p>
+            </div>
+          </div>
         </SurfaceCard>
 
         <div className="stack-column">
           {audit.loading ? <div className="empty-box">正在加载审计记录…</div> : null}
           {audit.error ? <div className="error-box">{audit.error}</div> : null}
           {!audit.loading && !audit.error && items.length === 0 ? (
-            <div className="empty-box">当前筛选条件下没有审计记录。</div>
+            <div className="empty-box">
+              <strong>当前视图下没有匹配的审计事件。</strong>
+              <p>请调整操作者、包名或结果筛选条件，以扩大追溯范围。</p>
+            </div>
           ) : null}
 
           {layers.map((layer) => (
