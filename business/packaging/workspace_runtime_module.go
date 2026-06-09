@@ -305,45 +305,6 @@ func (r *packagingWorkspaceRuntime) packLocked(ctx context.Context, input PackRe
 	}, nil
 }
 
-func (r *packagingWorkspaceRuntime) PruneExpiredWorkspaces(ttl time.Duration) error {
-	if r.workspaceStore != nil && ttl > 0 {
-		cutoff := time.Now().UTC().Add(-ttl)
-		expiredRecords, err := r.workspaceStore.ListExpired(context.Background(), cutoff)
-		if err != nil {
-			return err
-		}
-		for _, record := range expiredRecords {
-			lockCtx, unlock, lockErr := r.lockWorkspace(context.Background(), record.WorkspaceID)
-			if lockErr != nil {
-				return lockErr
-			}
-			current, loadErr := r.workspaceStore.LoadWorkspace(lockCtx, record.WorkspaceID)
-			if loadErr == nil {
-				if current.UpdatedAt.Before(cutoff) {
-					managedRoot, rootErr := r.managedWorkspaceRootFromPath(current.WorkspaceID, current.WorkspacePath)
-					if rootErr != nil {
-						unlock()
-						return rootErr
-					}
-					if err := os.RemoveAll(managedRoot); err != nil {
-						unlock()
-						return err
-					}
-					if err := r.workspaceStore.DeleteWorkspace(lockCtx, record.WorkspaceID); err != nil {
-						unlock()
-						return err
-					}
-				}
-			} else if loadErr != persist.ErrWorkspaceRecordNotFound {
-				unlock()
-				return loadErr
-			}
-			unlock()
-		}
-	}
-	return r.workspaceSource.pruneExpiredWorkspaces(ttl)
-}
-
 func (r *packagingWorkspaceRuntime) lockWorkspace(ctx context.Context, workspaceID string) (context.Context, func(), error) {
 	if r.workspaceStore == nil || strings.TrimSpace(workspaceID) == "" {
 		return ctx, func() {}, nil

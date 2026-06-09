@@ -381,7 +381,42 @@ func (s *Service) packWorkspaceLocked(ctx context.Context, input PackRequest) (p
 }
 
 func (s *Service) PruneExpiredWorkspaces(ttl time.Duration) error {
-	return s.workspaceRuntime.PruneExpiredWorkspaces(ttl)
+	if s.workspaceRuntime.workspaceStore != nil && ttl > 0 {
+		cutoff := time.Now().UTC().Add(-ttl)
+		expiredRecords, err := s.workspaceRuntime.workspaceStore.ListExpired(context.Background(), cutoff)
+		if err != nil {
+			return err
+		}
+		for _, record := range expiredRecords {
+			lockCtx, unlock, lockErr := s.workspaceRuntime.lockWorkspace(context.Background(), record.WorkspaceID)
+			if lockErr != nil {
+				return lockErr
+			}
+			current, loadErr := s.workspaceRuntime.workspaceStore.LoadWorkspace(lockCtx, record.WorkspaceID)
+			if loadErr == nil {
+				if current.UpdatedAt.Before(cutoff) {
+					managedRoot, rootErr := s.workspaceRuntime.managedWorkspaceRootFromPath(current.WorkspaceID, current.WorkspacePath)
+					if rootErr != nil {
+						unlock()
+						return rootErr
+					}
+					if err := os.RemoveAll(managedRoot); err != nil {
+						unlock()
+						return err
+					}
+					if err := s.workspaceRuntime.workspaceStore.DeleteWorkspace(lockCtx, record.WorkspaceID); err != nil {
+						unlock()
+						return err
+					}
+				}
+			} else if loadErr != persist.ErrWorkspaceRecordNotFound {
+				unlock()
+				return loadErr
+			}
+			unlock()
+		}
+	}
+	return s.workspaceRuntime.workspaceSource.pruneExpiredWorkspaces(ttl)
 }
 
 func packagingContextError(ctx context.Context) error {
