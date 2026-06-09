@@ -45,33 +45,27 @@ type ServerConfig struct {
 }
 
 type Server struct {
-	repo                            catalog.Repository
-	authorizer                      *auth.Authorizer
-	sessionManager                  *auth.SessionManager
-	accessWorkflow                  accessWorkflowHandler
-	catalogReadModule               catalogReadWorkflow
-	readAPIModule                   readAPIWorkflow
-	auditQueryModule                auditQueryWorkflow
-	catalogMutationModule           catalogMutationWorkflow
-	governanceModule                *governanceModule
-	packagingModule                 *packagingModule
-	packagingAccessModule           packagingAccessWorkflow
-	sessionModule                   sessionWorkflow
-	systemModule                    systemWorkflow
-	mockRegistryModule              mockRegistryWorkflow
-	npmRegistryURL                  string
-	npmRegistryPublishAuthorization string
-	npmRegistryPublishClient        *http.Client
-	publicNPMRegistryURL            string
-	mockRegistry                    *artifactadapter.MockRegistry
-	disableMockRegistry             bool
-	packaging                       *packaging.Service
-	idempotency                     persist.IdempotencyStore
-	audit                           persist.AuditStore
-	auditRecorder                   *AuditRecorder
-	logger                          *log.Logger
-	metrics                         *observability.Collector
-	requestID                       atomic.Uint64
+	repo                  catalog.Repository
+	authorizer            *auth.Authorizer
+	sessionManager        *auth.SessionManager
+	accessWorkflow        accessWorkflowHandler
+	catalogReadModule     catalogReadWorkflow
+	readAPIModule         readAPIWorkflow
+	auditQueryModule      auditQueryWorkflow
+	catalogMutationModule catalogMutationWorkflow
+	governanceModule      *governanceModule
+	packagingModule       *packagingModule
+	packagingAccessModule packagingAccessWorkflow
+	sessionModule         sessionWorkflow
+	systemModule          systemWorkflow
+	mockRegistryModule    mockRegistryWorkflow
+	publicNPMRegistryURL  string
+	disableMockRegistry   bool
+	packaging             *packaging.Service
+	auditRecorder         *AuditRecorder
+	logger                *log.Logger
+	metrics               *observability.Collector
+	requestID             atomic.Uint64
 }
 
 type contextKey string
@@ -109,24 +103,15 @@ func NewServer(config ServerConfig) *Server {
 	}
 
 	server := &Server{
-		repo:                            config.Repository,
-		authorizer:                      authorizer,
-		sessionManager:                  sessionManager,
-		npmRegistryURL:                  strings.TrimRight(strings.TrimSpace(config.NPMRegistryURL), "/"),
-		npmRegistryPublishAuthorization: strings.TrimSpace(config.NPMRegistryPublishAuthorization),
-		npmRegistryPublishClient:        config.NPMRegistryPublishClient,
-		publicNPMRegistryURL:            strings.TrimRight(strings.TrimSpace(config.PublicNPMRegistryURL), "/"),
-		mockRegistry:                    config.MockRegistry,
-		disableMockRegistry:             config.DisableMockRegistry,
-		packaging:                       config.Packaging,
-		idempotency:                     config.Idempotency,
-		audit:                           config.Audit,
-		auditRecorder:                   auditRecorder,
-		logger:                          logger,
-		metrics:                         observability.NewCollector(),
-	}
-	if server.npmRegistryPublishClient == nil {
-		server.npmRegistryPublishClient = http.DefaultClient
+		repo:                 config.Repository,
+		authorizer:           authorizer,
+		sessionManager:       sessionManager,
+		publicNPMRegistryURL: strings.TrimRight(strings.TrimSpace(config.PublicNPMRegistryURL), "/"),
+		disableMockRegistry:  config.DisableMockRegistry,
+		packaging:            config.Packaging,
+		auditRecorder:        auditRecorder,
+		logger:               logger,
+		metrics:              observability.NewCollector(),
 	}
 	server.catalogReadModule = &catalogReadModule{
 		repo: config.Repository,
@@ -767,26 +752,6 @@ func parseBooleanQueryParam(raw string, field string, defaultValue bool) (bool, 
 	}
 }
 
-func parseSkillsSort(raw string) (string, *catalog.Error) {
-	value := strings.TrimSpace(raw)
-	switch value {
-	case "", "relevance", "updated_at_desc", "package_name_asc":
-		return value, nil
-	default:
-		return "", catalog.NewError(400, "invalid_request", "sort is invalid.", map[string]any{"sort": value})
-	}
-}
-
-func parseSourceTypeFilter(raw string) (string, *catalog.Error) {
-	value := strings.TrimSpace(raw)
-	switch value {
-	case "", string(catalog.SourceTypeNative), string(catalog.SourceTypeImported), string(catalog.SourceTypePlatformCreated):
-		return value, nil
-	default:
-		return "", catalog.NewError(400, "invalid_request", "source_type is invalid.", map[string]any{"source_type": value})
-	}
-}
-
 func parseGovernanceTargetTypeFilter(raw string) (string, *catalog.Error) {
 	value := strings.TrimSpace(raw)
 	switch value {
@@ -940,23 +905,6 @@ func requestIDFromContext(ctx context.Context) string {
 func traceIDFromContext(ctx context.Context) string {
 	traceID, _ := ctx.Value(traceIDContextKey).(string)
 	return traceID
-}
-
-func packageBasename(packageName string) string {
-	parts := strings.Split(packageName, "/")
-	return parts[len(parts)-1]
-}
-
-func mockRegistryBaseURL(request *http.Request) string {
-	scheme := request.URL.Scheme
-	if scheme == "" {
-		scheme = "http"
-	}
-	host := request.Host
-	if host == "" {
-		host = request.URL.Host
-	}
-	return scheme + "://" + host + "/mock-npm"
 }
 
 func handlePackagingEndpoint[T interface {

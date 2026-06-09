@@ -3,6 +3,7 @@ package catalogapi
 import (
 	"context"
 	"net/url"
+	"strings"
 
 	"skill_registry/app/auth"
 	"skill_registry/business/catalog"
@@ -47,4 +48,24 @@ func (m *readAPIModule) listSkills(ctx context.Context, principal auth.Principal
 		PageSize:       pageSize,
 		Cursor:         cursor,
 	})
+}
+
+func parseSkillsSort(raw string) (string, *catalog.Error) {
+	value := strings.TrimSpace(raw)
+	switch value {
+	case "", "relevance", "updated_at_desc", "package_name_asc":
+		return value, nil
+	default:
+		return "", catalog.NewError(400, "invalid_request", "sort is invalid.", map[string]any{"sort": value})
+	}
+}
+
+func parseSourceTypeFilter(raw string) (string, *catalog.Error) {
+	value := strings.TrimSpace(raw)
+	switch value {
+	case "", string(catalog.SourceTypeNative), string(catalog.SourceTypeImported), string(catalog.SourceTypePlatformCreated):
+		return value, nil
+	default:
+		return "", catalog.NewError(400, "invalid_request", "source_type is invalid.", map[string]any{"source_type": value})
+	}
 }

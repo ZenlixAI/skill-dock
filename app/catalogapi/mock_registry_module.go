@@ -83,3 +83,20 @@ func (m *mockRegistryModule) handleTarballRequest(writer http.ResponseWriter, re
 	writer.WriteHeader(http.StatusOK)
 	_, _ = writer.Write(tarball)
 }
+
+func packageBasename(packageName string) string {
+	parts := strings.Split(packageName, "/")
+	return parts[len(parts)-1]
+}
+
+func mockRegistryBaseURL(request *http.Request) string {
+	scheme := request.URL.Scheme
+	if scheme == "" {
+		scheme = "http"
+	}
+	host := request.Host
+	if host == "" {
+		host = request.URL.Host
+	}
+	return scheme + "://" + host + "/mock-npm"
+}
