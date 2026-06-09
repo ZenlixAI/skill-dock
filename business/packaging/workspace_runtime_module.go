@@ -4,8 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
-	"sync"
 	"time"
 
 	"skill_registry/business/catalog"
@@ -13,25 +11,18 @@ import (
 )
 
 type packagingWorkspaceRuntime struct {
-	workspaceRoot   string
-	workspaceSource workspaceSourceModule
-	bundleRules     bundleRuleModule
-	workspaceStore  persist.WorkspaceStore
-
-	workspaceLocksMu sync.Mutex
-	workspaceLocks   map[string]*workspaceLockEntry
+	workspace   *packagingWorkspaceBacking
+	bundleRules bundleRuleModule
 }
 
 func newPackagingWorkspaceRuntime(tempRoot string, store persist.WorkspaceStore) *packagingWorkspaceRuntime {
-	if strings.TrimSpace(tempRoot) == "" {
-		tempRoot = os.TempDir()
-	}
+	return newPackagingWorkspaceRuntimeWithBacking(newPackagingWorkspaceBacking(tempRoot, store))
+}
+
+func newPackagingWorkspaceRuntimeWithBacking(workspace *packagingWorkspaceBacking) *packagingWorkspaceRuntime {
 	return &packagingWorkspaceRuntime{
-		workspaceRoot:   tempRoot,
-		workspaceSource: newWorkspaceSourceModule(tempRoot, 24*time.Hour),
-		bundleRules:     newBundleRuleModule(),
-		workspaceStore:  store,
-		workspaceLocks:  map[string]*workspaceLockEntry{},
+		workspace:   workspace,
+		bundleRules: newBundleRuleModule(),
 	}
 }
 
@@ -43,7 +34,7 @@ func (r *packagingWorkspaceRuntime) Prepare(ctx context.Context, input PrepareRe
 		return PrepareResponse{}, err
 	}
 
-	workspacePath, err := r.workspaceSource.prepare(input)
+	workspacePath, err := r.workspace.workspaceSource.prepare(input)
 	if err != nil {
 		return PrepareResponse{}, err
 	}
@@ -53,8 +44,8 @@ func (r *packagingWorkspaceRuntime) Prepare(ctx context.Context, input PrepareRe
 		return PrepareResponse{}, err
 	}
 
-	if r.workspaceStore != nil {
-		handle, _, persistErr := r.persistManagedWorkspace(ctx, workspacePath)
+	if r.workspace.workspaceStore != nil {
+		handle, _, persistErr := r.workspace.persistManagedWorkspace(ctx, workspacePath)
 		if persistErr != nil {
 			_ = os.RemoveAll(workspacePath)
 			return PrepareResponse{}, persistErr
@@ -81,7 +72,7 @@ func (r *packagingWorkspaceRuntime) Validate(ctx context.Context, input Validate
 	if err := packagingContextError(ctx); err != nil {
 		return ValidateResponse{}, err
 	}
-	ctx, unlock, err := r.lockWorkspace(ctx, input.WorkspacePath)
+	ctx, unlock, err := r.workspace.lockWorkspace(ctx, input.WorkspacePath)
 	if err != nil {
 		return ValidateResponse{}, err
 	}
@@ -91,8 +82,8 @@ func (r *packagingWorkspaceRuntime) Validate(ctx context.Context, input Validate
 }
 
 func (r *packagingWorkspaceRuntime) validateLocked(ctx context.Context, input ValidateRequest) (ValidateResponse, error) {
-	if r.workspaceStore != nil {
-		record, err := r.loadManagedWorkspaceRecord(ctx, input.WorkspacePath)
+	if r.workspace.workspaceStore != nil {
+		record, err := r.workspace.loadManagedWorkspaceRecord(ctx, input.WorkspacePath)
 		if err != nil {
 			return ValidateResponse{}, err
 		}
@@ -104,13 +95,13 @@ func (r *packagingWorkspaceRuntime) validateLocked(ctx context.Context, input Va
 		if err != nil {
 			return ValidateResponse{}, err
 		}
-		if saveErr := r.workspaceStore.SaveValidationCache(ctx, input.WorkspacePath, workspaceValidationCacheFromResult(input.Target, result), time.Now().UTC()); saveErr != nil {
+		if saveErr := r.workspace.workspaceStore.SaveValidationCache(ctx, input.WorkspacePath, workspaceValidationCacheFromResult(input.Target, result), time.Now().UTC()); saveErr != nil {
 			return ValidateResponse{}, catalog.NewError(500, "internal_error", "Failed to persist packaging workspace validation cache.", nil)
 		}
 		return validateResponseFromResult(input, result, record.WorkspacePath), nil
 	}
 
-	workspacePath, cleanup, err := r.materializeWorkspace(ctx, input.WorkspacePath)
+	workspacePath, cleanup, err := r.workspace.materializeWorkspace(ctx, input.WorkspacePath)
 	if err != nil {
 		return ValidateResponse{}, err
 	}
@@ -142,7 +133,7 @@ func (r *packagingWorkspaceRuntime) Pack(ctx context.Context, input PackRequest)
 	if err := packagingContextError(ctx); err != nil {
 		return PackResponse{}, err
 	}
-	ctx, unlock, err := r.lockWorkspace(ctx, input.WorkspacePath)
+	ctx, unlock, err := r.workspace.lockWorkspace(ctx, input.WorkspacePath)
 	if err != nil {
 		return PackResponse{}, err
 	}
@@ -158,8 +149,8 @@ func (r *packagingWorkspaceRuntime) Pack(ctx context.Context, input PackRequest)
 }
 
 func (r *packagingWorkspaceRuntime) packLocked(ctx context.Context, input PackRequest) (packExecutionResult, error) {
-	if r.workspaceStore != nil {
-		record, err := r.loadManagedWorkspaceRecord(ctx, input.WorkspacePath)
+	if r.workspace.workspaceStore != nil {
+		record, err := r.workspace.loadManagedWorkspaceRecord(ctx, input.WorkspacePath)
 		if err != nil {
 			return packExecutionResult{}, err
 		}
@@ -170,7 +161,7 @@ func (r *packagingWorkspaceRuntime) packLocked(ctx context.Context, input PackRe
 			if err != nil {
 				return packExecutionResult{}, err
 			}
-			if saveErr := r.workspaceStore.SaveValidationCache(ctx, input.WorkspacePath, workspaceValidationCacheFromResult(input.Target, result), time.Now().UTC()); saveErr != nil {
+			if saveErr := r.workspace.workspaceStore.SaveValidationCache(ctx, input.WorkspacePath, workspaceValidationCacheFromResult(input.Target, result), time.Now().UTC()); saveErr != nil {
 				return packExecutionResult{}, catalog.NewError(500, "internal_error", "Failed to persist packaging workspace validation cache.", nil)
 			}
 		}
@@ -194,8 +185,8 @@ func (r *packagingWorkspaceRuntime) packLocked(ctx context.Context, input PackRe
 			}, nil
 		}
 
-		bundlePath := r.managedBundlePath(input.WorkspacePath, input.Target)
-		if err := r.validateManagedBundlePath(input.WorkspacePath, input.Target, bundlePath); err != nil {
+		bundlePath := r.workspace.managedBundlePath(input.WorkspacePath, input.Target)
+		if err := r.workspace.validateManagedBundlePath(input.WorkspacePath, input.Target, bundlePath); err != nil {
 			return packExecutionResult{}, catalog.NewError(500, "internal_error", "Packed bundle could not be persisted.", nil)
 		}
 		if bundleBase64, ok, err := reuseManagedBundle(record, input, bundlePath); err != nil {
@@ -215,7 +206,7 @@ func (r *packagingWorkspaceRuntime) packLocked(ctx context.Context, input PackRe
 		if err != nil {
 			return packExecutionResult{}, err
 		}
-		if saveErr := r.workspaceStore.SaveBundle(ctx, input.WorkspacePath, bundlePath, time.Now().UTC()); saveErr != nil {
+		if saveErr := r.workspace.workspaceStore.SaveBundle(ctx, input.WorkspacePath, bundlePath, time.Now().UTC()); saveErr != nil {
 			return packExecutionResult{}, catalog.NewError(500, "internal_error", "Packed bundle could not be persisted.", nil)
 		}
 		response.BundlePath = workspaceBundleHandle(input.WorkspacePath, input.Target)
@@ -228,7 +219,7 @@ func (r *packagingWorkspaceRuntime) packLocked(ctx context.Context, input PackRe
 		}, nil
 	}
 
-	workspacePath, cleanup, err := r.materializeWorkspace(ctx, input.WorkspacePath)
+	workspacePath, cleanup, err := r.workspace.materializeWorkspace(ctx, input.WorkspacePath)
 	if err != nil {
 		return packExecutionResult{}, err
 	}
@@ -238,13 +229,6 @@ func (r *packagingWorkspaceRuntime) packLocked(ctx context.Context, input PackRe
 		cleanup()
 		return packExecutionResult{}, err
 	}
-	if r.workspaceStore != nil {
-		if saveErr := r.workspaceStore.SaveValidationCache(ctx, input.WorkspacePath, workspaceValidationCacheFromResult(input.Target, result), time.Now().UTC()); saveErr != nil {
-			cleanup()
-			return packExecutionResult{}, catalog.NewError(500, "internal_error", "Failed to persist packaging workspace validation cache.", nil)
-		}
-	}
-
 	response := PackResponse{
 		WorkspacePath:  input.WorkspacePath,
 		PackageName:    input.Target.PackageName,
@@ -264,37 +248,18 @@ func (r *packagingWorkspaceRuntime) packLocked(ctx context.Context, input PackRe
 		}, nil
 	}
 
-	bundlePath, err := r.workspaceSource.bundlePath(workspacePath, input.Target)
-	if r.workspaceStore != nil {
-		bundlePath = r.managedBundlePath(input.WorkspacePath, input.Target)
-		if err := r.validateManagedBundlePath(input.WorkspacePath, input.Target, bundlePath); err != nil {
-			cleanup()
-			return packExecutionResult{}, catalog.NewError(500, "internal_error", "Packed bundle could not be persisted.", nil)
-		}
-	} else if err != nil {
-		cleanup()
-		return packExecutionResult{}, err
-	}
-
-	bundleBase64 := ""
-	if r.workspaceStore != nil {
-		bundleBase64, err = r.buildManagedBundle(workspacePath, input.WorkspacePath, input.Target, input.IncludeBundle)
-	} else {
-		bundleBase64, err = r.bundleRules.buildBundle(workspacePath, bundlePath, input.IncludeBundle)
-	}
+	bundlePath, err := r.workspace.workspaceSource.bundlePath(workspacePath, input.Target)
 	if err != nil {
 		cleanup()
 		return packExecutionResult{}, err
 	}
-	if r.workspaceStore != nil {
-		if saveErr := r.workspaceStore.SaveBundle(ctx, input.WorkspacePath, bundlePath, time.Now().UTC()); saveErr != nil {
-			cleanup()
-			return packExecutionResult{}, catalog.NewError(500, "internal_error", "Packed bundle could not be persisted.", nil)
-		}
-		response.BundlePath = workspaceBundleHandle(input.WorkspacePath, input.Target)
-	} else {
-		response.BundlePath = bundlePath
+
+	bundleBase64, err := r.bundleRules.buildBundle(workspacePath, bundlePath, input.IncludeBundle)
+	if err != nil {
+		cleanup()
+		return packExecutionResult{}, err
 	}
+	response.BundlePath = bundlePath
 	response.BundleBase64 = bundleBase64
 
 	return packExecutionResult{
@@ -305,46 +270,9 @@ func (r *packagingWorkspaceRuntime) packLocked(ctx context.Context, input PackRe
 	}, nil
 }
 
-func (r *packagingWorkspaceRuntime) lockWorkspace(ctx context.Context, workspaceID string) (context.Context, func(), error) {
-	if r.workspaceStore == nil || strings.TrimSpace(workspaceID) == "" {
-		return ctx, func() {}, nil
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if current, ok := ctx.Value(workspaceLockContextKey{}).(string); ok && current == workspaceID {
-		return ctx, func() {}, nil
-	}
-
-	r.workspaceLocksMu.Lock()
-	entry := r.workspaceLocks[workspaceID]
-	if entry == nil {
-		entry = &workspaceLockEntry{}
-		r.workspaceLocks[workspaceID] = entry
-	}
-	entry.refs++
-	r.workspaceLocksMu.Unlock()
-
-	entry.mu.Lock()
-
-	release := func() {
-		entry.mu.Unlock()
-
-		r.workspaceLocksMu.Lock()
-		defer r.workspaceLocksMu.Unlock()
-
-		entry.refs--
-		if entry.refs == 0 && r.workspaceLocks[workspaceID] == entry {
-			delete(r.workspaceLocks, workspaceID)
-		}
-	}
-
-	return context.WithValue(ctx, workspaceLockContextKey{}, workspaceID), release, nil
-}
-
 func (r *packagingWorkspaceRuntime) buildManagedBundle(workspacePath string, workspaceID string, target Target, includeBundle bool) (string, error) {
-	finalPath := r.managedBundlePath(workspaceID, target)
-	if err := r.validateManagedBundlePath(workspaceID, target, finalPath); err != nil {
+	finalPath := r.workspace.managedBundlePath(workspaceID, target)
+	if err := r.workspace.validateManagedBundlePath(workspaceID, target, finalPath); err != nil {
 		return "", catalog.NewError(500, "internal_error", "Packed bundle could not be persisted.", nil)
 	}
 

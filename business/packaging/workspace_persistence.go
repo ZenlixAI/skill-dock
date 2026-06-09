@@ -12,14 +12,37 @@ import (
 	"skill_registry/foundation/persist"
 )
 
-func (r *packagingWorkspaceRuntime) persistManagedWorkspace(ctx context.Context, workspacePath string) (string, string, error) {
+type packagingWorkspaceBacking struct {
+	workspaceRoot   string
+	workspaceSource workspaceSourceModule
+	workspaceStore  persist.WorkspaceStore
+	workspaceLocker *workspaceLocker
+}
+
+func newPackagingWorkspaceBacking(tempRoot string, store persist.WorkspaceStore) *packagingWorkspaceBacking {
+	if strings.TrimSpace(tempRoot) == "" {
+		tempRoot = os.TempDir()
+	}
+	return &packagingWorkspaceBacking{
+		workspaceRoot:   tempRoot,
+		workspaceSource: newWorkspaceSourceModule(tempRoot, 24*time.Hour),
+		workspaceStore:  store,
+		workspaceLocker: newWorkspaceLocker(),
+	}
+}
+
+func (w *packagingWorkspaceBacking) lockWorkspace(ctx context.Context, workspaceID string) (context.Context, func(), error) {
+	return w.workspaceLocker.lock(ctx, workspaceID, w.workspaceStore != nil)
+}
+
+func (w *packagingWorkspaceBacking) persistManagedWorkspace(ctx context.Context, workspacePath string) (string, string, error) {
 	if err := packagingContextError(ctx); err != nil {
 		return "", "", err
 	}
 
 	workspaceID := workspaceHandle()
-	managedWorkspace := r.managedWorkspacePath(workspaceID)
-	managedRoot, err := r.managedWorkspaceRootFromPath(workspaceID, managedWorkspace)
+	managedWorkspace := w.managedWorkspacePath(workspaceID)
+	managedRoot, err := w.managedWorkspaceRootFromPath(workspaceID, managedWorkspace)
 	if err != nil {
 		return "", "", catalog.NewError(500, "internal_error", "Failed to persist packaging workspace.", nil)
 	}
@@ -29,37 +52,37 @@ func (r *packagingWorkspaceRuntime) persistManagedWorkspace(ctx context.Context,
 	if err := os.Rename(workspacePath, managedWorkspace); err != nil {
 		return "", "", catalog.NewError(500, "internal_error", "Failed to persist packaging workspace.", nil)
 	}
-	if err := r.workspaceStore.SaveWorkspace(ctx, workspaceID, managedWorkspace, time.Now().UTC()); err != nil {
+	if err := w.workspaceStore.SaveWorkspace(ctx, workspaceID, managedWorkspace, time.Now().UTC()); err != nil {
 		_ = os.RemoveAll(managedRoot)
 		return "", "", catalog.NewError(500, "internal_error", "Failed to persist packaging workspace.", nil)
 	}
 	return workspaceID, managedWorkspace, nil
 }
 
-func (r *packagingWorkspaceRuntime) materializeWorkspace(ctx context.Context, workspacePath string) (string, func(), error) {
+func (w *packagingWorkspaceBacking) materializeWorkspace(ctx context.Context, workspacePath string) (string, func(), error) {
 	if err := packagingContextError(ctx); err != nil {
 		return "", nil, err
 	}
-	if r.workspaceStore == nil {
+	if w.workspaceStore == nil {
 		return workspacePath, func() {}, nil
 	}
 
-	record, err := r.loadManagedWorkspaceRecord(ctx, workspacePath)
+	record, err := w.loadManagedWorkspaceRecord(ctx, workspacePath)
 	if err != nil {
 		return "", nil, err
 	}
 	return record.WorkspacePath, func() {}, nil
 }
 
-func (r *packagingWorkspaceRuntime) loadManagedWorkspaceRecord(ctx context.Context, workspacePath string) (persist.WorkspaceRecord, error) {
-	record, err := r.workspaceStore.LoadWorkspace(ctx, workspacePath)
+func (w *packagingWorkspaceBacking) loadManagedWorkspaceRecord(ctx context.Context, workspacePath string) (persist.WorkspaceRecord, error) {
+	record, err := w.workspaceStore.LoadWorkspace(ctx, workspacePath)
 	if err != nil {
 		if err == persist.ErrWorkspaceRecordNotFound {
 			return persist.WorkspaceRecord{}, catalog.NewError(422, "invalid_request", "workspacePath must reference an existing packaging workspace.", map[string]any{"workspacePath": workspacePath})
 		}
 		return persist.WorkspaceRecord{}, catalog.NewError(500, "internal_error", "Failed to load packaging workspace.", nil)
 	}
-	if _, err := r.managedWorkspaceRootFromPath(workspacePath, record.WorkspacePath); err != nil {
+	if _, err := w.managedWorkspaceRootFromPath(workspacePath, record.WorkspacePath); err != nil {
 		return persist.WorkspaceRecord{}, catalog.NewError(500, "internal_error", "Failed to load packaging workspace.", nil)
 	}
 	info, err := os.Stat(record.WorkspacePath)
@@ -73,12 +96,12 @@ func (r *packagingWorkspaceRuntime) loadManagedWorkspaceRecord(ctx context.Conte
 	return record, nil
 }
 
-func (r *packagingWorkspaceRuntime) managedWorkspacePath(workspaceID string) string {
-	return filepath.Join(r.workspaceRoot, workspaceID, "workspace")
+func (w *packagingWorkspaceBacking) managedWorkspacePath(workspaceID string) string {
+	return filepath.Join(w.workspaceRoot, workspaceID, "workspace")
 }
 
-func (r *packagingWorkspaceRuntime) managedBundlePath(workspaceID string, target Target) string {
-	return filepath.Join(r.workspaceRoot, workspaceID, ".dist", packageBasename(target.PackageName)+"-"+target.Version+".tgz")
+func (w *packagingWorkspaceBacking) managedBundlePath(workspaceID string, target Target) string {
+	return filepath.Join(w.workspaceRoot, workspaceID, ".dist", packageBasename(target.PackageName)+"-"+target.Version+".tgz")
 }
 
 func ensureManagedPathWithinRoot(root string, path string) error {
@@ -95,30 +118,30 @@ func ensureManagedPathWithinRoot(root string, path string) error {
 	return nil
 }
 
-func (r *packagingWorkspaceRuntime) managedWorkspaceRoot(workspaceID string) string {
-	return filepath.Join(r.workspaceRoot, workspaceID)
+func (w *packagingWorkspaceBacking) managedWorkspaceRoot(workspaceID string) string {
+	return filepath.Join(w.workspaceRoot, workspaceID)
 }
 
-func (r *packagingWorkspaceRuntime) managedWorkspaceRootFromPath(workspaceID string, workspacePath string) (string, error) {
-	expectedWorkspace := filepath.Clean(r.managedWorkspacePath(workspaceID))
+func (w *packagingWorkspaceBacking) managedWorkspaceRootFromPath(workspaceID string, workspacePath string) (string, error) {
+	expectedWorkspace := filepath.Clean(w.managedWorkspacePath(workspaceID))
 	actualWorkspace := filepath.Clean(workspacePath)
 	if actualWorkspace != expectedWorkspace {
 		return "", errors.New("managed workspace path must match canonical layout")
 	}
-	managedRoot := r.managedWorkspaceRoot(workspaceID)
-	if err := ensureManagedPathWithinRoot(r.workspaceRoot, managedRoot); err != nil {
+	managedRoot := w.managedWorkspaceRoot(workspaceID)
+	if err := ensureManagedPathWithinRoot(w.workspaceRoot, managedRoot); err != nil {
 		return "", err
 	}
 	return managedRoot, nil
 }
 
-func (r *packagingWorkspaceRuntime) validateManagedBundlePath(workspaceID string, target Target, bundlePath string) error {
-	expectedBundle := filepath.Clean(r.managedBundlePath(workspaceID, target))
+func (w *packagingWorkspaceBacking) validateManagedBundlePath(workspaceID string, target Target, bundlePath string) error {
+	expectedBundle := filepath.Clean(w.managedBundlePath(workspaceID, target))
 	actualBundle := filepath.Clean(bundlePath)
 	if actualBundle != expectedBundle {
 		return errors.New("managed bundle path must match canonical layout")
 	}
-	return ensureManagedPathWithinRoot(r.workspaceRoot, actualBundle)
+	return ensureManagedPathWithinRoot(w.workspaceRoot, actualBundle)
 }
 
 func workspaceHandle() string {

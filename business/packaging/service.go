@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"skill_registry/business/catalog"
@@ -16,16 +15,10 @@ import (
 )
 
 type Service struct {
+	workspace        *packagingWorkspaceBacking
 	workspaceRuntime *packagingWorkspaceRuntime
 	publishWorkflow  *publishedReleaseWorkflow
 }
-
-type workspaceLockEntry struct {
-	mu   sync.Mutex
-	refs int
-}
-
-type workspaceLockContextKey struct{}
 
 type packExecutionResult struct {
 	response         PackResponse
@@ -52,8 +45,10 @@ func NewService(tempRoot string) *Service {
 }
 
 func NewServiceWithWorkspaceStore(tempRoot string, store persist.WorkspaceStore) *Service {
+	workspace := newPackagingWorkspaceBacking(tempRoot, store)
 	return &Service{
-		workspaceRuntime: newPackagingWorkspaceRuntime(tempRoot, store),
+		workspace:        workspace,
+		workspaceRuntime: newPackagingWorkspaceRuntimeWithBacking(workspace),
 		publishWorkflow:  &publishedReleaseWorkflow{},
 	}
 }
@@ -95,33 +90,33 @@ func (s *Service) CleanupContext(ctx context.Context, workspacePath string) erro
 	if err := packagingContextError(ctx); err != nil {
 		return err
 	}
-	ctx, unlock, err := s.workspaceRuntime.lockWorkspace(ctx, workspacePath)
+	ctx, unlock, err := s.workspace.lockWorkspace(ctx, workspacePath)
 	if err != nil {
 		return err
 	}
 	defer unlock()
 
-	if s.workspaceRuntime.workspaceStore != nil {
-		record, err := s.workspaceRuntime.workspaceStore.LoadWorkspace(ctx, workspacePath)
+	if s.workspace.workspaceStore != nil {
+		record, err := s.workspace.workspaceStore.LoadWorkspace(ctx, workspacePath)
 		if err != nil {
 			if err == persist.ErrWorkspaceRecordNotFound {
 				return catalog.NewError(422, "invalid_request", "workspacePath must reference an existing packaging workspace.", map[string]any{"workspacePath": workspacePath})
 			}
 			return catalog.NewError(500, "internal_error", "Failed to remove packaging workspace.", nil)
 		}
-		managedRoot, err := s.workspaceRuntime.managedWorkspaceRootFromPath(workspacePath, record.WorkspacePath)
+		managedRoot, err := s.workspace.managedWorkspaceRootFromPath(workspacePath, record.WorkspacePath)
 		if err != nil {
 			return catalog.NewError(500, "internal_error", "Failed to remove packaging workspace.", nil)
 		}
 		if err := os.RemoveAll(managedRoot); err != nil {
 			return catalog.NewError(500, "internal_error", "Failed to remove packaging workspace.", nil)
 		}
-		if err := s.workspaceRuntime.workspaceStore.DeleteWorkspace(ctx, workspacePath); err != nil {
+		if err := s.workspace.workspaceStore.DeleteWorkspace(ctx, workspacePath); err != nil {
 			return catalog.NewError(500, "internal_error", "Failed to remove packaging workspace.", nil)
 		}
 		return nil
 	}
-	return s.workspaceRuntime.workspaceSource.cleanup(workspacePath)
+	return s.workspace.workspaceSource.cleanup(workspacePath)
 }
 
 func (s *Service) BundlePath(workspacePath string, target Target) (string, error) {
@@ -135,14 +130,14 @@ func (s *Service) BundlePathContext(ctx context.Context, workspacePath string, t
 	if err := packagingContextError(ctx); err != nil {
 		return "", err
 	}
-	ctx, unlock, err := s.workspaceRuntime.lockWorkspace(ctx, workspacePath)
+	ctx, unlock, err := s.workspace.lockWorkspace(ctx, workspacePath)
 	if err != nil {
 		return "", err
 	}
 	defer unlock()
 
-	if s.workspaceRuntime.workspaceStore != nil {
-		bundlePath, err := s.workspaceRuntime.workspaceStore.LoadBundle(ctx, workspacePath)
+	if s.workspace.workspaceStore != nil {
+		bundlePath, err := s.workspace.workspaceStore.LoadBundle(ctx, workspacePath)
 		if err != nil {
 			if err == persist.ErrWorkspaceRecordNotFound {
 				return "", catalog.NewError(422, "invalid_request", "workspacePath must reference an existing packaging workspace.", map[string]any{"workspacePath": workspacePath})
@@ -152,7 +147,7 @@ func (s *Service) BundlePathContext(ctx context.Context, workspacePath string, t
 			}
 			return "", catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil)
 		}
-		if err := s.workspaceRuntime.validateManagedBundlePath(workspacePath, target, bundlePath); err != nil {
+		if err := s.workspace.validateManagedBundlePath(workspacePath, target, bundlePath); err != nil {
 			return "", catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil)
 		}
 		info, statErr := os.Stat(bundlePath)
@@ -164,7 +159,7 @@ func (s *Service) BundlePathContext(ctx context.Context, workspacePath string, t
 		}
 		return workspaceBundleHandle(workspacePath, target), nil
 	}
-	return s.workspaceRuntime.workspaceSource.bundlePath(workspacePath, target)
+	return s.workspace.workspaceSource.bundlePath(workspacePath, target)
 }
 
 func (s *Service) BundleContent(workspacePath string, target Target) ([]byte, error) {
@@ -178,16 +173,16 @@ func (s *Service) BundleContentContext(ctx context.Context, workspacePath string
 	if err := packagingContextError(ctx); err != nil {
 		return nil, err
 	}
-	ctx, unlock, err := s.workspaceRuntime.lockWorkspace(ctx, workspacePath)
+	ctx, unlock, err := s.workspace.lockWorkspace(ctx, workspacePath)
 	if err != nil {
 		return nil, err
 	}
 	defer unlock()
 
-	if s.workspaceRuntime.workspaceStore != nil {
-		bundlePath, err := s.workspaceRuntime.workspaceStore.LoadBundle(ctx, workspacePath)
+	if s.workspace.workspaceStore != nil {
+		bundlePath, err := s.workspace.workspaceStore.LoadBundle(ctx, workspacePath)
 		if err == nil {
-			if err := s.workspaceRuntime.validateManagedBundlePath(workspacePath, target, bundlePath); err != nil {
+			if err := s.workspace.validateManagedBundlePath(workspacePath, target, bundlePath); err != nil {
 				return nil, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil)
 			}
 			bundleContent, readErr := os.ReadFile(bundlePath)
@@ -212,11 +207,11 @@ func (s *Service) BundleContentContext(ctx context.Context, workspacePath string
 		if len(packed.Errors) > 0 {
 			return nil, catalog.NewError(404, "bundle_not_found", "Bundle archive does not exist for the requested workspace.", map[string]any{"workspacePath": workspacePath})
 		}
-		bundlePath, err = s.workspaceRuntime.workspaceStore.LoadBundle(ctx, workspacePath)
+		bundlePath, err = s.workspace.workspaceStore.LoadBundle(ctx, workspacePath)
 		if err != nil {
 			return nil, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil)
 		}
-		if err := s.workspaceRuntime.validateManagedBundlePath(workspacePath, target, bundlePath); err != nil {
+		if err := s.workspace.validateManagedBundlePath(workspacePath, target, bundlePath); err != nil {
 			return nil, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil)
 		}
 		bundleContent, readErr := os.ReadFile(bundlePath)
@@ -225,7 +220,7 @@ func (s *Service) BundleContentContext(ctx context.Context, workspacePath string
 		}
 		return bundleContent, nil
 	}
-	bundlePath, err := s.workspaceRuntime.workspaceSource.bundlePath(workspacePath, target)
+	bundlePath, err := s.workspace.workspaceSource.bundlePath(workspacePath, target)
 	if err != nil {
 		return nil, err
 	}
@@ -240,14 +235,14 @@ func (s *Service) PackageMetadataContext(ctx context.Context, workspacePath stri
 	if err := packagingContextError(ctx); err != nil {
 		return nil, err
 	}
-	ctx, unlock, err := s.workspaceRuntime.lockWorkspace(ctx, workspacePath)
+	ctx, unlock, err := s.workspace.lockWorkspace(ctx, workspacePath)
 	if err != nil {
 		return nil, err
 	}
 	defer unlock()
 
-	if s.workspaceRuntime.workspaceStore != nil {
-		record, err := s.workspaceRuntime.loadManagedWorkspaceRecord(ctx, workspacePath)
+	if s.workspace.workspaceStore != nil {
+		record, err := s.workspace.loadManagedWorkspaceRecord(ctx, workspacePath)
 		if err != nil {
 			return nil, err
 		}
@@ -265,13 +260,13 @@ func (s *Service) PackageMetadataContext(ctx context.Context, workspacePath stri
 		if err != nil {
 			return nil, err
 		}
-		if saveErr := s.workspaceRuntime.workspaceStore.SavePackageMetadata(ctx, workspacePath, content, time.Now().UTC()); saveErr != nil {
+		if saveErr := s.workspace.workspaceStore.SavePackageMetadata(ctx, workspacePath, content, time.Now().UTC()); saveErr != nil {
 			return nil, catalog.NewError(500, "internal_error", "Failed to persist packaging workspace package metadata cache.", nil)
 		}
 		return payload, nil
 	}
 
-	materializedPath, cleanup, err := s.workspaceRuntime.materializeWorkspace(ctx, workspacePath)
+	materializedPath, cleanup, err := s.workspace.materializeWorkspace(ctx, workspacePath)
 	if err != nil {
 		return nil, err
 	}
@@ -304,7 +299,7 @@ func (s *Service) PublishContext(ctx context.Context, input PublishRequest) (Pub
 	if s.publishWorkflow == nil || s.publishWorkflow.releaseRecords == nil || s.publishWorkflow.publisher == nil {
 		return PublishResponse{}, catalog.NewError(500, "internal_error", "Publish workflow is not configured.", nil)
 	}
-	ctx, unlock, err := s.workspaceRuntime.lockWorkspace(ctx, input.WorkspacePath)
+	ctx, unlock, err := s.workspace.lockWorkspace(ctx, input.WorkspacePath)
 	if err != nil {
 		return PublishResponse{}, err
 	}
@@ -381,21 +376,21 @@ func (s *Service) packWorkspaceLocked(ctx context.Context, input PackRequest) (p
 }
 
 func (s *Service) PruneExpiredWorkspaces(ttl time.Duration) error {
-	if s.workspaceRuntime.workspaceStore != nil && ttl > 0 {
+	if s.workspace.workspaceStore != nil && ttl > 0 {
 		cutoff := time.Now().UTC().Add(-ttl)
-		expiredRecords, err := s.workspaceRuntime.workspaceStore.ListExpired(context.Background(), cutoff)
+		expiredRecords, err := s.workspace.workspaceStore.ListExpired(context.Background(), cutoff)
 		if err != nil {
 			return err
 		}
 		for _, record := range expiredRecords {
-			lockCtx, unlock, lockErr := s.workspaceRuntime.lockWorkspace(context.Background(), record.WorkspaceID)
+			lockCtx, unlock, lockErr := s.workspace.lockWorkspace(context.Background(), record.WorkspaceID)
 			if lockErr != nil {
 				return lockErr
 			}
-			current, loadErr := s.workspaceRuntime.workspaceStore.LoadWorkspace(lockCtx, record.WorkspaceID)
+			current, loadErr := s.workspace.workspaceStore.LoadWorkspace(lockCtx, record.WorkspaceID)
 			if loadErr == nil {
 				if current.UpdatedAt.Before(cutoff) {
-					managedRoot, rootErr := s.workspaceRuntime.managedWorkspaceRootFromPath(current.WorkspaceID, current.WorkspacePath)
+					managedRoot, rootErr := s.workspace.managedWorkspaceRootFromPath(current.WorkspaceID, current.WorkspacePath)
 					if rootErr != nil {
 						unlock()
 						return rootErr
@@ -404,7 +399,7 @@ func (s *Service) PruneExpiredWorkspaces(ttl time.Duration) error {
 						unlock()
 						return err
 					}
-					if err := s.workspaceRuntime.workspaceStore.DeleteWorkspace(lockCtx, record.WorkspaceID); err != nil {
+					if err := s.workspace.workspaceStore.DeleteWorkspace(lockCtx, record.WorkspaceID); err != nil {
 						unlock()
 						return err
 					}
@@ -416,7 +411,7 @@ func (s *Service) PruneExpiredWorkspaces(ttl time.Duration) error {
 			unlock()
 		}
 	}
-	return s.workspaceRuntime.workspaceSource.pruneExpiredWorkspaces(ttl)
+	return s.workspace.workspaceSource.pruneExpiredWorkspaces(ttl)
 }
 
 func packagingContextError(ctx context.Context) error {
