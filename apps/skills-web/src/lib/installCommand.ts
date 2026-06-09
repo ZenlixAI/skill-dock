@@ -13,8 +13,23 @@ type InstallCommandInput = {
   npmRegistry: string;
 };
 
+const INSTALL_REGISTRY_FALLBACK_LABEL = '待补充 npm 仓库地址';
+const INSTALL_REGISTRY_FALLBACK_COMMAND = '<待补充 npm 仓库地址>';
+
+export function getInstallRegistryLabel(npmRegistry?: string | null) {
+  const trimmedRegistry = npmRegistry?.trim();
+
+  return trimmedRegistry ? trimmedRegistry : INSTALL_REGISTRY_FALLBACK_LABEL;
+}
+
 export function buildInstallCommand({ packageName, version, npmRegistry }: InstallCommandInput) {
-  return `npm install ${packageName}@${version} --registry=${npmRegistry}`;
+  const registryValue = npmRegistry.trim();
+  const commandRegistry =
+    registryValue && registryValue !== INSTALL_REGISTRY_FALLBACK_LABEL
+      ? registryValue
+      : INSTALL_REGISTRY_FALLBACK_COMMAND;
+
+  return `npm install ${packageName}@${version} --registry=${commandRegistry}`;
 }
 
 export function getInstallPolicyLabel(installPolicy: InstallPolicy) {

@@ -212,4 +212,73 @@ describe('SkillDetailPage', () => {
     expect(screen.getByText('等安装目标被仓库解析出来后，这里会显示可直接复制的命令。')).toBeInTheDocument();
     expect(screen.getByText('当前还没有可用的安装目标。请先检查最新版本是否已经发布并可解析。')).toBeInTheDocument();
   });
+
+  it('keeps the shared install panel when install target data is present but registry metadata is missing', async () => {
+    vi.mocked(client.getSession).mockResolvedValue({
+      role: 'operator',
+      actor: 'operator',
+      authMechanism: 'session',
+      allowedActions: ['session.read'],
+      allowedPackages: [],
+    });
+    vi.mocked(client.getSkillDetail).mockResolvedValue({
+      packageName: '@platform.skill/agent-notes',
+      displayName: 'Agent Notes',
+      description: 'Detail view',
+      sourceType: 'native',
+      status: 'active',
+      latestVersion: '1.0.0',
+      latestVersionStatus: 'published',
+      updatedAt: '2026-01-01T00:00:00Z',
+      createdAt: '2026-01-01T00:00:00Z',
+    });
+    vi.mocked(client.getSkillVersions).mockResolvedValue({
+      items: [
+        {
+          packageName: '@platform.skill/agent-notes',
+          version: '1.0.0',
+          versionStatus: 'published',
+          installPolicy: 'catalog_only',
+          publishedAt: '2026-01-01T00:00:00Z',
+        },
+      ],
+      pageInfo: {
+        hasNextPage: false,
+        nextCursor: null,
+      },
+    });
+    vi.mocked(client.getInstallTarget).mockResolvedValue({
+      packageName: '@platform.skill/agent-notes',
+      version: '1.0.0',
+      npmRegistry: '',
+      tarballUrl: '',
+      integrity: '',
+      skillManifestDigest: 'sha256:test',
+      versionStatus: 'published',
+    });
+    vi.mocked(client.listGovernanceChanges).mockResolvedValue({
+      items: [],
+      pageInfo: {
+        hasNextPage: false,
+        nextCursor: null,
+      },
+    });
+
+    render(
+      <SessionProvider>
+        <MemoryRouter initialEntries={['/skills/%40platform.skill%2Fagent-notes']}>
+          <Routes>
+            <Route path="/skills/:packageName" element={<SkillDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </SessionProvider>
+    );
+
+    expect(await screen.findByRole('heading', { name: '安装这个技能' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '安装状态' })).not.toBeInTheDocument();
+    expect(screen.getAllByText('待补充 npm 仓库地址').length).toBeGreaterThan(0);
+    expect(
+      screen.getByText('npm install @platform.skill/agent-notes@1.0.0 --registry=<待补充 npm 仓库地址>')
+    ).toBeInTheDocument();
+  });
 });

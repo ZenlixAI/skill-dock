@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { InstallPolicy } from '../api/types';
-import { buildInstallCommand, getInstallPolicyLabel } from '../lib/installCommand';
+import { buildInstallCommand, getInstallPolicyLabel, getInstallRegistryLabel } from '../lib/installCommand';
 import { StatusPill } from './StatusPill';
 import { SurfaceCard } from './SurfaceCard';
 
@@ -52,10 +52,11 @@ export function InstallCommandPanel({
   integrity,
 }: InstallCommandPanelProps) {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const registryLabel = getInstallRegistryLabel(npmRegistry);
   const command = buildInstallCommand({
     packageName,
     version,
-    npmRegistry,
+    npmRegistry: registryLabel,
   });
   const installBlocked = installPolicy === 'blocked';
 
@@ -79,13 +80,13 @@ export function InstallCommandPanel({
       <div className="install-command-panel">
         <div className="pill-row">
           <StatusPill>{`${packageName}@${version}`}</StatusPill>
-          <StatusPill>{npmRegistry}</StatusPill>
+          <StatusPill>{registryLabel}</StatusPill>
         </div>
         <code>{command}</code>
         <dl className="install-command-panel__meta">
           <div>
             <dt>仓库地址</dt>
-            <dd>{npmRegistry}</dd>
+            <dd>{registryLabel}</dd>
           </div>
           <div>
             <dt>制品包地址</dt>

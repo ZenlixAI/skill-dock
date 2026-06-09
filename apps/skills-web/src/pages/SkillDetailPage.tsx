@@ -29,6 +29,7 @@ import {
   getGovernanceActionLabel,
   getGovernanceTargetTypeLabel,
   getInstallPolicyLabel,
+  getInstallRegistryLabel,
   getSkillStatusLabel,
   getSourceTypeLabel,
   getVersionStatusLabel,
@@ -70,8 +71,9 @@ export function SkillDetailPage() {
   );
   const latestVersionItem = versionList.data?.items[0];
   const statusTone = detail.data?.status === 'active' ? 'good' : 'bad';
-  const installVersion = installTarget.data?.version || detail.data?.latestVersion || '';
-  const installRegistry = installTarget.data?.npmRegistry || '';
+  const hasInstallTarget = Boolean(installTarget.data);
+  const installVersion = installTarget.data?.version || detail.data?.latestVersion || '待确认版本';
+  const installRegistry = getInstallRegistryLabel(installTarget.data?.npmRegistry);
   const canRetireSkill = retireReason.trim() !== '' && retireConfirmed && !submitState.loading;
   const governancePosture = getPosture({
     packageName: decodedPackage,
@@ -199,7 +201,7 @@ export function SkillDetailPage() {
         </StatusPill>
       </div>
 
-      {installVersion && installRegistry ? (
+      {hasInstallTarget ? (
         <InstallCommandPanel
           title="安装这个技能"
           packageName={decodedPackage}
@@ -269,7 +271,7 @@ export function SkillDetailPage() {
             </div>
             <div>
               <dt>仓库地址</dt>
-              <dd>{installTarget.data?.npmRegistry || '—'}</dd>
+              <dd>{hasInstallTarget ? installRegistry : '—'}</dd>
             </div>
             <div>
               <dt>制品包地址</dt>

@@ -4,6 +4,7 @@ import {
   getGovernanceActionLabel,
   getGovernanceTargetTypeLabel,
   getInstallPolicyLabel,
+  getInstallRegistryLabel,
   getSkillStatusLabel,
   getSourceTypeLabel,
   getVersionStatusLabel,
@@ -18,6 +19,17 @@ describe('buildInstallCommand', () => {
         npmRegistry: 'https://npm.internal.example.com',
       })
     ).toBe('npm install @platform.skill/agent-notes@1.2.3 --registry=https://npm.internal.example.com');
+  });
+
+  it('uses a localized registry placeholder when registry metadata is missing', () => {
+    expect(getInstallRegistryLabel('')).toBe('待补充 npm 仓库地址');
+    expect(
+      buildInstallCommand({
+        packageName: '@platform.skill/agent-notes',
+        version: '1.2.3',
+        npmRegistry: '待补充 npm 仓库地址',
+      })
+    ).toBe('npm install @platform.skill/agent-notes@1.2.3 --registry=<待补充 npm 仓库地址>');
   });
 
   it('maps install policy values to Chinese labels', () => {

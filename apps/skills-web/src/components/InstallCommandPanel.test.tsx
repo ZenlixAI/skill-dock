@@ -81,11 +81,15 @@ describe('InstallCommandPanel', () => {
         title="安装这个版本"
         packageName="@platform.skill/agent-notes"
         version="1.2.3"
-        npmRegistry="https://npm.internal.example.com"
+        npmRegistry=""
         installPolicy="catalog_only"
       />
     );
 
+    expect(screen.getAllByText('待补充 npm 仓库地址').length).toBeGreaterThan(0);
+    expect(
+      screen.getByText('npm install @platform.skill/agent-notes@1.2.3 --registry=<待补充 npm 仓库地址>')
+    ).toBeInTheDocument();
     expect(screen.getByText('当前未返回制品包地址。')).toBeInTheDocument();
     expect(screen.getByText('当前未返回完整性校验值。')).toBeInTheDocument();
     expect(screen.getByText('仅目录可见')).toBeInTheDocument();

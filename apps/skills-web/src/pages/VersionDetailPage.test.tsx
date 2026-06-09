@@ -145,7 +145,7 @@ describe('VersionDetailPage', () => {
     expect(installHeading.compareDocumentPosition(governanceHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('uses Chinese fallback copy when registry install data is unavailable', async () => {
+  it('keeps the shared install panel when registry install data is unavailable', async () => {
     vi.mocked(client.getSession).mockResolvedValue({
       role: 'operator',
       actor: 'operator',
@@ -190,9 +190,14 @@ describe('VersionDetailPage', () => {
       </SessionProvider>
     );
 
-    expect(await screen.findByRole('heading', { name: '安装状态' })).toBeInTheDocument();
-    expect(screen.getByText('等仓库元数据返回后，这里会显示可直接复制的版本安装命令。')).toBeInTheDocument();
-    expect(screen.getByText('当前还没有可用的仓库安装信息。')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '安装这个版本' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '安装状态' })).not.toBeInTheDocument();
+    expect(screen.getAllByText('待补充 npm 仓库地址').length).toBeGreaterThan(0);
+    expect(
+      screen.getByText('npm install @platform.skill/agent-notes@1.0.0 --registry=<待补充 npm 仓库地址>')
+    ).toBeInTheDocument();
+    expect(screen.getByText('当前未返回制品包地址。')).toBeInTheDocument();
+    expect(screen.getByText('当前未返回完整性校验值。')).toBeInTheDocument();
   });
 
   it('requires manual publish confirmation before enabling release-record submission', async () => {

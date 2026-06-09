@@ -29,6 +29,7 @@ import {
   getGovernanceActionLabel,
   getGovernanceTargetTypeLabel,
   getInstallPolicyLabel,
+  getInstallRegistryLabel,
   getVersionStatusLabel,
 } from '../lib/installCommand';
 import { buildReleaseHandoffPath, readReleaseHandoff } from '../lib/releaseHandoff';
@@ -126,6 +127,7 @@ export function VersionDetailPage() {
     version,
     actor: session.data?.actor ?? null,
   };
+  const installRegistry = getInstallRegistryLabel(detail.data?.registry.npmRegistry);
 
   function appendLog(action: VersionLogEntry['action'], outcome: VersionLogEntry['outcome'], summary: string) {
     setActivityLog((current) => [
@@ -288,19 +290,19 @@ export function VersionDetailPage() {
             {getInstallPolicyLabel(detail.data.installPolicy)}
           </StatusPill>
         ) : null}
-        {detail.data?.registry.npmRegistry ? <StatusPill>{detail.data.registry.npmRegistry}</StatusPill> : null}
+        {detail.data ? <StatusPill>{installRegistry}</StatusPill> : null}
         <StatusPill tone={hasHandoff ? 'accent' : undefined}>{hasHandoff ? '已附带交接' : '直接打开'}</StatusPill>
         <StatusPill tone={releasePosture === 'write_enabled' ? 'accent' : releasePosture === 'package_filter_required' ? 'warn' : 'default'}>
           {releasePostureLabel}
         </StatusPill>
       </div>
 
-      {detail.data?.registry.npmRegistry ? (
+      {detail.data ? (
         <InstallCommandPanel
           title="安装这个版本"
           packageName={decodedPackage}
           version={version}
-          npmRegistry={detail.data.registry.npmRegistry}
+          npmRegistry={installRegistry}
           installPolicy={detail.data.installPolicy || 'catalog_only'}
           tarballUrl={detail.data.registry.tarballUrl}
           integrity={detail.data.registry.integrity}
@@ -383,7 +385,7 @@ export function VersionDetailPage() {
             </div>
             <div>
               <dt>npm 仓库地址</dt>
-              <dd>{detail.data?.registry.npmRegistry || '—'}</dd>
+              <dd>{detail.data ? installRegistry : '—'}</dd>
             </div>
             <div>
               <dt>完整性校验</dt>
