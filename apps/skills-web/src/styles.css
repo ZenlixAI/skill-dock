@@ -543,7 +543,8 @@ textarea {
 }
 
 .skill-summary-card__header,
-.skill-summary-card__meta,
+.skill-summary-card__install,
+.skill-summary-card__footer,
 .skill-summary-card__actions,
 .console-entry-card__actions {
   display: flex;
@@ -575,6 +576,10 @@ textarea {
 .skill-summary-card__reason {
   margin: 0;
   line-height: 1.6;
+}
+
+.skill-summary-card__install {
+  justify-content: flex-start;
 }
 
 .skill-summary-card__provenance {

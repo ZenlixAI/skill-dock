@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import * as client from '../api/client';
@@ -41,5 +41,80 @@ describe('OverviewPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Search catalog' }));
 
     expect(await screen.findByText('catalog target?q=review')).toBeInTheDocument();
+  });
+
+  it('renders recommended and recently updated discovery sections with curated usefulness copy first', async () => {
+    vi.mocked(client.listSkills).mockResolvedValue({
+      items: [
+        {
+          packageName: '@platform.skill/release-audit',
+          displayName: 'Release Audit',
+          description: 'Trace who changed a registry package.',
+          sourceType: 'native',
+          status: 'active',
+          latestVersion: '1.3.0',
+          latestVersionStatus: 'published',
+          updatedAt: '2026-06-08T10:00:00Z',
+        },
+        {
+          packageName: '@platform.skill/dependency-map',
+          displayName: 'Dependency Map',
+          description: 'Inspect upstream package relationships.',
+          sourceType: 'imported',
+          status: 'active',
+          latestVersion: '0.9.1',
+          latestVersionStatus: 'deprecated',
+          updatedAt: '2026-06-07T10:00:00Z',
+        },
+      ],
+      pageInfo: { hasNextPage: false, nextCursor: null },
+    });
+    vi.mocked(client.listCuratedSkills).mockResolvedValue([
+      {
+        packageName: '@platform.skill/review-helper',
+        displayName: 'Review Helper',
+        description: 'Summarize PR-level skill changes for reviewers.',
+        sourceType: 'native',
+        status: 'active',
+        latestVersion: '2.4.0',
+        latestVersionStatus: 'published',
+        updatedAt: '2026-06-09T09:00:00Z',
+        curationReason: 'Recommended for capability-first code review triage.',
+      },
+    ]);
+    vi.mocked(client.listGovernanceChanges).mockResolvedValue({ items: [], pageInfo: { hasNextPage: false, nextCursor: null } });
+    vi.mocked(client.listAuditEvents).mockResolvedValue({ items: [], pageInfo: { hasNextPage: false, nextCursor: null } });
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <OverviewPage />
+      </MemoryRouter>
+    );
+
+    const recommendedHeading = await screen.findByRole('heading', { name: 'Recommended skills' });
+    const recommendedSection = recommendedHeading.closest('section');
+    const recentHeading = screen.getByRole('heading', { name: 'Recently updated' });
+    const recentSection = recentHeading.closest('section');
+
+    expect(recommendedSection).not.toBeNull();
+    expect(recentSection).not.toBeNull();
+
+    if (!recommendedSection || !recentSection) {
+      throw new Error('Expected overview sections to render');
+    }
+
+    expect(await within(recommendedSection).findByText('Review Helper')).toBeInTheDocument();
+    expect(within(recommendedSection).getByText('Recommended for capability-first code review triage.')).toBeInTheDocument();
+    expect(await within(recentSection).findByText('Release Audit')).toBeInTheDocument();
+
+    const recommendedCard = within(recommendedSection).getByText('Review Helper').closest('.skill-summary-card');
+    expect(recommendedCard).not.toBeNull();
+
+    if (!recommendedCard) {
+      throw new Error('Expected recommended card to render');
+    }
+
+    const cardText = recommendedCard.textContent ?? '';
+    expect(cardText.indexOf('Recommended for capability-first code review triage.')).toBeLessThan(cardText.indexOf('latest 2.4.0'));
   });
 });
