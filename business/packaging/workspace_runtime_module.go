@@ -78,7 +78,7 @@ func (r *packagingWorkspaceRuntime) Pack(ctx context.Context, input PackRequest)
 	}
 	defer unlock()
 
-	result, err := packWorkspaceWithBacking(ctx, r.workspace, r.bundleRules, input)
+	result, err := r.adapter.packLocked(ctx, input, r.bundleRules)
 	if err != nil {
 		return PackResponse{}, err
 	}
@@ -157,10 +157,10 @@ func (r *packagingWorkspaceRuntime) preparePublishedRelease(ctx context.Context,
 		return publishedReleaseMaterial{}, err
 	}
 
-	packResult, err := packWorkspaceWithBacking(ctx, r.workspace, r.bundleRules, PackRequest{
+	packResult, err := r.adapter.packLocked(ctx, PackRequest{
 		WorkspacePath: input.WorkspacePath,
 		Target:        input.Target,
-	})
+	}, r.bundleRules)
 	if err != nil {
 		unlock()
 		return publishedReleaseMaterial{}, err

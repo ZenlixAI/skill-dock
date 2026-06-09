@@ -13,6 +13,7 @@ import (
 type workspaceAdapter interface {
 	prepare(ctx context.Context, input PrepareRequest, bundleRules bundleRuleModule) (PrepareResponse, error)
 	validateLocked(ctx context.Context, input ValidateRequest, bundleRules bundleRuleModule) (ValidateResponse, error)
+	packLocked(ctx context.Context, input PackRequest, bundleRules bundleRuleModule) (packExecutionResult, error)
 	cleanupLocked(ctx context.Context, workspacePath string) error
 	bundlePathLocked(ctx context.Context, workspacePath string, target Target) (string, error)
 	bundleContentLocked(ctx context.Context, workspacePath string, target Target, pack func(context.Context, PackRequest) (PackResponse, error)) ([]byte, error)
@@ -101,6 +102,10 @@ func (a *managedWorkspaceAdapter) validateLocked(ctx context.Context, input Vali
 	return validateResponseFromResult(input, result, record.WorkspacePath), nil
 }
 
+func (a *managedWorkspaceAdapter) packLocked(ctx context.Context, input PackRequest, bundleRules bundleRuleModule) (packExecutionResult, error) {
+	return packManagedWorkspace(ctx, a.workspace, bundleRules, input)
+}
+
 func (a *ephemeralWorkspaceAdapter) validateLocked(ctx context.Context, input ValidateRequest, bundleRules bundleRuleModule) (ValidateResponse, error) {
 	workspacePath, cleanup, err := a.workspace.materializeWorkspace(ctx, input.WorkspacePath)
 	if err != nil {
@@ -125,6 +130,10 @@ func (a *ephemeralWorkspaceAdapter) validateLocked(ctx context.Context, input Va
 		ImportReport:   readImportReport(workspacePath, result.Warnings),
 		Errors:         result.Errors,
 	}, nil
+}
+
+func (a *ephemeralWorkspaceAdapter) packLocked(ctx context.Context, input PackRequest, bundleRules bundleRuleModule) (packExecutionResult, error) {
+	return packEphemeralWorkspace(ctx, a.workspace, bundleRules, input)
 }
 
 func (a *managedWorkspaceAdapter) cleanupLocked(ctx context.Context, workspacePath string) error {

@@ -19,67 +19,49 @@ type packExecutionResult struct {
 	cleanup          func()
 }
 
-func packWorkspaceWithBacking(ctx context.Context, workspace *packagingWorkspaceBacking, bundleRules bundleRuleModule, input PackRequest) (packExecutionResult, error) {
-	if workspace.workspaceStore != nil {
-		record, err := workspace.loadManagedWorkspaceRecord(ctx, input.WorkspacePath)
+func packManagedWorkspace(ctx context.Context, workspace *packagingWorkspaceBacking, bundleRules bundleRuleModule, input PackRequest) (packExecutionResult, error) {
+	record, err := workspace.loadManagedWorkspaceRecord(ctx, input.WorkspacePath)
+	if err != nil {
+		return packExecutionResult{}, err
+	}
+
+	result, ok := cachedValidationResult(record.ValidationCache, input.Target)
+	if !ok {
+		result, err = bundleRules.validate(record.WorkspacePath, input.Target)
 		if err != nil {
 			return packExecutionResult{}, err
 		}
+		if saveErr := workspace.workspaceStore.SaveValidationCache(ctx, input.WorkspacePath, workspaceValidationCacheFromResult(input.Target, result), time.Now().UTC()); saveErr != nil {
+			return packExecutionResult{}, catalog.NewError(500, "internal_error", "Failed to persist packaging workspace validation cache.", nil)
+		}
+	}
 
-		result, ok := cachedValidationResult(record.ValidationCache, input.Target)
-		if !ok {
-			result, err = bundleRules.validate(record.WorkspacePath, input.Target)
-			if err != nil {
-				return packExecutionResult{}, err
-			}
-			if saveErr := workspace.workspaceStore.SaveValidationCache(ctx, input.WorkspacePath, workspaceValidationCacheFromResult(input.Target, result), time.Now().UTC()); saveErr != nil {
-				return packExecutionResult{}, catalog.NewError(500, "internal_error", "Failed to persist packaging workspace validation cache.", nil)
-			}
-		}
+	response := PackResponse{
+		WorkspacePath:  input.WorkspacePath,
+		PackageName:    input.Target.PackageName,
+		Version:        input.Target.Version,
+		ManifestDigest: result.ManifestDigest,
+		Components:     append([]string(nil), result.Components...),
+		Warnings:       append([]string(nil), result.Warnings...),
+		WarningDetails: warningDetails(result.Warnings),
+		ImportReport:   readImportReport(record.WorkspacePath, result.Warnings),
+		Errors:         append([]string(nil), result.Errors...),
+	}
+	if len(result.Errors) > 0 {
+		return packExecutionResult{
+			response:         response,
+			materializedPath: record.WorkspacePath,
+			cleanup:          func() {},
+		}, nil
+	}
 
-		response := PackResponse{
-			WorkspacePath:  input.WorkspacePath,
-			PackageName:    input.Target.PackageName,
-			Version:        input.Target.Version,
-			ManifestDigest: result.ManifestDigest,
-			Components:     append([]string(nil), result.Components...),
-			Warnings:       append([]string(nil), result.Warnings...),
-			WarningDetails: warningDetails(result.Warnings),
-			ImportReport:   readImportReport(record.WorkspacePath, result.Warnings),
-			Errors:         append([]string(nil), result.Errors...),
-		}
-		if len(result.Errors) > 0 {
-			return packExecutionResult{
-				response:         response,
-				materializedPath: record.WorkspacePath,
-				cleanup:          func() {},
-			}, nil
-		}
-
-		bundlePath := workspace.managedBundlePath(input.WorkspacePath, input.Target)
-		if err := workspace.validateManagedBundlePath(input.WorkspacePath, input.Target, bundlePath); err != nil {
-			return packExecutionResult{}, catalog.NewError(500, "internal_error", "Packed bundle could not be persisted.", nil)
-		}
-		if bundleBase64, ok, err := reuseManagedBundle(record, input, bundlePath); err != nil {
-			return packExecutionResult{}, err
-		} else if ok {
-			response.BundlePath = workspaceBundleHandle(input.WorkspacePath, input.Target)
-			response.BundleBase64 = bundleBase64
-			return packExecutionResult{
-				response:         response,
-				materializedPath: record.WorkspacePath,
-				bundlePath:       bundlePath,
-				cleanup:          func() {},
-			}, nil
-		}
-
-		bundleBase64, err := buildManagedBundle(workspace, bundleRules, record.WorkspacePath, input.WorkspacePath, input.Target, input.IncludeBundle)
-		if err != nil {
-			return packExecutionResult{}, err
-		}
-		if saveErr := workspace.workspaceStore.SaveBundle(ctx, input.WorkspacePath, bundlePath, time.Now().UTC()); saveErr != nil {
-			return packExecutionResult{}, catalog.NewError(500, "internal_error", "Packed bundle could not be persisted.", nil)
-		}
+	bundlePath := workspace.managedBundlePath(input.WorkspacePath, input.Target)
+	if err := workspace.validateManagedBundlePath(input.WorkspacePath, input.Target, bundlePath); err != nil {
+		return packExecutionResult{}, catalog.NewError(500, "internal_error", "Packed bundle could not be persisted.", nil)
+	}
+	if bundleBase64, ok, err := reuseManagedBundle(record, input, bundlePath); err != nil {
+		return packExecutionResult{}, err
+	} else if ok {
 		response.BundlePath = workspaceBundleHandle(input.WorkspacePath, input.Target)
 		response.BundleBase64 = bundleBase64
 		return packExecutionResult{
@@ -90,6 +72,24 @@ func packWorkspaceWithBacking(ctx context.Context, workspace *packagingWorkspace
 		}, nil
 	}
 
+	bundleBase64, err := buildManagedBundle(workspace, bundleRules, record.WorkspacePath, input.WorkspacePath, input.Target, input.IncludeBundle)
+	if err != nil {
+		return packExecutionResult{}, err
+	}
+	if saveErr := workspace.workspaceStore.SaveBundle(ctx, input.WorkspacePath, bundlePath, time.Now().UTC()); saveErr != nil {
+		return packExecutionResult{}, catalog.NewError(500, "internal_error", "Packed bundle could not be persisted.", nil)
+	}
+	response.BundlePath = workspaceBundleHandle(input.WorkspacePath, input.Target)
+	response.BundleBase64 = bundleBase64
+	return packExecutionResult{
+		response:         response,
+		materializedPath: record.WorkspacePath,
+		bundlePath:       bundlePath,
+		cleanup:          func() {},
+	}, nil
+}
+
+func packEphemeralWorkspace(ctx context.Context, workspace *packagingWorkspaceBacking, bundleRules bundleRuleModule, input PackRequest) (packExecutionResult, error) {
 	workspacePath, cleanup, err := workspace.materializeWorkspace(ctx, input.WorkspacePath)
 	if err != nil {
 		return packExecutionResult{}, err
