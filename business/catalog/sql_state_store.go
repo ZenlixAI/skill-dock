@@ -524,7 +524,7 @@ func (s *SQLStateStore) Ping(ctx context.Context) error {
 }
 
 func (s *SQLStateStore) loadVersionsByPackage(ctx context.Context, packageName string) ([]SkillVersionDetail, error) {
-	rows, err := s.db.QueryContext(ctx, bindSQL(s.dialect, `
+	rows, err := s.db.QueryContext(ctx, bindSQL(s.dialect, strings.Join([]string{`
 SELECT
 	package_name,
 	version,
@@ -540,7 +540,7 @@ SELECT
 	components_json
 FROM skill_versions
 WHERE package_name = ?
-ORDER BY published_at DESC`), packageName)
+`, s.versionOrderBySQL()}, "\n")), packageName)
 	if err != nil {
 		return nil, err
 	}
@@ -827,7 +827,7 @@ WHERE package_name = ?`}
 }
 
 func (s *SQLStateStore) listVersionsSQL(query VersionQuery) string {
-	parts := []string{s.listVersionsSelectSQL(query), `ORDER BY published_at DESC, version DESC`, `LIMIT ?`, `OFFSET ?`}
+	parts := []string{s.listVersionsSelectSQL(query), s.versionOrderBySQL(), `LIMIT ?`, `OFFSET ?`}
 	return strings.Join(parts, "\n")
 }
 
@@ -890,6 +890,19 @@ func (s *SQLStateStore) listGovernanceArgs(query GovernanceQuery) []any {
 	args := s.listGovernanceFilterArgs(query)
 	args = append(args, query.PageSize+1, query.Cursor)
 	return args
+}
+
+func (s *SQLStateStore) versionOrderBySQL() string {
+	if s.dialect == "pgx" {
+		return `ORDER BY published_at DESC,
+CAST(split_part(version, '.', 1) AS INTEGER) DESC,
+CAST(split_part(version, '.', 2) AS INTEGER) DESC,
+CAST(split_part(version, '.', 3) AS INTEGER) DESC`
+	}
+	return `ORDER BY published_at DESC,
+CAST(substr(version, 1, instr(version, '.') - 1) AS INTEGER) DESC,
+CAST(substr(substr(version, instr(version, '.') + 1), 1, instr(substr(version, instr(version, '.') + 1), '.') - 1) AS INTEGER) DESC,
+CAST(substr(substr(version, instr(version, '.') + 1), instr(substr(version, instr(version, '.') + 1), '.') + 1) AS INTEGER) DESC`
 }
 
 func normalizedSkillsSort(sortKey string, query string) (string, error) {

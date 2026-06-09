@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSQLRepositoryListSkillsAppliesSortAndPageInStore(t *testing.T) {
@@ -64,6 +65,67 @@ func TestSQLRepositoryListGovernanceChangesPagesInStore(t *testing.T) {
 	}
 	if page.PageInfo.HasNextPage {
 		t.Fatalf("expected second page to be terminal, got page info %+v", page.PageInfo)
+	}
+}
+
+func TestSQLRepositoryListVersionsPagesWithVersionAwareOrderInStore(t *testing.T) {
+	publishedAt := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	data := SampleCatalogData{
+		Skills: []skillRecord{
+			{
+				Detail: SkillDetail{
+					SkillSummary: SkillSummary{
+						PackageName:         "@platform.skill/version-order",
+						DisplayName:         "Version Order",
+						Description:         "Covers version paging order",
+						SourceType:          SourceTypeImported,
+						Status:              SkillStatusActive,
+						LatestVersion:       stringPtr("1.10.0"),
+						LatestVersionStatus: stringPtr(string(VersionStatusPublished)),
+						UpdatedAt:           publishedAt,
+					},
+					CreatedAt: publishedAt.Add(-time.Hour),
+				},
+				Versions: []SkillVersionDetail{
+					newMaterializedVersion("https://npm.internal.example.com", "@platform.skill/version-order", "1.9.0", VersionStatusPublished, InstallPolicyResolvable, publishedAt, "Version Order", "Covers version paging order", []string{"commands"}),
+					newMaterializedVersion("https://npm.internal.example.com", "@platform.skill/version-order", "1.10.0", VersionStatusPublished, InstallPolicyResolvable, publishedAt, "Version Order", "Covers version paging order", []string{"commands"}),
+					newMaterializedVersion("https://npm.internal.example.com", "@platform.skill/version-order", "1.8.0", VersionStatusPublished, InstallPolicyResolvable, publishedAt.Add(-time.Hour), "Version Order", "Covers version paging order", []string{"commands"}),
+				},
+			},
+		},
+	}
+	repo := newSQLRepositoryForTest(t, data)
+
+	firstPage, err := repo.ListVersions(context.Background(), VersionQuery{
+		PackageName: "@platform.skill/version-order",
+		PageSize:    1,
+	})
+	if err != nil {
+		t.Fatalf("list first versions page: %v", err)
+	}
+	if len(firstPage.Items) != 1 {
+		t.Fatalf("expected one first-page item, got %d", len(firstPage.Items))
+	}
+	if firstPage.Items[0].Version != "1.10.0" {
+		t.Fatalf("expected semver-newer tie to sort first, got %q", firstPage.Items[0].Version)
+	}
+	if !firstPage.PageInfo.HasNextPage || firstPage.PageInfo.NextCursor == nil || *firstPage.PageInfo.NextCursor != "cursor_1" {
+		t.Fatalf("expected first page to expose next cursor, got %+v", firstPage.PageInfo)
+	}
+
+	secondPage, err := repo.ListVersions(context.Background(), VersionQuery{
+		PackageName: "@platform.skill/version-order",
+		PageSize:    1,
+		Cursor:      1,
+	})
+	if err != nil {
+		t.Fatalf("list second versions page: %v", err)
+	}
+	if len(secondPage.Items) != 1 {
+		t.Fatalf("expected one second-page item, got %d", len(secondPage.Items))
+	}
+	if secondPage.Items[0].Version != "1.9.0" {
+		t.Fatalf("expected next semver tie on second page, got %q", secondPage.Items[0].Version)
 	}
 }
 
