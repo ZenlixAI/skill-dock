@@ -36,6 +36,10 @@ func TestPackagingWorkspaceRuntimePreparePersistsManagedWorkspaceAndReturnsHandl
 	if record.WorkspaceID != response.WorkspacePath {
 		t.Fatalf("expected workspace handle %q, got record %#v", response.WorkspacePath, record)
 	}
+	expectedManagedWorkspace := filepath.Join(root, response.WorkspacePath, "workspace")
+	if record.WorkspacePath != expectedManagedWorkspace {
+		t.Fatalf("expected managed workspace path %q, got %q", expectedManagedWorkspace, record.WorkspacePath)
+	}
 }
 
 func TestPackagingWorkspaceRuntimeValidateUsesCachedValidationResultFromWorkspaceStore(t *testing.T) {

@@ -665,6 +665,40 @@ func TestBundleContentReusesPersistedBundlePath(t *testing.T) {
 	}
 }
 
+func TestBundleContentContextReusesWorkspaceLockAcrossFacadeAndRuntime(t *testing.T) {
+	root := t.TempDir()
+	store := newMemoryWorkspaceStore()
+	service := NewServiceWithWorkspaceStore(root, store)
+
+	prepareResp, err := service.Prepare(PrepareRequest{
+		Source: Source{
+			Type: "platform_authoring",
+			Files: map[string]string{
+				"docs/README.md": "# Capability\n",
+			},
+		},
+		Target:   Target{PackageName: "@platform.skill/reentrant", Version: "1.0.0"},
+		Metadata: Metadata{DisplayName: "reentrant", Description: "desc", SourceType: "native"},
+	})
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	content, err := service.BundleContentContext(ctx, prepareResp.WorkspacePath, Target{
+		PackageName: "@platform.skill/reentrant",
+		Version:     "1.0.0",
+	})
+	if err != nil {
+		t.Fatalf("bundle content under shared lock should succeed: %v", err)
+	}
+	if len(content) == 0 {
+		t.Fatal("expected bundle content")
+	}
+}
+
 func TestPackWithWorkspaceStoreReusesExistingBundleWhenWorkspaceUnchanged(t *testing.T) {
 	root := t.TempDir()
 	store := newMemoryWorkspaceStore()

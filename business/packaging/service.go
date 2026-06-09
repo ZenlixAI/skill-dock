@@ -2,7 +2,6 @@ package packaging
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -17,14 +16,8 @@ import (
 type Service struct {
 	workspace        *packagingWorkspaceBacking
 	workspaceRuntime *packagingWorkspaceRuntime
+	bundleRules      bundleRuleModule
 	publishWorkflow  *publishedReleaseWorkflow
-}
-
-type packExecutionResult struct {
-	response         PackResponse
-	materializedPath string
-	bundlePath       string
-	cleanup          func()
 }
 
 type releaseRecordCreator interface {
@@ -49,6 +42,7 @@ func NewServiceWithWorkspaceStore(tempRoot string, store persist.WorkspaceStore)
 	return &Service{
 		workspace:        workspace,
 		workspaceRuntime: newPackagingWorkspaceRuntimeWithBacking(workspace),
+		bundleRules:      newBundleRuleModule(),
 		publishWorkflow:  &publishedReleaseWorkflow{},
 	}
 }
@@ -372,7 +366,7 @@ func (s *Service) PublishContext(ctx context.Context, input PublishRequest) (Pub
 }
 
 func (s *Service) packWorkspaceLocked(ctx context.Context, input PackRequest) (packExecutionResult, error) {
-	return s.workspaceRuntime.packLocked(ctx, input)
+	return packWorkspaceWithBacking(ctx, s.workspace, s.bundleRules, input)
 }
 
 func (s *Service) PruneExpiredWorkspaces(ttl time.Duration) error {
@@ -461,76 +455,6 @@ func decodeWorkspacePackageMetadataJSON(workspaceHandle string, content []byte) 
 		})
 	}
 	return payload, nil
-}
-
-func reuseManagedBundle(record persist.WorkspaceRecord, input PackRequest, expectedBundlePath string) (string, bool, error) {
-	if strings.TrimSpace(record.BundlePath) == "" {
-		return "", false, nil
-	}
-	if filepath.Clean(record.BundlePath) != filepath.Clean(expectedBundlePath) {
-		return "", false, catalog.NewError(500, "internal_error", "Packed bundle could not be persisted.", nil)
-	}
-
-	info, err := os.Stat(record.BundlePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", false, nil
-		}
-		return "", false, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil)
-	}
-	if info.IsDir() {
-		return "", false, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil)
-	}
-	if !input.IncludeBundle {
-		return "", true, nil
-	}
-
-	content, err := os.ReadFile(record.BundlePath)
-	if err != nil {
-		return "", false, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil)
-	}
-	return base64.StdEncoding.EncodeToString(content), true, nil
-}
-
-func workspaceValidationCacheFromResult(target Target, result validationResult) persist.WorkspaceValidationCache {
-	return persist.WorkspaceValidationCache{
-		PackageName:    target.PackageName,
-		Version:        target.Version,
-		ManifestDigest: result.ManifestDigest,
-		Components:     append([]string(nil), result.Components...),
-		Warnings:       append([]string(nil), result.Warnings...),
-		Errors:         append([]string(nil), result.Errors...),
-	}
-}
-
-func cachedValidationResult(cache *persist.WorkspaceValidationCache, target Target) (validationResult, bool) {
-	if cache == nil {
-		return validationResult{}, false
-	}
-	if cache.PackageName != target.PackageName || cache.Version != target.Version {
-		return validationResult{}, false
-	}
-	return validationResult{
-		ManifestDigest: cache.ManifestDigest,
-		Components:     append([]string(nil), cache.Components...),
-		Warnings:       append([]string(nil), cache.Warnings...),
-		Errors:         append([]string(nil), cache.Errors...),
-	}, true
-}
-
-func validateResponseFromResult(input ValidateRequest, result validationResult, workspacePath string) ValidateResponse {
-	return ValidateResponse{
-		OK:             len(result.Errors) == 0,
-		WorkspacePath:  input.WorkspacePath,
-		PackageName:    input.Target.PackageName,
-		Version:        input.Target.Version,
-		ManifestDigest: result.ManifestDigest,
-		Components:     append([]string(nil), result.Components...),
-		Warnings:       append([]string(nil), result.Warnings...),
-		WarningDetails: warningDetails(result.Warnings),
-		ImportReport:   readImportReport(workspacePath, result.Warnings),
-		Errors:         append([]string(nil), result.Errors...),
-	}
 }
 
 func publishResponseFromPack(packResponse PackResponse, releaseResult catalog.ReleaseRecordResult, publishedToRegistry bool) PublishResponse {
