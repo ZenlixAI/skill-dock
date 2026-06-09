@@ -42,11 +42,11 @@ describe('AppShell', () => {
       </SessionProvider>
     );
 
-    expect(await screen.findByRole('link', { name: 'Skip to content' })).toHaveAttribute('href', '#main-content');
-    expect(screen.getByRole('link', { name: 'Overview' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Catalog' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Console' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', '/privacy');
-    expect(screen.getByRole('link', { name: 'Terms' })).toHaveAttribute('href', '/terms');
+    expect(await screen.findByRole('link', { name: '跳到主要内容' })).toHaveAttribute('href', '#main-content');
+    expect(screen.getByRole('link', { name: '概览' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '目录' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '控制台' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '隐私' })).toHaveAttribute('href', '/privacy');
+    expect(screen.getByRole('link', { name: '条款' })).toHaveAttribute('href', '/terms');
   });
 });

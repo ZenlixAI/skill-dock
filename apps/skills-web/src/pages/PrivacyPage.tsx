@@ -5,21 +5,21 @@ export function PrivacyPage() {
   return (
     <div className="page-grid">
       <SectionHeading
-        eyebrow="Legal"
-        title="Privacy"
-        description="This internal registry records the operational data needed to secure the catalog and audit change history."
+        eyebrow="法律"
+        title="隐私"
+        description="内部注册表会记录保障目录安全和审计变更历史所需的运营数据。"
         tone="legal"
       />
 
       <SurfaceCard
-        title="What we collect"
-        description="Registry activity is logged for security, package provenance, and operational support."
+        title="我们收集的信息"
+        description="出于安全、包来源追踪和运营支持需要，注册表会记录相关活动。"
         variant="subtle"
       >
         <div className="stack-column">
-          <p>We store account identity, session posture, package actions, and API activity required to operate the registry.</p>
-          <p>Audit data is retained to investigate publishing events, governance changes, and access-control decisions.</p>
-          <p>Do not store personal, customer, or regulated data inside package metadata unless the platform policy explicitly permits it.</p>
+          <p>我们会保存运行注册表所需的账号身份、会话状态、包操作记录和 API 活动。</p>
+          <p>审计数据会被保留，用于调查发布事件、治理变更和访问控制决策。</p>
+          <p>除非平台策略明确允许，否则不要在包元数据中存放个人、客户或受监管数据。</p>
         </div>
       </SurfaceCard>
     </div>

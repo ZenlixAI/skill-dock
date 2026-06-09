@@ -8,19 +8,19 @@ export interface ShellNavItem {
 }
 
 export const portalNavItems: readonly ShellNavItem[] = [
-  { to: '/', label: 'Overview', icon: Sparkles },
-  { to: '/catalog', label: 'Catalog', icon: Search },
+  { to: '/', label: '概览', icon: Sparkles },
+  { to: '/catalog', label: '目录', icon: Search },
 ];
 
 export const consoleNavItems: readonly ShellNavItem[] = [
-  { to: '/workbench', label: 'Console', icon: AppWindow },
-  { to: '/workbench/import', label: 'Import', icon: Workflow, requiredAction: 'packaging.prepare' },
-  { to: '/workbench/authoring', label: 'Authoring', icon: Blocks, requiredAction: 'packaging.prepare' },
+  { to: '/workbench', label: '控制台', icon: AppWindow },
+  { to: '/workbench/import', label: '导入', icon: Workflow, requiredAction: 'packaging.prepare' },
+  { to: '/workbench/authoring', label: '编写', icon: Blocks, requiredAction: 'packaging.prepare' },
   {
     to: '/workbench/governance',
-    label: 'Governance',
+    label: '治理',
     icon: ShieldAlert,
     requiredAction: 'catalog.governance.skill.apply',
   },
-  { to: '/workbench/audit', label: 'Audit', icon: FileClock },
+  { to: '/workbench/audit', label: '审计', icon: FileClock },
 ];

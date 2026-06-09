@@ -7,8 +7,8 @@ export function NotFoundPage() {
     <div className="page-grid">
       <SectionHeading
         eyebrow="404"
-        title="Page not found"
-        description="The route you requested is not available in the registry. Use one of the portal entry points below."
+        title="页面不存在"
+        description="你请求的路由不在注册表中。请使用下方入口返回。"
         tone="legal"
       />
 
@@ -16,19 +16,19 @@ export function NotFoundPage() {
         action={
           <div className="button-row">
             <Link className="button button--primary" to="/">
-              Back to overview
+              返回概览
             </Link>
             <Link className="button button--secondary" to="/catalog">
-              Browse catalog
+              查看目录
             </Link>
           </div>
         }
-        title="Return to the portal"
-        description="Start from Overview for the product entry point, or jump into Catalog to continue discovery."
+        title="返回门户"
+        description="从概览回到产品入口，或直接进入目录继续查找。"
         variant="subtle"
       >
         <div className="stack-column">
-          <div className="empty-box">Unknown routes no longer redirect silently. This page preserves context and gives a clear way back.</div>
+          <div className="empty-box">未知路由不再静默重定向。此页会保留上下文，并提供明确的返回入口。</div>
         </div>
       </SurfaceCard>
     </div>

@@ -37,8 +37,8 @@ describe('OverviewPage', () => {
       </MemoryRouter>
     );
 
-    fireEvent.change(await screen.findByLabelText('Search skills'), { target: { value: 'review' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Search catalog' }));
+    fireEvent.change(await screen.findByLabelText('搜索技能'), { target: { value: 'review' } });
+    fireEvent.click(screen.getByRole('button', { name: '搜索目录' }));
 
     expect(await screen.findByText('catalog target?q=review')).toBeInTheDocument();
   });
@@ -79,7 +79,7 @@ describe('OverviewPage', () => {
         latestVersion: '2.4.0',
         latestVersionStatus: 'published',
         updatedAt: '2026-06-09T09:00:00Z',
-        curationReason: 'Recommended for capability-first code review triage.',
+        curationReason: '适合按能力优先进行代码评审分流。',
       },
     ]);
     vi.mocked(client.listGovernanceChanges).mockResolvedValue({ items: [], pageInfo: { hasNextPage: false, nextCursor: null } });
@@ -91,9 +91,9 @@ describe('OverviewPage', () => {
       </MemoryRouter>
     );
 
-    const recommendedHeading = await screen.findByRole('heading', { name: 'Recommended skills' });
+    const recommendedHeading = await screen.findByRole('heading', { name: '推荐技能' });
     const recommendedSection = recommendedHeading.closest('section');
-    const recentHeading = screen.getByRole('heading', { name: 'Recently updated' });
+    const recentHeading = screen.getByRole('heading', { name: '最近更新' });
     const recentSection = recentHeading.closest('section');
 
     expect(recommendedSection).not.toBeNull();
@@ -104,7 +104,7 @@ describe('OverviewPage', () => {
     }
 
     expect(await within(recommendedSection).findByText('Review Helper')).toBeInTheDocument();
-    expect(within(recommendedSection).getByText('Recommended for capability-first code review triage.')).toBeInTheDocument();
+    expect(within(recommendedSection).getByText('适合按能力优先进行代码评审分流。')).toBeInTheDocument();
     expect(await within(recentSection).findByText('Release Audit')).toBeInTheDocument();
 
     const recommendedCard = within(recommendedSection).getByText('Review Helper').closest('.skill-summary-card');
@@ -115,6 +115,6 @@ describe('OverviewPage', () => {
     }
 
     const cardText = recommendedCard.textContent ?? '';
-    expect(cardText.indexOf('Recommended for capability-first code review triage.')).toBeLessThan(cardText.indexOf('latest 2.4.0'));
+    expect(cardText.indexOf('适合按能力优先进行代码评审分流。')).toBeLessThan(cardText.indexOf('最新 2.4.0'));
   });
 });

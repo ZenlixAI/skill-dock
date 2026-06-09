@@ -40,7 +40,7 @@ export function AppShell({ children }: PropsWithChildren) {
     <div className={clsx('app-shell', `app-shell--${routeTheme.tone}`, `app-shell--${routeTheme.accent}`)}>
       <DocumentMeta description={routeMeta.description} title={routeMeta.title} />
       <a className="skip-link" href="#main-content">
-        Skip to content
+        跳到主要内容
       </a>
       <div className="app-shell__halo app-shell__halo--ember" />
       <div className="app-shell__halo app-shell__halo--moss" />
@@ -51,22 +51,22 @@ export function AppShell({ children }: PropsWithChildren) {
           <div className="brand-lockup">
             <div className="brand-lockup__mark">SR</div>
             <div className="brand-lockup__copy">
-              <div className="brand-lockup__eyebrow">Skill Registry</div>
-              <h1>Portal and Console</h1>
-              <p>Portal handles discovery and installation. Console handles import, authoring, governance, and audit workflows.</p>
+              <div className="brand-lockup__eyebrow">技能注册表</div>
+              <h1>门户与控制台</h1>
+              <p>门户用于发现和安装。控制台用于导入、编写、治理和审计流程。</p>
             </div>
           </div>
 
           <div className="shell-header__meta">
-            <StatusPill tone="accent">{routeMeta.section === 'console' ? 'Console' : 'Portal'}</StatusPill>
-            {runtimeUsesLogin && session.data ? <StatusPill tone="accent">Signed in as {session.data.actor}</StatusPill> : null}
+            <StatusPill tone="accent">{routeMeta.section === 'console' ? '控制台' : '门户'}</StatusPill>
+            {runtimeUsesLogin && session.data ? <StatusPill tone="accent">已登录：{session.data.actor}</StatusPill> : null}
             {runtimeUsesLogin && session.data ? (
               <>
                 <button className="button button--secondary" onClick={handleSwitchAccount} type="button">
-                  Switch account
+                  切换账号
                 </button>
                 <button className="button button--secondary" onClick={handleLogout} type="button">
-                  Sign out
+                  退出登录
                 </button>
               </>
             ) : null}
@@ -75,8 +75,8 @@ export function AppShell({ children }: PropsWithChildren) {
 
         <div className="shell-nav">
           <div className="shell-nav__group">
-            <span className="shell-nav__label">Portal</span>
-            <nav aria-label="Portal" className="shell-nav__rail">
+            <span className="shell-nav__label">门户</span>
+            <nav aria-label="门户" className="shell-nav__rail">
               {portalNavItems.map((item) => {
                 const Icon = item.icon;
 
@@ -97,8 +97,8 @@ export function AppShell({ children }: PropsWithChildren) {
           <div className="shell-nav__divider" aria-hidden="true" />
 
           <div className="shell-nav__group">
-            <span className="shell-nav__label">Console</span>
-            <nav aria-label="Console" className="shell-nav__rail">
+            <span className="shell-nav__label">控制台</span>
+            <nav aria-label="控制台" className="shell-nav__rail">
               {visibleConsoleNavItems.map((item) => {
                 const Icon = item.icon;
 
@@ -132,10 +132,10 @@ export function AppShell({ children }: PropsWithChildren) {
 
       <footer className="shell-footer">
         <div className="shell-footer__inner">
-          <p className="shell-footer__copy">Internal registry surface for package discovery, install flows, and operational governance.</p>
+          <p className="shell-footer__copy">内部注册表界面，用于包发现、安装流程和运营治理。</p>
           <div className="shell-footer__links">
-            <Link to="/privacy">Privacy</Link>
-            <Link to="/terms">Terms</Link>
+            <Link to="/privacy">隐私</Link>
+            <Link to="/terms">条款</Link>
           </div>
         </div>
       </footer>

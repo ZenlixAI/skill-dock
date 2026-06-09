@@ -20,6 +20,30 @@ function getVersionTone(versionStatus: SkillSummary['latestVersionStatus']) {
   return 'bad';
 }
 
+function getVersionLabel(versionStatus: SkillSummary['latestVersionStatus']) {
+  if (versionStatus === 'published') {
+    return '已发布';
+  }
+
+  if (versionStatus === 'deprecated') {
+    return '已弃用';
+  }
+
+  return '未知';
+}
+
+function getSourceTypeLabel(sourceType: SkillSummary['sourceType']) {
+  if (sourceType === 'native') {
+    return '原生';
+  }
+
+  if (sourceType === 'imported') {
+    return '导入';
+  }
+
+  return '平台创建';
+}
+
 export function SkillSummaryCard({ skill, curationReason }: SkillSummaryCardProps) {
   const namespace = skill.packageName.split('/')[0] || skill.packageName;
 
@@ -37,16 +61,16 @@ export function SkillSummaryCard({ skill, curationReason }: SkillSummaryCardProp
       {curationReason ? <p className="skill-summary-card__reason">{curationReason}</p> : null}
 
       <div className="skill-summary-card__install">
-        <StatusPill tone={getVersionTone(skill.latestVersionStatus)}>{skill.latestVersionStatus || 'unknown'}</StatusPill>
-        <StatusPill tone="accent">{skill.sourceType}</StatusPill>
-        {skill.latestVersion ? <StatusPill>latest {skill.latestVersion}</StatusPill> : null}
+        <StatusPill tone={getVersionTone(skill.latestVersionStatus)}>{getVersionLabel(skill.latestVersionStatus)}</StatusPill>
+        <StatusPill tone="accent">{getSourceTypeLabel(skill.sourceType)}</StatusPill>
+        {skill.latestVersion ? <StatusPill>最新 {skill.latestVersion}</StatusPill> : null}
       </div>
 
       <div className="skill-summary-card__footer">
-        <span className="skill-summary-card__provenance">{namespace} · updated {formatDate(skill.updatedAt)}</span>
+        <span className="skill-summary-card__provenance">{namespace} · 更新于 {formatDate(skill.updatedAt)}</span>
         <div className="skill-summary-card__actions">
           <Link className="button button--primary" to={`/skills/${encodeURIComponent(skill.packageName)}`}>
-            Open skill
+            查看技能
           </Link>
         </div>
       </div>

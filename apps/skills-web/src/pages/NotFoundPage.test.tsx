@@ -11,8 +11,8 @@ describe('NotFoundPage', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByRole('heading', { name: 'Page not found' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Back to overview' })).toHaveAttribute('href', '/');
-    expect(screen.getByRole('link', { name: 'Browse catalog' })).toHaveAttribute('href', '/catalog');
+    expect(screen.getByRole('heading', { name: '页面不存在' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '返回概览' })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: '查看目录' })).toHaveAttribute('href', '/catalog');
   });
 });

@@ -30,7 +30,7 @@ describe('CatalogPage', () => {
     );
 
     expect(await screen.findByDisplayValue('pdf')).toBeInTheDocument();
-    expect(screen.getByText('Try a broader capability, package scope, or source filter.')).toBeInTheDocument();
+    expect(screen.getByText('请尝试更宽泛的能力词、包范围或来源筛选。')).toBeInTheDocument();
   });
 
   it('renders discovery cards with description before install metadata and provenance before the action', async () => {
@@ -67,8 +67,8 @@ describe('CatalogPage', () => {
     }
 
     const cardText = card.textContent ?? '';
-    expect(cardText.indexOf('Trace who changed a registry package.')).toBeLessThan(cardText.indexOf('published'));
-    expect(cardText.indexOf('published')).toBeLessThan(cardText.indexOf('updated'));
-    expect(cardText.indexOf('updated')).toBeLessThan(cardText.indexOf('Open skill'));
+    expect(cardText.indexOf('Trace who changed a registry package.')).toBeLessThan(cardText.indexOf('已发布'));
+    expect(cardText.indexOf('已发布')).toBeLessThan(cardText.indexOf('更新于'));
+    expect(cardText.indexOf('更新于')).toBeLessThan(cardText.indexOf('查看技能'));
   });
 });
