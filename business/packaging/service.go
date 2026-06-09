@@ -2,6 +2,7 @@ package packaging
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -141,7 +142,8 @@ func packagingCatalogError(err error) *catalog.Error {
 	if err == nil {
 		return nil
 	}
-	if catalogErr, ok := err.(*catalog.Error); ok {
+	var catalogErr *catalog.Error
+	if errors.As(err, &catalogErr) {
 		return catalogErr
 	}
 	return catalog.NewError(500, "internal_error", "Internal server error.", nil)

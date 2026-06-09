@@ -2,20 +2,21 @@ package packaging
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	"skill_registry/business/catalog"
 )
 
-func TestPublishedReleaseWorkflowPublishesAfterRegistryVersionNotFound(t *testing.T) {
+func TestPublishedReleaseWorkflowPublishesWhenArtifactMissing(t *testing.T) {
 	root := t.TempDir()
 	store := newMemoryWorkspaceStore()
 	runtime := newPackagingWorkspaceRuntime(root, store)
 	workflow := newPublishedReleaseWorkflow(runtime)
 	repo := &stubReleaseRecordCreator{
 		results: []stubReleaseRecordOutcome{
-			{err: catalog.NewError(404, "registry_version_not_found", "Registry version not found.", nil)},
+			{err: wrappedReleaseArtifactMissingError()},
 			{result: catalog.ReleaseRecordResult{Created: true, VersionStatus: catalog.VersionStatusPublished, InstallPolicy: catalog.InstallPolicyResolvable}},
 		},
 	}
@@ -105,19 +106,19 @@ func TestPublishedReleaseWorkflowSkipsRegistryPublishWhenReleaseAlreadyExists(t 
 	}
 }
 
-func TestPublishedReleaseWorkflowReplaysReleaseAfterRegistryVersionConflict(t *testing.T) {
+func TestPublishedReleaseWorkflowReplaysWhenArtifactAlreadyExists(t *testing.T) {
 	root := t.TempDir()
 	store := newMemoryWorkspaceStore()
 	runtime := newPackagingWorkspaceRuntime(root, store)
 	workflow := newPublishedReleaseWorkflow(runtime)
 	repo := &stubReleaseRecordCreator{
 		results: []stubReleaseRecordOutcome{
-			{err: catalog.NewError(404, "registry_version_not_found", "Registry version not found.", nil)},
+			{err: wrappedReleaseArtifactMissingError()},
 			{result: catalog.ReleaseRecordResult{Created: false, IdempotentReplay: true, VersionStatus: catalog.VersionStatusPublished, InstallPolicy: catalog.InstallPolicyResolvable}},
 		},
 	}
 	publisher := &capturePackagePublisher{
-		err: catalog.NewError(409, "registry_version_conflict", "Registry version already exists.", nil),
+		err: wrappedPackageArtifactAlreadyExistsError(),
 	}
 	workflow.Configure(repo, publisher)
 
@@ -151,4 +152,12 @@ func TestPublishedReleaseWorkflowReplaysReleaseAfterRegistryVersionConflict(t *t
 	if publisher.calls != 1 {
 		t.Fatalf("expected one publisher attempt before replay, got %d", publisher.calls)
 	}
+}
+
+func wrappedReleaseArtifactMissingError() error {
+	return fmt.Errorf("release artifact missing state: %w", catalog.NewError(404, "registry_version_not_found", "Registry version not found.", nil))
+}
+
+func wrappedPackageArtifactAlreadyExistsError() error {
+	return fmt.Errorf("package artifact already exists state: %w", catalog.NewError(409, "registry_version_conflict", "Registry version already exists.", nil))
 }
