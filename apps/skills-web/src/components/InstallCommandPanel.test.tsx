@@ -37,6 +37,29 @@ describe('InstallCommandPanel', () => {
     expect(screen.getByText('可直接安装')).toBeInTheDocument();
   });
 
+  it('shows localized failure feedback when copying the install command fails', async () => {
+    Object.defineProperty(window.navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockRejectedValue(new Error('boom')) },
+      configurable: true,
+    });
+
+    render(
+      <InstallCommandPanel
+        title="安装这个技能"
+        packageName="@platform.skill/agent-notes"
+        version="1.2.3"
+        npmRegistry="https://npm.internal.example.com"
+        installPolicy="resolvable"
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '复制安装命令' }));
+
+    await waitFor(() =>
+      expect(screen.getByText('复制失败，请手动复制命令。')).toBeInTheDocument()
+    );
+  });
+
   it('disables copying and shows a blocked install warning', () => {
     render(
       <InstallCommandPanel
