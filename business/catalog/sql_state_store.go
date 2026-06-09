@@ -217,26 +217,22 @@ func (s *SQLStateStore) ListSkills(ctx context.Context, query SkillQuery) (Skill
 	if query.PageSize > 100 {
 		return SkillsPage{}, NewError(400, "invalid_request", "pageSize must be less than or equal to 100.", map[string]any{"pageSize": query.PageSize})
 	}
-
-	sortKey := query.Sort
-	if sortKey == "" {
-		if query.Query != "" {
-			sortKey = "relevance"
-		} else {
-			sortKey = "updated_at_desc"
-		}
-	}
-	if sortKey != "relevance" && sortKey != "updated_at_desc" && sortKey != "package_name_asc" {
-		return SkillsPage{}, NewError(400, "invalid_request", "sort is invalid.", map[string]any{"sort": sortKey})
+	if err := validateCursor(query.Cursor); err != nil {
+		return SkillsPage{}, err
 	}
 
-	rows, err := s.db.QueryContext(ctx, bindSQL(s.dialect, s.listSkillsSQL(query)), s.listSkillsArgs(query)...)
+	sortKey, err := normalizedSkillsSort(query.Sort, query.Query)
+	if err != nil {
+		return SkillsPage{}, err
+	}
+
+	rows, err := s.db.QueryContext(ctx, bindSQL(s.dialect, s.listSkillsSQL(query, sortKey)), s.listSkillsArgs(query, sortKey)...)
 	if err != nil {
 		return SkillsPage{}, err
 	}
 	defer rows.Close()
 
-	items := make([]SkillSummary, 0)
+	items := make([]SkillSummary, 0, query.PageSize+1)
 	for rows.Next() {
 		item, err := scanSkillSummary(rows)
 		if err != nil {
@@ -247,13 +243,10 @@ func (s *SQLStateStore) ListSkills(ctx context.Context, query SkillQuery) (Skill
 	if err := rows.Err(); err != nil {
 		return SkillsPage{}, err
 	}
-
-	sortSkills(items, sortKey, query.Query)
-	paged, pageInfo, err := paginate(items, query.Cursor, query.PageSize)
-	if err != nil {
+	if err := s.validateCursorWindow(ctx, s.listSkillsSelectSQL(query), s.listSkillsFilterArgs(query), query.Cursor, len(items)); err != nil {
 		return SkillsPage{}, err
 	}
-	return SkillsPage{Items: paged, PageInfo: pageInfo}, nil
+	return SkillsPage{Items: pageWindow(items, query.Cursor, query.PageSize), PageInfo: pageInfoForWindow(items, query.Cursor, query.PageSize)}, nil
 }
 
 func (s *SQLStateStore) ListCuratedSkills(ctx context.Context, pageSize int, cursor int) (CuratedSkillsPage, error) {
@@ -356,6 +349,9 @@ func (s *SQLStateStore) ListVersions(ctx context.Context, query VersionQuery) (V
 	if query.PageSize > 100 {
 		return VersionsPage{}, NewError(400, "invalid_request", "pageSize must be less than or equal to 100.", map[string]any{"pageSize": query.PageSize})
 	}
+	if err := validateCursor(query.Cursor); err != nil {
+		return VersionsPage{}, err
+	}
 
 	exists, err := s.skillExists(ctx, query.PackageName)
 	if err != nil {
@@ -371,7 +367,7 @@ func (s *SQLStateStore) ListVersions(ctx context.Context, query VersionQuery) (V
 	}
 	defer rows.Close()
 
-	items := make([]SkillVersionSummary, 0)
+	items := make([]SkillVersionSummary, 0, query.PageSize+1)
 	for rows.Next() {
 		var (
 			publishedAtRaw string
@@ -396,12 +392,10 @@ func (s *SQLStateStore) ListVersions(ctx context.Context, query VersionQuery) (V
 	if err := rows.Err(); err != nil {
 		return VersionsPage{}, err
 	}
-
-	paged, pageInfo, err := paginate(items, query.Cursor, query.PageSize)
-	if err != nil {
+	if err := s.validateCursorWindow(ctx, s.listVersionsSelectSQL(query), s.listVersionsFilterArgs(query), query.Cursor, len(items)); err != nil {
 		return VersionsPage{}, err
 	}
-	return VersionsPage{Items: paged, PageInfo: pageInfo}, nil
+	return VersionsPage{Items: pageWindow(items, query.Cursor, query.PageSize), PageInfo: pageInfoForWindow(items, query.Cursor, query.PageSize)}, nil
 }
 
 func (s *SQLStateStore) GetVersion(ctx context.Context, packageName string, version string) (SkillVersionDetail, error) {
@@ -460,6 +454,9 @@ func (s *SQLStateStore) ListGovernanceChanges(ctx context.Context, query Governa
 	if query.PageSize > 100 {
 		return GovernancePage{}, NewError(400, "invalid_request", "pageSize must be less than or equal to 100.", map[string]any{"pageSize": query.PageSize})
 	}
+	if err := validateCursor(query.Cursor); err != nil {
+		return GovernancePage{}, err
+	}
 
 	rows, err := s.db.QueryContext(ctx, bindSQL(s.dialect, s.listGovernanceSQL(query)), s.listGovernanceArgs(query)...)
 	if err != nil {
@@ -467,7 +464,7 @@ func (s *SQLStateStore) ListGovernanceChanges(ctx context.Context, query Governa
 	}
 	defer rows.Close()
 
-	items := make([]GovernanceRecord, 0)
+	items := make([]GovernanceRecord, 0, query.PageSize+1)
 	for rows.Next() {
 		record, err := scanGovernanceRecord(rows)
 		if err != nil {
@@ -478,12 +475,10 @@ func (s *SQLStateStore) ListGovernanceChanges(ctx context.Context, query Governa
 	if err := rows.Err(); err != nil {
 		return GovernancePage{}, err
 	}
-
-	paged, pageInfo, err := paginate(items, query.Cursor, query.PageSize)
-	if err != nil {
+	if err := s.validateCursorWindow(ctx, s.listGovernanceSelectSQL(query), s.listGovernanceFilterArgs(query), query.Cursor, len(items)); err != nil {
 		return GovernancePage{}, err
 	}
-	return GovernancePage{Items: paged, PageInfo: pageInfo}, nil
+	return GovernancePage{Items: pageWindow(items, query.Cursor, query.PageSize), PageInfo: pageInfoForWindow(items, query.Cursor, query.PageSize)}, nil
 }
 
 func (s *SQLStateStore) ListPackageGovernance(ctx context.Context, packageName string, targetType GovernanceTargetType, version *string) ([]GovernanceRecord, error) {
@@ -503,7 +498,8 @@ func (s *SQLStateStore) ListPackageGovernance(ctx context.Context, packageName s
 		query.Version = *version
 	}
 
-	rows, err := s.db.QueryContext(ctx, bindSQL(s.dialect, s.listGovernanceSQL(query)), s.listGovernanceArgs(query)...)
+	governanceSQL := strings.Join([]string{s.listGovernanceSelectSQL(query), `ORDER BY changed_at DESC, id ASC`}, "\n")
+	rows, err := s.db.QueryContext(ctx, bindSQL(s.dialect, governanceSQL), s.listGovernanceFilterArgs(query)...)
 	if err != nil {
 		return nil, err
 	}
@@ -753,7 +749,7 @@ func (s *SQLStateStore) skillExists(ctx context.Context, packageName string) (bo
 	return count > 0, nil
 }
 
-func (s *SQLStateStore) listSkillsSQL(query SkillQuery) string {
+func (s *SQLStateStore) listSkillsSelectSQL(query SkillQuery) string {
 	parts := []string{`
 SELECT
 	package_name,
@@ -781,7 +777,12 @@ WHERE 1 = 1`}
 	return strings.Join(parts, "\n")
 }
 
-func (s *SQLStateStore) listSkillsArgs(query SkillQuery) []any {
+func (s *SQLStateStore) listSkillsSQL(query SkillQuery, sortKey string) string {
+	parts := []string{s.listSkillsSelectSQL(query), skillsOrderBySQL(sortKey, query.Query), `LIMIT ?`, `OFFSET ?`}
+	return strings.Join(parts, "\n")
+}
+
+func (s *SQLStateStore) listSkillsFilterArgs(query SkillQuery) []any {
 	args := make([]any, 0, 5)
 	if query.PackageName != "" {
 		args = append(args, query.PackageName)
@@ -796,7 +797,17 @@ func (s *SQLStateStore) listSkillsArgs(query SkillQuery) []any {
 	return args
 }
 
-func (s *SQLStateStore) listVersionsSQL(query VersionQuery) string {
+func (s *SQLStateStore) listSkillsArgs(query SkillQuery, sortKey string) []any {
+	args := s.listSkillsFilterArgs(query)
+	needle := "%" + strings.ToLower(strings.TrimSpace(query.Query)) + "%"
+	if sortKey == "relevance" && strings.TrimSpace(query.Query) != "" {
+		args = append(args, needle, needle, needle)
+	}
+	args = append(args, query.PageSize+1, query.Cursor)
+	return args
+}
+
+func (s *SQLStateStore) listVersionsSelectSQL(query VersionQuery) string {
 	parts := []string{`
 SELECT
 	package_name,
@@ -812,15 +823,25 @@ WHERE package_name = ?`}
 	if !query.IncludeYanked {
 		parts = append(parts, `AND version_status <> 'yanked'`)
 	}
-	parts = append(parts, `ORDER BY published_at DESC`)
 	return strings.Join(parts, "\n")
 }
 
-func (s *SQLStateStore) listVersionsArgs(query VersionQuery) []any {
+func (s *SQLStateStore) listVersionsSQL(query VersionQuery) string {
+	parts := []string{s.listVersionsSelectSQL(query), `ORDER BY published_at DESC, version DESC`, `LIMIT ?`, `OFFSET ?`}
+	return strings.Join(parts, "\n")
+}
+
+func (s *SQLStateStore) listVersionsFilterArgs(query VersionQuery) []any {
 	return []any{query.PackageName}
 }
 
-func (s *SQLStateStore) listGovernanceSQL(query GovernanceQuery) string {
+func (s *SQLStateStore) listVersionsArgs(query VersionQuery) []any {
+	args := s.listVersionsFilterArgs(query)
+	args = append(args, query.PageSize+1, query.Cursor)
+	return args
+}
+
+func (s *SQLStateStore) listGovernanceSelectSQL(query GovernanceQuery) string {
 	parts := []string{`
 SELECT
 	id,
@@ -843,11 +864,15 @@ WHERE 1 = 1`}
 	if query.Version != "" {
 		parts = append(parts, `AND version = ?`)
 	}
-	parts = append(parts, `ORDER BY changed_at DESC, id ASC`)
 	return strings.Join(parts, "\n")
 }
 
-func (s *SQLStateStore) listGovernanceArgs(query GovernanceQuery) []any {
+func (s *SQLStateStore) listGovernanceSQL(query GovernanceQuery) string {
+	parts := []string{s.listGovernanceSelectSQL(query), `ORDER BY changed_at DESC, id ASC`, `LIMIT ?`, `OFFSET ?`}
+	return strings.Join(parts, "\n")
+}
+
+func (s *SQLStateStore) listGovernanceFilterArgs(query GovernanceQuery) []any {
 	args := make([]any, 0, 3)
 	if query.PackageName != "" {
 		args = append(args, query.PackageName)
@@ -859,6 +884,88 @@ func (s *SQLStateStore) listGovernanceArgs(query GovernanceQuery) []any {
 		args = append(args, query.Version)
 	}
 	return args
+}
+
+func (s *SQLStateStore) listGovernanceArgs(query GovernanceQuery) []any {
+	args := s.listGovernanceFilterArgs(query)
+	args = append(args, query.PageSize+1, query.Cursor)
+	return args
+}
+
+func normalizedSkillsSort(sortKey string, query string) (string, error) {
+	if sortKey == "" {
+		if strings.TrimSpace(query) != "" {
+			sortKey = "relevance"
+		} else {
+			sortKey = "updated_at_desc"
+		}
+	}
+	switch sortKey {
+	case "relevance", "updated_at_desc", "package_name_asc":
+		return sortKey, nil
+	default:
+		return "", NewError(400, "invalid_request", "sort is invalid.", map[string]any{"sort": sortKey})
+	}
+}
+
+func skillsOrderBySQL(sortKey string, query string) string {
+	switch sortKey {
+	case "package_name_asc":
+		return `ORDER BY package_name ASC`
+	case "updated_at_desc":
+		return `ORDER BY updated_at DESC, package_name ASC`
+	default:
+		if strings.TrimSpace(query) == "" {
+			return `ORDER BY updated_at DESC, package_name ASC`
+		}
+		return `ORDER BY (
+	(CASE WHEN LOWER(package_name) LIKE ? THEN 3 ELSE 0 END) +
+	(CASE WHEN LOWER(display_name) LIKE ? THEN 2 ELSE 0 END) +
+	(CASE WHEN LOWER(description) LIKE ? THEN 1 ELSE 0 END)
+) DESC, updated_at DESC, package_name ASC`
+	}
+}
+
+func validateCursor(cursor int) error {
+	if cursor < 0 {
+		return NewError(400, "invalid_request", "cursor must be greater than or equal to 0.", map[string]any{"cursor": cursor})
+	}
+	return nil
+}
+
+func (s *SQLStateStore) validateCursorWindow(ctx context.Context, selectSQL string, args []any, cursor int, loaded int) error {
+	if cursor == 0 || loaded > 0 {
+		return nil
+	}
+
+	var count int
+	countSQL := `SELECT COUNT(*) FROM (` + selectSQL + `
+) AS matched`
+	if err := s.db.QueryRowContext(ctx, bindSQL(s.dialect, countSQL), args...).Scan(&count); err != nil {
+		return err
+	}
+	if cursor > count {
+		return NewError(400, "invalid_request", "cursor is out of range.", map[string]any{"cursor": cursor})
+	}
+	return nil
+}
+
+func pageInfoForWindow[T any](items []T, cursor int, pageSize int) PageInfo {
+	if len(items) <= pageSize {
+		return PageInfo{HasNextPage: false}
+	}
+	nextCursor := formatCursorToken(cursor + pageSize)
+	return PageInfo{
+		NextCursor:  &nextCursor,
+		HasNextPage: true,
+	}
+}
+
+func pageWindow[T any](items []T, _ int, pageSize int) []T {
+	if len(items) > pageSize {
+		items = items[:pageSize]
+	}
+	return append([]T(nil), items...)
 }
 
 func scanSkillSummary(scanner interface {

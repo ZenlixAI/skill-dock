@@ -11,6 +11,49 @@ import (
 	"testing"
 )
 
+func TestSQLRepositoryListSkillsAppliesSortAndPageInStore(t *testing.T) {
+	repo := newSQLRepositoryForTest(t, SampleData())
+
+	page, err := repo.ListSkills(context.Background(), SkillQuery{
+		Sort:     "package_name_asc",
+		PageSize: 1,
+		Cursor:   1,
+	})
+	if err != nil {
+		t.Fatalf("list skills: %v", err)
+	}
+	if len(page.Items) != 1 {
+		t.Fatalf("expected exactly one item, got %d", len(page.Items))
+	}
+	if page.Items[0].PackageName != "@platform.skill/pdf-skill" {
+		t.Fatalf("expected second lexicographic package, got %q", page.Items[0].PackageName)
+	}
+}
+
+func TestSQLRepositoryListGovernanceChangesPagesInStore(t *testing.T) {
+	repo := newSQLRepositoryForTest(t, SampleData())
+
+	_, err := repo.ApplyVersionGovernanceChange(context.Background(), "@platform.skill/pdf-skill", "1.2.0", VersionGovernanceChangeInput{
+		Action: GovernanceActionDeprecate,
+		Reason: "legacy",
+	}, "operator")
+	if err != nil {
+		t.Fatalf("seed governance change: %v", err)
+	}
+
+	page, err := repo.ListGovernanceChanges(context.Background(), GovernanceQuery{
+		PackageName: "@platform.skill/pdf-skill",
+		PageSize:    1,
+		Cursor:      1,
+	})
+	if err != nil {
+		t.Fatalf("list governance changes: %v", err)
+	}
+	if len(page.Items) != 1 {
+		t.Fatalf("expected one governance item, got %d", len(page.Items))
+	}
+}
+
 func TestSQLRepositoryPersistsReleaseRecordsAcrossInstances(t *testing.T) {
 	ctx := context.Background()
 	databaseURL := "file:" + filepath.Join(t.TempDir(), "catalog.db")
@@ -255,6 +298,18 @@ func openCatalogTestDB(t *testing.T, databaseURL string) *sql.DB {
 		t.Fatalf("open database: %v", err)
 	}
 	return db
+}
+
+func newSQLRepositoryForTest(t *testing.T, data SampleCatalogData) *CatalogRepository {
+	t.Helper()
+
+	repo, err := NewSQLRepository(context.Background(), "file:"+filepath.Join(t.TempDir(), "catalog.db"), data, SQLRepositoryOptions{
+		ArtifactSource: NewStaticArtifactSource(data.Artifacts),
+	})
+	if err != nil {
+		t.Fatalf("create repository: %v", err)
+	}
+	return repo
 }
 
 func startTempPostgres(t *testing.T) string {
