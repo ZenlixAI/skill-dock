@@ -221,6 +221,58 @@ describe('SkillDetailPage', () => {
     expect(screen.getByText('正在加载安装目标，请稍候。')).toBeInTheDocument();
   });
 
+  it('shows a policy-loading hero after the install target is resolved but version policy is still loading', async () => {
+    vi.mocked(client.getSession).mockResolvedValue({
+      role: 'operator',
+      actor: 'operator',
+      authMechanism: 'session',
+      allowedActions: ['session.read'],
+      allowedPackages: [],
+    });
+    vi.mocked(client.getSkillDetail).mockResolvedValue({
+      packageName: '@platform.skill/agent-notes',
+      displayName: 'Agent Notes',
+      description: 'Detail view',
+      sourceType: 'native',
+      status: 'active',
+      latestVersion: '1.0.0',
+      latestVersionStatus: 'published',
+      updatedAt: '2026-01-01T00:00:00Z',
+      createdAt: '2026-01-01T00:00:00Z',
+    });
+    vi.mocked(client.getSkillVersions).mockReturnValue(new Promise(() => {}));
+    vi.mocked(client.getInstallTarget).mockResolvedValue({
+      packageName: '@platform.skill/agent-notes',
+      version: '1.0.0',
+      npmRegistry: 'https://npm.internal.example.com',
+      tarballUrl: 'https://npm.internal.example.com/agent-notes.tgz',
+      integrity: 'sha512-test',
+      skillManifestDigest: 'sha256:test',
+      versionStatus: 'published',
+    });
+    vi.mocked(client.listGovernanceChanges).mockResolvedValue({
+      items: [],
+      pageInfo: {
+        hasNextPage: false,
+        nextCursor: null,
+      },
+    });
+
+    render(
+      <SessionProvider>
+        <MemoryRouter initialEntries={['/skills/%40platform.skill%2Fagent-notes']}>
+          <Routes>
+            <Route path="/skills/:packageName" element={<SkillDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </SessionProvider>
+    );
+
+    expect(await screen.findByRole('heading', { name: '安装状态' })).toBeInTheDocument();
+    expect(screen.getByText('安装目标已解析，正在等待对应版本的安装策略返回。')).toBeInTheDocument();
+    expect(screen.getByText('正在加载安装策略，请稍候。')).toBeInTheDocument();
+  });
+
   it('shows an error hero when the install target request fails', async () => {
     vi.mocked(client.getSession).mockResolvedValue({
       role: 'operator',

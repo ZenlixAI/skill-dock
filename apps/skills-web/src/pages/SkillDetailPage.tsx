@@ -105,7 +105,7 @@ export function SkillDetailPage() {
   };
 
   function renderInstallSurface() {
-    if (installTarget.loading || (installTarget.data && versionList.loading)) {
+    if (installTarget.loading) {
       return (
         <SurfaceCard
           description="正在等待安装目标返回，安装命令会在解析完成后显示在这里。"
@@ -113,6 +113,18 @@ export function SkillDetailPage() {
           variant="hero"
         >
           <div className="empty-box">正在加载安装目标，请稍候。</div>
+        </SurfaceCard>
+      );
+    }
+
+    if (installTarget.data && versionList.loading) {
+      return (
+        <SurfaceCard
+          description="安装目标已解析，正在等待对应版本的安装策略返回。"
+          title="安装状态"
+          variant="hero"
+        >
+          <div className="empty-box">正在加载安装策略，请稍候。</div>
         </SurfaceCard>
       );
     }
