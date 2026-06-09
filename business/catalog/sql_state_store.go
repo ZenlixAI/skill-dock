@@ -602,19 +602,6 @@ func (s *SQLStateStore) loadAggregateRevisionTx(ctx context.Context, tx *sql.Tx,
 	return uint64(revision), true, nil
 }
 
-func (s *SQLStateStore) deleteAggregateRowsTx(ctx context.Context, tx *sql.Tx, packageName string) error {
-	for _, statement := range []string{
-		`DELETE FROM governance_records WHERE package_name = ?`,
-		`DELETE FROM skill_versions WHERE package_name = ?`,
-		`DELETE FROM skills WHERE package_name = ?`,
-	} {
-		if _, err := tx.ExecContext(ctx, bindSQL(s.dialect, statement), packageName); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (s *SQLStateStore) updateAggregateTx(ctx context.Context, tx *sql.Tx, aggregate AgentSkillAggregate, revision uint64) error {
 	if err := s.updateSkillSnapshotTx(ctx, tx, aggregate, revision); err != nil {
 		return err

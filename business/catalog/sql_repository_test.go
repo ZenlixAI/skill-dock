@@ -408,6 +408,55 @@ WHERE id = ?`), "gov_01hxyank").Scan(&removedIDCount); err != nil {
 	}
 }
 
+func TestSQLStateStoreSyncsGovernanceRowsOnPostgres(t *testing.T) {
+	ctx := context.Background()
+	databaseURL := startTempPostgres(t)
+
+	db := openCatalogTestDB(t, databaseURL)
+	defer db.Close()
+
+	store := NewSQLStateStore(db, sqlDriverNameForURL(databaseURL))
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("migrate store: %v", err)
+	}
+
+	data := SampleData()
+	var aggregate AgentSkillAggregate
+	for _, item := range aggregatesFromSampleData(data) {
+		if item.Skill.Detail.PackageName == "@platform.skill/pdf-skill" {
+			aggregate = item
+			break
+		}
+	}
+	if aggregate.Skill.Detail.PackageName == "" {
+		t.Fatal("expected sample aggregate for @platform.skill/pdf-skill")
+	}
+	if err := store.PutAggregate(ctx, aggregate, 0); err != nil {
+		t.Fatalf("put aggregate: %v", err)
+	}
+
+	loaded, err := store.GetAggregate(ctx, aggregate.Skill.Detail.PackageName)
+	if err != nil {
+		t.Fatalf("get aggregate: %v", err)
+	}
+	loaded.Governance = nil
+
+	if err := store.PutAggregate(ctx, loaded, loaded.Revision); err != nil {
+		t.Fatalf("prune governance rows: %v", err)
+	}
+
+	var remainingCount int
+	if err := db.QueryRowContext(ctx, bindSQL(sqlDriverNameForURL(databaseURL), `
+SELECT COUNT(*)
+FROM governance_records
+WHERE package_name = ?`), aggregate.Skill.Detail.PackageName).Scan(&remainingCount); err != nil {
+		t.Fatalf("count remaining governance rows: %v", err)
+	}
+	if remainingCount != 0 {
+		t.Fatalf("expected governance rows to be pruned on postgres, got %d remaining", remainingCount)
+	}
+}
+
 func TestSQLStateStorePersistsAggregateRevision(t *testing.T) {
 	ctx := context.Background()
 	databaseURL := "file:" + filepath.Join(t.TempDir(), "catalog.db")
