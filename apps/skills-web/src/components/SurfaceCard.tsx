@@ -6,7 +6,7 @@ interface SurfaceCardProps extends PropsWithChildren {
   description?: string;
   action?: ReactNode;
   className?: string;
-  variant?: 'default' | 'hero' | 'spotlight' | 'rail' | 'console' | 'warm' | 'cool';
+  variant?: 'default' | 'hero' | 'spotlight' | 'rail' | 'console' | 'warm' | 'cool' | 'subtle';
 }
 
 export function SurfaceCard({

@@ -1,5 +1,5 @@
 export type RouteTone = 'frontstage' | 'backstage';
-export type RouteAccent = 'landing' | 'detail' | 'console';
+export type RouteAccent = 'landing' | 'detail' | 'console' | 'legal' | 'neutral';
 
 export interface RouteTheme {
   tone: RouteTone;
@@ -28,6 +28,27 @@ export function getRouteTheme(pathname: string): RouteTheme {
     return {
       tone: 'backstage',
       accent: 'detail',
+    };
+  }
+
+  if (pathname === '/privacy' || pathname === '/terms') {
+    return {
+      tone: 'frontstage',
+      accent: 'legal',
+    };
+  }
+
+  if (pathname === '/login') {
+    return {
+      tone: 'backstage',
+      accent: 'console',
+    };
+  }
+
+  if (pathname !== '/workbench/import' && pathname !== '/workbench/authoring' && pathname !== '/workbench/governance' && pathname !== '/workbench/audit') {
+    return {
+      tone: 'backstage',
+      accent: 'neutral',
     };
   }
 

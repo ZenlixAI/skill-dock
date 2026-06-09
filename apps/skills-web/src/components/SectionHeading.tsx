@@ -5,7 +5,7 @@ interface SectionHeadingProps {
   eyebrow?: string;
   title: string;
   description?: string;
-  tone?: 'frontstage' | 'backstage' | 'detail';
+  tone?: 'frontstage' | 'backstage' | 'detail' | 'legal';
   actions?: ReactNode;
 }
 
