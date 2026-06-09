@@ -1,23 +1,47 @@
-import { useDeferredValue, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { startTransition, useDeferredValue, useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { listSkills } from '../api/client';
 import type { CatalogSourceType, RegistryRequestError, SkillStatus } from '../api/types';
 import { SectionHeading } from '../components/SectionHeading';
+import { SkillSummaryCard } from '../components/SkillSummaryCard';
 import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
 import { usePaginatedCollection } from '../lib/usePaginatedCollection';
 
 export function CatalogPage() {
-  const [query, setQuery] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [query, setQuery] = useState(searchParams.get('q') ?? '');
   const [sourceType, setSourceType] = useState<CatalogSourceType | ''>('');
   const [status, setStatus] = useState<SkillStatus | ''>('');
   const deferredQuery = useDeferredValue(query);
+
+  useEffect(() => {
+    const nextQuery = searchParams.get('q') ?? '';
+    setQuery((current) => (current === nextQuery ? current : nextQuery));
+  }, [searchParams]);
+
+  function updateQuery(next: string) {
+    setQuery(next);
+
+    startTransition(() => {
+      const params = new URLSearchParams(searchParams);
+      const normalized = next.trim();
+
+      if (normalized) {
+        params.set('q', normalized);
+      } else {
+        params.delete('q');
+      }
+
+      setSearchParams(params, { replace: true });
+    });
+  }
 
   const skills = usePaginatedCollection({
     loader: (filters) =>
       listSkills({
         ...filters,
-        query: deferredQuery,
+        query: deferredQuery.trim(),
         sourceType,
         status,
         pageSize: 12,
@@ -37,132 +61,111 @@ export function CatalogPage() {
   return (
     <div className="page-grid">
       <SectionHeading
-        eyebrow="目录"
-        title="查找技能"
+        description="Search by capability, narrow by source or lifecycle status, and open install-ready skill pages from the same results surface."
+        eyebrow="Catalog"
+        title="Discover registry skills"
         tone="frontstage"
       />
 
-      <SurfaceCard title="搜索" variant="hero">
+      <SurfaceCard className="portal-hero" title="Search" variant="hero">
         <div className="catalog-command">
           <label className="field catalog-command__search">
-            <span>搜索</span>
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="pdf / review / scrape / governance" />
+            <span>Search skills</span>
+            <input onChange={(event) => updateQuery(event.target.value)} placeholder="pdf / review / scrape / governance" value={query} />
           </label>
           <div className="catalog-command__status">
-            <StatusPill tone="accent">查询 {deferredQuery || '全部'}</StatusPill>
-            <StatusPill>{sourceType || '全部来源'}</StatusPill>
-            <StatusPill tone={status === 'retired' ? 'bad' : status === 'active' ? 'good' : undefined}>{status || '全部状态'}</StatusPill>
-            <StatusPill tone="good">已显示 {resultItems.length}</StatusPill>
+            <StatusPill tone="accent">Query {deferredQuery || 'all skills'}</StatusPill>
+            <StatusPill>{sourceType || 'all sources'}</StatusPill>
+            <StatusPill tone={status === 'retired' ? 'bad' : status === 'active' ? 'good' : undefined}>{status || 'all statuses'}</StatusPill>
+            <StatusPill tone="good">Showing {resultItems.length}</StatusPill>
           </div>
         </div>
       </SurfaceCard>
 
       <div className="console-strip">
         <article className="console-signal">
-          <span>查询</span>
-          <strong>{deferredQuery ? '已收窄' : '全量'}</strong>
-          <p>{deferredQuery ? '当前正在展示过滤后的结果。' : '当前展示全部结果。'}</p>
+          <span>Query scope</span>
+          <strong>{deferredQuery ? 'Filtered' : 'Open'}</strong>
+          <p>{deferredQuery ? 'Results are narrowed by the current query string.' : 'Results currently span the full catalog slice.'}</p>
         </article>
         <article className="console-signal">
-          <span>活跃 / 退役</span>
+          <span>Active / retired</span>
           <strong>{activeCount} / {retiredCount}</strong>
-          <p>当前生命周期分布。</p>
+          <p>Lifecycle posture across the current result set.</p>
         </article>
         <article className="console-signal">
-          <span>导入来源</span>
+          <span>Imported</span>
           <strong>{importedCount}</strong>
-          <p>当前结果中的导入技能数量。</p>
+          <p>Imported skills represented in the current results.</p>
         </article>
       </div>
 
       <div className="two-column two-column--wide-right">
-        <SurfaceCard title="筛选" variant="rail">
+        <SurfaceCard description="Keep the catalog ordered around usefulness while narrowing by install cost proxies and provenance." title="Filters" variant="rail">
           <label className="field">
-            <span>来源类型</span>
+            <span>Source type</span>
             <select value={sourceType} onChange={(event) => setSourceType(event.target.value as CatalogSourceType | '')}>
-              <option value="">全部</option>
+              <option value="">All</option>
               <option value="native">native</option>
               <option value="imported">imported</option>
               <option value="platform_created">platform_created</option>
             </select>
           </label>
           <label className="field">
-            <span>状态</span>
+            <span>Status</span>
             <select value={status} onChange={(event) => setStatus(event.target.value as SkillStatus | '')}>
-              <option value="">全部</option>
+              <option value="">All</option>
               <option value="active">active</option>
               <option value="retired">retired</option>
             </select>
           </label>
         </SurfaceCard>
 
-        <SurfaceCard title="结果" variant="spotlight">
-          {skills.loading && resultItems.length === 0 ? <div className="empty-box">正在加载目录…</div> : null}
-          {skills.refreshing ? <div className="empty-box">正在刷新目录结果，同时保留上一次成功结果…</div> : null}
+        <SurfaceCard description="Open any skill to inspect install commands, version posture, and package-level detail." title="Results" variant="spotlight">
+          {skills.loading && resultItems.length === 0 ? (
+            <div aria-hidden="true" className="results-skeleton">
+              <div className="portal-skeleton" />
+              <div className="portal-skeleton" />
+              <div className="portal-skeleton" />
+            </div>
+          ) : null}
+          {skills.refreshing ? <div className="empty-box">Refreshing catalog results while preserving the last successful view.</div> : null}
           {catalogErrorMessage ? <div className="error-box">{catalogErrorMessage}</div> : null}
 
           <div className="console-strip console-strip--compact">
             <article className="console-signal console-signal--compact">
-              <span>结果</span>
+              <span>Results</span>
               <strong>{resultItems.length}</strong>
             </article>
             <article className="console-signal console-signal--compact">
-              <span>活跃</span>
+              <span>Active</span>
               <strong>{activeCount}</strong>
             </article>
             <article className="console-signal console-signal--compact">
-              <span>退役</span>
+              <span>Retired</span>
               <strong>{retiredCount}</strong>
             </article>
           </div>
 
           <div className="list-stack">
-            {resultItems.map((skill) => (
-              <article className="list-card list-card--feature list-card--spotlight" key={skill.packageName}>
-                <div className="list-card__head">
-                  <div>
-                    <strong>{skill.displayName}</strong>
-                    <span>{skill.packageName}</span>
-                  </div>
-                  <StatusPill tone={skill.latestVersionStatus === 'published' ? 'good' : skill.latestVersionStatus === 'deprecated' ? 'warn' : 'bad'}>
-                    {skill.latestVersionStatus || 'unknown'}
-                  </StatusPill>
-                </div>
-                <p>{skill.description}</p>
-                <div className="pill-row">
-                  <StatusPill tone="accent">{skill.sourceType}</StatusPill>
-                  <StatusPill tone={skill.status === 'active' ? 'good' : 'bad'}>{skill.status}</StatusPill>
-                  <StatusPill>latest {skill.latestVersion || '—'}</StatusPill>
-                </div>
-                <div className="list-card__actions">
-                  <Link className="button button--secondary" to={`/skills/${encodeURIComponent(skill.packageName)}`}>
-                    打开
-                  </Link>
-                  {skill.latestVersion ? (
-                    <Link
-                      className="button button--secondary"
-                      to={`/skills/${encodeURIComponent(skill.packageName)}/versions/${skill.latestVersion}`}
-                    >
-                      最新版本
-                    </Link>
-                  ) : null}
-                </div>
-              </article>
-            ))}
+            {resultItems.map((skill) => <SkillSummaryCard key={skill.packageName} skill={skill} />)}
             {!skills.loading && !skills.errorDetail && resultItems.length === 0 ? (
-              <div className="empty-box">当前筛选条件下没有匹配的技能。</div>
+              <div className="empty-box">
+                <strong>No skills matched this view.</strong>
+                <p>Try a broader capability, package scope, or source filter.</p>
+              </div>
             ) : null}
           </div>
 
           {!skills.loading && !(skills.errorDetail && resultItems.length === 0) ? (
             <div className="action-row">
               <div className="action-row__copy">
-                <strong>分页</strong>
-                <p>{skills.pageInfo.hasNextPage ? `当前显示 ${resultItems.length} 条结果。` : `当前共有 ${resultItems.length} 条结果。`}</p>
+                <strong>Pagination</strong>
+                <p>{skills.pageInfo.hasNextPage ? `Showing ${resultItems.length} results in the current slice.` : `Showing all ${resultItems.length} results in this view.`}</p>
               </div>
               {skills.pageInfo.hasNextPage ? (
                 <button className="button button--secondary" disabled={skills.loadingMore} onClick={skills.loadMore} type="button">
-                  {skills.loadingMore ? '加载中…' : '加载更多'}
+                  {skills.loadingMore ? 'Loading…' : 'Load more'}
                 </button>
               ) : null}
             </div>
@@ -176,25 +179,25 @@ export function CatalogPage() {
 function describeCatalogError(error: RegistryRequestError, hasStaleResults: boolean) {
   if (error.kind === 'auth') {
     return hasStaleResults
-      ? `${error.message} 当前保留上一次成功的目录结果。`
-      : `${error.message} 当前会话无法读取真实后端的目录结果。`;
+      ? `${error.message} The last successful catalog results are still visible.`
+      : `${error.message} This session cannot read live catalog results right now.`;
   }
 
   if (error.kind === 'network') {
     return hasStaleResults
-      ? `${error.message} 刷新失败，当前保留上一次成功的目录页。`
-      : `${error.message} 真实后端不可用，目录结果未能加载。`;
+      ? `${error.message} Refresh failed, so the last successful results are still shown.`
+      : `${error.message} The live backend is unavailable, so catalog results could not load.`;
   }
 
   if (error.kind === 'server') {
     return hasStaleResults
-      ? `${error.message} 后端返回错误，当前保留上一次成功的目录页。`
+      ? `${error.message} The backend returned an error, so the last successful results are still shown.`
       : error.message;
   }
 
   if (error.kind === 'not_found') {
     return hasStaleResults
-      ? `${error.message} 下一次刷新成功前，当前保留之前的结果。`
+      ? `${error.message} Previous results are preserved until a later refresh succeeds.`
       : error.message;
   }
 

@@ -508,6 +508,114 @@ textarea {
   gap: 10px;
 }
 
+.portal-hero {
+  display: grid;
+  gap: 18px;
+  padding: 28px;
+}
+
+.portal-hero__search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: end;
+}
+
+.portal-hero .field input,
+.catalog-command__search input,
+.catalog-command__search select {
+  min-height: 58px;
+  background: rgba(5, 14, 25, 0.74);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.skill-summary-card {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(11, 22, 37, 0.96), rgba(13, 25, 42, 0.88)),
+    radial-gradient(circle at top left, rgba(111, 211, 255, 0.12), transparent 36%);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-soft);
+}
+
+.skill-summary-card__header,
+.skill-summary-card__meta,
+.skill-summary-card__actions,
+.console-entry-card__actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.skill-summary-card__header strong {
+  display: block;
+  font-size: 1.04rem;
+}
+
+.skill-summary-card__header span,
+.skill-summary-card__description,
+.skill-summary-card__reason,
+.console-entry-card p {
+  color: var(--muted);
+}
+
+.skill-summary-card__header span {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.92rem;
+}
+
+.skill-summary-card__description,
+.skill-summary-card__reason {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.skill-summary-card__provenance {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.console-entry-card {
+  background:
+    linear-gradient(180deg, rgba(7, 17, 30, 0.96), rgba(8, 17, 29, 0.84)),
+    radial-gradient(circle at top right, rgba(73, 187, 160, 0.14), transparent 28%);
+}
+
+.portal-skeleton-grid,
+.results-skeleton {
+  display: grid;
+  gap: 16px;
+}
+
+.portal-skeleton {
+  min-height: 140px;
+  border-radius: 22px;
+  background: linear-gradient(90deg, rgba(157, 176, 201, 0.08), rgba(157, 176, 201, 0.16), rgba(157, 176, 201, 0.08));
+  background-size: 200% 100%;
+  animation: portalSkeleton 1.4s ease infinite;
+}
+
+.portal-skeleton--hero {
+  min-height: 220px;
+}
+
+@keyframes portalSkeleton {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
+
 .signal-list {
   display: grid;
   gap: 14px;
@@ -1187,6 +1295,7 @@ textarea {
   .console-strip,
   .button-row,
   .hero-band,
+  .portal-hero__search,
   .authoring-editor__layout {
     grid-template-columns: 1fr;
   }
