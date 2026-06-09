@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import * as client from '../api/client';
@@ -86,5 +86,60 @@ describe('CatalogPage', () => {
     expect(within(actions).getByRole('link', { name: '查看技能' })).toBeInTheDocument();
     expect(description.compareDocumentPosition(install) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(install.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('renders retired skills after selecting the retired status filter', async () => {
+    vi.mocked(client.listSkills).mockImplementation(async (filters) => {
+      if (filters?.status === 'retired') {
+        return {
+          items: [
+            {
+              packageName: '@platform.skill/retired-audit',
+              displayName: '退役审计',
+              description: '用于回看已经退役的技能。',
+              sourceType: 'native',
+              status: 'retired',
+              latestVersion: '0.4.0',
+              latestVersionStatus: 'deprecated',
+              updatedAt: '2026-06-08T10:00:00Z',
+            },
+          ],
+          pageInfo: {
+            hasNextPage: false,
+            nextCursor: null,
+          },
+        };
+      }
+
+      return {
+        items: [
+          {
+            packageName: '@platform.skill/active-helper',
+            displayName: '启用助手',
+            description: '默认结果里的启用技能。',
+            sourceType: 'native',
+            status: 'active',
+            latestVersion: '1.0.0',
+            latestVersionStatus: 'published',
+            updatedAt: '2026-06-09T10:00:00Z',
+          },
+        ],
+        pageInfo: {
+          hasNextPage: false,
+          nextCursor: null,
+        },
+      };
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/catalog']}>
+        <CatalogPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.change(await screen.findByLabelText('状态'), { target: { value: 'retired' } });
+
+    expect(await screen.findByText('退役审计')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('启用助手')).not.toBeInTheDocument());
   });
 });
