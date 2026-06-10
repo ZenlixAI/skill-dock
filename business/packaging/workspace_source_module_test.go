@@ -45,6 +45,33 @@ func TestWorkspaceSourceModulePreparesPlatformAuthoringWorkspace(t *testing.T) {
 	}
 }
 
+func TestWorkspaceSourceModuleCreatesMissingTempRootBeforePreparingWorkspace(t *testing.T) {
+	tempRoot := filepath.Join(t.TempDir(), "missing", "packaging-workspaces")
+	module := newWorkspaceSourceModule(tempRoot, 0*time.Second)
+
+	workspacePath, err := module.prepare(PrepareRequest{
+		Source: Source{
+			Type: "platform_authoring",
+			Files: map[string]string{
+				"docs/README.md": "# Capability\n",
+			},
+		},
+		Metadata: Metadata{
+			DisplayName: "review-helper",
+			Description: "Review helper skill",
+		},
+	})
+	if err != nil {
+		t.Fatalf("prepare workspace with missing temp root: %v", err)
+	}
+	if _, err := os.Stat(tempRoot); err != nil {
+		t.Fatalf("expected temp root to be created, got %v", err)
+	}
+	if !module.managesWorkspace(workspacePath) {
+		t.Fatalf("expected managed workspace, got %q", workspacePath)
+	}
+}
+
 func TestWorkspaceSourceModuleGitCloneUsesShallowClone(t *testing.T) {
 	tempRoot := t.TempDir()
 	module := newWorkspaceSourceModule(tempRoot, 0*time.Second)

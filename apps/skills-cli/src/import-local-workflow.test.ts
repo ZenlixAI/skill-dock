@@ -537,4 +537,37 @@ describe('import-local workflow', () => {
       'https://npm.example.com',
     ]);
   });
+
+  it('returns an actionable hint when catalog cannot create the packaging workspace', async () => {
+    writeFileSync(
+      join(testDir, 'SKILL.md'),
+      `---\nname: legacy-skill\ndescription: Imported skill\n---\n`
+    );
+
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: {
+            code: 'internal_error',
+            message: 'Failed to create packaging workspace.',
+          },
+        }),
+        { status: 500, headers: { 'content-type': 'application/json' } }
+      )
+    );
+
+    const result = await runImportLocalWorkflow({
+      path: testDir,
+      registry: 'https://catalog.example.com',
+      packageName: '@acme.skill/legacy-skill',
+      version: '0.1.0',
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      errors: [
+        'Failed to create packaging workspace. Catalog write-side packaging workspace root is missing or not writable; check SKILL_REGISTRY_SHARED_WORKSPACE_ROOT and its mounted directory.',
+      ],
+    });
+  });
 });

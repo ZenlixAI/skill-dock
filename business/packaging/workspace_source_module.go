@@ -40,11 +40,18 @@ func newWorkspaceSourceModule(tempRoot string, workspaceTTL time.Duration) works
 	}
 }
 
+func (m workspaceSourceModule) ensureTempRoot() error {
+	return os.MkdirAll(m.tempRoot, 0o755)
+}
+
 func (m workspaceSourceModule) prepare(input PrepareRequest) (string, error) {
 	if m.workspaceTTL > 0 {
 		if err := m.pruneExpiredWorkspaces(m.workspaceTTL); err != nil {
 			return "", catalog.NewError(500, "internal_error", "Failed to prune expired packaging workspaces.", nil)
 		}
+	}
+	if err := m.ensureTempRoot(); err != nil {
+		return "", catalog.NewError(500, "internal_error", "Failed to create packaging workspace.", nil)
 	}
 
 	workspacePath, err := os.MkdirTemp(m.tempRoot, "skill-packaging-*")

@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { basename, join, resolve } from 'path';
 import {
+  CatalogError,
   getRegistryBaseUrl,
   packSkillPackaging,
   prepareSkillPackaging,
@@ -56,6 +57,18 @@ interface PackedBundle {
 
 function failure(errors: string[]): ImportLocalWorkflowFailureResult {
   return { ok: false, errors };
+}
+
+function formatImportLocalError(error: unknown): string {
+  if (
+    error instanceof CatalogError &&
+    error.code === 'internal_error' &&
+    error.message === 'Failed to create packaging workspace.'
+  ) {
+    return `${error.message} Catalog write-side packaging workspace root is missing or not writable; check SKILL_REGISTRY_SHARED_WORKSPACE_ROOT and its mounted directory.`;
+  }
+
+  return error instanceof Error ? error.message : String(error);
 }
 
 function resolveReleaseRecordPublishRegistry(options: ImportLocalWorkflowOptions, inspectedPublishRegistry?: string): string | undefined {
@@ -234,6 +247,6 @@ export async function runImportLocalWorkflow(
       }
     }
   } catch (error) {
-    return failure([error instanceof Error ? error.message : String(error)]);
+    return failure([formatImportLocalError(error)]);
   }
 }
