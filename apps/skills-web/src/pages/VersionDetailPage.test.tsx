@@ -129,7 +129,9 @@ describe('VersionDetailPage', () => {
     const governanceHeading = screen.getByRole('heading', { name: '版本治理' });
 
     expect(
-      screen.getByText('npm install @platform.skill/agent-notes@1.0.0 --registry=https://npm.internal.example.com')
+      screen.getByText(
+        'npx --registry https://npm.internal.example.com skills add @platform.skill/agent-notes --version 1.0.0'
+      )
     ).toBeInTheDocument();
     expect(screen.getAllByText('可直接安装').length).toBeGreaterThan(0);
     expect(screen.getAllByText('已发布').length).toBeGreaterThan(0);
@@ -294,7 +296,9 @@ describe('VersionDetailPage', () => {
     expect(screen.queryByRole('heading', { name: '安装状态' })).not.toBeInTheDocument();
     expect(screen.getAllByText('待补充 npm 仓库地址').length).toBeGreaterThan(0);
     expect(
-      screen.getByText('npm install @platform.skill/agent-notes@1.0.0 --registry=<待补充 npm 仓库地址>')
+      screen.getByText(
+        'npx --registry <待补充 npm 仓库地址> skills add @platform.skill/agent-notes --version 1.0.0'
+      )
     ).toBeInTheDocument();
     expect(screen.getByText('当前未返回制品包地址。')).toBeInTheDocument();
     expect(screen.getByText('当前未返回完整性校验值。')).toBeInTheDocument();

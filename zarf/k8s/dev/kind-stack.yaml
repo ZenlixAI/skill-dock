@@ -15,6 +15,7 @@ stringData:
   skill_registry_authoring_token: authoring-secret
   skill_registry_publisher_token: publisher-secret
   skill_registry_npm_registry_url: http://nexus.skill-registry.svc.cluster.local:8081/repository/skills-npm
+  skill_registry_npm_publish_authorization: ""
   skill_registry_public_npm_registry_url: http://127.0.0.1:8081/repository/skills-npm
   skill_registry_auth_tokens_json: ""
   skill_registry_session_secret: local-kind-session-secret
@@ -197,6 +198,11 @@ spec:
                 secretKeyRef:
                   name: catalog-secrets
                   key: skill_registry_npm_registry_url
+            - name: SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION
+              valueFrom:
+                secretKeyRef:
+                  name: catalog-secrets
+                  key: skill_registry_npm_publish_authorization
             - name: SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL
               valueFrom:
                 secretKeyRef:

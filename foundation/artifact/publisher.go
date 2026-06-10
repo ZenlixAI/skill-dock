@@ -175,7 +175,5 @@ func digestTarball(content []byte) (string, string) {
 }
 
 func packageAttachmentName(packageName string, version string) string {
-	normalized := strings.TrimPrefix(packageName, "@")
-	normalized = strings.ReplaceAll(normalized, "/", "-")
-	return normalized + "-" + version + ".tgz"
+	return packageBasename(packageName) + "-" + version + ".tgz"
 }

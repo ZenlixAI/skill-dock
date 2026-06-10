@@ -18,6 +18,9 @@ describe('normalizeRegistryError', () => {
       kind: 'not_found',
       message: 'The requested registry resource was not found.',
       requestId: undefined,
+      code: undefined,
+      status: 404,
+      details: undefined,
     });
   });
 
@@ -32,6 +35,9 @@ describe('normalizeRegistryError', () => {
       kind: 'not_found',
       message: 'Registry does not contain this package version yet. Publish the packed bundle to the npm registry, then retry release-record.',
       requestId: undefined,
+      code: 'registry_version_not_found',
+      status: 404,
+      details: undefined,
     });
   });
 
@@ -40,6 +46,35 @@ describe('normalizeRegistryError', () => {
       kind: 'server',
       message: 'upstream unavailable',
       requestId: 'req-123',
+      code: undefined,
+      status: 503,
+      details: undefined,
+    });
+  });
+
+  it('turns registry_publish_failed with upstream 401 details into an actionable publish-auth hint', () => {
+    expect(
+      normalizeRegistryError({
+        status: 503,
+        code: 'registry_publish_failed',
+        message: 'registry_publish_failed: Registry publish request failed.',
+        requestId: 'req-1264',
+        details: {
+          status: 401,
+          responseBody: 'Unauthorized',
+        },
+      })
+    ).toEqual({
+      kind: 'server',
+      message:
+        'Catalog tried to publish to the npm registry, but the registry rejected the backend credentials. Check `catalogCommon.auth.npmPublishAuthorization` / `SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION`, then retry.',
+      requestId: 'req-1264',
+      code: 'registry_publish_failed',
+      status: 503,
+      details: {
+        status: 401,
+        responseBody: 'Unauthorized',
+      },
     });
   });
 
@@ -48,6 +83,9 @@ describe('normalizeRegistryError', () => {
       kind: 'network',
       message: 'Unable to reach the registry backend.',
       requestId: undefined,
+      code: undefined,
+      status: undefined,
+      details: undefined,
     });
   });
 
@@ -56,6 +94,9 @@ describe('normalizeRegistryError', () => {
       kind: 'unknown',
       message: 'something odd happened',
       requestId: undefined,
+      code: undefined,
+      status: undefined,
+      details: undefined,
     });
   });
 
@@ -71,6 +112,9 @@ describe('normalizeRegistryError', () => {
       message:
         'Packaging workspace is no longer available. If Catalog is running with multiple replicas, scale `catalog` down to 1 replica for prepare/validate/pack flows, then retry.',
       requestId: 'req-789',
+      code: undefined,
+      status: 422,
+      details: undefined,
     });
   });
 });
@@ -87,6 +131,9 @@ describe('normalizeThrownRegistryError', () => {
       kind: 'server',
       message: 'service unavailable',
       requestId: 'req-456',
+      code: undefined,
+      status: 503,
+      details: undefined,
     });
   });
 });

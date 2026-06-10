@@ -279,7 +279,13 @@ dev-bootstrap:
 		NEXUS_ADMIN_PASSWORD=$(NEXUS_ADMIN_PASSWORD) \
 		NEXUS_ENABLE_ANONYMOUS_READ="$$anonymous_read" \
 		NEXUS_NPMRC_PATH=$(NEXUS_NPMRC) \
-		./zarf/scripts/nexus-bootstrap.sh
+		./zarf/scripts/nexus-bootstrap.sh; \
+	auth_header="$$(node -e 'const fs = require("fs"); const path = process.argv[1]; const lines = fs.readFileSync(path, "utf8").split(/\\r?\\n/); for (const raw of lines) { const line = raw.trim(); if (!line || line.startsWith("#") || line.startsWith(";")) continue; const tokenMatch = line.match(/:_authToken=(.+)$$/); if (tokenMatch) { process.stdout.write("Bearer " + tokenMatch[1].trim()); process.exit(0); } const basicMatch = line.match(/:_auth=(.+)$$/); if (basicMatch) { process.stdout.write("Basic " + basicMatch[1].trim()); process.exit(0); } } process.exit(1);' "$(NEXUS_NPMRC)")"; \
+	test -n "$$auth_header" || (echo "Failed to derive npm publish authorization from $(NEXUS_NPMRC)" && exit 1); \
+	encoded_auth="$$(printf '%s' "$$auth_header" | base64 | tr -d '\n')"; \
+	kubectl -n $(K8S_NAMESPACE) patch secret catalog-secrets --type merge -p "{\"data\":{\"skill_registry_npm_publish_authorization\":\"$$encoded_auth\"}}"; \
+	kubectl -n $(K8S_NAMESPACE) rollout restart deployment/catalog; \
+	kubectl -n $(K8S_NAMESPACE) rollout status deployment/catalog
 
 dev-ready:
 	kubectl -n $(K8S_NAMESPACE) rollout status deployment/postgres

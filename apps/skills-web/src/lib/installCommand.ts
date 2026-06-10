@@ -29,7 +29,7 @@ export function buildInstallCommand({ packageName, version, npmRegistry }: Insta
       ? registryValue
       : INSTALL_REGISTRY_FALLBACK_COMMAND;
 
-  return `npm install ${packageName}@${version} --registry=${commandRegistry}`;
+  return `npx --registry ${commandRegistry} skills add ${packageName} --version ${version}`;
 }
 
 export function getInstallPolicyLabel(installPolicy: InstallPolicy) {

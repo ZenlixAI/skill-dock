@@ -123,6 +123,54 @@ catalogCommon:
 catalogRead:
   replicaCount: 2
 
+`catalogCommon.auth.npmPublishAuthorization` 的用途要单独说明：
+
+- 这个值是给 **Catalog 后端自己** 用来执行 server-side `npm publish`
+- 主要影响 Web 里的“发布 skill”
+- 它不是浏览器登录态，也不是你开发机本地 CLI 的 `.npmrc`
+
+建议值来源：
+
+1. 如果你的 `.npmrc` 里是：
+
+```ini
+//skills.example.com/repository/skills-npm/:_authToken=NpmToken.xxxxx
+```
+
+那 values 里应该填：
+
+```yaml
+catalogCommon:
+  auth:
+    npmPublishAuthorization: Bearer NpmToken.xxxxx
+```
+
+2. 如果你的 `.npmrc` 里是：
+
+```ini
+//skills.example.com/repository/skills-npm/:_auth=base64xxxx
+```
+
+那 values 里应该填：
+
+```yaml
+catalogCommon:
+  auth:
+    npmPublishAuthorization: Basic base64xxxx
+```
+
+如果你想从现有 `.npmrc` 自动提取，可用：
+
+```bash
+node -e 'const fs=require("fs");const p=process.argv[1];for(const raw of fs.readFileSync(p,"utf8").split(/\r?\n/)){const line=raw.trim();if(!line||line.startsWith("#")||line.startsWith(";")) continue;let m=line.match(/:_authToken=(.+)$/);if(m){console.log("Bearer "+m[1].trim());process.exit(0)}m=line.match(/:_auth=(.+)$/);if(m){console.log("Basic "+m[1].trim());process.exit(0)}}process.exit(1)' /path/to/.npmrc
+```
+
+如果这里不对，Web publish 通常会报：
+
+- `registry_publish_failed: Registry publish request failed.`
+- 或前端更明确的提示：
+  - `Catalog tried to publish to the npm registry, but the registry rejected the backend credentials.`
+
 catalogWrite:
   replicaCount: 1
 

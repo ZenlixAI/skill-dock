@@ -28,7 +28,7 @@ describe('InstallCommandPanel', () => {
 
     await waitFor(() =>
       expect(window.navigator.clipboard.writeText).toHaveBeenCalledWith(
-        'npm install @platform.skill/agent-notes@1.2.3 --registry=https://npm.internal.example.com'
+        'npx --registry https://npm.internal.example.com skills add @platform.skill/agent-notes --version 1.2.3'
       )
     );
     expect(screen.getByText('已复制')).toBeInTheDocument();
@@ -88,7 +88,9 @@ describe('InstallCommandPanel', () => {
 
     expect(screen.getAllByText('待补充 npm 仓库地址').length).toBeGreaterThan(0);
     expect(
-      screen.getByText('npm install @platform.skill/agent-notes@1.2.3 --registry=<待补充 npm 仓库地址>')
+      screen.getByText(
+        'npx --registry <待补充 npm 仓库地址> skills add @platform.skill/agent-notes --version 1.2.3'
+      )
     ).toBeInTheDocument();
     expect(screen.getByText('当前未返回制品包地址。')).toBeInTheDocument();
     expect(screen.getByText('当前未返回完整性校验值。')).toBeInTheDocument();

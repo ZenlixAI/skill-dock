@@ -335,3 +335,81 @@ Catalog：
 - 如果要让 Web 里的“发布 skill”由 Catalog 直接发到 Nexus，还需要给 Catalog 配 `SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION`（例如 `Bearer NpmToken.xxxxx`）；也可改用 `SKILL_REGISTRY_NPM_PUBLISH_TOKEN`
 - CLI 永远连 Catalog；切换后端 npm registry 时，需要同时确认 Catalog 的内部访问地址和对外下载地址
 - Docker 镜像默认关闭 sample data 与 `/mock-npm`
+
+### `SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION` 怎么取
+
+这个值不是给浏览器，也不是给你本机 CLI；它是给 **Catalog 后端自己** 在执行 server-side `npm publish` 时用的。
+
+适用场景：
+
+- Web 里的“发布 skill”
+- 任何由 Catalog 后端代发 npm 包的流程
+
+不适用场景：
+
+- 你本机直接跑 `npx --registry ... skills publish ...`
+  - 这个看的是你本机 `.npmrc` / `npm adduser`
+
+常见来源就是 Nexus 登录后生成的 `.npmrc`。典型有两种：
+
+1. token 形式
+
+```ini
+//127.0.0.1:8081/repository/skills-npm/:_authToken=NpmToken.xxxxx
+```
+
+Catalog 里要配成：
+
+```text
+Bearer NpmToken.xxxxx
+```
+
+2. basic 形式
+
+```ini
+//127.0.0.1:8081/repository/skills-npm/:_auth=base64xxxx
+```
+
+Catalog 里要配成：
+
+```text
+Basic base64xxxx
+```
+
+如果你想从 `.npmrc` 自动提取，可以用：
+
+```bash
+node -e 'const fs=require("fs");const p=process.argv[1];for(const raw of fs.readFileSync(p,"utf8").split(/\r?\n/)){const line=raw.trim();if(!line||line.startsWith("#")||line.startsWith(";")) continue;let m=line.match(/:_authToken=(.+)$/);if(m){console.log("Bearer "+m[1].trim());process.exit(0)}m=line.match(/:_auth=(.+)$/);if(m){console.log("Basic "+m[1].trim());process.exit(0)}}process.exit(1)' /path/to/.npmrc
+```
+
+### 本地 kind 怎么配
+
+本地 `kind` 默认会把 Nexus 的独立 npm 登录态写到：
+
+```text
+/private/tmp/skill-registry-nexus/.npmrc
+```
+
+现在 `make dev-bootstrap` 会自动：
+
+1. 初始化集群内 Nexus
+2. 重写这个 `.npmrc`
+3. 从中提取可用的 Authorization 头
+4. patch 到 `catalog-secrets.skill_registry_npm_publish_authorization`
+5. 重启 `deployment/catalog`
+
+所以本地推荐直接执行：
+
+```bash
+make dev-apply
+make dev-bootstrap
+```
+
+如果你要手工 patch：
+
+```bash
+AUTH_HEADER='Bearer NpmToken.xxxxx'
+kubectl -n skill-registry patch secret catalog-secrets --type merge -p "{\"stringData\":{\"skill_registry_npm_publish_authorization\":\"$AUTH_HEADER\"}}"
+kubectl -n skill-registry rollout restart deployment/catalog
+kubectl -n skill-registry rollout status deployment/catalog
+```

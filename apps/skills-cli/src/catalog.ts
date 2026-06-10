@@ -100,6 +100,10 @@ interface CatalogErrorBody {
   };
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
+}
+
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
@@ -138,6 +142,124 @@ function isImportReport(value: unknown): value is PackagingImportReport {
     ((value as PackagingImportReport).warningCodes === undefined ||
       isStringArray((value as PackagingImportReport).warningCodes))
   );
+}
+
+function readRequiredStringField(payload: Record<string, unknown>, key: string, context: string): string {
+  const value = payload[key];
+  if (typeof value !== 'string') {
+    throw new Error(`${context} response was malformed: ${key} must be a string`);
+  }
+  return value;
+}
+
+function readOptionalStringField(payload: Record<string, unknown>, key: string, context: string): string | undefined {
+  const value = payload[key];
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== 'string') {
+    throw new Error(`${context} response was malformed: ${key} must be a string when present`);
+  }
+  return value;
+}
+
+function normalizeStringArrayField(
+  payload: Record<string, unknown>,
+  key: string,
+  context: string
+): string[] {
+  const value = payload[key];
+  if (value === undefined || value === null) {
+    return [];
+  }
+  if (!isStringArray(value)) {
+    throw new Error(`${context} response was malformed: ${key} must be a string array`);
+  }
+  return value;
+}
+
+function normalizeWarningDetailsField(
+  payload: Record<string, unknown>,
+  key: string,
+  context: string
+): PackagingWarningDetail[] | undefined {
+  const value = payload[key];
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (!isWarningDetailsArray(value)) {
+    throw new Error(`${context} response was malformed: ${key} must be a warning detail array`);
+  }
+  return value;
+}
+
+function normalizeImportReportField(
+  payload: Record<string, unknown>,
+  key: string,
+  context: string
+): PackagingImportReport | undefined {
+  const value = payload[key];
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (!isImportReport(value)) {
+    throw new Error(`${context} response was malformed: ${key} must be a packaging import report`);
+  }
+  return value;
+}
+
+function normalizePreparePackagingResponse(payload: unknown): PreparePackagingResponse {
+  const record = asRecord(payload);
+  if (!record) {
+    throw new Error('catalog prepare response was malformed');
+  }
+
+  return {
+    workspacePath: readRequiredStringField(record, 'workspacePath', 'catalog prepare'),
+    packageName: readRequiredStringField(record, 'packageName', 'catalog prepare'),
+    version: readRequiredStringField(record, 'version', 'catalog prepare'),
+    warnings: normalizeStringArrayField(record, 'warnings', 'catalog prepare'),
+    warningDetails: normalizeWarningDetailsField(record, 'warningDetails', 'catalog prepare'),
+    importReport: normalizeImportReportField(record, 'importReport', 'catalog prepare'),
+    errors: normalizeStringArrayField(record, 'errors', 'catalog prepare'),
+  };
+}
+
+function normalizeValidatePackagingResponse(payload: unknown): ValidatePackagingResponse {
+  const record = asRecord(payload);
+  if (!record) {
+    throw new Error('catalog validate response was malformed');
+  }
+
+  const ok = record.ok;
+  if (typeof ok !== 'boolean') {
+    throw new Error('catalog validate response was malformed: ok must be a boolean');
+  }
+
+  return {
+    ...normalizePreparePackagingResponse(record),
+    ok,
+    manifestDigest: readOptionalStringField(record, 'manifestDigest', 'catalog validate'),
+    components:
+      record.components === undefined || record.components === null
+        ? undefined
+        : normalizeStringArrayField(record, 'components', 'catalog validate'),
+  };
+}
+
+function normalizePackPackagingResponse(payload: unknown): PackPackagingResponse {
+  const record = asRecord(payload);
+  if (!record) {
+    throw new Error('catalog pack response was malformed');
+  }
+
+  return {
+    ...normalizePreparePackagingResponse(record),
+    bundlePath: readRequiredStringField(record, 'bundlePath', 'catalog pack'),
+    bundleBase64: readOptionalStringField(record, 'bundleBase64', 'catalog pack'),
+    manifestDigest: readRequiredStringField(record, 'manifestDigest', 'catalog pack'),
+    components: normalizeStringArrayField(record, 'components', 'catalog pack'),
+  };
 }
 
 export class CatalogError extends Error {
@@ -375,7 +497,7 @@ export async function prepareSkillPackaging(input: {
     throw await parseCatalogError(response);
   }
 
-  return (await response.json()) as PreparePackagingResponse;
+  return normalizePreparePackagingResponse(await response.json());
 }
 
 export async function validateSkillPackaging(input: {
@@ -403,7 +525,7 @@ export async function validateSkillPackaging(input: {
     throw await parseCatalogError(response);
   }
 
-  return (await response.json()) as ValidatePackagingResponse;
+  return normalizeValidatePackagingResponse(await response.json());
 }
 
 export async function packSkillPackaging(input: {
@@ -433,7 +555,7 @@ export async function packSkillPackaging(input: {
     throw await parseCatalogError(response);
   }
 
-  return (await response.json()) as PackPackagingResponse;
+  return normalizePackPackagingResponse(await response.json());
 }
 
 export async function downloadPackedBundle(input: {

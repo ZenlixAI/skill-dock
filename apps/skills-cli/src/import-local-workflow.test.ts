@@ -140,6 +140,95 @@ describe('import-local workflow', () => {
     );
   });
 
+  it('accepts null array fields from catalog packaging responses during import-local', async () => {
+    writeFileSync(
+      join(testDir, 'SKILL.md'),
+      `---\nname: legacy-skill\ndescription: Imported skill\n---\n`
+    );
+    vi.mocked(spawnSync).mockReturnValueOnce({
+      status: 0,
+      stdout: 'published',
+      stderr: '',
+    } as ReturnType<typeof spawnSync>);
+
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            workspacePath: '/tmp/workspace',
+            packageName: '@acme.skill/legacy-skill',
+            version: '0.1.0',
+            warnings: null,
+            warningDetails: null,
+            importReport: null,
+            errors: null,
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            ok: true,
+            workspacePath: '/tmp/workspace',
+            packageName: '@acme.skill/legacy-skill',
+            version: '0.1.0',
+            manifestDigest: 'sha256:test',
+            components: null,
+            warnings: null,
+            warningDetails: null,
+            importReport: null,
+            errors: null,
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            workspacePath: '/tmp/workspace',
+            bundlePath: '/tmp/workspace/legacy-skill-0.1.0.tgz',
+            packageName: '@acme.skill/legacy-skill',
+            version: '0.1.0',
+            bundleBase64: Buffer.from('tgz-data').toString('base64'),
+            manifestDigest: 'sha256:test',
+            components: null,
+            warnings: null,
+            warningDetails: null,
+            importReport: null,
+            errors: null,
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 404,
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      );
+
+    const result = await runImportLocalWorkflow({
+      path: testDir,
+      registry: 'https://catalog.example.com',
+      packageName: '@acme.skill/legacy-skill',
+      version: '0.1.0',
+      npmRegistry: 'https://npm.example.com',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      packageName: '@acme.skill/legacy-skill',
+      version: '0.1.0',
+      bundlePath: expect.stringContaining('legacy-skill-0.1.0.tgz'),
+    });
+  });
+
   it('preserves an injected npm userconfig for publish during import-local', async () => {
     writeFileSync(
       join(testDir, 'SKILL.md'),

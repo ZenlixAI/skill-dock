@@ -13,6 +13,9 @@ export interface RegistryRequestError {
   kind: RegistryRequestErrorKind;
   message: string;
   requestId?: string;
+  code?: string;
+  status?: number;
+  details?: Record<string, unknown>;
 }
 
 export interface PageInfo {

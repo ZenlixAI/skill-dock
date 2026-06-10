@@ -238,6 +238,99 @@ describe('catalog client', () => {
     );
   });
 
+  it('normalizes null packaging arrays from catalog success payloads', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          workspacePath: '/tmp/workspace',
+          packageName: '@platform.skill/pdf-skill',
+          version: '1.2.0',
+          warnings: null,
+          warningDetails: null,
+          importReport: null,
+          errors: null,
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          ok: true,
+          workspacePath: '/tmp/workspace',
+          packageName: '@platform.skill/pdf-skill',
+          version: '1.2.0',
+          manifestDigest: 'sha256:manifest',
+          components: null,
+          warnings: null,
+          warningDetails: null,
+          importReport: null,
+          errors: null,
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          workspacePath: '/tmp/workspace',
+          bundlePath: '/tmp/workspace/pdf-skill-1.2.0.tgz',
+          packageName: '@platform.skill/pdf-skill',
+          version: '1.2.0',
+          bundleBase64: 'bundle-base64',
+          manifestDigest: 'sha256:manifest',
+          components: null,
+          warnings: null,
+          warningDetails: null,
+          importReport: null,
+          errors: null,
+        })
+      );
+
+    await expect(
+      prepareSkillPackaging({
+        registry: 'https://catalog.example.com',
+        source: { type: 'upload_archive', archiveBase64: 'archive-base64' },
+        target: { packageName: '@platform.skill/pdf-skill', version: '1.2.0' },
+      })
+    ).resolves.toEqual({
+      workspacePath: '/tmp/workspace',
+      packageName: '@platform.skill/pdf-skill',
+      version: '1.2.0',
+      warnings: [],
+      errors: [],
+    });
+
+    await expect(
+      validateSkillPackaging({
+        registry: 'https://catalog.example.com',
+        workspacePath: '/tmp/workspace',
+        target: { packageName: '@platform.skill/pdf-skill', version: '1.2.0' },
+      })
+    ).resolves.toEqual({
+      ok: true,
+      workspacePath: '/tmp/workspace',
+      packageName: '@platform.skill/pdf-skill',
+      version: '1.2.0',
+      manifestDigest: 'sha256:manifest',
+      warnings: [],
+      errors: [],
+    });
+
+    await expect(
+      packSkillPackaging({
+        registry: 'https://catalog.example.com',
+        workspacePath: '/tmp/workspace',
+        target: { packageName: '@platform.skill/pdf-skill', version: '1.2.0' },
+        includeBundle: true,
+      })
+    ).resolves.toEqual({
+      workspacePath: '/tmp/workspace',
+      bundlePath: '/tmp/workspace/pdf-skill-1.2.0.tgz',
+      bundleBase64: 'bundle-base64',
+      packageName: '@platform.skill/pdf-skill',
+      version: '1.2.0',
+      manifestDigest: 'sha256:manifest',
+      components: [],
+      warnings: [],
+      errors: [],
+    });
+  });
+
   it('surfaces stable catalog errors', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse(

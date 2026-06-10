@@ -74,17 +74,29 @@ function isMissingPackagingWorkspaceMessage(message: string) {
   return message.toLowerCase().includes('workspacepath must reference an existing directory');
 }
 
+function isRegistryPublishAuthFailure(code: string | undefined, details: Record<string, unknown> | undefined) {
+  if (code !== 'registry_publish_failed' || !details) {
+    return false;
+  }
+  const status = details.status;
+  return status === 401 || status === 403;
+}
+
 export function normalizeRegistryError(input: {
   status?: number;
   message: string;
   code?: string;
   requestId?: string;
+  details?: Record<string, unknown>;
 }): RegistryRequestError {
   if (input.status === 401 || input.status === 403) {
     return {
       kind: 'auth',
       message: 'Current session is not allowed to perform this action.',
       requestId: input.requestId,
+      code: input.code,
+      status: input.status,
+      details: input.details,
     };
   }
 
@@ -94,20 +106,40 @@ export function normalizeRegistryError(input: {
         kind: 'not_found',
         message: 'Registry does not contain this package version yet. Publish the packed bundle to the npm registry, then retry release-record.',
         requestId: input.requestId,
+        code: input.code,
+        status: input.status,
+        details: input.details,
       };
     }
     return {
       kind: 'not_found',
       message: 'The requested registry resource was not found.',
       requestId: input.requestId,
+      code: input.code,
+      status: input.status,
+      details: input.details,
     };
   }
 
   if (input.status != null && input.status >= 500) {
+    if (isRegistryPublishAuthFailure(input.code, input.details)) {
+      return {
+        kind: 'server',
+        message:
+          'Catalog tried to publish to the npm registry, but the registry rejected the backend credentials. Check `catalogCommon.auth.npmPublishAuthorization` / `SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION`, then retry.',
+        requestId: input.requestId,
+        code: input.code,
+        status: input.status,
+        details: input.details,
+      };
+    }
     return {
       kind: 'server',
       message: input.message,
       requestId: input.requestId,
+      code: input.code,
+      status: input.status,
+      details: input.details,
     };
   }
 
@@ -117,6 +149,9 @@ export function normalizeRegistryError(input: {
       message:
         'Packaging workspace is no longer available. If Catalog is running with multiple replicas, scale `catalog` down to 1 replica for prepare/validate/pack flows, then retry.',
       requestId: input.requestId,
+      code: input.code,
+      status: input.status,
+      details: input.details,
     };
   }
 
@@ -125,6 +160,9 @@ export function normalizeRegistryError(input: {
       kind: 'network',
       message: 'Unable to reach the registry backend.',
       requestId: input.requestId,
+      code: input.code,
+      status: input.status,
+      details: input.details,
     };
   }
 
@@ -132,6 +170,9 @@ export function normalizeRegistryError(input: {
     kind: 'unknown',
     message: input.message,
     requestId: input.requestId,
+    code: input.code,
+    status: input.status,
+    details: input.details,
   };
 }
 
@@ -142,6 +183,7 @@ export function normalizeThrownRegistryError(error: unknown): RegistryRequestErr
       message: error.message,
       code: error.code,
       requestId: error.requestId,
+      details: error.details,
     });
   }
 
