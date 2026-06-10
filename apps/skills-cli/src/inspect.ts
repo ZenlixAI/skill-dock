@@ -1,27 +1,9 @@
 import { resolve } from 'path';
-import {
-  runPackagingSession,
-  type RegistryPackagingSessionSuccessResult,
-} from './packaging-session.ts';
-import { formatImportReportSummary, formatPackagingWarnings } from './packaging-warning-output.ts';
+import { inspectSkillDirectory } from './authoring.ts';
+import { validateLocalWorkspace } from './local-packaging.ts';
 
 interface InspectOptions {
   path?: string;
-  registry?: string;
-  strict?: boolean;
-}
-
-function isRegistryValue(value: string | undefined): value is string {
-  if (typeof value !== 'string' || value.trim() === '') {
-    return false;
-  }
-
-  try {
-    const url = new URL(value);
-    return url.protocol === 'http:' || url.protocol === 'https:';
-  } catch {
-    return false;
-  }
 }
 
 export function parseInspectOptions(args: string[]): InspectOptions {
@@ -30,20 +12,6 @@ export function parseInspectOptions(args: string[]): InspectOptions {
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-
-    if (arg === '--registry') {
-      const candidate = args[i + 1];
-      if (isRegistryValue(candidate)) {
-        options.registry = candidate;
-        i++;
-      }
-      continue;
-    }
-
-    if (arg === '--strict') {
-      options.strict = true;
-      continue;
-    }
 
     if (typeof arg === 'string' && !arg.startsWith('-')) {
       positional.push(arg);
@@ -57,27 +25,23 @@ export function parseInspectOptions(args: string[]): InspectOptions {
   return options;
 }
 
-function isRegistryPackagingSuccess(
-  result: { ok: boolean; sessionKind: 'local' | 'registry' } | RegistryPackagingSessionSuccessResult
-): result is RegistryPackagingSessionSuccessResult {
-  return 'sessionKind' in result && result.ok && result.sessionKind === 'registry';
-}
-
 export async function runInspect(args: string[] = []): Promise<void> {
   const options = parseInspectOptions(args);
-  const registry = options.registry || process.env.SKILLS_REGISTRY_URL?.trim();
-  const result = await runPackagingSession({
-    path: resolve(options.path || process.cwd()),
-    registry,
-    strict: options.strict,
-  });
+  const directory = resolve(options.path || process.cwd());
+  const inspection = await inspectSkillDirectory(directory);
+  const localValidationErrors =
+    inspection.ok && inspection.packageName && inspection.version
+      ? await validateLocalWorkspace(directory)
+      : [];
+  const errors =
+    inspection.errors.length > 0 ? inspection.errors : localValidationErrors;
 
   console.log();
 
-  if (!result.ok) {
+  if (errors.length > 0) {
     console.log('Inspect failed');
     console.log();
-    for (const error of result.errors) {
+    for (const error of errors) {
       console.log(`- ${error}`);
     }
     process.exitCode = 1;
@@ -86,37 +50,16 @@ export async function runInspect(args: string[] = []): Promise<void> {
 
   console.log('Inspect OK');
   console.log();
-  console.log(`Directory: ${result.directory}`);
-  console.log(`SKILL.md: ${result.skillMdPath}`);
-  console.log(`package.json: ${result.packageJsonPath}`);
-  if (result.packageName) {
-    console.log(`package_name: ${result.packageName}`);
+  console.log(`Directory: ${inspection.directory}`);
+  console.log(`SKILL.md: ${inspection.skillMdPath}`);
+  console.log(`package.json: ${inspection.packageJsonPath}`);
+  if (inspection.packageName) {
+    console.log(`package_name: ${inspection.packageName}`);
   }
-  if (result.version) {
-    console.log(`version: ${result.version}`);
+  if (inspection.version) {
+    console.log(`version: ${inspection.version}`);
   }
-  if (isRegistryPackagingSuccess(result)) {
-    console.log(`workspace_handle: ${result.workspacePath}`);
-    const importSummary = formatImportReportSummary(result.importReport);
-    if (importSummary.length > 0) {
-      console.log('Import summary:');
-      for (const line of importSummary) {
-        console.log(`- ${line}`);
-      }
-    }
-    if (result.warnings && result.warnings.length > 0) {
-      console.log('Warnings:');
-      for (const warning of formatPackagingWarnings(result.warnings, result.warningDetails)) {
-        console.log(`- ${warning.title}`);
-        console.log(`  code: ${warning.code}`);
-        console.log(`  ${warning.message}`);
-        if (warning.suggestedAction) {
-          console.log(`  Suggested action: ${warning.suggestedAction}`);
-        }
-      }
-    }
-  }
-  if (result.components.length > 0) {
-    console.log(`components: ${result.components.join(', ')}`);
+  if (inspection.components.length > 0) {
+    console.log(`components: ${inspection.components.join(', ')}`);
   }
 }

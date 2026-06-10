@@ -95,7 +95,7 @@ ${BOLD}Find Options:${RESET}
   --registry <url>       Catalog base URL override (default env: SKILLS_REGISTRY_URL)
   --json                 Output query results as JSON
 
-${BOLD}Inspect / Publish Options:${RESET}
+${BOLD}Publish / Import Options:${RESET}
   --registry <url>       Catalog base URL override for registry-backed packaging flows
   --strict               Disable imported workspace normalization
 
@@ -256,23 +256,17 @@ ${BOLD}Examples:${RESET}
 
 function showInspectHelp(): void {
   console.log(`
-${BOLD}Usage:${RESET} skills inspect [path] [options]
+${BOLD}Usage:${RESET} skills inspect [path]
 
 ${BOLD}Description:${RESET}
-  Validate a local skill directory using the built-in inspection flow.
+  Validate a local skill directory with local authoring and packaging checks.
 
 ${BOLD}Arguments:${RESET}
   path              Optional path to a local skill directory (default: current directory)
 
-${BOLD}Options:${RESET}
-  --registry <url>  Catalog base URL override for registry-backed packaging validation
-  --strict          Disable imported workspace normalization during prepare
-
 ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} skills inspect
   ${DIM}$${RESET} skills inspect ./my-skill
-  ${DIM}$${RESET} skills inspect ./my-skill --strict
-  ${DIM}$${RESET} skills inspect ./my-skill --registry https://catalog.example.com
 `);
 }
 

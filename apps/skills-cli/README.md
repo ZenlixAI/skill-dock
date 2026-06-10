@@ -227,31 +227,16 @@ npx skills inspect
 
 # Validate a specific path
 npx skills inspect ./my-skill
-
-# Use a specific catalog entry point for packaging validation
-npx skills inspect ./my-skill --registry https://catalog.example.com
-
-# Disable imported workspace normalization and require a publishable bundle as-is
-npx skills inspect ./my-skill --registry https://catalog.example.com --strict
 ```
 
-Without registry configuration, `inspect` uses the local authoring validator.
-When `SKILLS_REGISTRY_URL` or `--registry <url>` is provided and the local directory
-already has a resolvable `package.json` identity, it upgrades to the registry-aligned
-packaging flow:
+`inspect` is a local-only preflight for skill authors. It validates:
 
-1. `POST /api/v1/skill-packaging/prepare`
-2. `POST /api/v1/skill-packaging/validate`
+- `SKILL.md` and its required frontmatter
+- `package.json` package identity and version fields
+- local packaging constraints such as nested `SKILL.md`, unsafe path entries, and missing capability content
 
-When imported-source normalization happens, `inspect` prints two operator-facing blocks:
-
-- `Import summary`: normalized vs direct import, strict mode, generated paths, identity rewrite
-- `Warnings`: human-readable warning titles, stable warning codes, and suggested actions
-
-| Option             | Description                                            |
-| ------------------ | ------------------------------------------------------ |
-| `--registry <url>` | Catalog base URL override for packaging validation     |
-| `--strict`         | Disable imported workspace normalization during prepare |
+`inspect` does not call Catalog packaging APIs, does not depend on `SKILLS_REGISTRY_URL`,
+and does not perform any publish-side normalization.
 
 ### `skills publish`
 
