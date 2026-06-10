@@ -7,10 +7,43 @@ describe('getRouteTheme', () => {
     expect(getRouteTheme('/catalog').tone).toBe('frontstage');
   });
 
-  it('marks workbench routes as backstage routes', () => {
-    expect(getRouteTheme('/workbench').tone).toBe('backstage');
-    expect(getRouteTheme('/workbench/import').tone).toBe('backstage');
-    expect(getRouteTheme('/workbench/audit').tone).toBe('backstage');
+  it('marks workbench home as a backstage detail route', () => {
+    expect(getRouteTheme('/workbench')).toEqual({
+      tone: 'backstage',
+      accent: 'detail',
+    });
+  });
+
+  it('marks workbench import as a backstage console route', () => {
+    expect(getRouteTheme('/workbench/import')).toEqual({
+      tone: 'backstage',
+      accent: 'console',
+    });
+  });
+
+  it('marks other workbench routes as backstage console routes', () => {
+    expect(getRouteTheme('/workbench/audit')).toEqual({
+      tone: 'backstage',
+      accent: 'console',
+    });
+  });
+
+  it('marks legal routes as frontstage legal routes', () => {
+    expect(getRouteTheme('/privacy')).toEqual({
+      tone: 'frontstage',
+      accent: 'legal',
+    });
+    expect(getRouteTheme('/terms')).toEqual({
+      tone: 'frontstage',
+      accent: 'legal',
+    });
+  });
+
+  it('marks login as a backstage console route', () => {
+    expect(getRouteTheme('/login')).toEqual({
+      tone: 'backstage',
+      accent: 'console',
+    });
   });
 
   it('treats skill detail routes as frontstage detail routes', () => {

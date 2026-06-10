@@ -24,12 +24,6 @@ export function AppShell({ children }: PropsWithChildren) {
   );
 
   async function handleLogout() {
-    await logoutSession();
-    refreshSession();
-    navigate('/login', { replace: true });
-  }
-
-  async function handleSwitchAccount() {
     const next = `${location.pathname}${location.search}`;
     await logoutSession();
     refreshSession();
@@ -62,9 +56,6 @@ export function AppShell({ children }: PropsWithChildren) {
             {runtimeUsesLogin && session.data ? <StatusPill tone="accent">已登录：{session.data.actor}</StatusPill> : null}
             {runtimeUsesLogin && session.data ? (
               <>
-                <button className="button button--secondary" onClick={handleSwitchAccount} type="button">
-                  切换账号
-                </button>
                 <button className="button button--secondary" onClick={handleLogout} type="button">
                   退出登录
                 </button>
