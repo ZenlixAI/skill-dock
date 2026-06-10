@@ -1,491 +1,338 @@
-# 客户现场交付 Runbook：K3s + Skills CLI
+# 客户现场交付 Runbook：Helm + K3s + Skills CLI
 
-## 1. 适用范围
+## 1. 当前推荐部署路径
 
-这份 Runbook 现在覆盖两条客户现场交付形态：
+客户现场现在只推荐一条主路径：
 
-1. 静态 YAML：
-  - 集群内部署 `skills-web + catalog`
-  - 集群外已有 `Postgres + Nexus`
-  - 集群外下发 `skills` CLI
-2. Helm chart：
-  - 复用外部或集群内已有 `Postgres`
-  - Chart 内部署 `nexus + catalog + skills-web`
-  - 集群外下发 `skills` CLI
+1. PostgreSQL 复用现场已有实例，或由客户单独提供托管实例。
+2. Skills Registry 用 Helm 部署：
+   - `skills-web`
+   - `catalog-read`
+   - `catalog-write`
+   - `nexus`
+   - 可选内置 `postgresql`
+3. `skills` CLI 部署在集群外的运维机、发布机或客户开发机。
 
-如果你明确只走“外部 Nexus + 集群内 web/catalog”这一条，继续看本页的静态清单部分即可。
+当前 Helm chart 仓库位于：
 
-如果客户现场是“**复用集群内 Postgres，但 Nexus 跟业务一起部署**”，直接用 Helm chart：
+- `/Users/ultraman/workspace/skill-registry-helm-chart`
 
-- [zarf/charts/skill-registry](../zarf/charts/skill-registry)
+静态 YAML 现在只保留给历史兼容或紧急排障，不再作为默认交付入口。
 
-它当前默认就是这条边界：
+## 2. 交付前输入清单
 
-1. 外部 / 集群内已有 Postgres
-2. Chart 内部署 `nexus + catalog + skills-web`
-3. `skills` CLI 仍然部署在集群外机器
+开始前先确认这些值：
 
-## 2. 最小生产边界
+- `skills` 对外域名，例如 `skills.example.com`
+- PostgreSQL 连接信息：
+  - `host`
+  - `port`
+  - `database`
+  - `username`
+  - `password`
+  - `sslMode`
+- Catalog 鉴权：
+  - `reader token`
+  - `authoring token`
+  - `publisher token`
+- 浏览器登录：
+  - `session secret`
+  - `session users json`
+- Nexus 发布凭据：
+  - `catalogCommon.auth.npmPublishAuthorization`
+- 镜像地址：
+  - `catalogCommon.image.repository`
+  - `catalogCommon.image.tag`
+  - `web.image.repository`
+  - `web.image.tag`
+  - `nexus.image.repository`
+  - `nexus.image.tag`
 
-现场最小生产边界不是“web + catalog”，而是：
+## 3. Helm 部署边界
 
-1. `skills-web`
-2. `catalog`
-3. `Postgres`
-4. `Nexus`
-   - 可以是外部已有
-   - 也可以是 Helm chart 内置
-5. `skills` CLI 下发到发布机 / 运维机 / 客户开发机
+这套 chart 现在的部署形态是：
 
-## 3. 交付前输入清单
+- `skills-web`
+  - 浏览器 UI
+  - 反代 `/api`
+- `catalog-read`
+  - 只承担读接口
+  - 支持多副本、HPA、PDB
+- `catalog-write`
+  - 承担 `prepare`、`validate`、`pack`、`publish`、`cleanup` 等写路径
+  - 默认单副本
+  - 需要共享打包工作目录时，可挂 `RWX PVC`
+- `nexus`
+  - npm 仓
+- `postgresql`
+  - 默认关闭
+  - 仅在你明确要内置数据库时启用
 
-开始前先拿齐这些信息：
+## 4. 关键 values 结构
 
-### 3.1 外部依赖
+核心 values 现在分三块：
 
-- Postgres DSN
-- 如果走外部 Nexus：
-  - Nexus npm hosted 仓地址
-  - Catalog Pod 内访问 Nexus 的地址
-  - CLI 机器访问 Nexus 的地址
-- 如果走 chart 内置 Nexus：
-  - 统一公网 host
-  - 是否通过同 host 的 `/repository/skills-npm/` 暴露
+- `catalogCommon`
+  - 共享镜像、鉴权、session、feature flags
+- `catalogRead`
+  - 读副本数、缓存、并发、连接池、HPA、PDB
+- `catalogWrite`
+  - 写副本数、并发、连接池、RWX workspace、PDB
 
-### 3.2 域名与入口
+至少要关注这些字段：
 
-- Web 域名
-- Catalog 是否通过 web 同域 `/api` 暴露
-- Ingress 类型
-  - Traefik
-  - Nginx
-  - 其他
+```yaml
+global:
+  imageRegistry: ""
 
-### 3.3 认证与权限
+postgresql:
+  enabled: false
+  host: postgresql.postgresql.svc.cluster.local
+  port: 5432
+  sslMode: disable
+  auth:
+    database: skill_registry
+    username: postgres
+    password: replace-me
 
-- `reader token`
-- `authoring token`
-- `publisher token`
-- Nexus 发布凭据
-  - `.npmrc`
-  - token
-  - 或用户名/密码
+catalogCommon:
+  image:
+    repository: harbor.example.com/infras/skill-registry
+    tag: v0.1.0
+  auth:
+    readerToken: replace-reader-token
+    authoringToken: replace-authoring-token
+    publisherToken: replace-publisher-token
+    npmPublishAuthorization: Bearer replace-npm-token
+  session:
+    secret: replace-session-secret
+    usersJson: |
+      {
+        "reader": {
+          "password": "replace-reader-password",
+          "role": "reader",
+          "actor": "reader"
+        },
+        "operator": {
+          "password": "replace-operator-password",
+          "role": "operator",
+          "actor": "operator"
+        }
+      }
 
-### 3.4 镜像与版本
+catalogRead:
+  replicaCount: 2
 
-- `catalog` 镜像 tag
-- `skills-web` 镜像 tag
-- `skills` CLI 版本
+catalogWrite:
+  replicaCount: 1
 
-## 4. 交付物清单
+traefik:
+  routes:
+    web:
+      enabled: true
+      host: skills.example.com
+      pathPrefix: /
+      tls: true
+    nexus:
+      enabled: true
+      host: skills.example.com
+      pathPrefix: /repository/skills-npm
+      tls: true
 
-这次交付至少要包含：
-
-### 4.1 集群交付物
-
-- `catalog` 镜像
-- `skills-web` 镜像
-- k3s 清单
-  - 参考 [zarf/k8s/customer-k3s-example.yaml](../zarf/k8s/customer-k3s-example.yaml)
-
-### 4.2 CLI 交付物
-
-- `skills` npm 包
-  - 或 `.tgz`
-- Node.js 版本要求
-  - `>=18`
-- CLI 安装说明
-- CLI 使用说明
-
-### 4.3 运维资料
-
-- Secret 键名清单
-- 发布验证命令
-- 回滚命令或回滚策略
-
-## 5. 关键配置表
-
-### 5.1 Catalog 运行时环境变量
-
-必填：
-
-- `SKILL_REGISTRY_ADDR`
-- `SKILL_REGISTRY_DATABASE_URL`
-- `SKILL_REGISTRY_READER_TOKEN`
-- `SKILL_REGISTRY_AUTHORING_TOKEN`
-- `SKILL_REGISTRY_PUBLISHER_TOKEN`
-- `SKILL_REGISTRY_NPM_REGISTRY_URL`
-- `SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL`
-
-建议同时设置：
-
-- `SKILL_REGISTRY_ENABLE_SAMPLE_DATA=false`
-- `SKILL_REGISTRY_ENABLE_MOCK_REGISTRY=false`
-
-如果 Web 端要支持浏览器登录、切换账号、退出登录，这两项必须补：
-
-- `SKILL_REGISTRY_SESSION_SECRET`
-- `SKILL_REGISTRY_SESSION_USERS_JSON`
-
-`SKILL_REGISTRY_SESSION_USERS_JSON` 最小示例：
-
-```json
-{
-  "reader": {
-    "password": "replace-reader-password",
-    "role": "reader",
-    "actor": "reader"
-  },
-  "operator": {
-    "password": "replace-operator-password",
-    "role": "operator",
-    "actor": "operator"
-  }
-}
+nexus:
+  admin:
+    password: replace-nexus-admin-password
+  repository:
+    publicUrl: ""
 ```
 
-### 5.2 两个 Nexus 地址的区别
+## 5. 推荐 values 准备方式
 
-- `SKILL_REGISTRY_NPM_REGISTRY_URL`
-  - 给 Catalog Pod 自己访问 Nexus metadata / tarball
-  - 必须是 **Pod 内可达地址**
-
-- `SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL`
-  - 给 Catalog 返回给外部 CLI 的 `npmRegistry` / `tarballUrl`
-  - 必须是 **发布机 / 运维机 / 客户开发机可达地址**
-
-常见正确示例：
-
-- Pod 内地址：
-  - `http://nexus.skill-registry.svc.cluster.local:8081/repository/skills-npm/`
-- CLI 外部地址：
-  - `https://skills.example.com/repository/skills-npm/`
-  - 它和 `SKILLS_REGISTRY_URL=https://skills.example.com` 共用同一个公共 host
-  - 兼容模式：如果你已经单独暴露 `nexus.example.com`，仍可继续把 `SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL` 指向 `https://nexus.example.com/repository/skills-npm/`；统一入口只是新的默认推荐。
-
-如果这两个值配反，最常见表现是：
-
-- `skills find` 正常
-- `skills add` 报 `fetch failed`
-
-### 5.3 Web 侧建议
-
-推荐做法：
-
-- 浏览器访问 `https://skills.example.com`
-- `skills-web` 用 Nginx 提供静态资源
-- `Nginx` 反代 `/api/...` 到 `catalog`
-- 登录模式下，不注入固定 `Authorization`
-- 让浏览器通过 session cookie 调同域 `/api/...`
-
-只有在旧的只读固定 token 部署里，才继续注入 `reader token`。
-
-不要把 `publisher token` 编进前端静态资源。
-
-## 6. 部署资产位置
-
-### 6.1 Catalog 镜像
-
-- Dockerfile：
-  - [zarf/docker/Dockerfile](../zarf/docker/Dockerfile)
-
-构建示例：
+建议在 chart 仓里从生产模板复制一份：
 
 ```bash
-docker build -f zarf/docker/Dockerfile -t registry.example.com/skill-registry-catalog:1.0.0 .
+cd /Users/ultraman/workspace/skill-registry-helm-chart
+cp values.production.example.yaml values.customer.yaml
 ```
 
-### 6.2 Web 镜像
-
-- Dockerfile：
-  - [zarf/docker/skills-web.Dockerfile](../zarf/docker/skills-web.Dockerfile)
-- Nginx 模板：
-  - [zarf/docker/nginx/skills-web.conf.template](../zarf/docker/nginx/skills-web.conf.template)
-
-构建示例：
-
-```bash
-docker build -f zarf/docker/skills-web.Dockerfile -t registry.example.com/skill-registry-web:1.0.0 .
-```
-
-### 6.3 K3s 示例清单
-
-- [zarf/k8s/customer-k3s-example.yaml](../zarf/k8s/customer-k3s-example.yaml)
-
-这份示例假设：
-
-- Postgres 已存在
-- Nexus 由集群内 `nexus` Service 提供，外部 CLI 通过同 host 的 `/repository/skills-npm/` 访问
-- 你只需要替换：
-  - image
-  - 域名
-  - Secret 值
-  - ingressClass / annotation
-
-### 6.4 Helm chart
-
-- [zarf/charts/skill-registry](../zarf/charts/skill-registry)
-
-默认边界：
-
-1. 复用集群内已有 Postgres
-2. Chart 内部署 `nexus + catalog + skills-web`
-3. 如需 full all-in-one，再显式设置 `postgresql.enabled=true`
-
-当前 chart 还额外支持这些现场常用交付字段：
+然后至少修改：
 
 - `global.imageRegistry`
-- `global.imagePullSecrets`
-- `catalog/web/nexus/postgresql` 的：
-  - `podAnnotations`
-  - `podLabels`
-  - `nodeSelector`
-  - `tolerations`
-  - `affinity`
-- `catalog.service` / `web.service` / `nexus.service` 的：
-  - `type`
-  - `nodePort`
-- `nexus.persistence.storageClass`
-- `postgresql.persistence.storageClass`
+- `catalogCommon.image.*`
+- `web.image.*`
+- `nexus.image.*`
+- `postgresql.*`
+- `catalogCommon.auth.*`
+- `catalogCommon.session.*`
+- `catalogRead.replicaCount`
+- `catalogWrite.replicaCount`
+- `traefik.routes.web.*`
+- `traefik.routes.nexus.*`
+- `nexus.admin.password`
 
-按你当前集群口径的最小安装示例：
+本地已有一个现场样例可参考：
+
+- `/Users/ultraman/workspace/skill-registry-helm-chart/values.192.168.10.124.yaml`
+
+## 6. 外部地址与内部地址
+
+必须区分两类 Nexus 地址：
+
+- `nexus.repository.internalUrl`
+  - 给 Catalog Pod 自己访问
+  - 不填时默认走集群内 Service
+- `nexus.repository.publicUrl`
+  - 给 CLI 返回可下载的公网 npm 地址
+  - 如果 Traefik 已经把 `/repository/skills-npm` 暴露在 `skills.example.com`，这里可以留空，让 chart 自动推导
+
+推荐公网统一入口：
+
+- Web：`https://skills.example.com`
+- npm：`https://skills.example.com/repository/skills-npm/`
+
+如果这两个地址配反，典型表现是：
+
+- `skills find` 正常
+- `skills add` 或 `skills publish` 拉包失败
+
+## 7. Helm 安装命令
+
+先做渲染检查：
 
 ```bash
-helm upgrade --install skill-registry ./zarf/charts/skill-registry \
+cd /Users/ultraman/workspace/skill-registry-helm-chart
+helm template skill-registry . -f values.customer.yaml
+```
+
+再执行安装或升级：
+
+```bash
+helm upgrade --install skill-registry /Users/ultraman/workspace/skill-registry-helm-chart \
   -n skill-registry \
   --create-namespace \
-  --set postgresql.host=postgresql.postgresql.svc.cluster.local \
-  --set postgresql.port=5432 \
-  --set postgresql.auth.username=postgres \
-  --set postgresql.auth.password=password
+  -f /Users/ultraman/workspace/skill-registry-helm-chart/values.customer.yaml
 ```
 
-## 7. Skills CLI 下发方式
+如果你要启用内置 PostgreSQL，再额外设置：
 
-`skills` CLI 不应该部署进 k3s。它的角色是：
-
-- 客户开发机安装工具
-- 发布机 / 运维机发布工具
-
-### 7.1 方式 A：走统一公网入口
-
-这是默认推荐路径。
-
-发布：
-
-```bash
-cd apps/skills-cli
-corepack enable
-pnpm install --frozen-lockfile
-pnpm run build
-npm publish --registry https://skills.example.com/repository/skills-npm/
+```yaml
+postgresql:
+  enabled: true
+  auth:
+    database: skill_registry
+    username: skill_registry
+    password: replace-me
 ```
 
-客户安装：
+## 8. 高可用建议
+
+读多写少的现场，建议起步配置：
+
+- `catalogRead.replicaCount: 2`
+- `catalogWrite.replicaCount: 1`
+- `catalogRead.hpa.enabled: true`
+- `catalogRead.pdb.enabled: true`
+- `catalogWrite.pdb.enabled: true`
+
+如果写路径需要多副本，再先满足这两个前提：
+
+1. `catalogWrite.workspace.enabled=true`
+2. 提供可多 Pod 共享的 `RWX PVC`
+
+否则不要直接把 `catalogWrite` 扩成多副本。
+
+## 9. Helm 部署后检查
+
+先看工作负载：
 
 ```bash
-npx --registry https://skills.example.com/repository/skills-npm/ skills --help
+kubectl -n skill-registry get pods
+kubectl -n skill-registry get svc
+kubectl -n skill-registry get ingressroute
+kubectl -n skill-registry get pdb
+kubectl -n skill-registry get hpa
+```
+
+重点确认：
+
+- `catalog-read-*` Ready
+- `catalog-write-*` Ready
+- `skills-web-*` Ready
+- `nexus-*` Ready
+
+如果启用了内置 PG，再确认：
+
+- `postgresql-*` Ready
+
+## 10. CLI 下发与配置
+
+`skills` CLI 不应该部署进 k3s。它应该装在：
+
+- 发布机
+- 运维机
+- 客户开发机
+
+安装方式：
+
+### 10.1 统一公网 npm 仓安装
+
+```bash
 npm install -g skills --registry https://skills.example.com/repository/skills-npm/
 ```
 
-### 7.2 方式 B：离线下发 `.tgz`
-
-这是封闭环境路径。
-
-构建：
+### 10.2 离线 `.tgz` 安装
 
 ```bash
-cd apps/skills-cli
-corepack enable
-pnpm install --frozen-lockfile
-pnpm run build
-npm pack
+npm install -g ./skills-<version>.tgz
 ```
 
-客户安装：
-
-```bash
-npm install -g ./skills-1.5.9.tgz
-```
-
-### 7.3 方式 C：预装到运维机或发布机
-
-如果 CLI 只给少数人使用，可以直接预装：
-
-```bash
-npm install -g skills --registry https://skills.example.com/repository/skills-npm/
-```
-
-## 8. CLI 需要改哪些配置
-
-结论：
-
-- **不改源码**
-- 只改运行配置
-
-### 8.1 查询 / 安装链路
-
-给 CLI 配 Catalog 地址和 token：
-
-```bash
-export SKILLS_REGISTRY_URL=https://skills.example.com
-export SKILLS_REGISTRY_TOKEN=<reader-token>
-```
-
-或显式传参：
-
-```bash
-skills find pdf --registry https://skills.example.com
-skills add @company.skill/pdf-skill --registry https://skills.example.com
-```
-
-适用命令：
-
-- `skills find`
-- `skills add`
-- `skills list`
-- `skills update`
-- `skills remove`
-
-### 8.2 发布 / 导入链路
-
-除了 Catalog 地址外，还要让 `npm publish` 能发到 Nexus。
-
-准备 `.npmrc`：
-
-```ini
-registry=https://skills.example.com/repository/skills-npm/
-//skills.example.com/repository/skills-npm/:_authToken=REPLACE_ME
-```
-
-典型环境变量：
-
-```bash
-export SKILLS_REGISTRY_URL=https://skills.example.com
-export SKILLS_REGISTRY_TOKEN=<publisher-token>
-export NPM_CONFIG_USERCONFIG=/abs/path/to/.npmrc
-```
-
-关键参数：
-
-- `--registry`
-  - 指向 Catalog
-- `--npm-registry`
-  - 指向统一公网 npm 入口
-- `--publish-registry`
-  - 写入 package metadata / release-record 的 registry 地址
-
-## 9. 现场部署步骤
-
-按这个顺序落：
-
-### Step 1. 确认客户现场依赖
-
-确认：
-
-- Postgres 已可连通
-- 如果走外部 Nexus：Nexus npm hosted 仓已创建
-- 如果走 chart 内置 Nexus：统一公网 host 与 `/repository/skills-npm/` 路由已确定
-- CLI 公网 npm 入口地址已确定
-- k3s Ingress 路径已确定
-
-### Step 2. 构建并推送镜像
-
-构建：
-
-```bash
-docker build -f zarf/docker/Dockerfile -t registry.example.com/skill-registry-catalog:1.0.0 .
-docker build -f zarf/docker/skills-web.Dockerfile -t registry.example.com/skill-registry-web:1.0.0 .
-```
-
-然后推送到客户可拉取的镜像仓。
-
-### Step 3. 准备 Secret
-
-至少要准备：
-
-- Postgres DSN
-- `reader token`
-- `authoring token`
-- `publisher token`
-- `SKILL_REGISTRY_NPM_REGISTRY_URL`
-- `SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL`
-- 浏览器登录模式下的 `SKILL_REGISTRY_SESSION_SECRET` / `SKILL_REGISTRY_SESSION_USERS_JSON`
-- 如果你坚持只读固定 token Web，再额外准备 web 侧代理用 `reader token`
-
-### Step 4. 改 k3s 清单
-
-基于 [zarf/k8s/customer-k3s-example.yaml](../zarf/k8s/customer-k3s-example.yaml) 替换：
-
-- image
-- namespace
-- host / domain
-- Secret 引用
-- ingressClass / annotation
-
-### Step 5. 应用 k3s 清单
-
-先创建：
-
-- Namespace
-- Secret
-
-再创建：
-
-- `catalog` Deployment / Service
-- `skills-web` Deployment / Service
-- Ingress
-
-### Step 6. 验证浏览器入口
-
-验证：
-
-- 能打开 web 域名
-- 搜索接口正常
-- skill 详情页正常
-
-如果这里失败，先查：
-
-- Ingress
-- `/api` 代理
-- session 配置是否完整
-- 如果是只读固定 token 部署，再查 reader token 注入
-
-### Step 7. 安装 CLI 到运维机
-
-任选一种方式：
-
-- npm 仓安装
-- `.tgz` 安装
-
-安装后先跑：
-
-```bash
-skills --help
-```
-
-### Step 8. 验证只读链路
+查询和安装链路：
 
 ```bash
 export SKILLS_REGISTRY_URL=https://skills.example.com
 export SKILLS_REGISTRY_TOKEN=<reader-token>
 
 skills find pdf
+skills add @company.skill/pdf-skill -y
+```
+
+发布链路还需要 `.npmrc`：
+
+```ini
+registry=https://skills.example.com/repository/skills-npm/
+//skills.example.com/repository/skills-npm/:_authToken=REPLACE_ME
+```
+
+```bash
+export SKILLS_REGISTRY_URL=https://skills.example.com
+export SKILLS_REGISTRY_TOKEN=<publisher-token>
+export NPM_CONFIG_USERCONFIG=/abs/path/to/.npmrc
+
+skills publish /abs/path/to/skill
+```
+
+## 11. 回归验证命令
+
+部署完成后，至少跑这几组检查。
+
+### 11.1 读链路
+
+```bash
+export SKILLS_REGISTRY_URL=https://skills.example.com
+export SKILLS_REGISTRY_TOKEN=<reader-token>
+
+skills find pdf
+skills find pdf --json
 skills list
 ```
 
-### Step 9. 验证安装链路
+### 11.2 安装链路
 
 ```bash
 skills add @company.skill/pdf-skill -a codex -y
 ```
 
-验证结果：
-
-- 安装目录写入 `./.agents/skills/`
-- 项目状态写入 `./skills-lock.json`
-
-### Step 10. 验证发布链路
+### 11.3 发布链路
 
 ```bash
 export SKILLS_REGISTRY_URL=https://skills.example.com
@@ -506,126 +353,30 @@ skills import-local /abs/path/to/legacy-skill \
   --publish-registry https://skills.example.com/repository/skills-npm/
 ```
 
-## 10. 现场标准验证命令
+## 12. 故障排查
 
-### 10.1 只读验证
+`skills find` 失败时，先查：
 
-```bash
-export SKILLS_REGISTRY_URL=https://skills.example.com
-export SKILLS_REGISTRY_TOKEN=<reader-token>
+- `SKILLS_REGISTRY_URL`
+- `SKILLS_REGISTRY_TOKEN`
+- CLI 到 `skills.example.com` 的网络
 
-skills find pdf
-skills find pdf --json
-skills list
-```
+`skills add` 或 `skills publish` 拉包失败时，优先查：
 
-### 10.2 安装验证
+- `nexus.repository.publicUrl`
+- Traefik `/repository/skills-npm` 路由
+- CLI 机器到公网 npm 入口的可达性
 
-```bash
-skills add @company.skill/pdf-skill -a codex -y
-skills update @company.skill/pdf-skill
-skills remove @company.skill/pdf-skill -y
-```
+浏览器能打开但列表为空时，优先查：
 
-### 10.3 发布验证
+- `skills-web` 到 `catalog-read` 的反代
+- session 配置
+- 只读固定 token 模式下的 `web.auth.catalogAuthorizationHeader`
 
-```bash
-export SKILLS_REGISTRY_TOKEN=<publisher-token>
-export NPM_CONFIG_USERCONFIG=/abs/path/to/.npmrc
+## 13. 兼容说明
 
-skills publish /abs/path/to/skill
-```
+如果必须走旧的静态 YAML，再参考：
 
-## 11. 故障排查表
+- [zarf/k8s/customer-k3s-example.yaml](../zarf/k8s/customer-k3s-example.yaml)
 
-### 11.1 `skills find` 失败
-
-先查：
-
-- `SKILLS_REGISTRY_URL` 是否正确
-- CLI 到 Catalog 网络是否通
-- token 是否正确
-- web 同域代理是否把 `/api` 指到了 Catalog
-
-### 11.2 `skills add` 时报 `fetch failed`
-
-优先查：
-
-- `SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL` 是否没配
-- 它是否仍是集群内地址
-- CLI 机器是否能直接访问 Nexus tarball URL
-- Nexus tarball 是否允许当前认证方式读取
-
-### 11.3 `skills publish` 失败
-
-优先查：
-
-- `.npmrc` 是否生效
-- `NPM_CONFIG_USERCONFIG` 是否指向正确文件
-- `--npm-registry` 是否与目标 Nexus 一致
-- 发布账号是否对该 npm hosted 仓有写权限
-
-### 11.4 浏览器能打开但列表为空
-
-优先查：
-
-- web 代理是否注入了 `reader token`
-- Catalog 是否已成功连接 Postgres
-- Catalog 是否能访问 Nexus metadata
-
-## 12. 上生产前检查单
-
-- 已关闭 sample seed
-- 已关闭 mock registry
-- Catalog 已使用正式 Postgres
-- `SKILL_REGISTRY_NPM_REGISTRY_URL` 指向正式 Nexus
-- `SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL` 对真实 CLI 可访问
-- `skills publish` 使用正式发布凭据
-- 已验证客户侧 `skills add` 能真实下载 bundle
-- 已明确项目级安装与全局安装默认策略
-- 已准备 token 轮换、审计、回滚方案
-
-## 13. 风险提示
-
-交付前必须明确告诉客户：
-
-1. Web 不是 CLI 的替代
-2. CLI 不是集群内常驻服务
-3. 这套仓库已有可用交付资产，但还没有完整 Helm、secret 管理和正式 CI/CD release pipeline
-
-## 14. 附录：组件边界
-
-### 14.1 Web
-
-职责：
-
-- 提供搜索、浏览、会话信息和面向运营的 UI
-- 通过同域 `/api/...` 调 Catalog
-
-### 14.2 Catalog
-
-职责：
-
-- 搜索 skill
-- 返回 install target
-- 处理 packaging / release-record / audit / governance
-- 从 Nexus 回查 package metadata 和 tarball
-
-### 14.3 Postgres
-
-职责：
-
-- 持久化 catalog、audit、幂等、治理状态
-
-### 14.4 Nexus
-
-职责：
-
-- 存 skill bundle tarball
-- 提供 npm metadata
-
-## 15. 关联文档
-
-- [README.md](../README.md)
-- [docs/local-nexus-e2e.zh-CN.md](local-nexus-e2e.zh-CN.md)
-- [docs/batch-import-skills.zh-CN.md](batch-import-skills.zh-CN.md)
+但这条路径现在不再作为主线交付方式，也不会优先跟进新的读写拆分和 HA 能力。

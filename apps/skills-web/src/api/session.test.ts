@@ -40,6 +40,7 @@ function createMockApiClient(
     preparePackaging: notUsed,
     validatePackaging: notUsed,
     packSkill: notUsed,
+    publishSkill: notUsed,
     cleanupPackagingWorkspace: notUsed,
     createReleaseRecord: notUsed,
     applySkillGovernanceChange: notUsed,

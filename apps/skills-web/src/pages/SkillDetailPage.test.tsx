@@ -268,8 +268,8 @@ describe('SkillDetailPage', () => {
       </SessionProvider>
     );
 
-    expect(await screen.findByRole('heading', { name: '安装状态' })).toBeInTheDocument();
-    expect(screen.getByText('安装目标已解析，正在等待对应版本的安装策略返回。')).toBeInTheDocument();
+    expect(await screen.findByText('安装目标已解析，正在等待对应版本的安装策略返回。')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '安装状态' })).toBeInTheDocument();
     expect(screen.getByText('正在加载安装策略，请稍候。')).toBeInTheDocument();
   });
 
@@ -318,8 +318,8 @@ describe('SkillDetailPage', () => {
       </SessionProvider>
     );
 
-    expect(await screen.findByRole('heading', { name: '安装状态' })).toBeInTheDocument();
-    expect(screen.getByText('安装目标请求失败，暂时无法生成可复制的默认安装命令。')).toBeInTheDocument();
+    expect(await screen.findByText('安装目标请求失败，暂时无法生成可复制的默认安装命令。')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '安装状态' })).toBeInTheDocument();
     expect(screen.getByText('not available')).toBeInTheDocument();
   });
 
@@ -368,8 +368,8 @@ describe('SkillDetailPage', () => {
       </SessionProvider>
     );
 
-    expect(await screen.findByRole('heading', { name: '安装状态' })).toBeInTheDocument();
-    expect(screen.getByText('等安装目标被仓库解析出来后，这里会显示可直接复制的命令。')).toBeInTheDocument();
+    expect(await screen.findByText('等安装目标被仓库解析出来后，这里会显示可直接复制的命令。')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '安装状态' })).toBeInTheDocument();
     expect(screen.getByText('当前还没有可用的安装目标。请先检查最新版本是否已经发布并可解析。')).toBeInTheDocument();
   });
 

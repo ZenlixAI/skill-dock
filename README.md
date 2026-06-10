@@ -13,7 +13,6 @@
 如果你现在关心的是**客户现场交付 / k3s 部署 / CLI 下发方式**，直接看：
 
 - [docs/customer-k3s-deployment.zh-CN.md](docs/customer-k3s-deployment.zh-CN.md)
-- [docs/k3s-all-in-one.zh-CN.md](docs/k3s-all-in-one.zh-CN.md)
 
 ## 本地开发
 
@@ -292,16 +291,10 @@ make batch-import MANIFEST=/abs/path/to/import.json NPM_BACKEND=nexus
 
 部署说明统一看 [docs/customer-k3s-deployment.zh-CN.md](docs/customer-k3s-deployment.zh-CN.md)。
 
-如果目标是客户现场 k3s 交付，补充看：
+如果目标是客户现场 Helm 交付，直接看：
 
 - [docs/customer-k3s-deployment.zh-CN.md](docs/customer-k3s-deployment.zh-CN.md)
 - [zarf/k8s/customer-k3s-example.yaml](zarf/k8s/customer-k3s-example.yaml)
-
-如果目标是 k3s 上的 Helm / YAML 交付，直接看：
-
-- [docs/k3s-all-in-one.zh-CN.md](docs/k3s-all-in-one.zh-CN.md)
-- [zarf/k8s/k3s-all-in-one.yaml](zarf/k8s/k3s-all-in-one.yaml)
-- [zarf/charts/skill-registry](zarf/charts/skill-registry)
 
 ### 8. 重置与清理
 
