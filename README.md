@@ -294,7 +294,8 @@ make batch-import MANIFEST=/abs/path/to/import.json NPM_BACKEND=nexus
 如果目标是客户现场 Helm 交付，直接看：
 
 - [docs/customer-k3s-deployment.zh-CN.md](docs/customer-k3s-deployment.zh-CN.md)
-- [zarf/k8s/customer-k3s-example.yaml](zarf/k8s/customer-k3s-example.yaml)
+- [../skill-registry-helm-chart/README.md](/Users/ultraman/workspace/skill-registry-helm-chart/README.md)
+- [../skill-registry-helm-chart/values.production.example.yaml](/Users/ultraman/workspace/skill-registry-helm-chart/values.production.example.yaml)
 
 ### 8. 重置与清理
 

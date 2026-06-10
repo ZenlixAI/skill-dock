@@ -24,6 +24,10 @@
 开始前先确认这些值：
 
 - `skills` 对外域名，例如 `skills.example.com`
+- Traefik 暴露方式：
+  - 是否已经有可用的 Traefik
+  - `traefik.entrypoint`
+  - 是否采用单域名统一入口
 - PostgreSQL 连接信息：
   - `host`
   - `port`
@@ -32,14 +36,21 @@
   - `password`
   - `sslMode`
 - Catalog 鉴权：
-  - `reader token`
-  - `authoring token`
-  - `publisher token`
-- 浏览器登录：
-  - `session secret`
-  - `session users json`
+  - 三个独立 token：`readerToken` / `authoringToken` / `publisherToken`
+  - 或一份 `catalogCommon.auth.authTokensJson`
+- Web 鉴权模式：
+  - 浏览器 session 登录
+    - `catalogCommon.session.secret`
+    - `catalogCommon.session.usersJson`
+  - 或固定 Header 透传
+    - `web.auth.catalogAuthorizationHeader`
 - Nexus 发布凭据：
   - `catalogCommon.auth.npmPublishAuthorization`
+- Nexus 部署模式：
+  - `nexus.mode=embedded`
+  - 或 `nexus.mode=external`
+    - `nexus.repository.internalUrl`
+    - 如果还要让本 Chart 继续渲染 Nexus 的 `IngressRoute`，还要 `nexus.externalService.host`
 - 镜像地址：
   - `catalogCommon.image.repository`
   - `catalogCommon.image.tag`
@@ -67,6 +78,19 @@
 - `postgresql`
   - 默认关闭
   - 仅在你明确要内置数据库时启用
+
+补充边界：
+
+- Chart 只渲染 Traefik `IngressRoute`，不会安装 Traefik 本身
+- `skills-web` 的 nginx 当前路由是：
+  - `/api/` -> `catalog-read`
+  - `/api/v1/skill-packaging/*` -> `catalog-write`
+  - `/api/v1/skills/{pkg}/.../release-record|governance-changes` -> `catalog-write`
+  - `/api/v1/audit-events` -> `catalog-write`
+  - `/repository/skills-npm/` -> `nexus`
+- Kubernetes 资源命名上，读面 workload 目前仍叫 `catalog`
+  - 例如默认 release `skill-registry` 下会看到 `skill-registry-catalog`
+  - 但它的 `app.kubernetes.io/component` label 已经是 `catalog-read`
 
 ## 4. 关键 values 结构
 
@@ -100,6 +124,7 @@ catalogCommon:
     repository: harbor.example.com/infras/skill-registry
     tag: v0.1.0
   auth:
+    authTokensJson: ""
     readerToken: replace-reader-token
     authoringToken: replace-authoring-token
     publisherToken: replace-publisher-token
@@ -122,6 +147,50 @@ catalogCommon:
 
 catalogRead:
   replicaCount: 2
+
+catalogWrite:
+  replicaCount: 1
+  workspace:
+    enabled: false
+
+web:
+  auth:
+    catalogAuthorizationHeader: ""
+
+traefik:
+  entrypoint: web
+  routes:
+    web:
+      enabled: true
+      host: skills.example.com
+      pathPrefix: /
+      tls: true
+    nexus:
+      enabled: true
+      host: skills.example.com
+      pathPrefix: /repository/skills-npm
+      tls: true
+
+nexus:
+  mode: embedded
+  admin:
+    password: replace-nexus-admin-password
+  repository:
+    internalUrl: ""
+    publicUrl: ""
+  externalService:
+    enabled: false
+    host: ""
+    port: 8081
+```
+
+这里有几个 chart 当前的校验约束要明确：
+
+- `catalogCommon.auth.authTokensJson` 为空时，`readerToken` / `authoringToken` / `publisherToken` 都必须填
+- `web.auth.catalogAuthorizationHeader` 为空时，`catalogCommon.session.secret` 和 `catalogCommon.session.usersJson` 都必须填
+- `traefik.routes.nexus.enabled=false` 时，必须手动提供 `nexus.repository.publicUrl`
+- `nexus.mode=external` 时，必须提供 `nexus.repository.internalUrl`
+- `nexus.mode=external` 且仍启用 `traefik.routes.nexus` 时，必须再开启 `nexus.externalService.enabled=true` 并填写 `nexus.externalService.host`
 
 `catalogCommon.auth.npmPublishAuthorization` 的用途要单独说明：
 
@@ -171,29 +240,6 @@ node -e 'const fs=require("fs");const p=process.argv[1];for(const raw of fs.read
 - 或前端更明确的提示：
   - `Catalog tried to publish to the npm registry, but the registry rejected the backend credentials.`
 
-catalogWrite:
-  replicaCount: 1
-
-traefik:
-  routes:
-    web:
-      enabled: true
-      host: skills.example.com
-      pathPrefix: /
-      tls: true
-    nexus:
-      enabled: true
-      host: skills.example.com
-      pathPrefix: /repository/skills-npm
-      tls: true
-
-nexus:
-  admin:
-    password: replace-nexus-admin-password
-  repository:
-    publicUrl: ""
-```
-
 ## 5. 推荐 values 准备方式
 
 建议在 chart 仓里从生产模板复制一份：
@@ -208,15 +254,27 @@ cp values.production.example.yaml values.customer.yaml
 - `global.imageRegistry`
 - `catalogCommon.image.*`
 - `web.image.*`
-- `nexus.image.*`
 - `postgresql.*`
 - `catalogCommon.auth.*`
 - `catalogCommon.session.*`
+- `web.auth.catalogAuthorizationHeader`
 - `catalogRead.replicaCount`
 - `catalogWrite.replicaCount`
 - `traefik.routes.web.*`
 - `traefik.routes.nexus.*`
+- `nexus.mode`
+- `nexus.repository.*`
 - `nexus.admin.password`
+
+按模式补充：
+
+- `nexus.mode=embedded`
+  - 必须改 `nexus.admin.password`
+  - 需要镜像时改 `nexus.image.*`
+- `nexus.mode=external`
+  - 至少改 `nexus.repository.internalUrl`
+  - 如果外部用户不走 Traefik 统一入口，必须改 `nexus.repository.publicUrl`
+  - 如果还要让 Chart 继续代理到外部 Nexus，必须改 `nexus.externalService.*`
 
 本地已有一个现场样例可参考：
 
@@ -228,10 +286,35 @@ cp values.production.example.yaml values.customer.yaml
 
 - `nexus.repository.internalUrl`
   - 给 Catalog Pod 自己访问
-  - 不填时默认走集群内 Service
+  - `embedded` 模式下不填时默认走集群内 Service
+  - `external` 模式下必填
 - `nexus.repository.publicUrl`
   - 给 CLI 返回可下载的公网 npm 地址
   - 如果 Traefik 已经把 `/repository/skills-npm` 暴露在 `skills.example.com`，这里可以留空，让 chart 自动推导
+  - 如果没启用 `traefik.routes.nexus`，这里必须手动填写
+
+当 `nexus.mode=external` 时，还有第三组地址相关配置：
+
+- `nexus.externalService.enabled`
+  - 仅在你想让 Chart 继续渲染 Nexus `IngressRoute` 时启用
+- `nexus.externalService.host`
+  - 外部 Nexus 的 DNS 名称
+- `nexus.externalService.port`
+  - 外部 Nexus 的端口
+
+一个最常见的外部 Nexus 配置形态是：
+
+```yaml
+nexus:
+  mode: external
+  repository:
+    internalUrl: http://nexus.example.internal:8081/repository/skills-npm/
+    publicUrl: ""
+  externalService:
+    enabled: true
+    host: nexus.example.internal
+    port: 8081
+```
 
 推荐公网统一入口：
 
@@ -280,7 +363,12 @@ postgresql:
 - `catalogWrite.replicaCount: 1`
 - `catalogRead.hpa.enabled: true`
 - `catalogRead.pdb.enabled: true`
-- `catalogWrite.pdb.enabled: true`
+- `catalogWrite.pdb.enabled: false`
+
+说明：
+
+- `catalogWrite` 单副本时，继续保持 `pdb.enabled=false` 更符合当前 chart 默认值
+- 如果你把 `catalogWrite.pdb.enabled=true` 且 `minAvailable=1`，滚动维护时会更保守，可能阻塞主动驱逐
 
 如果写路径需要多副本，再先满足这两个前提：
 
@@ -294,6 +382,7 @@ postgresql:
 先看工作负载：
 
 ```bash
+kubectl -n skill-registry get deploy
 kubectl -n skill-registry get pods
 kubectl -n skill-registry get svc
 kubectl -n skill-registry get ingressroute
@@ -303,14 +392,20 @@ kubectl -n skill-registry get hpa
 
 重点确认：
 
-- `catalog-read-*` Ready
-- `catalog-write-*` Ready
-- `skills-web-*` Ready
-- `nexus-*` Ready
+- `skill-registry-catalog` Ready
+- `skill-registry-catalog-write` Ready
+- `skill-registry-web` Ready
+- `skill-registry-nexus` Ready
 
 如果启用了内置 PG，再确认：
 
-- `postgresql-*` Ready
+- `skill-registry-postgresql` Ready
+
+如果你改了 release name，资源名前缀会跟着变；排障时建议同时看 label：
+
+```bash
+kubectl -n skill-registry get pods -L app.kubernetes.io/component
+```
 
 ## 10. CLI 下发与配置
 
