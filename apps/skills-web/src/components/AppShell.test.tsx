@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import * as client from '../api/client';
+import { LoginPage } from '../pages/LoginPage';
 import { SessionProvider } from '../session/SessionProvider';
 import { AppShell } from './AppShell';
 
@@ -34,9 +35,14 @@ function renderAppShell(pathname: string) {
   );
 }
 
-function LoginMarker() {
+function LocationProbe() {
   const location = useLocation();
-  return <div>{`login${location.search}`}</div>;
+  const forceLogoutLanding =
+    typeof location.state === 'object' &&
+    location.state !== null &&
+    'forceLogoutLanding' in location.state &&
+    location.state.forceLogoutLanding === true;
+  return <div>{`${location.pathname}${location.search}|forceLogoutLanding=${String(forceLogoutLanding)}`}</div>;
 }
 
 describe('AppShell', () => {
@@ -85,19 +91,22 @@ describe('AppShell', () => {
     expect(screen.getByRole('button', { name: '退出登录' })).toBeInTheDocument();
   });
 
-  it('redirects logout to login with the preserved current location as next', async () => {
-    vi.mocked(client.getSession).mockResolvedValue({
-      role: 'reader',
-      actor: 'dev@company',
-      authMechanism: 'session',
-      allowedActions: ['session.read'],
-      allowedPackages: [],
-    });
+  it('redirects logout to the login form with the preserved current location as next', async () => {
+    vi.mocked(client.getSession)
+      .mockResolvedValueOnce({
+        role: 'reader',
+        actor: 'dev@company',
+        authMechanism: 'session',
+        allowedActions: ['session.read'],
+        allowedPackages: [],
+      })
+      .mockResolvedValue(undefined as never);
     vi.mocked(client.logoutSession).mockResolvedValue(undefined);
 
     render(
       <MemoryRouter initialEntries={['/catalog?q=pdf']}>
         <SessionProvider>
+          <LocationProbe />
           <Routes>
             <Route
               path="/catalog"
@@ -107,7 +116,7 @@ describe('AppShell', () => {
                 </AppShell>
               }
             />
-            <Route path="/login" element={<LoginMarker />} />
+            <Route path="/login" element={<LoginPage />} />
           </Routes>
         </SessionProvider>
       </MemoryRouter>
@@ -118,6 +127,7 @@ describe('AppShell', () => {
 
     fireEvent.click(logoutButton);
 
-    expect(await screen.findByText('login?next=%2Fcatalog%3Fq%3Dpdf')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '登录' })).toBeInTheDocument();
+    expect(screen.getByText('/login?next=%2Fcatalog%3Fq%3Dpdf|forceLogoutLanding=true')).toBeInTheDocument();
   });
 });

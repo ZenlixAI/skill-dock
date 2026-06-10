@@ -27,7 +27,10 @@ export function AppShell({ children }: PropsWithChildren) {
     const next = `${location.pathname}${location.search}`;
     await logoutSession();
     refreshSession();
-    navigate(`/login?next=${encodeURIComponent(next)}`, { replace: true });
+    navigate(`/login?next=${encodeURIComponent(next)}`, {
+      replace: true,
+      state: { forceLogoutLanding: true },
+    });
   }
 
   return (
