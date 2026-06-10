@@ -5,12 +5,35 @@
   --panel-strong: rgba(38, 27, 20, 0.96);
   --panel-muted: rgba(25, 18, 14, 0.72);
   --panel-console: rgba(33, 24, 18, 0.9);
+  --panel-shell-top: rgba(35, 25, 19, 0.82);
+  --panel-shell-bottom: rgba(24, 17, 13, 0.76);
+  --surface-quiet: rgba(48, 34, 25, 0.54);
+  --surface-quiet-strong: rgba(58, 41, 30, 0.72);
+  --surface-quiet-border: rgba(198, 169, 141, 0.12);
+  --surface-interactive: rgba(43, 31, 24, 0.72);
+  --surface-interactive-strong: rgba(57, 40, 29, 0.92);
+  --surface-deep-top: rgba(41, 29, 22, 0.96);
+  --surface-deep-bottom: rgba(28, 20, 15, 0.88);
+  --surface-deep-top-soft: rgba(43, 30, 23, 0.94);
+  --surface-deep-bottom-soft: rgba(31, 23, 18, 0.82);
+  --surface-accent: rgba(210, 138, 82, 0.14);
+  --surface-accent-strong: rgba(210, 138, 82, 0.2);
+  --surface-moss: rgba(140, 121, 98, 0.14);
+  --surface-moss-strong: rgba(140, 121, 98, 0.18);
   --border: rgba(198, 169, 141, 0.16);
   --border-strong: rgba(198, 169, 141, 0.28);
   --text: #f6ede3;
   --muted: #b9aa98;
   --accent: #d28a52;
   --accent-soft: rgba(210, 138, 82, 0.16);
+  --accent-border-emphasis: rgba(210, 138, 82, 0.22);
+  --focus-border: rgba(210, 138, 82, 0.36);
+  --focus-ring: 0 0 0 4px rgba(210, 138, 82, 0.1);
+  --control-shadow-none: 0 0 0 rgba(12, 8, 5, 0);
+  --nav-chip-shadow: 0 10px 24px rgba(26, 16, 10, 0.24);
+  --cta-gradient-start: #df9863;
+  --cta-gradient-end: #b66d3f;
+  --cta-shadow: 0 10px 22px rgba(65, 37, 18, 0.28);
   --moss: #8c7962;
   --moss-soft: rgba(140, 121, 98, 0.14);
   --good: #8fc2a0;
@@ -167,11 +190,13 @@ textarea {
   border-radius: 20px;
   display: grid;
   place-items: center;
-  color: #eaf8ff;
+  color: var(--text);
   font-family: "IBM Plex Sans", "Segoe UI Variable", sans-serif;
   font-size: 1.18rem;
   font-weight: 700;
-  background: linear-gradient(135deg, #0f2741, #113f4b);
+  background:
+    linear-gradient(135deg, rgba(128, 83, 49, 0.98), rgba(67, 45, 33, 0.96)),
+    radial-gradient(circle at top left, var(--surface-accent-strong), transparent 54%);
   box-shadow: var(--shadow-soft);
 }
 
@@ -210,7 +235,7 @@ textarea {
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   background:
-    linear-gradient(180deg, rgba(35, 25, 19, 0.82), rgba(24, 17, 13, 0.76)),
+    linear-gradient(180deg, var(--panel-shell-top), var(--panel-shell-bottom)),
     rgba(30, 21, 16, 0.72);
   backdrop-filter: blur(18px);
   box-shadow: var(--shadow-soft);
@@ -253,28 +278,37 @@ textarea {
 .env-banner span {
   padding: 8px 12px;
   border-radius: 999px;
-  background: rgba(48, 34, 25, 0.54);
-  border: 1px solid rgba(198, 169, 141, 0.12);
+  border: 1px solid var(--surface-quiet-border);
+  background: var(--surface-quiet);
 }
 
 .nav-chip {
+  --control-elevation: var(--control-shadow-none);
   display: inline-flex;
   align-items: center;
   gap: 8px;
   padding: 11px 14px;
   border-radius: 999px;
-  border: 1px solid rgba(150, 178, 215, 0.1);
+  border: 1px solid var(--surface-quiet-border);
   color: var(--muted);
-  background: rgba(13, 25, 42, 0.56);
+  background: var(--surface-interactive);
   transition: 180ms ease;
 }
 
 .nav-chip:hover,
 .nav-chip--active {
   color: var(--text);
-  background: rgba(17, 33, 54, 0.92);
-  border-color: var(--border-strong);
-  box-shadow: 0 10px 24px rgba(1, 6, 14, 0.24);
+  background: var(--surface-interactive-strong);
+  border-color: var(--accent-border-emphasis);
+  box-shadow: var(--nav-chip-shadow);
+  --control-elevation: var(--nav-chip-shadow);
+}
+
+.nav-chip:focus-visible,
+.button:focus-visible {
+  border-color: var(--focus-border);
+  box-shadow: var(--control-elevation), var(--focus-ring);
+  outline: none;
 }
 
 .page-shell {
@@ -346,7 +380,8 @@ textarea {
   display: inline-flex;
   padding: 9px 12px;
   border-radius: 999px;
-  background: rgba(46, 31, 21, 0.54);
+  border: 1px solid var(--surface-quiet-border);
+  background: var(--surface-quiet);
   color: var(--accent);
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -421,7 +456,8 @@ textarea {
   display: inline-flex;
   padding: 8px 12px;
   border-radius: 999px;
-  background: rgba(30, 21, 14, 0.06);
+  border: 1px solid var(--surface-quiet-border);
+  background: var(--surface-quiet);
   color: var(--text);
   font-size: 0.8rem;
   letter-spacing: 0.1em;
@@ -527,7 +563,9 @@ textarea {
 .catalog-command__search input,
 .catalog-command__search select {
   min-height: 58px;
-  background: rgba(5, 14, 25, 0.74);
+  background:
+    linear-gradient(180deg, rgba(52, 37, 28, 0.92), rgba(34, 24, 18, 0.84)),
+    rgba(33, 24, 18, 0.88);
   border-color: var(--border-strong);
   color: var(--text);
 }
@@ -538,8 +576,9 @@ textarea {
   padding: 20px;
   border-radius: 22px;
   background:
-    linear-gradient(180deg, rgba(11, 22, 37, 0.96), rgba(13, 25, 42, 0.88)),
-    radial-gradient(circle at top left, rgba(111, 211, 255, 0.12), transparent 36%);
+    linear-gradient(180deg, var(--surface-deep-top), var(--surface-deep-bottom)),
+    radial-gradient(circle at top left, var(--surface-accent), transparent 36%),
+    radial-gradient(circle at bottom right, var(--surface-moss), transparent 34%);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-soft);
 }
@@ -591,8 +630,9 @@ textarea {
 
 .console-entry-card {
   background:
-    linear-gradient(180deg, rgba(7, 17, 30, 0.96), rgba(8, 17, 29, 0.84)),
-    radial-gradient(circle at top right, rgba(73, 187, 160, 0.14), transparent 28%);
+    linear-gradient(180deg, var(--surface-deep-top), var(--surface-deep-bottom)),
+    radial-gradient(circle at top right, var(--surface-accent), transparent 30%),
+    radial-gradient(circle at bottom left, var(--surface-moss), transparent 34%);
 }
 
 .portal-skeleton-grid,
@@ -611,7 +651,7 @@ textarea {
 .portal-skeleton {
   min-height: 140px;
   border-radius: 22px;
-  background: linear-gradient(90deg, rgba(157, 176, 201, 0.08), rgba(157, 176, 201, 0.16), rgba(157, 176, 201, 0.08));
+  background: linear-gradient(90deg, rgba(198, 169, 141, 0.08), rgba(198, 169, 141, 0.16), rgba(198, 169, 141, 0.08));
   background-size: 200% 100%;
   animation: portalSkeleton 1.4s ease infinite;
 }
@@ -701,7 +741,7 @@ textarea {
   background:
     linear-gradient(145deg, rgba(255, 248, 238, 0.98), rgba(255, 255, 255, 0.8)),
     radial-gradient(circle at top left, rgba(190, 93, 44, 0.18), transparent 34%),
-    radial-gradient(circle at bottom right, rgba(47, 109, 94, 0.14), transparent 30%);
+    radial-gradient(circle at bottom right, var(--surface-moss-strong), transparent 30%);
   box-shadow: var(--shadow-strong);
 }
 
@@ -710,7 +750,7 @@ textarea {
 .surface-card--console {
   background:
     linear-gradient(180deg, rgba(250, 247, 241, 0.96), rgba(255, 255, 255, 0.8)),
-    radial-gradient(circle at top right, rgba(47, 109, 94, 0.1), transparent 26%);
+    radial-gradient(circle at top right, var(--surface-moss), transparent 26%);
 }
 
 .surface-card--warm {
@@ -721,8 +761,9 @@ textarea {
 
 .surface-card--subtle {
   background:
-    linear-gradient(180deg, rgba(11, 21, 36, 0.96), rgba(13, 25, 42, 0.82)),
-    radial-gradient(circle at top left, rgba(111, 211, 255, 0.12), transparent 26%);
+    linear-gradient(180deg, var(--surface-deep-top-soft), var(--surface-deep-bottom-soft)),
+    radial-gradient(circle at top left, var(--surface-accent), transparent 26%),
+    radial-gradient(circle at bottom right, var(--surface-moss), transparent 30%);
 }
 
 .surface-card--sticky {
@@ -764,8 +805,10 @@ textarea {
   display: block;
   padding: 16px 18px;
   border-radius: 16px;
-  background: rgba(3, 9, 18, 0.86);
-  color: #f7fbff;
+  background:
+    linear-gradient(180deg, rgba(30, 21, 16, 0.94), rgba(20, 14, 11, 0.9)),
+    rgba(20, 14, 11, 0.88);
+  color: var(--text);
   overflow-x: auto;
   font-family: "SFMono-Regular", "Menlo", "Consolas", monospace;
   font-size: 0.94rem;
@@ -866,8 +909,8 @@ textarea {
   min-height: 32px;
   padding: 6px 11px;
   border-radius: 999px;
-  border: 1px solid rgba(30, 21, 14, 0.06);
-  background: rgba(30, 21, 14, 0.05);
+  border: 1px solid var(--surface-quiet-border);
+  background: var(--surface-quiet);
   color: var(--muted);
   font-size: 0.82rem;
   white-space: nowrap;
@@ -912,22 +955,26 @@ textarea {
 }
 
 .status-pill--good {
-  background: rgba(47, 126, 93, 0.12);
+  background: var(--surface-quiet-strong);
+  border-color: rgba(143, 194, 160, 0.22);
   color: var(--good);
 }
 
 .status-pill--warn {
-  background: rgba(169, 107, 20, 0.14);
+  background: var(--surface-quiet-strong);
+  border-color: rgba(215, 161, 93, 0.22);
   color: var(--warn);
 }
 
 .status-pill--bad {
-  background: rgba(181, 71, 51, 0.12);
+  background: var(--surface-quiet-strong);
+  border-color: rgba(221, 145, 130, 0.22);
   color: var(--bad);
 }
 
 .status-pill--accent {
-  background: var(--accent-soft);
+  background: var(--surface-quiet-strong);
+  border-color: var(--accent-border-emphasis);
   color: var(--accent);
 }
 
@@ -968,7 +1015,7 @@ textarea {
   width: 2px;
   margin-left: 6px;
   border-radius: 999px;
-  background: linear-gradient(180deg, rgba(190, 93, 44, 0.8), rgba(47, 109, 94, 0.4));
+  background: linear-gradient(180deg, rgba(190, 93, 44, 0.8), rgba(140, 121, 98, 0.44));
 }
 
 .timeline-item__body {
@@ -1056,8 +1103,8 @@ textarea {
 .field input:focus,
 .field select:focus,
 .field textarea:focus {
-  border-color: rgba(190, 93, 44, 0.36);
-  box-shadow: 0 0 0 4px rgba(190, 93, 44, 0.08);
+  border-color: var(--focus-border);
+  box-shadow: var(--focus-ring);
 }
 
 .field textarea {
@@ -1208,6 +1255,7 @@ textarea {
 }
 
 .button {
+  --control-elevation: var(--control-shadow-none);
   display: inline-flex;
   justify-content: center;
   align-items: center;
@@ -1230,9 +1278,10 @@ textarea {
 }
 
 .button--primary {
-  background: linear-gradient(135deg, var(--accent), #9ae3ff);
-  color: #04111d;
-  box-shadow: 0 10px 22px rgba(1, 6, 14, 0.28);
+  --control-elevation: var(--cta-shadow);
+  background: linear-gradient(135deg, var(--cta-gradient-start), var(--cta-gradient-end));
+  color: #21130b;
+  box-shadow: var(--cta-shadow);
 }
 
 .button--secondary {
@@ -1243,9 +1292,15 @@ textarea {
 
 .button--ghost {
   min-height: 40px;
-  background: rgba(13, 25, 42, 0.72);
+  background: var(--surface-interactive);
   color: var(--text);
-  border-color: rgba(150, 178, 215, 0.14);
+  border-color: var(--surface-quiet-border);
+}
+
+.button--secondary:not(:disabled):hover,
+.button--ghost:not(:disabled):hover {
+  border-color: var(--accent-border-emphasis);
+  background: var(--surface-interactive-strong);
 }
 
 .authoring-editor,
