@@ -91,6 +91,32 @@ describe('AppShell', () => {
     expect(screen.getByRole('button', { name: '退出登录' })).toBeInTheDocument();
   });
 
+  it('redirects authenticated login visits to next when no logout marker state is present', async () => {
+    vi.mocked(client.getSession).mockResolvedValue({
+      role: 'reader',
+      actor: 'dev@company',
+      authMechanism: 'session',
+      allowedActions: ['session.read'],
+      allowedPackages: [],
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/login?next=%2Fcatalog%3Fq%3Dpdf']}>
+        <SessionProvider>
+          <LocationProbe />
+          <Routes>
+            <Route path="/catalog" element={<div>catalog destination</div>} />
+            <Route path="/login" element={<LoginPage />} />
+          </Routes>
+        </SessionProvider>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('catalog destination')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '登录' })).not.toBeInTheDocument();
+    expect(screen.getByText('/catalog?q=pdf|forceLogoutLanding=false')).toBeInTheDocument();
+  });
+
   it('redirects logout to the login form with the preserved current location as next', async () => {
     vi.mocked(client.getSession)
       .mockResolvedValueOnce({
@@ -100,7 +126,7 @@ describe('AppShell', () => {
         allowedActions: ['session.read'],
         allowedPackages: [],
       })
-      .mockResolvedValue(undefined as never);
+      .mockResolvedValue(null);
     vi.mocked(client.logoutSession).mockResolvedValue(undefined);
 
     render(
