@@ -1,11 +1,12 @@
 import { FormEvent, useState } from 'react';
-import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { getRegistryClientConfig, loginSession } from '../api/client';
 import { SectionHeading } from '../components/SectionHeading';
 import { SurfaceCard } from '../components/SurfaceCard';
 import { useRegistrySession } from '../session/SessionProvider';
 
 export function LoginPage() {
+  const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { session, refreshSession } = useRegistrySession();
@@ -15,12 +16,17 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const next = searchParams.get('next') || '/';
+  const forceLogoutLanding =
+    typeof location.state === 'object' &&
+    location.state !== null &&
+    'forceLogoutLanding' in location.state &&
+    location.state.forceLogoutLanding === true;
 
   if (config.mode === 'mock' || config.hasToken || config.role) {
     return <Navigate replace to="/" />;
   }
 
-  if (!session.loading && session.data) {
+  if (!forceLogoutLanding && !session.loading && session.data) {
     return <Navigate replace to={next} />;
   }
 
