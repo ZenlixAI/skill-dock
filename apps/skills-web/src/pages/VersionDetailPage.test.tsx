@@ -204,8 +204,10 @@ describe('VersionDetailPage', () => {
       </SessionProvider>
     );
 
-    expect(await screen.findByRole('heading', { name: '安装状态' })).toBeInTheDocument();
-    expect(screen.getByText('版本安装数据请求失败，暂时无法生成可复制的安装命令。')).toBeInTheDocument();
+    expect(
+      await screen.findByText('版本安装数据请求失败，暂时无法生成可复制的安装命令。')
+    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '安装状态' })).toBeInTheDocument();
     expect(screen.getByText('detail unavailable')).toBeInTheDocument();
   });
 
@@ -236,8 +238,10 @@ describe('VersionDetailPage', () => {
       </SessionProvider>
     );
 
-    expect(await screen.findByRole('heading', { name: '安装状态' })).toBeInTheDocument();
-    expect(screen.getByText('等仓库元数据返回后，这里会显示可直接复制的版本安装命令。')).toBeInTheDocument();
+    expect(
+      await screen.findByText('等仓库元数据返回后，这里会显示可直接复制的版本安装命令。')
+    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '安装状态' })).toBeInTheDocument();
     expect(screen.getByText('当前还没有可用的仓库安装信息。')).toBeInTheDocument();
   });
 
