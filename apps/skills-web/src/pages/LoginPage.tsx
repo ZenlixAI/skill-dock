@@ -1,8 +1,6 @@
 import { FormEvent, useState } from 'react';
-import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { getRegistryClientConfig, loginSession } from '../api/client';
-import { SectionHeading } from '../components/SectionHeading';
-import { SurfaceCard } from '../components/SurfaceCard';
 import { useRegistrySession } from '../session/SessionProvider';
 
 export function LoginPage() {
@@ -46,37 +44,61 @@ export function LoginPage() {
   }
 
   return (
-    <div className="page-grid">
-      <SectionHeading
-        eyebrow="登录"
-        title="登录"
-        description="使用你的仓库账号登录。"
-        tone="backstage"
-      />
+    <main className="login-page">
+      <section aria-labelledby="login-title" className="login-layout">
+        <div className="login-context">
+          <span className="login-context__eyebrow">控制台登录</span>
+          <p className="login-context__kicker">技能注册表</p>
+          <h1 id="login-title">进入技能注册表控制台</h1>
+          <p className="login-context__description">导入、编写、治理和审计流程统一收口到这个控制台入口。</p>
+        </div>
 
-      <SurfaceCard title="登录" variant="console">
-        <form className="stack-column" onSubmit={handleSubmit}>
-          <label className="field">
-            <span>用户名</span>
-            <input autoComplete="username" onChange={(event) => setUsername(event.target.value)} value={username} />
-          </label>
-          <label className="field">
-            <span>密码</span>
-            <input
-              autoComplete="current-password"
-              onChange={(event) => setPassword(event.target.value)}
-              type="password"
-              value={password}
-            />
-          </label>
-          {error ? <div className="error-box">{error}</div> : null}
-          <div className="authoring-actions">
-            <button className="button button--primary" disabled={submitting} type="submit">
+        <section aria-label="登录表单区域" className="login-panel">
+          <div className="login-panel__header">
+            <p className="login-panel__eyebrow">身份验证</p>
+            <h2>登录</h2>
+            <p>使用你的仓库账号继续访问控制台。</p>
+          </div>
+
+          <form className="login-form" onSubmit={handleSubmit}>
+            <label className="field login-form__field" htmlFor="login-username">
+              <span>用户名</span>
+              <input
+                autoComplete="username"
+                id="login-username"
+                onChange={(event) => setUsername(event.target.value)}
+                value={username}
+              />
+            </label>
+            <label className="field login-form__field" htmlFor="login-password">
+              <span>密码</span>
+              <input
+                autoComplete="current-password"
+                id="login-password"
+                onChange={(event) => setPassword(event.target.value)}
+                type="password"
+                value={password}
+              />
+            </label>
+            {error ? (
+              <div aria-live="polite" className="error-box login-form__error" role="status">
+                {error}
+              </div>
+            ) : null}
+            <button className="button button--primary login-form__submit" disabled={submitting} type="submit">
               {submitting ? '登录中…' : '登录'}
             </button>
+          </form>
+
+          <div className="login-panel__footer">
+            <span>继续即表示你将进入内部控制台。</span>
+            <div className="login-panel__links">
+              <Link to="/privacy">隐私</Link>
+              <Link to="/terms">条款</Link>
+            </div>
           </div>
-        </form>
-      </SurfaceCard>
-    </div>
+        </section>
+      </section>
+    </main>
   );
 }
