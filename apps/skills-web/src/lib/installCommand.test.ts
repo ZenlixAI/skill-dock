@@ -13,28 +13,26 @@ import {
 } from './installCommand';
 
 describe('buildInstallCommand', () => {
-  it('builds an npx install command pinned to version and registry env vars', () => {
+  it('builds an npx install command pinned to version and the shared registry env var', () => {
     expect(
       buildInstallCommand({
         packageName: '@platform.skill/agent-notes',
         version: '1.2.3',
-        registryHost: 'http://192.168.10.127:32080',
       })
     ).toBe(
-      'SKILLS_REGISTRY_TOKEN=reader-token SKILLS_REGISTRY_URL=http://192.168.10.127:32080 npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.2.3'
+      'npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.2.3'
     );
   });
 
-  it('uses a localized host placeholder when registry metadata is missing', () => {
+  it('does not depend on registry metadata to render the install command', () => {
     expect(getInstallHostLabel('')).toBe('待补充仓库 Host');
     expect(
       buildInstallCommand({
         packageName: '@platform.skill/agent-notes',
         version: '1.2.3',
-        registryHost: '待补充仓库 Host',
       })
     ).toBe(
-      'SKILLS_REGISTRY_TOKEN=reader-token SKILLS_REGISTRY_URL=<待补充仓库 Host> npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.2.3'
+      'npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.2.3'
     );
   });
 

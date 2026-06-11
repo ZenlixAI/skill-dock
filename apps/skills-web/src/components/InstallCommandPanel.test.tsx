@@ -29,10 +29,14 @@ describe('InstallCommandPanel', () => {
 
     await waitFor(() =>
       expect(window.navigator.clipboard.writeText).toHaveBeenCalledWith(
-        'SKILLS_REGISTRY_TOKEN=reader-token SKILLS_REGISTRY_URL=http://192.168.10.127:32081 npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.2.3'
+        'npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.2.3'
       )
     );
-    expect(screen.getByDisplayValue(/SKILLS_REGISTRY_TOKEN=reader-token/)).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue(
+        'npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.2.3'
+      )
+    ).toBeInTheDocument();
     expect(screen.getByText('已复制')).toBeInTheDocument();
     expect(screen.getByText('制品包地址')).toBeInTheDocument();
     expect(
@@ -95,7 +99,7 @@ describe('InstallCommandPanel', () => {
     expect(screen.getAllByText('待补充仓库 Host').length).toBeGreaterThan(0);
     expect(
       screen.getByDisplayValue(
-        'SKILLS_REGISTRY_TOKEN=reader-token SKILLS_REGISTRY_URL=<待补充仓库 Host> npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.2.3'
+        'npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.2.3'
       )
     ).toBeInTheDocument();
     expect(screen.getByText('当前未返回制品包地址。')).toBeInTheDocument();

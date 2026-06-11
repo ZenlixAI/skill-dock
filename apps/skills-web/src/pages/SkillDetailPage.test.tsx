@@ -148,7 +148,11 @@ describe('SkillDetailPage', () => {
     const installHeading = await screen.findByRole('heading', { name: '安装这个技能' });
     const versionsHeading = screen.getByRole('heading', { name: '版本列表' });
 
-    expect(screen.getByDisplayValue(/SKILLS_REGISTRY_TOKEN=reader-token/)).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue(
+        'npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.0.0'
+      )
+    ).toBeInTheDocument();
     expect(screen.getAllByText('http://192.168.10.127:32081').length).toBeGreaterThan(0);
     expect(
       screen.getAllByText('http://192.168.10.127:32081/@platform.skill/agent-notes/-/agent-notes-1.0.0.tgz').length
@@ -442,7 +446,7 @@ describe('SkillDetailPage', () => {
     expect(screen.getAllByText('待补充仓库 Host').length).toBeGreaterThan(0);
     expect(
       screen.getByDisplayValue(
-        'SKILLS_REGISTRY_TOKEN=reader-token SKILLS_REGISTRY_URL=<待补充仓库 Host> npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.0.0'
+        'npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.0.0'
       )
     ).toBeInTheDocument();
   });
@@ -519,7 +523,11 @@ describe('SkillDetailPage', () => {
     const installPanel = installHeading.closest('section');
 
     expect(installPanel).not.toBeNull();
-    expect(within(installPanel as HTMLElement).getByDisplayValue(/SKILLS_REGISTRY_URL=http:\/\/192\.168\.10\.127:32081/)).toBeInTheDocument();
+    expect(
+      within(installPanel as HTMLElement).getByDisplayValue(
+        'npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.9.0'
+      )
+    ).toBeInTheDocument();
     expect(within(installPanel as HTMLElement).getByText('可直接安装')).toBeInTheDocument();
     expect(within(installPanel as HTMLElement).queryByText('已阻断安装')).not.toBeInTheDocument();
   });

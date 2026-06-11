@@ -10,13 +10,10 @@ import type {
 type InstallCommandInput = {
   packageName: string;
   version: string;
-  registryHost: string;
 };
 
 const INSTALL_REGISTRY_FALLBACK_LABEL = '待补充 npm 仓库地址';
 const INSTALL_HOST_FALLBACK_LABEL = '待补充仓库 Host';
-const INSTALL_HOST_FALLBACK_COMMAND = '<待补充仓库 Host>';
-
 function parseUrl(value?: string | null): URL | null {
   const trimmedValue = value?.trim();
   if (!trimmedValue) {
@@ -57,12 +54,8 @@ export function rewriteInstallTarballUrl(tarballUrl?: string | null, registryHos
   return `${parsedRegistryHost.origin}${parsedTarballUrl.pathname}${parsedTarballUrl.search}${parsedTarballUrl.hash}`;
 }
 
-export function buildInstallCommand({ packageName, version, registryHost }: InstallCommandInput) {
-  const hostValue = registryHost.trim();
-  const commandHost =
-    hostValue && hostValue !== INSTALL_HOST_FALLBACK_LABEL ? hostValue : INSTALL_HOST_FALLBACK_COMMAND;
-
-  return `SKILLS_REGISTRY_TOKEN=reader-token SKILLS_REGISTRY_URL=${commandHost} npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add ${packageName} --version ${version}`;
+export function buildInstallCommand({ packageName, version }: InstallCommandInput) {
+  return `npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add ${packageName} --version ${version}`;
 }
 
 export function getInstallPolicyLabel(installPolicy: InstallPolicy) {

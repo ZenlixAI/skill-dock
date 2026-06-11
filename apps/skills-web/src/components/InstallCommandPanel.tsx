@@ -62,7 +62,6 @@ export function InstallCommandPanel({
   const command = buildInstallCommand({
     packageName,
     version,
-    registryHost,
   });
   const installBlocked = installPolicy === 'blocked';
 

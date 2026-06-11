@@ -128,7 +128,11 @@ describe('VersionDetailPage', () => {
     const releaseHeading = screen.getByRole('heading', { name: '发布登记' });
     const governanceHeading = screen.getByRole('heading', { name: '版本治理' });
 
-    expect(screen.getByDisplayValue(/SKILLS_REGISTRY_TOKEN=reader-token/)).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue(
+        'npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.0.0'
+      )
+    ).toBeInTheDocument();
     expect(screen.getAllByText('可直接安装').length).toBeGreaterThan(0);
     expect(screen.getAllByText('已发布').length).toBeGreaterThan(0);
     expect(screen.getByText('仓库与打包产物')).toBeInTheDocument();
@@ -298,7 +302,7 @@ describe('VersionDetailPage', () => {
     expect(screen.getAllByText('待补充仓库 Host').length).toBeGreaterThan(0);
     expect(
       screen.getByDisplayValue(
-        'SKILLS_REGISTRY_TOKEN=reader-token SKILLS_REGISTRY_URL=<待补充仓库 Host> npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.0.0'
+        'npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.0.0'
       )
     ).toBeInTheDocument();
     expect(screen.getByText('当前未返回制品包地址。')).toBeInTheDocument();
