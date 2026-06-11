@@ -56,8 +56,8 @@ describe('SkillDetailPage', () => {
     vi.mocked(client.getInstallTarget).mockResolvedValue({
       packageName: '@platform.skill/agent-notes',
       version: '1.0.0',
-      npmRegistry: 'https://npm.internal.example.com',
-      tarballUrl: 'https://npm.internal.example.com/agent-notes.tgz',
+      npmRegistry: 'http://192.168.10.127:32081/repository/skills-npm/',
+      tarballUrl: 'https://npm.internal.example.com/@platform.skill/agent-notes/-/agent-notes-1.0.0.tgz',
       integrity: 'sha512-test',
       skillManifestDigest: 'sha256:test',
       versionStatus: 'published',
@@ -121,8 +121,8 @@ describe('SkillDetailPage', () => {
     vi.mocked(client.getInstallTarget).mockResolvedValue({
       packageName: '@platform.skill/agent-notes',
       version: '1.0.0',
-      npmRegistry: 'https://npm.internal.example.com',
-      tarballUrl: 'https://npm.internal.example.com/agent-notes.tgz',
+      npmRegistry: 'http://192.168.10.127:32081/repository/skills-npm/',
+      tarballUrl: 'https://npm.internal.example.com/@platform.skill/agent-notes/-/agent-notes-1.0.0.tgz',
       integrity: 'sha512-test',
       skillManifestDigest: 'sha256:test',
       versionStatus: 'published',
@@ -148,9 +148,12 @@ describe('SkillDetailPage', () => {
     const installHeading = await screen.findByRole('heading', { name: '安装这个技能' });
     const versionsHeading = screen.getByRole('heading', { name: '版本列表' });
 
+    expect(screen.getByDisplayValue(/SKILLS_REGISTRY_TOKEN=reader-token/)).toBeInTheDocument();
+    expect(screen.getAllByText('http://192.168.10.127:32081').length).toBeGreaterThan(0);
     expect(
-      screen.getByText('npm install @platform.skill/agent-notes@1.0.0 --registry=https://npm.internal.example.com')
-    ).toBeInTheDocument();
+      screen.getAllByText('http://192.168.10.127:32081/@platform.skill/agent-notes/-/agent-notes-1.0.0.tgz').length
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText('http://192.168.10.127:32081/repository/skills-npm/')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '复制安装命令' })).toBeInTheDocument();
     expect(screen.getAllByText('可直接安装').length).toBeGreaterThan(0);
     expect(screen.getAllByText('已发布').length).toBeGreaterThan(0);
@@ -244,8 +247,8 @@ describe('SkillDetailPage', () => {
     vi.mocked(client.getInstallTarget).mockResolvedValue({
       packageName: '@platform.skill/agent-notes',
       version: '1.0.0',
-      npmRegistry: 'https://npm.internal.example.com',
-      tarballUrl: 'https://npm.internal.example.com/agent-notes.tgz',
+      npmRegistry: 'http://192.168.10.127:32081/repository/skills-npm/',
+      tarballUrl: 'https://npm.internal.example.com/@platform.skill/agent-notes/-/agent-notes-1.0.0.tgz',
       integrity: 'sha512-test',
       skillManifestDigest: 'sha256:test',
       versionStatus: 'published',
@@ -436,9 +439,11 @@ describe('SkillDetailPage', () => {
 
     expect(await screen.findByRole('heading', { name: '安装这个技能' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '安装状态' })).not.toBeInTheDocument();
-    expect(screen.getAllByText('待补充 npm 仓库地址').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('待补充仓库 Host').length).toBeGreaterThan(0);
     expect(
-      screen.getByText('npm install @platform.skill/agent-notes@1.0.0 --registry=<待补充 npm 仓库地址>')
+      screen.getByDisplayValue(
+        'SKILLS_REGISTRY_TOKEN=reader-token SKILLS_REGISTRY_URL=<待补充仓库 Host> npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.0.0'
+      )
     ).toBeInTheDocument();
   });
 
@@ -486,8 +491,8 @@ describe('SkillDetailPage', () => {
     vi.mocked(client.getInstallTarget).mockResolvedValue({
       packageName: '@platform.skill/agent-notes',
       version: '1.9.0',
-      npmRegistry: 'https://npm.internal.example.com',
-      tarballUrl: 'https://npm.internal.example.com/agent-notes-1.9.0.tgz',
+      npmRegistry: 'http://192.168.10.127:32081/repository/skills-npm/',
+      tarballUrl: 'https://npm.internal.example.com/@platform.skill/agent-notes/-/agent-notes-1.9.0.tgz',
       integrity: 'sha512-test',
       skillManifestDigest: 'sha256:test',
       versionStatus: 'published',
@@ -514,7 +519,7 @@ describe('SkillDetailPage', () => {
     const installPanel = installHeading.closest('section');
 
     expect(installPanel).not.toBeNull();
-    expect(within(installPanel as HTMLElement).getByText('npm install @platform.skill/agent-notes@1.9.0 --registry=https://npm.internal.example.com')).toBeInTheDocument();
+    expect(within(installPanel as HTMLElement).getByDisplayValue(/SKILLS_REGISTRY_URL=http:\/\/192\.168\.10\.127:32081/)).toBeInTheDocument();
     expect(within(installPanel as HTMLElement).getByText('可直接安装')).toBeInTheDocument();
     expect(within(installPanel as HTMLElement).queryByText('已阻断安装')).not.toBeInTheDocument();
   });

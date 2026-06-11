@@ -808,10 +808,12 @@ textarea {
   gap: 14px;
 }
 
-.install-command-panel code {
+.install-command-panel__command {
   display: block;
+  width: 100%;
   padding: 16px 18px;
   border-radius: 16px;
+  border: 1px solid rgba(210, 138, 82, 0.18);
   background:
     linear-gradient(180deg, rgba(30, 21, 16, 0.94), rgba(20, 14, 11, 0.9)),
     rgba(20, 14, 11, 0.88);
@@ -821,6 +823,13 @@ textarea {
   font-size: 0.94rem;
   line-height: 1.6;
   font-variant-numeric: tabular-nums;
+  resize: vertical;
+  white-space: pre-wrap;
+}
+
+.install-command-panel__command:focus {
+  outline: 2px solid rgba(210, 138, 82, 0.34);
+  outline-offset: 2px;
 }
 
 .install-command-panel__meta {

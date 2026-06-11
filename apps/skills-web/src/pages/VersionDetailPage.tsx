@@ -28,8 +28,9 @@ import { formatDate } from '../lib/format';
 import {
   getGovernanceActionLabel,
   getGovernanceTargetTypeLabel,
+  getInstallHostLabel,
   getInstallPolicyLabel,
-  getInstallRegistryLabel,
+  rewriteInstallTarballUrl,
   getVersionStatusLabel,
 } from '../lib/installCommand';
 import { buildReleaseHandoffPath, readReleaseHandoff } from '../lib/releaseHandoff';
@@ -127,7 +128,11 @@ export function VersionDetailPage() {
     version,
     actor: session.data?.actor ?? null,
   };
-  const installRegistry = getInstallRegistryLabel(detail.data?.registry.npmRegistry);
+  const installRegistryHost = getInstallHostLabel(detail.data?.registry.npmRegistry);
+  const installTarballUrl = rewriteInstallTarballUrl(
+    detail.data?.registry.tarballUrl,
+    detail.data?.registry.npmRegistry
+  );
 
   function renderInstallSurface() {
     if (detail.loading) {
@@ -167,7 +172,7 @@ export function VersionDetailPage() {
         title="安装这个版本"
         packageName={decodedPackage}
         version={version}
-        npmRegistry={installRegistry}
+        npmRegistry={detail.data.registry.npmRegistry}
         installPolicy={detail.data.installPolicy || 'catalog_only'}
         tarballUrl={detail.data.registry.tarballUrl}
         integrity={detail.data.registry.integrity}
@@ -336,7 +341,6 @@ export function VersionDetailPage() {
             {getInstallPolicyLabel(detail.data.installPolicy)}
           </StatusPill>
         ) : null}
-        {detail.data ? <StatusPill>{installRegistry}</StatusPill> : null}
         <StatusPill tone={hasHandoff ? 'accent' : undefined}>{hasHandoff ? '已附带交接' : '直接打开'}</StatusPill>
         <StatusPill tone={releasePosture === 'write_enabled' ? 'accent' : releasePosture === 'package_filter_required' ? 'warn' : 'default'}>
           {releasePostureLabel}
@@ -417,7 +421,11 @@ export function VersionDetailPage() {
             </div>
             <div>
               <dt>npm 仓库地址</dt>
-              <dd>{detail.data ? installRegistry : '—'}</dd>
+              <dd>{detail.data ? installRegistryHost : '—'}</dd>
+            </div>
+            <div>
+              <dt>制品包地址</dt>
+              <dd>{installTarballUrl || '—'}</dd>
             </div>
             <div>
               <dt>完整性校验</dt>

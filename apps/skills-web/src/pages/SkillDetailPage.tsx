@@ -28,8 +28,9 @@ import { formatDate } from '../lib/format';
 import {
   getGovernanceActionLabel,
   getGovernanceTargetTypeLabel,
+  getInstallHostLabel,
   getInstallPolicyLabel,
-  getInstallRegistryLabel,
+  rewriteInstallTarballUrl,
   getSkillStatusLabel,
   getSourceTypeLabel,
   getVersionStatusLabel,
@@ -77,7 +78,11 @@ export function SkillDetailPage() {
   const statusTone = detail.data?.status === 'active' ? 'good' : 'bad';
   const hasInstallTarget = Boolean(installTarget.data);
   const installVersion = installTargetVersionItem?.version || installTarget.data?.version || '待确认版本';
-  const installRegistry = getInstallRegistryLabel(installTarget.data?.npmRegistry);
+  const installRegistryHost = getInstallHostLabel(installTarget.data?.npmRegistry);
+  const installTarballUrl = rewriteInstallTarballUrl(
+    installTarget.data?.tarballUrl,
+    installTarget.data?.npmRegistry
+  );
   const canRetireSkill = retireReason.trim() !== '' && retireConfirmed && !submitState.loading;
   const governancePosture = getPosture({
     packageName: decodedPackage,
@@ -178,7 +183,7 @@ export function SkillDetailPage() {
         title="安装这个技能"
         packageName={decodedPackage}
         version={installTargetVersionItem.version}
-        npmRegistry={installRegistry}
+        npmRegistry={installTarget.data.npmRegistry}
         installPolicy={installTargetVersionItem.installPolicy}
         tarballUrl={installTarget.data.tarballUrl}
         integrity={installTarget.data.integrity}
@@ -343,11 +348,11 @@ export function SkillDetailPage() {
             </div>
             <div>
               <dt>仓库地址</dt>
-              <dd>{hasInstallTarget ? installRegistry : '—'}</dd>
+              <dd>{hasInstallTarget ? installRegistryHost : '—'}</dd>
             </div>
             <div>
               <dt>制品包地址</dt>
-              <dd>{installTarget.data?.tarballUrl || '—'}</dd>
+              <dd>{installTarballUrl || '—'}</dd>
             </div>
             <div>
               <dt>完整性校验</dt>

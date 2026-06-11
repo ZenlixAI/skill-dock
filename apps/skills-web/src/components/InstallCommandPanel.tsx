@@ -1,6 +1,11 @@
 import { useState } from 'react';
 import type { InstallPolicy } from '../api/types';
-import { buildInstallCommand, getInstallPolicyLabel, getInstallRegistryLabel } from '../lib/installCommand';
+import {
+  buildInstallCommand,
+  getInstallHostLabel,
+  getInstallPolicyLabel,
+  rewriteInstallTarballUrl,
+} from '../lib/installCommand';
 import { StatusPill } from './StatusPill';
 import { SurfaceCard } from './SurfaceCard';
 
@@ -52,11 +57,12 @@ export function InstallCommandPanel({
   integrity,
 }: InstallCommandPanelProps) {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
-  const registryLabel = getInstallRegistryLabel(npmRegistry);
+  const registryHost = getInstallHostLabel(npmRegistry);
+  const tarballLabel = rewriteInstallTarballUrl(tarballUrl, registryHost);
   const command = buildInstallCommand({
     packageName,
     version,
-    npmRegistry: registryLabel,
+    registryHost,
   });
   const installBlocked = installPolicy === 'blocked';
 
@@ -80,17 +86,23 @@ export function InstallCommandPanel({
       <div className="install-command-panel">
         <div className="pill-row">
           <StatusPill>{`${packageName}@${version}`}</StatusPill>
-          <StatusPill>{registryLabel}</StatusPill>
         </div>
-        <code>{command}</code>
+        <textarea
+          aria-label="安装命令"
+          className="install-command-panel__command"
+          onFocus={(event) => event.currentTarget.select()}
+          readOnly
+          rows={4}
+          value={command}
+        />
         <dl className="install-command-panel__meta">
           <div>
             <dt>仓库地址</dt>
-            <dd>{registryLabel}</dd>
+            <dd>{registryHost}</dd>
           </div>
           <div>
             <dt>制品包地址</dt>
-            <dd>{tarballUrl || '当前未返回制品包地址。'}</dd>
+            <dd>{tarballLabel || '当前未返回制品包地址。'}</dd>
           </div>
           <div>
             <dt>完整性校验</dt>

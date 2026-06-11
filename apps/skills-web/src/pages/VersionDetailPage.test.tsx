@@ -45,8 +45,8 @@ describe('VersionDetailPage', () => {
       installPolicy: 'resolvable',
       publishedAt: '2026-01-01T00:00:00Z',
       registry: {
-        npmRegistry: 'https://npm.internal.example.com',
-        tarballUrl: 'https://npm.internal.example.com/agent-notes-1.0.0.tgz',
+        npmRegistry: 'http://192.168.10.127:32081/repository/skills-npm/',
+        tarballUrl: 'https://npm.internal.example.com/@platform.skill/agent-notes/-/agent-notes-1.0.0.tgz',
         integrity: 'sha512-test',
         shasum: 'test',
         publishedAt: '2026-01-01T00:00:00Z',
@@ -94,8 +94,8 @@ describe('VersionDetailPage', () => {
       installPolicy: 'resolvable',
       publishedAt: '2026-01-01T00:00:00Z',
       registry: {
-        npmRegistry: 'https://npm.internal.example.com',
-        tarballUrl: 'https://npm.internal.example.com/agent-notes-1.0.0.tgz',
+        npmRegistry: 'http://192.168.10.127:32081/repository/skills-npm/',
+        tarballUrl: 'https://npm.internal.example.com/@platform.skill/agent-notes/-/agent-notes-1.0.0.tgz',
         integrity: 'sha512-test',
         shasum: 'test',
         publishedAt: '2026-01-01T00:00:00Z',
@@ -128,14 +128,14 @@ describe('VersionDetailPage', () => {
     const releaseHeading = screen.getByRole('heading', { name: '发布登记' });
     const governanceHeading = screen.getByRole('heading', { name: '版本治理' });
 
-    expect(
-      screen.getByText(
-        'npx --registry https://npm.internal.example.com skills add @platform.skill/agent-notes --version 1.0.0'
-      )
-    ).toBeInTheDocument();
+    expect(screen.getByDisplayValue(/SKILLS_REGISTRY_TOKEN=reader-token/)).toBeInTheDocument();
     expect(screen.getAllByText('可直接安装').length).toBeGreaterThan(0);
     expect(screen.getAllByText('已发布').length).toBeGreaterThan(0);
     expect(screen.getByText('仓库与打包产物')).toBeInTheDocument();
+    expect(screen.getAllByText('http://192.168.10.127:32081').length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText('http://192.168.10.127:32081/@platform.skill/agent-notes/-/agent-notes-1.0.0.tgz').length
+    ).toBeGreaterThan(0);
     expect(screen.getAllByText('完整性校验').length).toBeGreaterThan(0);
     expect(screen.getByText('校验摘要')).toBeInTheDocument();
     expect(screen.getByText('组件清单')).toBeInTheDocument();
@@ -143,6 +143,7 @@ describe('VersionDetailPage', () => {
     expect(screen.queryByText('shasum')).not.toBeInTheDocument();
     expect(screen.queryByText('components')).not.toBeInTheDocument();
     expect(screen.queryByText('published')).not.toBeInTheDocument();
+    expect(screen.queryByText('http://192.168.10.127:32081/repository/skills-npm/')).not.toBeInTheDocument();
     expect(installHeading.compareDocumentPosition(releaseHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(installHeading.compareDocumentPosition(governanceHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
@@ -294,10 +295,10 @@ describe('VersionDetailPage', () => {
 
     expect(await screen.findByRole('heading', { name: '安装这个版本' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '安装状态' })).not.toBeInTheDocument();
-    expect(screen.getAllByText('待补充 npm 仓库地址').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('待补充仓库 Host').length).toBeGreaterThan(0);
     expect(
-      screen.getByText(
-        'npx --registry <待补充 npm 仓库地址> skills add @platform.skill/agent-notes --version 1.0.0'
+      screen.getByDisplayValue(
+        'SKILLS_REGISTRY_TOKEN=reader-token SKILLS_REGISTRY_URL=<待补充仓库 Host> npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.0.0'
       )
     ).toBeInTheDocument();
     expect(screen.getByText('当前未返回制品包地址。')).toBeInTheDocument();

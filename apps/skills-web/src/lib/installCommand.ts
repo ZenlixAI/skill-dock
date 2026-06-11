@@ -10,11 +10,25 @@ import type {
 type InstallCommandInput = {
   packageName: string;
   version: string;
-  npmRegistry: string;
+  registryHost: string;
 };
 
 const INSTALL_REGISTRY_FALLBACK_LABEL = '待补充 npm 仓库地址';
-const INSTALL_REGISTRY_FALLBACK_COMMAND = '<待补充 npm 仓库地址>';
+const INSTALL_HOST_FALLBACK_LABEL = '待补充仓库 Host';
+const INSTALL_HOST_FALLBACK_COMMAND = '<待补充仓库 Host>';
+
+function parseUrl(value?: string | null): URL | null {
+  const trimmedValue = value?.trim();
+  if (!trimmedValue) {
+    return null;
+  }
+
+  try {
+    return new URL(trimmedValue);
+  } catch {
+    return null;
+  }
+}
 
 export function getInstallRegistryLabel(npmRegistry?: string | null) {
   const trimmedRegistry = npmRegistry?.trim();
@@ -22,14 +36,33 @@ export function getInstallRegistryLabel(npmRegistry?: string | null) {
   return trimmedRegistry ? trimmedRegistry : INSTALL_REGISTRY_FALLBACK_LABEL;
 }
 
-export function buildInstallCommand({ packageName, version, npmRegistry }: InstallCommandInput) {
-  const registryValue = npmRegistry.trim();
-  const commandRegistry =
-    registryValue && registryValue !== INSTALL_REGISTRY_FALLBACK_LABEL
-      ? registryValue
-      : INSTALL_REGISTRY_FALLBACK_COMMAND;
+export function getInstallHostLabel(npmRegistry?: string | null) {
+  const parsedRegistry = parseUrl(npmRegistry);
+  if (parsedRegistry) {
+    return parsedRegistry.origin;
+  }
 
-  return `npx --registry ${commandRegistry} skills add ${packageName} --version ${version}`;
+  const trimmedRegistry = npmRegistry?.trim();
+  return trimmedRegistry ? trimmedRegistry.replace(/\/+$/, '') : INSTALL_HOST_FALLBACK_LABEL;
+}
+
+export function rewriteInstallTarballUrl(tarballUrl?: string | null, registryHost?: string | null) {
+  const parsedTarballUrl = parseUrl(tarballUrl);
+  const parsedRegistryHost = parseUrl(registryHost);
+
+  if (!parsedTarballUrl || !parsedRegistryHost) {
+    return tarballUrl?.trim() || '';
+  }
+
+  return `${parsedRegistryHost.origin}${parsedTarballUrl.pathname}${parsedTarballUrl.search}${parsedTarballUrl.hash}`;
+}
+
+export function buildInstallCommand({ packageName, version, registryHost }: InstallCommandInput) {
+  const hostValue = registryHost.trim();
+  const commandHost =
+    hostValue && hostValue !== INSTALL_HOST_FALLBACK_LABEL ? hostValue : INSTALL_HOST_FALLBACK_COMMAND;
+
+  return `SKILLS_REGISTRY_TOKEN=reader-token SKILLS_REGISTRY_URL=${commandHost} npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add ${packageName} --version ${version}`;
 }
 
 export function getInstallPolicyLabel(installPolicy: InstallPolicy) {

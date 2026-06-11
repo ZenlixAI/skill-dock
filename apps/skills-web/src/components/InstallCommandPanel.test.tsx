@@ -19,8 +19,9 @@ describe('InstallCommandPanel', () => {
         title="安装这个技能"
         packageName="@platform.skill/agent-notes"
         version="1.2.3"
-        npmRegistry="https://npm.internal.example.com"
+        npmRegistry="http://192.168.10.127:32081/repository/skills-npm/"
         installPolicy="resolvable"
+        tarballUrl="https://npm.internal.example.com/@platform.skill/agent-notes/-/agent-notes-1.2.3.tgz"
       />
     );
 
@@ -28,13 +29,18 @@ describe('InstallCommandPanel', () => {
 
     await waitFor(() =>
       expect(window.navigator.clipboard.writeText).toHaveBeenCalledWith(
-        'npx --registry https://npm.internal.example.com skills add @platform.skill/agent-notes --version 1.2.3'
+        'SKILLS_REGISTRY_TOKEN=reader-token SKILLS_REGISTRY_URL=http://192.168.10.127:32081 npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.2.3'
       )
     );
+    expect(screen.getByDisplayValue(/SKILLS_REGISTRY_TOKEN=reader-token/)).toBeInTheDocument();
     expect(screen.getByText('已复制')).toBeInTheDocument();
     expect(screen.getByText('制品包地址')).toBeInTheDocument();
+    expect(
+      screen.getByText('http://192.168.10.127:32081/@platform.skill/agent-notes/-/agent-notes-1.2.3.tgz')
+    ).toBeInTheDocument();
     expect(screen.getByText('完整性校验')).toBeInTheDocument();
     expect(screen.getByText('可直接安装')).toBeInTheDocument();
+    expect(screen.queryByText('http://192.168.10.127:32081/repository/skills-npm/')).not.toBeInTheDocument();
   });
 
   it('shows localized failure feedback when copying the install command fails', async () => {
@@ -48,7 +54,7 @@ describe('InstallCommandPanel', () => {
         title="安装这个技能"
         packageName="@platform.skill/agent-notes"
         version="1.2.3"
-        npmRegistry="https://npm.internal.example.com"
+        npmRegistry="http://192.168.10.127:32081/repository/skills-npm/"
         installPolicy="resolvable"
       />
     );
@@ -66,7 +72,7 @@ describe('InstallCommandPanel', () => {
         title="安装这个版本"
         packageName="@platform.skill/agent-notes"
         version="1.2.3"
-        npmRegistry="https://npm.internal.example.com"
+        npmRegistry="http://192.168.10.127:32081/repository/skills-npm/"
         installPolicy="blocked"
       />
     );
@@ -86,10 +92,10 @@ describe('InstallCommandPanel', () => {
       />
     );
 
-    expect(screen.getAllByText('待补充 npm 仓库地址').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('待补充仓库 Host').length).toBeGreaterThan(0);
     expect(
-      screen.getByText(
-        'npx --registry <待补充 npm 仓库地址> skills add @platform.skill/agent-notes --version 1.2.3'
+      screen.getByDisplayValue(
+        'SKILLS_REGISTRY_TOKEN=reader-token SKILLS_REGISTRY_URL=<待补充仓库 Host> npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.2.3'
       )
     ).toBeInTheDocument();
     expect(screen.getByText('当前未返回制品包地址。')).toBeInTheDocument();

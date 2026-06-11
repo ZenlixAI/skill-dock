@@ -3,33 +3,57 @@ import {
   buildInstallCommand,
   getGovernanceActionLabel,
   getGovernanceTargetTypeLabel,
+  getInstallHostLabel,
   getInstallPolicyLabel,
   getInstallRegistryLabel,
+  rewriteInstallTarballUrl,
   getSkillStatusLabel,
   getSourceTypeLabel,
   getVersionStatusLabel,
 } from './installCommand';
 
 describe('buildInstallCommand', () => {
-  it('builds an npm install command pinned to version and registry', () => {
+  it('builds an npx install command pinned to version and registry env vars', () => {
     expect(
       buildInstallCommand({
         packageName: '@platform.skill/agent-notes',
         version: '1.2.3',
-        npmRegistry: 'https://npm.internal.example.com',
+        registryHost: 'http://192.168.10.127:32080',
       })
-    ).toBe('npm install @platform.skill/agent-notes@1.2.3 --registry=https://npm.internal.example.com');
+    ).toBe(
+      'SKILLS_REGISTRY_TOKEN=reader-token SKILLS_REGISTRY_URL=http://192.168.10.127:32080 npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.2.3'
+    );
   });
 
-  it('uses a localized registry placeholder when registry metadata is missing', () => {
-    expect(getInstallRegistryLabel('')).toBe('待补充 npm 仓库地址');
+  it('uses a localized host placeholder when registry metadata is missing', () => {
+    expect(getInstallHostLabel('')).toBe('待补充仓库 Host');
     expect(
       buildInstallCommand({
         packageName: '@platform.skill/agent-notes',
         version: '1.2.3',
-        npmRegistry: '待补充 npm 仓库地址',
+        registryHost: '待补充仓库 Host',
       })
-    ).toBe('npm install @platform.skill/agent-notes@1.2.3 --registry=<待补充 npm 仓库地址>');
+    ).toBe(
+      'SKILLS_REGISTRY_TOKEN=reader-token SKILLS_REGISTRY_URL=<待补充仓库 Host> npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.2.3'
+    );
+  });
+
+  it('derives host labels from npm registry urls', () => {
+    expect(getInstallRegistryLabel('http://192.168.10.127:32081/repository/skills-npm/')).toBe(
+      'http://192.168.10.127:32081/repository/skills-npm/'
+    );
+    expect(getInstallHostLabel('http://192.168.10.127:32081/repository/skills-npm/')).toBe(
+      'http://192.168.10.127:32081'
+    );
+  });
+
+  it('rewrites tarball urls to use the registry host', () => {
+    expect(
+      rewriteInstallTarballUrl(
+        'https://npm.internal.example.com/@platform.skill/agent-notes/-/agent-notes-1.2.3.tgz',
+        'http://192.168.10.127:32080'
+      )
+    ).toBe('http://192.168.10.127:32080/@platform.skill/agent-notes/-/agent-notes-1.2.3.tgz');
   });
 
   it('maps install policy values to Chinese labels', () => {
