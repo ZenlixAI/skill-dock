@@ -295,7 +295,8 @@ make batch-import MANIFEST=/abs/path/to/import.json NPM_BACKEND=nexus
 
 - [docs/customer-k3s-deployment.zh-CN.md](docs/customer-k3s-deployment.zh-CN.md)
 - [../skill-registry-helm-chart/README.md](/Users/ultraman/workspace/skill-registry-helm-chart/README.md)
-- [../skill-registry-helm-chart/values.production.example.yaml](/Users/ultraman/workspace/skill-registry-helm-chart/values.production.example.yaml)
+- [../skill-registry-helm-chart/values.yaml](/Users/ultraman/workspace/skill-registry-helm-chart/values.yaml)
+- [../skill-registry-helm-chart/values.192.168.10.124.yaml](/Users/ultraman/workspace/skill-registry-helm-chart/values.192.168.10.124.yaml)
 
 ### 8. 重置与清理
 
