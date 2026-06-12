@@ -13,44 +13,47 @@ const steps = [
 
 <template>
   <div class="lifecycle-flow">
-    <div v-for="step in steps" :key="step" class="lifecycle-step">
-      <span>{{ step }}</span>
-    </div>
+    <template v-for="(step, index) in steps" :key="step">
+      <div class="lifecycle-step">
+        <span>{{ step }}</span>
+      </div>
+      <span v-if="index < steps.length - 1" class="lifecycle-arrow" aria-hidden="true">
+        →
+      </span>
+    </template>
   </div>
 </template>
 
 <style scoped>
 .lifecycle-flow {
-  display: grid;
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.75rem;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .lifecycle-step {
   align-items: center;
-  background: linear-gradient(180deg, #ffffff 0%, #fff5dc 100%);
-  border: 1px solid rgba(252, 163, 17, 0.28);
+  background: linear-gradient(
+    180deg,
+    var(--sr-surface-strong) 0%,
+    var(--sr-accent-soft) 100%
+  );
+  border: 1px solid color-mix(in srgb, var(--sr-accent) 28%, transparent);
   border-radius: 999px;
-  color: #14213d;
+  color: var(--sr-ink);
   display: flex;
   font-size: 0.92rem;
   font-weight: 700;
   justify-content: center;
   min-height: 3.25rem;
-  position: relative;
+  min-width: 7.5rem;
+  padding: 0 1rem;
 }
 
-.lifecycle-step::after {
-  color: rgba(20, 33, 61, 0.3);
-  content: '→';
-  position: absolute;
-  right: -0.52rem;
-  top: 50%;
-  transform: translateY(-50%);
-}
-
-.lifecycle-step:nth-child(4)::after,
-.lifecycle-step:last-child::after {
-  content: '';
+.lifecycle-arrow {
+  color: color-mix(in srgb, var(--sr-ink) 35%, transparent);
+  font-size: 1.1rem;
+  font-weight: 700;
 }
 </style>
