@@ -13,24 +13,26 @@ const steps = [
 </script>
 
 <template>
-  <div class="lifecycle-flow">
-    <template v-for="(step, index) in steps" :key="step">
-      <div class="lifecycle-step">
-        <span>{{ step }}</span>
-      </div>
-      <span v-if="index < steps.length - 1" class="lifecycle-arrow" aria-hidden="true">
-        →
-      </span>
-    </template>
-  </div>
+  <ol class="lifecycle-flow">
+    <li
+      v-for="(step, index) in steps"
+      :key="step"
+      class="lifecycle-step"
+      :data-step="index + 1"
+    >
+      <span>{{ step }}</span>
+    </li>
+  </ol>
 </template>
 
 <style scoped>
 .lifecycle-flow {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 0.75rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
 .lifecycle-step {
@@ -46,15 +48,33 @@ const steps = [
   display: flex;
   font-size: 0.92rem;
   font-weight: 700;
-  justify-content: center;
+  gap: 0.75rem;
+  justify-content: flex-start;
   min-height: 3.25rem;
-  min-width: 7.5rem;
-  padding: 0 1rem;
+  padding: 0.85rem 1rem;
+  position: relative;
 }
 
-.lifecycle-arrow {
+.lifecycle-step::before {
+  align-items: center;
+  background: rgba(20, 33, 61, 0.08);
+  border-radius: 999px;
+  content: attr(data-step);
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 1.85rem;
+  justify-content: center;
+  width: 1.85rem;
+}
+
+.lifecycle-step:not(:last-child)::after {
   color: color-mix(in srgb, var(--sr-ink) 35%, transparent);
+  content: '→';
   font-size: 1.1rem;
   font-weight: 700;
+  position: absolute;
+  right: 0.85rem;
+  top: 50%;
+  transform: translateY(-50%);
 }
 </style>
