@@ -1,0 +1,114 @@
+:root {
+  --sr-ink: #14213d;
+  --sr-accent: #fca311;
+  --sr-accent-soft: #ffe8b6;
+  --sr-surface: #f8fafc;
+  --sr-surface-strong: #ffffff;
+  --sr-border: rgba(20, 33, 61, 0.12);
+  --sr-muted: #546277;
+  --sr-success: #1f9d74;
+}
+
+.slidev-layout {
+  background:
+    radial-gradient(circle at top left, rgba(252, 163, 17, 0.18), transparent 28%),
+    linear-gradient(180deg, #fffdf8 0%, #f7fafc 100%);
+  color: var(--sr-ink);
+}
+
+h1,
+h2,
+h3 {
+  color: var(--sr-ink);
+  letter-spacing: -0.03em;
+}
+
+.eyebrow {
+  color: var(--sr-accent);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.hero-panel,
+.content-card,
+.role-card,
+.summary-card {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--sr-border);
+  border-radius: 24px;
+  box-shadow: 0 20px 60px rgba(20, 33, 61, 0.08);
+}
+
+.hero-panel {
+  padding: 1.4rem 1.6rem;
+}
+
+.content-grid {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.content-card {
+  padding: 1rem 1.1rem;
+}
+
+.role-strip {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.role-card {
+  padding: 1rem;
+}
+
+.pillars {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.pillar {
+  background: linear-gradient(180deg, #ffffff 0%, #fff6df 100%);
+  border: 1px solid rgba(252, 163, 17, 0.28);
+  border-radius: 24px;
+  padding: 1rem;
+}
+
+.bullets {
+  margin-top: 0.6rem;
+  color: var(--sr-muted);
+  font-size: 0.95rem;
+}
+
+.boundary-list {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.boundary-item {
+  border-left: 4px solid var(--sr-accent);
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 18px;
+  padding: 0.85rem 1rem;
+}
+
+.quote-band {
+  font-size: 1.5rem;
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+.summary-grid {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.summary-card {
+  padding: 1rem;
+}
