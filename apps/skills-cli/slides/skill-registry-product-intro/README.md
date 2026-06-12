@@ -33,7 +33,7 @@ Recorded outcome in this execution environment:
 
 - `build` was verified successfully with `pnpm run build`.
 - `dev` is currently unverified and environment-blocked here because Slidev could not bind a local port.
-- `export` remains unverified.
+- `export` remains unverified and dependency-gated.
 
 Once deck content is added, the presentation source should live in `slides.md`.
 Shared presentation styling should live in `styles.css`.
