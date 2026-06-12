@@ -77,4 +77,18 @@ const steps = [
   top: 50%;
   transform: translateY(-50%);
 }
+
+.lifecycle-step:nth-child(3n):not(:last-child) {
+  justify-content: center;
+  padding-bottom: 1.55rem;
+}
+
+.lifecycle-step:nth-child(3n):not(:last-child)::after {
+  bottom: 0.45rem;
+  content: '↓';
+  left: 50%;
+  right: auto;
+  top: auto;
+  transform: translateX(-50%);
+}
 </style>

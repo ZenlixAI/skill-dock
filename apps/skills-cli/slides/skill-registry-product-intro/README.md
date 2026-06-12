@@ -31,9 +31,9 @@ Expected commands:
 
 Recorded outcome in this execution environment:
 
-- `pnpm run build` was verified successfully and generated `dist/`.
+- `pnpm run build` was verified successfully, generated `dist/`, and completed with two non-fatal Rolldown `INVALID_ANNOTATION` warnings from `@vueuse/core/dist/index.js`.
 - `pnpm run dev` was attempted in this environment and failed with local port-binding errors; this appears environment- or sandbox-specific rather than a confirmed deck issue.
-- `pnpm run export` was not exercised in this run and therefore remains unverified in this environment.
+- `pnpm run export` was rerun in this environment and failed with `GetPortError: Unable to find a random port on any host` before PDF generation started.
 
 Once deck content is added, the presentation source should live in `slides.md`.
 Shared presentation styling should live in `styles.css`.
