@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { InstallPolicy } from '../api/types';
 import {
   buildInstallCommand,
@@ -57,20 +57,38 @@ export function InstallCommandPanel({
   integrity,
 }: InstallCommandPanelProps) {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const commandRef = useRef<HTMLTextAreaElement | null>(null);
   const registryHost = getInstallHostLabel(npmRegistry);
   const tarballLabel = rewriteInstallTarballUrl(tarballUrl, registryHost);
+  const catalogBaseUrl = window.location.origin;
   const command = buildInstallCommand({
+    catalogBaseUrl,
     packageName,
     version,
   });
   const installBlocked = installPolicy === 'blocked';
 
+  function copyWithExecCommand() {
+    const field = commandRef.current;
+    if (!field) {
+      return false;
+    }
+
+    field.focus();
+    field.select();
+    return document.execCommand('copy');
+  }
+
   async function handleCopy() {
     try {
-      await navigator.clipboard.writeText(command);
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(command);
+      } else if (!copyWithExecCommand()) {
+        throw new Error('copy unavailable');
+      }
       setCopyState('copied');
     } catch {
-      setCopyState('failed');
+      setCopyState(copyWithExecCommand() ? 'copied' : 'failed');
     }
   }
 
@@ -91,6 +109,7 @@ export function InstallCommandPanel({
           className="install-command-panel__command"
           onFocus={(event) => event.currentTarget.select()}
           readOnly
+          ref={commandRef}
           rows={4}
           value={command}
         />

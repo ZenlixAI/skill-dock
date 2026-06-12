@@ -8,12 +8,14 @@ import type {
 } from '../api/types';
 
 type InstallCommandInput = {
+  catalogBaseUrl: string;
   packageName: string;
   version: string;
 };
 
 const INSTALL_REGISTRY_FALLBACK_LABEL = '待补充 npm 仓库地址';
 const INSTALL_HOST_FALLBACK_LABEL = '待补充仓库 Host';
+const INSTALL_CATALOG_FALLBACK_LABEL = '<待补充 SKILLS_REGISTRY_URL>';
 function parseUrl(value?: string | null): URL | null {
   const trimmedValue = value?.trim();
   if (!trimmedValue) {
@@ -54,8 +56,9 @@ export function rewriteInstallTarballUrl(tarballUrl?: string | null, registryHos
   return `${parsedRegistryHost.origin}${parsedTarballUrl.pathname}${parsedTarballUrl.search}${parsedTarballUrl.hash}`;
 }
 
-export function buildInstallCommand({ packageName, version }: InstallCommandInput) {
-  return `npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add ${packageName} --version ${version}`;
+export function buildInstallCommand({ catalogBaseUrl, packageName, version }: InstallCommandInput) {
+  const registryBaseUrl = catalogBaseUrl.trim() || INSTALL_CATALOG_FALLBACK_LABEL;
+  return `npx --registry ${registryBaseUrl} skills add ${packageName} --version ${version}`;
 }
 
 export function getInstallPolicyLabel(installPolicy: InstallPolicy) {

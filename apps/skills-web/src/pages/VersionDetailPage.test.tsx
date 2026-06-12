@@ -30,6 +30,8 @@ afterEach(() => {
 });
 
 describe('VersionDetailPage', () => {
+  const expectedCommand = `npx --registry ${window.location.origin} skills add @platform.skill/agent-notes --version 1.0.0`;
+
   it('consumes provider session posture without issuing a page-local session fetch', async () => {
     vi.mocked(client.getSession).mockResolvedValue({
       role: 'operator',
@@ -129,9 +131,7 @@ describe('VersionDetailPage', () => {
     const governanceHeading = screen.getByRole('heading', { name: '版本治理' });
 
     expect(
-      screen.getByDisplayValue(
-        'npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.0.0'
-      )
+      screen.getByDisplayValue(expectedCommand)
     ).toBeInTheDocument();
     expect(screen.getAllByText('可直接安装').length).toBeGreaterThan(0);
     expect(screen.getAllByText('已发布').length).toBeGreaterThan(0);
@@ -300,11 +300,7 @@ describe('VersionDetailPage', () => {
     expect(await screen.findByRole('heading', { name: '安装这个版本' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '安装状态' })).not.toBeInTheDocument();
     expect(screen.getAllByText('待补充仓库 Host').length).toBeGreaterThan(0);
-    expect(
-      screen.getByDisplayValue(
-        'npx --registry $SKILLS_REGISTRY_URL/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.0.0'
-      )
-    ).toBeInTheDocument();
+    expect(screen.getByDisplayValue(expectedCommand)).toBeInTheDocument();
     expect(screen.getByText('当前未返回制品包地址。')).toBeInTheDocument();
     expect(screen.getByText('当前未返回完整性校验值。')).toBeInTheDocument();
   });
