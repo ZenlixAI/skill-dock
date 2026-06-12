@@ -31,9 +31,9 @@ Expected commands:
 
 Recorded outcome in this execution environment:
 
-- `build` was verified successfully with `pnpm run build`.
-- `dev` is currently unverified and environment-blocked here because Slidev could not bind a local port.
-- `export` remains unverified and dependency-gated.
+- `pnpm run build` was verified successfully and generated `dist/`.
+- `pnpm run dev` was attempted in this environment and failed with local port-binding errors; this appears environment- or sandbox-specific rather than a confirmed deck issue.
+- `pnpm run export` was not exercised in this run and therefore remains unverified in this environment.
 
 Once deck content is added, the presentation source should live in `slides.md`.
 Shared presentation styling should live in `styles.css`.
