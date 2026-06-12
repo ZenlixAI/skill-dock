@@ -1,10 +1,12 @@
-package catalogapi
+package audit
 
 import (
 	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"skill_registry/app/catalogapi/common"
 
 	"skill_registry/app/auth"
 	"skill_registry/app/observability"
@@ -13,11 +15,10 @@ import (
 
 func TestAuditRecorderRecordMutationIncludesPrincipalAndAuthDecision(t *testing.T) {
 	store := &captureAuditStore{}
-	recorder := NewAuditRecorder(store)
+	recorder := NewRecorder(store)
 
 	request := httptest.NewRequest(http.MethodPut, "/api/v1/skills/%40platform.skill%2Fagent-notes/versions/0.1.0/release-record", nil)
-	ctx := context.WithValue(request.Context(), requestIDContextKey, "req_123")
-	ctx = context.WithValue(ctx, traceIDContextKey, "trace_123")
+	ctx := common.ContextWithRequestMetadata(request.Context(), "req_123", "trace_123")
 	ctx = auth.ContextWithPrincipal(ctx, auth.Principal{
 		Role:          "publisher",
 		Actor:         "svc-publisher",
@@ -46,11 +47,10 @@ func TestAuditRecorderRecordMutationIncludesPrincipalAndAuthDecision(t *testing.
 
 func TestAuditRecorderRecordAuthorizationDeniedIncludesDecisionAndCoordinates(t *testing.T) {
 	store := &captureAuditStore{}
-	recorder := NewAuditRecorder(store)
+	recorder := NewRecorder(store)
 
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/skills/%40platform.skill%2Fpdf-skill/governance-changes", nil)
-	ctx := context.WithValue(request.Context(), requestIDContextKey, "req_456")
-	ctx = context.WithValue(ctx, traceIDContextKey, "trace_456")
+	ctx := common.ContextWithRequestMetadata(request.Context(), "req_456", "trace_456")
 	request = request.WithContext(ctx)
 
 	recorder.RecordAuthorizationDenied(request, auth.Principal{

@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"skill_registry/app/auth"
+	"skill_registry/app/catalogapi/audit"
+	"skill_registry/app/catalogapi/common"
 	"skill_registry/business/catalog"
 	"skill_registry/business/packaging"
 	"skill_registry/foundation/persist"
@@ -24,7 +26,7 @@ type packagingService interface {
 type packagingModule struct {
 	service             packagingService
 	idempotency         persist.IdempotencyStore
-	audit               *AuditRecorder
+	audit               *audit.Recorder
 	cache               *packagingResponseCache
 	allowAnonymousCache bool
 }
@@ -69,7 +71,7 @@ func (m *packagingModule) decodePackRequest(ctx context.Context, principal auth.
 
 func decodePackagingPayload[T interface{ GetTarget() packaging.Target }](ctx context.Context, m *packagingModule, principal auth.Principal, endpoint string, rawBody []byte) (T, *catalog.Error) {
 	var payload T
-	if err := decodeJSONBytes(rawBody, &payload); err != nil {
+	if err := common.DecodeJSONBytes(rawBody, &payload); err != nil {
 		m.recordPackagingAudit(ctx, principal, endpoint, packaging.Target{}, err.Status, "failed", map[string]any{
 			"errorCode": err.Code,
 		})
@@ -95,7 +97,7 @@ func executePackagingWorkflow[T interface {
 		}
 	}
 
-	requestHash, err := hashRequestPayload(payload)
+	requestHash, err := common.HashRequestPayload(payload)
 	if err != nil {
 		return nil, 0, catalog.NewError(500, "internal_error", "Internal server error.", nil)
 	}
@@ -122,11 +124,11 @@ func executePackagingWorkflow[T interface {
 
 	response, runErr := run(payload)
 	if runErr != nil {
-		catalogErr := catalogErrorFromError(runErr)
+		catalogErr := common.CatalogErrorFromError(runErr)
 		m.recordPackagingAudit(ctx, principal, endpoint, target, catalogErr.Status, "failed", map[string]any{
 			"errorCode": catalogErr.Code,
 		})
-		return nil, statusFromError(runErr), catalogErr
+		return nil, common.StatusFromError(runErr), catalogErr
 	}
 
 	if idempotencyKey == "" || !cacheAllowed {

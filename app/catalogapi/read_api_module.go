@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"skill_registry/app/auth"
+	"skill_registry/app/catalogapi/common"
 	"skill_registry/business/catalog"
 )
 
@@ -22,7 +23,7 @@ func (m *readAPIModule) listSkills(ctx context.Context, principal auth.Principal
 	if sourceTypeErr != nil {
 		return catalog.SkillsPage{}, sourceTypeErr
 	}
-	includeRetired, includeRetiredErr := parseBooleanQueryParam(values.Get("include_retired"), "include_retired", false)
+	includeRetired, includeRetiredErr := common.ParseBooleanQueryParam(values.Get("include_retired"), "include_retired", false)
 	if includeRetiredErr != nil {
 		return catalog.SkillsPage{}, includeRetiredErr
 	}
@@ -30,11 +31,11 @@ func (m *readAPIModule) listSkills(ctx context.Context, principal auth.Principal
 	if sortErr != nil {
 		return catalog.SkillsPage{}, sortErr
 	}
-	pageSize, pageSizeErr := parsePageSize(values)
+	pageSize, pageSizeErr := common.ParsePageSize(values)
 	if pageSizeErr != nil {
 		return catalog.SkillsPage{}, pageSizeErr
 	}
-	cursor, cursorErr := parseCursor(values)
+	cursor, cursorErr := common.ParseCursor(values)
 	if cursorErr != nil {
 		return catalog.SkillsPage{}, cursorErr
 	}

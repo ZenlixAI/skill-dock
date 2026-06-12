@@ -1299,7 +1299,8 @@ func pageWindow[T any](items []T, _ int, pageSize int) []T {
 
 func scanSkillSummary(scanner interface {
 	Scan(dest ...any) error
-}) (SkillSummary, error) {
+},
+) (SkillSummary, error) {
 	var (
 		item                SkillSummary
 		latestVersion       sql.NullString
@@ -1330,7 +1331,8 @@ func scanSkillSummary(scanner interface {
 
 func scanSkillDetail(scanner interface {
 	Scan(dest ...any) error
-}) (SkillDetail, error) {
+},
+) (SkillDetail, error) {
 	var (
 		item                SkillDetail
 		latestVersion       sql.NullString
@@ -1368,7 +1370,8 @@ func scanSkillDetail(scanner interface {
 
 func scanSkillVersionDetail(scanner interface {
 	Scan(dest ...any) error
-}) (SkillVersionDetail, error) {
+},
+) (SkillVersionDetail, error) {
 	var (
 		version        SkillVersionDetail
 		publishedAtRaw string
@@ -1408,7 +1411,8 @@ func scanSkillVersionDetail(scanner interface {
 
 func scanGovernanceRecord(scanner interface {
 	Scan(dest ...any) error
-}) (GovernanceRecord, error) {
+},
+) (GovernanceRecord, error) {
 	var (
 		record                    GovernanceRecord
 		version                   sql.NullString

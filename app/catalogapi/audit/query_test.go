@@ -1,4 +1,4 @@
-package catalogapi
+package audit
 
 import (
 	"context"
@@ -14,12 +14,12 @@ import (
 )
 
 func TestAuditQueryModuleRejectsInvalidAuthDecision(t *testing.T) {
-	module := &auditQueryModule{
+	module := &QueryModule{
 		audit:      stubAuditStore{},
 		authorizer: auth.NewAuthorizer(auth.Config{}),
 	}
 
-	_, err := module.listEvents(context.Background(), auth.Principal{Role: "publisher", Actor: "publisher"}, url.Values{
+	_, err := module.ListEvents(context.Background(), auth.Principal{Role: "publisher", Actor: "publisher"}, url.Values{
 		"auth_decision": []string{"maybe"},
 	})
 
@@ -32,12 +32,12 @@ func TestAuditQueryModuleRejectsInvalidAuthDecision(t *testing.T) {
 }
 
 func TestAuditQueryModuleRequiresPackageFilterForScopedPrincipal(t *testing.T) {
-	module := &auditQueryModule{
+	module := &QueryModule{
 		audit:      stubAuditStore{},
 		authorizer: auth.NewAuthorizer(auth.Config{}),
 	}
 
-	_, err := module.listEvents(context.Background(), auth.Principal{
+	_, err := module.ListEvents(context.Background(), auth.Principal{
 		Role:            "reader",
 		Actor:           "svc-reader",
 		AllowedPackages: []string{"@platform.skill/private-skill"},
@@ -52,7 +52,7 @@ func TestAuditQueryModuleRequiresPackageFilterForScopedPrincipal(t *testing.T) {
 }
 
 func TestAuditQueryModuleListsEventsWithCombinedFilters(t *testing.T) {
-	module := &auditQueryModule{
+	module := &QueryModule{
 		audit: stubAuditStore{
 			listPage: persist.AuditPage{
 				Items: []persist.AuditRecord{{
@@ -61,7 +61,7 @@ func TestAuditQueryModuleListsEventsWithCombinedFilters(t *testing.T) {
 					Role:         "publisher",
 					AuthDecision: observability.AuthDecisionAllowed,
 					PackageName:  "@platform.skill/agent-notes",
-					Version:      stringPtr("0.1.0"),
+					Version:      new("0.1.0"),
 					Outcome:      "succeeded",
 					StatusCode:   http.StatusCreated,
 					CreatedAt:    time.Now().UTC(),
@@ -72,14 +72,13 @@ func TestAuditQueryModuleListsEventsWithCombinedFilters(t *testing.T) {
 		authorizer: auth.NewAuthorizer(auth.Config{}),
 	}
 
-	page, err := module.listEvents(context.Background(), auth.Principal{Role: "publisher", Actor: "svc-publisher"}, url.Values{
+	page, err := module.ListEvents(context.Background(), auth.Principal{Role: "publisher", Actor: "svc-publisher"}, url.Values{
 		"action":        []string{"release.record"},
 		"auth_decision": []string{"allowed"},
 		"package_name":  []string{"@platform.skill/agent-notes"},
 		"version":       []string{"0.1.0"},
 		"outcome":       []string{"succeeded"},
 	})
-
 	if err != nil {
 		t.Fatalf("list audit events: %v", err)
 	}
@@ -92,11 +91,11 @@ func TestAuditQueryModuleListsEventsWithCombinedFilters(t *testing.T) {
 }
 
 func TestAuditQueryModuleReturnsServiceUnavailableWhenStoreMissing(t *testing.T) {
-	module := &auditQueryModule{
+	module := &QueryModule{
 		authorizer: auth.NewAuthorizer(auth.Config{}),
 	}
 
-	_, err := module.listEvents(context.Background(), auth.Principal{Role: "publisher", Actor: "publisher"}, url.Values{})
+	_, err := module.ListEvents(context.Background(), auth.Principal{Role: "publisher", Actor: "publisher"}, url.Values{})
 
 	if err == nil {
 		t.Fatal("expected missing store error")
@@ -107,14 +106,14 @@ func TestAuditQueryModuleReturnsServiceUnavailableWhenStoreMissing(t *testing.T)
 }
 
 func TestAuditQueryModulePropagatesAuditStoreErrors(t *testing.T) {
-	module := &auditQueryModule{
+	module := &QueryModule{
 		audit: stubAuditStore{
 			listErr: catalog.NewError(http.StatusServiceUnavailable, "audit_unavailable", "Audit backend unavailable.", nil),
 		},
 		authorizer: auth.NewAuthorizer(auth.Config{}),
 	}
 
-	_, err := module.listEvents(context.Background(), auth.Principal{Role: "publisher", Actor: "publisher"}, url.Values{})
+	_, err := module.ListEvents(context.Background(), auth.Principal{Role: "publisher", Actor: "publisher"}, url.Values{})
 
 	if err == nil {
 		t.Fatal("expected store error")
@@ -125,12 +124,12 @@ func TestAuditQueryModulePropagatesAuditStoreErrors(t *testing.T) {
 }
 
 func TestAuditQueryModuleRejectsInvalidVersionFilter(t *testing.T) {
-	module := &auditQueryModule{
+	module := &QueryModule{
 		audit:      stubAuditStore{},
 		authorizer: auth.NewAuthorizer(auth.Config{}),
 	}
 
-	_, err := module.listEvents(context.Background(), auth.Principal{Role: "publisher", Actor: "publisher"}, url.Values{
+	_, err := module.ListEvents(context.Background(), auth.Principal{Role: "publisher", Actor: "publisher"}, url.Values{
 		"version": []string{"latest"},
 	})
 
@@ -140,4 +139,23 @@ func TestAuditQueryModuleRejectsInvalidVersionFilter(t *testing.T) {
 	if err.Status != http.StatusBadRequest {
 		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, err.Status)
 	}
+}
+
+type stubAuditStore struct {
+	appendErr error
+	listPage  persist.AuditPage
+	listErr   error
+	pingErr   error
+}
+
+func (s stubAuditStore) Append(context.Context, persist.AuditEvent) error {
+	return s.appendErr
+}
+
+func (s stubAuditStore) List(context.Context, persist.AuditQuery) (persist.AuditPage, error) {
+	return s.listPage, s.listErr
+}
+
+func (s stubAuditStore) Ping(context.Context) error {
+	return s.pingErr
 }

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"skill_registry/app/auth"
+	"skill_registry/app/catalogapi/common"
 	"skill_registry/business/catalog"
 )
 
@@ -41,13 +42,13 @@ type sessionLogoutResponse struct {
 func (s *Server) handleSession(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet {
 		writer.Header().Set("Allow", http.MethodGet)
-		writeCatalogError(writer, request, catalog.NewError(http.StatusMethodNotAllowed, "method_not_allowed", "Only GET is allowed.", nil))
+		common.WriteCatalogError(writer, request, catalog.NewError(http.StatusMethodNotAllowed, "method_not_allowed", "Only GET is allowed.", nil))
 		return
 	}
 
 	current, ok := s.authenticateRequest(request)
 	if !ok {
-		writeJSON(writer, http.StatusOK, nil)
+		common.WriteJSON(writer, http.StatusOK, nil)
 		return
 	}
 	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), current))
@@ -56,44 +57,44 @@ func (s *Server) handleSession(writer http.ResponseWriter, request *http.Request
 	}
 
 	current = auth.PrincipalFromContext(request.Context())
-	writeJSON(writer, http.StatusOK, s.sessionModule.current(current))
+	common.WriteJSON(writer, http.StatusOK, s.sessionModule.current(current))
 }
 
 func (s *Server) handleSessionLogin(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodPost {
 		writer.Header().Set("Allow", http.MethodPost)
-		writeCatalogError(writer, request, catalog.NewError(http.StatusMethodNotAllowed, "method_not_allowed", "Only POST is allowed.", nil))
+		common.WriteCatalogError(writer, request, catalog.NewError(http.StatusMethodNotAllowed, "method_not_allowed", "Only POST is allowed.", nil))
 		return
 	}
 	if s.sessionModule == nil || !s.sessionModule.enabled() {
-		writeCatalogError(writer, request, catalog.NewError(http.StatusNotFound, "session_login_disabled", "Session login is not enabled for this deployment.", nil))
+		common.WriteCatalogError(writer, request, catalog.NewError(http.StatusNotFound, "session_login_disabled", "Session login is not enabled for this deployment.", nil))
 		return
 	}
 
 	var input sessionLoginRequest
 	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
-		writeCatalogError(writer, request, catalog.NewError(http.StatusBadRequest, "invalid_request", "Request body must be valid JSON.", nil))
+		common.WriteCatalogError(writer, request, catalog.NewError(http.StatusBadRequest, "invalid_request", "Request body must be valid JSON.", nil))
 		return
 	}
 	if strings.TrimSpace(input.Username) == "" || strings.TrimSpace(input.Password) == "" {
-		writeCatalogError(writer, request, catalog.NewError(http.StatusBadRequest, "invalid_request", "username and password are required.", nil))
+		common.WriteCatalogError(writer, request, catalog.NewError(http.StatusBadRequest, "invalid_request", "username and password are required.", nil))
 		return
 	}
 
 	current, cookie, ok := s.sessionModule.login(request, input.Username, input.Password)
 	if !ok {
-		writeCatalogError(writer, request, catalog.NewError(http.StatusUnauthorized, "unauthorized", "Invalid username or password.", nil))
+		common.WriteCatalogError(writer, request, catalog.NewError(http.StatusUnauthorized, "unauthorized", "Invalid username or password.", nil))
 		return
 	}
 
 	http.SetCookie(writer, cookie)
-	writeJSON(writer, http.StatusOK, s.sessionModule.current(current))
+	common.WriteJSON(writer, http.StatusOK, s.sessionModule.current(current))
 }
 
 func (s *Server) handleSessionLogout(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodPost {
 		writer.Header().Set("Allow", http.MethodPost)
-		writeCatalogError(writer, request, catalog.NewError(http.StatusMethodNotAllowed, "method_not_allowed", "Only POST is allowed.", nil))
+		common.WriteCatalogError(writer, request, catalog.NewError(http.StatusMethodNotAllowed, "method_not_allowed", "Only POST is allowed.", nil))
 		return
 	}
 
@@ -102,5 +103,5 @@ func (s *Server) handleSessionLogout(writer http.ResponseWriter, request *http.R
 			http.SetCookie(writer, cookie)
 		}
 	}
-	writeJSON(writer, http.StatusOK, sessionLogoutResponse{OK: true})
+	common.WriteJSON(writer, http.StatusOK, sessionLogoutResponse{OK: true})
 }

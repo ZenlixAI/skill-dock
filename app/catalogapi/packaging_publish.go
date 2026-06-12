@@ -3,6 +3,7 @@ package catalogapi
 import (
 	"net/http"
 
+	"skill_registry/app/catalogapi/common"
 	"skill_registry/business/packaging"
 )
 
@@ -13,11 +14,11 @@ func (s *Server) handlePackagingPublish(writer http.ResponseWriter, request *htt
 	}
 
 	var payload packaging.PublishRequest
-	if err := decodeJSONBody(request, &payload); err != nil {
+	if err := common.DecodeJSONBody(request, &payload); err != nil {
 		s.recordMutationAudit(request, "packaging.publish", "", "", err.Status, "failed", map[string]any{
 			"errorCode": err.Code,
 		})
-		writeCatalogError(writer, request, err)
+		common.WriteCatalogError(writer, request, err)
 		return
 	}
 
@@ -26,18 +27,18 @@ func (s *Server) handlePackagingPublish(writer http.ResponseWriter, request *htt
 	}
 	release, limitErr := s.writeLimiter.acquire()
 	if limitErr != nil {
-		writeCatalogError(writer, request, limitErr)
+		common.WriteCatalogError(writer, request, limitErr)
 		return
 	}
 	defer release()
 
 	response, err := s.packaging.PublishContext(request.Context(), payload)
 	if err != nil {
-		catalogErr := catalogErrorFromError(err)
+		catalogErr := common.CatalogErrorFromError(err)
 		s.recordMutationAudit(request, "packaging.publish", payload.Target.PackageName, payload.Target.Version, catalogErr.Status, "failed", map[string]any{
 			"errorCode": catalogErr.Code,
 		})
-		writeCatalogError(writer, request, catalogErr)
+		common.WriteCatalogError(writer, request, catalogErr)
 		return
 	}
 	status := http.StatusOK
@@ -50,5 +51,5 @@ func (s *Server) handlePackagingPublish(writer http.ResponseWriter, request *htt
 		"created":             response.Created,
 		"idempotentReplay":    response.IdempotentReplay,
 	})
-	writeJSON(writer, status, response)
+	common.WriteJSON(writer, status, response)
 }

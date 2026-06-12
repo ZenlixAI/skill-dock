@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"skill_registry/app/auth"
+	"skill_registry/app/catalogapi/audit"
 	"skill_registry/app/observability"
 )
 
@@ -15,7 +16,7 @@ func TestAccessWorkflowDeniesPackageAccessAndRecordsAudit(t *testing.T) {
 	store := &captureAuditStore{}
 	workflow := &accessWorkflow{
 		authorizer: auth.NewAuthorizer(auth.Config{}),
-		audit:      NewAuditRecorder(store),
+		audit:      audit.NewRecorder(store),
 		logger:     log.New(io.Discard, "", 0),
 	}
 

@@ -4,13 +4,16 @@ import (
 	"log"
 	"net/http"
 
+	"skill_registry/app/catalogapi/common"
+
 	"skill_registry/app/auth"
+	"skill_registry/app/catalogapi/audit"
 	"skill_registry/app/observability"
 )
 
 type accessWorkflow struct {
 	authorizer *auth.Authorizer
-	audit      *AuditRecorder
+	audit      *audit.Recorder
 	logger     *log.Logger
 }
 
@@ -47,13 +50,13 @@ func (w *accessWorkflow) deny(writer http.ResponseWriter, request *http.Request,
 		if err := w.audit.RecordAuthorizationDenied(request, current, authErr.Code, authErr.Status, packageName, version, authErr.Details); err != nil && w.logger != nil {
 			w.logger.Printf(
 				`{"event":"audit_write_failed","requestId":%q,"traceId":%q,"action":%q,"authDecision":%q,"error":%q}`,
-				requestIDFromContext(request.Context()),
-				traceIDFromContext(request.Context()),
+				common.RequestIDFromContext(request.Context()),
+				common.TraceIDFromContext(request.Context()),
 				"auth.denied",
 				observability.AuthDecisionDenied,
 				err.Error(),
 			)
 		}
 	}
-	writeAuthorizationError(writer, request, authErr)
+	common.WriteAuthorizationError(writer, request, authErr)
 }

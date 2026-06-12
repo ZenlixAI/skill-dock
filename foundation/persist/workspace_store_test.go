@@ -208,7 +208,8 @@ CREATE TABLE packaging_workspaces (
 	if err != nil {
 		t.Fatalf("create legacy schema: %v", err)
 	}
-	_, err = db.ExecContext(ctx, `
+	_, err = db.ExecContext(
+		ctx, `
 INSERT INTO packaging_workspaces (workspace_id, workspace_snapshot, bundle_content, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?)`,
 		"legacy-ws",

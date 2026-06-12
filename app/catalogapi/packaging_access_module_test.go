@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"skill_registry/app/auth"
+	"skill_registry/app/catalogapi/audit"
 	"skill_registry/business/catalog"
 	"skill_registry/business/packaging"
 )
@@ -33,7 +34,7 @@ func TestPackagingAccessModuleResolvesBundlePathAndRecordsAudit(t *testing.T) {
 	store := &captureAuditStore{}
 	module := &packagingAccessModule{
 		service: &bundlePathOnlyPackagingService{bundlePath: bundlePath},
-		audit:   NewAuditRecorder(store),
+		audit:   audit.NewRecorder(store),
 	}
 	principal := auth.Principal{
 		Role:          "publisher",
@@ -43,7 +44,6 @@ func TestPackagingAccessModuleResolvesBundlePathAndRecordsAudit(t *testing.T) {
 	ctx := contextWithRequestMetadataForTest(context.Background(), "req_bundle", "trace_bundle")
 
 	resolvedPath, err := module.downloadBundle(ctx, principal, "ws_fixture", "@platform.skill/fixture-skill", "0.2.0")
-
 	if err != nil {
 		t.Fatalf("download bundle: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestPackagingAccessModuleCleanupRemovesWorkspaceAndBundle(t *testing.T) {
 	store := &captureAuditStore{}
 	module := &packagingAccessModule{
 		service: service,
-		audit:   NewAuditRecorder(store),
+		audit:   audit.NewRecorder(store),
 	}
 	principal := auth.Principal{
 		Role:          "publisher",
@@ -88,7 +88,6 @@ func TestPackagingAccessModuleCleanupRemovesWorkspaceAndBundle(t *testing.T) {
 	ctx := contextWithRequestMetadataForTest(context.Background(), "req_cleanup", "trace_cleanup")
 
 	response, status, err := module.cleanup(ctx, principal, packaging.CleanupRequest{WorkspacePath: workspacePath})
-
 	if err != nil {
 		t.Fatalf("cleanup workspace: %v", err)
 	}

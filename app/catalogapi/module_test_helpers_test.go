@@ -11,14 +11,14 @@ import (
 	"time"
 
 	"skill_registry/app/auth"
+	"skill_registry/app/catalogapi/common"
 	"skill_registry/business/catalog"
 	"skill_registry/business/packaging"
 	"skill_registry/foundation/persist"
 )
 
 func contextWithRequestMetadataForTest(ctx context.Context, requestID string, traceID string) context.Context {
-	ctx = context.WithValue(ctx, requestIDContextKey, requestID)
-	ctx = context.WithValue(ctx, traceIDContextKey, traceID)
+	ctx = common.ContextWithRequestMetadata(ctx, requestID, traceID)
 	return ctx
 }
 
@@ -249,7 +249,7 @@ func (w *accessWorkflowStub) deny(writer http.ResponseWriter, request *http.Requ
 			Message: "forbidden",
 		})
 	}
-	writeAuthorizationError(writer, request, authErr)
+	common.WriteAuthorizationError(writer, request, authErr)
 }
 
 func (w *accessWorkflowStub) denyCallCount() int {
@@ -264,7 +264,7 @@ func newAuditQueryModuleStubForTest(_ interface{ Helper() }) *auditQueryModuleSt
 	return &auditQueryModuleStub{}
 }
 
-func (m *auditQueryModuleStub) listEvents(context.Context, auth.Principal, url.Values) (persist.AuditPage, *catalog.Error) {
+func (m *auditQueryModuleStub) ListEvents(context.Context, auth.Principal, url.Values) (persist.AuditPage, *catalog.Error) {
 	m.listEventsCalls.Add(1)
 	return persist.AuditPage{}, nil
 }
@@ -319,7 +319,8 @@ type packagingAccessModuleStub struct {
 func newPackagingAccessModuleStubForTest(t interface {
 	Helper()
 	TempDir() string
-}) *packagingAccessModuleStub {
+},
+) *packagingAccessModuleStub {
 	t.Helper()
 	bundlePath := filepath.Join(t.TempDir(), "bundle.tgz")
 	if err := os.WriteFile(bundlePath, []byte("bundle"), 0o644); err != nil {
@@ -344,4 +345,17 @@ func (m *packagingAccessModuleStub) downloadBundleCallCount() int {
 
 func (m *packagingAccessModuleStub) cleanupCallCount() int {
 	return int(m.cleanupCalls.Load())
+}
+
+type captureAuditStore struct {
+	events []persist.AuditEvent
+}
+
+func (s *captureAuditStore) Append(_ context.Context, event persist.AuditEvent) error {
+	s.events = append(s.events, event)
+	return nil
+}
+
+func (s *captureAuditStore) List(context.Context, persist.AuditQuery) (persist.AuditPage, error) {
+	return persist.AuditPage{}, nil
 }

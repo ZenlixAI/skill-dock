@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"skill_registry/app/auth"
+	"skill_registry/app/catalogapi/audit"
+	"skill_registry/app/catalogapi/common"
 	"skill_registry/business/packaging"
 )
 
@@ -37,10 +39,9 @@ func TestPackagingModuleReplaysCachedPrepareResponse(t *testing.T) {
 func TestPackagingModulePrepareRecordsSuccessAudit(t *testing.T) {
 	store := &captureAuditStore{}
 	module := newPackagingModuleForTest(t)
-	module.audit = NewAuditRecorder(store)
+	module.audit = audit.NewRecorder(store)
 	principal := auth.Principal{Role: "authoring", Actor: "svc-authoring", AuthMechanism: "configured_token"}
-	ctx := context.WithValue(context.Background(), requestIDContextKey, "req_packaging_success")
-	ctx = context.WithValue(ctx, traceIDContextKey, "trace_packaging_success")
+	ctx := common.ContextWithRequestMetadata(context.Background(), "req_packaging_success", "trace_packaging_success")
 
 	_, status, err := module.prepare(ctx, principal, packaging.PrepareRequest{
 		Target: packaging.Target{PackageName: "@platform.skill/zoom-out", Version: "1.0.0"},
@@ -60,10 +61,9 @@ func TestPackagingModulePrepareRecordsSuccessAudit(t *testing.T) {
 func TestPackagingModulePrepareRecordsFailureAudit(t *testing.T) {
 	store := &captureAuditStore{}
 	module := newPackagingModuleForTest(t)
-	module.audit = NewAuditRecorder(store)
+	module.audit = audit.NewRecorder(store)
 	principal := auth.Principal{Role: "authoring", Actor: "svc-authoring", AuthMechanism: "configured_token"}
-	ctx := context.WithValue(context.Background(), requestIDContextKey, "req_packaging_failure")
-	ctx = context.WithValue(ctx, traceIDContextKey, "trace_packaging_failure")
+	ctx := common.ContextWithRequestMetadata(context.Background(), "req_packaging_failure", "trace_packaging_failure")
 
 	_, status, err := module.prepare(ctx, principal, packaging.PrepareRequest{
 		Source: packaging.Source{Type: "local"},
@@ -84,10 +84,9 @@ func TestPackagingModulePrepareRecordsFailureAudit(t *testing.T) {
 func TestPackagingModuleDecodePrepareRequestRecordsFailureAudit(t *testing.T) {
 	store := &captureAuditStore{}
 	module := newPackagingModuleForTest(t)
-	module.audit = NewAuditRecorder(store)
+	module.audit = audit.NewRecorder(store)
 	principal := auth.Principal{Role: "authoring", Actor: "svc-authoring", AuthMechanism: "configured_token"}
-	ctx := context.WithValue(context.Background(), requestIDContextKey, "req_packaging_decode_failure")
-	ctx = context.WithValue(ctx, traceIDContextKey, "trace_packaging_decode_failure")
+	ctx := common.ContextWithRequestMetadata(context.Background(), "req_packaging_decode_failure", "trace_packaging_decode_failure")
 
 	_, err := module.decodePrepareRequest(ctx, principal, []byte(`{"source":{"type":"local"},"target":{"packageName":"@platform.skill/test","version":"1.0.0"}}{"extra":true}`))
 
@@ -110,7 +109,7 @@ func TestPackagingModulePassesRequestContextToPackagingService(t *testing.T) {
 	module := &packagingModule{
 		service: &stubPackagingService{
 			prepareFunc: func(ctx context.Context, input packaging.PrepareRequest) (packaging.PrepareResponse, error) {
-				value, _ := ctx.Value(requestIDContextKey).(string)
+				value := common.RequestIDFromContext(ctx)
 				seenRequestID = value
 				return packaging.PrepareResponse{
 					WorkspacePath: "workspace-handle",
@@ -122,7 +121,7 @@ func TestPackagingModulePassesRequestContextToPackagingService(t *testing.T) {
 		cache:               newPackagingResponseCache(10 * time.Minute),
 		allowAnonymousCache: true,
 	}
-	ctx := context.WithValue(context.Background(), requestIDContextKey, "req_packaging_ctx")
+	ctx := common.ContextWithRequestMetadata(context.Background(), "req_packaging_ctx", "")
 
 	_, status, err := module.prepare(ctx, auth.Principal{Role: "authoring"}, packaging.PrepareRequest{
 		Target: packaging.Target{PackageName: "@platform.skill/zoom-out", Version: "1.0.0"},

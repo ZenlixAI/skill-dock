@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"skill_registry/app/auth"
+	"skill_registry/app/catalogapi/common"
 	"skill_registry/business/catalog"
 )
 
@@ -20,7 +21,7 @@ func (m *catalogReadModule) listSkills(ctx context.Context, principal auth.Princ
 	query.AllowedPackages = append([]string(nil), principal.AllowedPackages...)
 	response, err := m.repo.ListSkills(ctx, query)
 	if err != nil {
-		return catalog.SkillsPage{}, catalogErrorFromError(err)
+		return catalog.SkillsPage{}, common.CatalogErrorFromError(err)
 	}
 	return response, nil
 }
@@ -32,7 +33,7 @@ func (m *catalogReadModule) listCuratedSkills(ctx context.Context, principal aut
 		Cursor:          cursor,
 	})
 	if err != nil {
-		return catalog.CuratedSkillsPage{}, catalogErrorFromError(err)
+		return catalog.CuratedSkillsPage{}, common.CatalogErrorFromError(err)
 	}
 	return response, nil
 }

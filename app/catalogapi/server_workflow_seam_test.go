@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"skill_registry/app/auth"
+	"skill_registry/app/catalogapi/system"
 	"skill_registry/business/catalog"
 )
 
@@ -266,9 +267,9 @@ type systemModuleStub struct {
 	readyzCalls atomic.Int64
 }
 
-func (m *systemModuleStub) readyz(context.Context) (readyzResponse, int) {
+func (m *systemModuleStub) Readyz(context.Context) (system.Readyz, int) {
 	m.readyzCalls.Add(1)
-	return readyzResponse{
+	return system.Readyz{
 		Status: "ready",
 		Checks: map[string]string{
 			"repository":  "ok",

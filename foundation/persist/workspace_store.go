@@ -9,8 +9,10 @@ import (
 	"time"
 )
 
-var ErrWorkspaceRecordNotFound = errors.New("workspace record not found")
-var ErrWorkspaceBundleNotFound = errors.New("workspace bundle not found")
+var (
+	ErrWorkspaceRecordNotFound = errors.New("workspace record not found")
+	ErrWorkspaceBundleNotFound = errors.New("workspace bundle not found")
+)
 
 type WorkspaceStore interface {
 	SaveWorkspace(ctx context.Context, workspaceID string, workspacePath string, createdAt time.Time) error

@@ -1,34 +1,36 @@
-package catalogapi
+package audit
 
 import (
 	"context"
 	"net/http"
 	"net/url"
 
+	"skill_registry/app/catalogapi/common"
+
 	"skill_registry/app/auth"
 	"skill_registry/business/catalog"
 	"skill_registry/foundation/persist"
 )
 
-type auditQueryModule struct {
+type QueryModule struct {
 	audit      persist.AuditStore
 	authorizer *auth.Authorizer
 }
 
-type auditQueryWorkflow interface {
-	listEvents(ctx context.Context, principal auth.Principal, values url.Values) (persist.AuditPage, *catalog.Error)
+func NewQueryModule(store persist.AuditStore, authorizer *auth.Authorizer) *QueryModule {
+	return &QueryModule{audit: store, authorizer: authorizer}
 }
 
-func (m *auditQueryModule) listEvents(ctx context.Context, principal auth.Principal, values url.Values) (persist.AuditPage, *catalog.Error) {
+func (m *QueryModule) ListEvents(ctx context.Context, principal auth.Principal, values url.Values) (persist.AuditPage, *catalog.Error) {
 	if m.audit == nil {
 		return persist.AuditPage{}, catalog.NewError(http.StatusServiceUnavailable, "internal_error", "Audit store is not configured.", nil)
 	}
 
-	pageSize, err := parsePageSize(values)
+	pageSize, err := common.ParsePageSize(values)
 	if err != nil {
 		return persist.AuditPage{}, err
 	}
-	cursor, err := parseCursor(values)
+	cursor, err := common.ParseCursor(values)
 	if err != nil {
 		return persist.AuditPage{}, err
 	}
@@ -40,11 +42,11 @@ func (m *auditQueryModule) listEvents(ctx context.Context, principal auth.Princi
 		}
 	}
 
-	authDecision, authDecisionErr := parseAuthDecisionFilter(values.Get("auth_decision"))
+	authDecision, authDecisionErr := common.ParseAuthDecisionFilter(values.Get("auth_decision"))
 	if authDecisionErr != nil {
 		return persist.AuditPage{}, authDecisionErr
 	}
-	version, versionErr := parseExactVersionQueryParam(values.Get("version"), "version")
+	version, versionErr := common.ParseExactVersionQueryParam(values.Get("version"), "version")
 	if versionErr != nil {
 		return persist.AuditPage{}, versionErr
 	}
@@ -60,7 +62,7 @@ func (m *auditQueryModule) listEvents(ctx context.Context, principal auth.Princi
 		Cursor:       cursor,
 	})
 	if listErr != nil {
-		return persist.AuditPage{}, catalogErrorFromError(listErr)
+		return persist.AuditPage{}, common.CatalogErrorFromError(listErr)
 	}
 	return page, nil
 }

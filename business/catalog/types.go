@@ -167,14 +167,14 @@ type PageInfo struct {
 }
 
 type SkillQuery struct {
-	Query          string
-	PackageName    string
-	SourceType     string
+	Query           string
+	PackageName     string
+	SourceType      string
 	AllowedPackages []string
-	IncludeRetired bool
-	Sort           string
-	PageSize       int
-	Cursor         int
+	IncludeRetired  bool
+	Sort            string
+	PageSize        int
+	Cursor          int
 }
 
 type CuratedSkillQuery struct {

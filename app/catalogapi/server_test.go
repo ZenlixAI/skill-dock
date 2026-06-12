@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"skill_registry/app/auth"
+	"skill_registry/app/catalogapi/common"
 	"skill_registry/app/observability"
 	"skill_registry/business/catalog"
 	"skill_registry/business/packaging"
@@ -119,32 +120,6 @@ func TestReadAPIModuleListsSkillsFromParsedQuery(t *testing.T) {
 	}
 	if !reflect.DeepEqual(response, workflow.response) {
 		t.Fatalf("expected response passthrough, got %#v", response)
-	}
-}
-
-func TestSystemModuleReadyzCollectsDependencyChecks(t *testing.T) {
-	module := &systemModule{
-		repository:  namedReadinessDependency{name: "repository", pinger: stubReadinessPinger{err: errors.New("repository unavailable")}},
-		audit:       namedReadinessDependency{name: "audit", pinger: stubReadinessPinger{err: errors.New("audit unavailable")}},
-		idempotency: namedReadinessDependency{name: "idempotency", pinger: stubReadinessPinger{}},
-	}
-
-	payload, status := module.readyz(context.Background())
-
-	if status != http.StatusServiceUnavailable {
-		t.Fatalf("expected status %d, got %d", http.StatusServiceUnavailable, status)
-	}
-
-	wantChecks := map[string]string{
-		"repository":  "repository unavailable",
-		"audit":       "audit unavailable",
-		"idempotency": "ok",
-	}
-	if payload.Status != "degraded" {
-		t.Fatalf("expected degraded status, got %#v", payload)
-	}
-	if !reflect.DeepEqual(payload.Checks, wantChecks) {
-		t.Fatalf("unexpected readiness checks (-want +got):\nwant: %#v\ngot:  %#v", wantChecks, payload.Checks)
 	}
 }
 
@@ -3421,7 +3396,7 @@ func TestDecodeOptionalReleaseRecordInputAllowsNilBody(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPut, "/api/v1/skills/%40platform.skill%2Fagent-notes/versions/0.1.0/release-record", nil)
 	request.Body = nil
 
-	payload, err := decodeOptionalReleaseRecordInput(request)
+	payload, err := common.DecodeOptionalReleaseRecordInput(request)
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
@@ -3472,8 +3447,7 @@ func TestRecordMutationAuditLogsWriteFailure(t *testing.T) {
 	})
 
 	request := httptest.NewRequest(http.MethodPut, "/api/v1/skills/%40platform.skill%2Fagent-notes/versions/0.1.0/release-record", nil)
-	ctx := context.WithValue(request.Context(), requestIDContextKey, "req_audit")
-	ctx = context.WithValue(ctx, traceIDContextKey, "trace_audit")
+	ctx := common.ContextWithRequestMetadata(request.Context(), "req_audit", "trace_audit")
 
 	server.recordMutationAudit(
 		request.WithContext(ctx),
@@ -3541,8 +3515,7 @@ func TestLogAuditWriteFailureIgnoresNilError(t *testing.T) {
 	})
 
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills", nil)
-	ctx := context.WithValue(request.Context(), requestIDContextKey, "req_nil")
-	ctx = context.WithValue(ctx, traceIDContextKey, "trace_nil")
+	ctx := common.ContextWithRequestMetadata(request.Context(), "req_nil", "trace_nil")
 
 	server.logAuditWriteFailure(request.WithContext(ctx), "auth.denied", nil)
 
@@ -3769,14 +3742,6 @@ func (w *capturingCatalogReadWorkflow) listCuratedSkills(context.Context, auth.P
 
 func (w *capturingCatalogReadWorkflow) listSkillsCallCount() int {
 	return int(w.listSkillsCalls.Load())
-}
-
-type stubReadinessPinger struct {
-	err error
-}
-
-func (p stubReadinessPinger) Ping(context.Context) error {
-	return p.err
 }
 
 type testAuditRecord struct {

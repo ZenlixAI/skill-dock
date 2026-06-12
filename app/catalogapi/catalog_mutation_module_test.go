@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"skill_registry/app/auth"
+	"skill_registry/app/catalogapi/audit"
 	"skill_registry/business/catalog"
 )
 
@@ -13,7 +14,7 @@ func TestCatalogMutationModuleCreatesReleaseRecordAndRecordsCreatedAudit(t *test
 	store := &captureAuditStore{}
 	module := &catalogMutationModule{
 		repo:  catalog.NewMemoryRepository(catalog.SampleData()),
-		audit: NewAuditRecorder(store),
+		audit: audit.NewRecorder(store),
 	}
 	principal := auth.Principal{
 		Role:          "publisher",
@@ -23,7 +24,6 @@ func TestCatalogMutationModuleCreatesReleaseRecordAndRecordsCreatedAudit(t *test
 	ctx := contextWithRequestMetadataForTest(context.Background(), "req_release", "trace_release")
 
 	response, status, err := module.createReleaseRecord(ctx, principal, "@platform.skill/agent-notes", "0.1.0", nil)
-
 	if err != nil {
 		t.Fatalf("create release record: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestCatalogMutationModuleAppliesSkillGovernanceAndRecordsAudit(t *testing.T
 	store := &captureAuditStore{}
 	module := &catalogMutationModule{
 		repo:  catalog.NewMemoryRepository(catalog.SampleData()),
-		audit: NewAuditRecorder(store),
+		audit: audit.NewRecorder(store),
 	}
 	principal := auth.Principal{
 		Role:          "publisher",
@@ -55,7 +55,6 @@ func TestCatalogMutationModuleAppliesSkillGovernanceAndRecordsAudit(t *testing.T
 	ctx := contextWithRequestMetadataForTest(context.Background(), "req_skill_governance", "trace_skill_governance")
 
 	response, status, err := module.applySkillGovernanceChange(ctx, principal, "@platform.skill/code-review", []byte(`{"action":"retire","reason":"merged into new pack"}`))
-
 	if err != nil {
 		t.Fatalf("apply skill governance: %v", err)
 	}
@@ -74,7 +73,7 @@ func TestCatalogMutationModuleAppliesVersionGovernanceAndRecordsAudit(t *testing
 	store := &captureAuditStore{}
 	module := &catalogMutationModule{
 		repo:  catalog.NewMemoryRepository(catalog.SampleData()),
-		audit: NewAuditRecorder(store),
+		audit: audit.NewRecorder(store),
 	}
 	principal := auth.Principal{
 		Role:          "publisher",
@@ -84,7 +83,6 @@ func TestCatalogMutationModuleAppliesVersionGovernanceAndRecordsAudit(t *testing
 	ctx := contextWithRequestMetadataForTest(context.Background(), "req_version_governance", "trace_version_governance")
 
 	response, status, err := module.applyVersionGovernanceChange(ctx, principal, "@platform.skill/pdf-skill", "1.2.0", []byte(`{"action":"yank","reason":"security issue","replacementRecommendation":"1.1.0"}`))
-
 	if err != nil {
 		t.Fatalf("apply version governance: %v", err)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"skill_registry/app/auth"
+	"skill_registry/app/catalogapi/common"
 	"skill_registry/business/catalog"
 )
 
@@ -19,18 +20,8 @@ func (m *governanceModule) listChanges(ctx context.Context, principal auth.Princ
 
 	response, err := m.repo.ListGovernanceChanges(ctx, query)
 	if err != nil {
-		return catalog.GovernancePage{}, catalogErrorFromError(err)
+		return catalog.GovernancePage{}, common.CatalogErrorFromError(err)
 	}
 	response.Items = auth.FilterGovernanceRecordsByPrincipal(response.Items, principal)
 	return response, nil
-}
-
-func catalogErrorFromError(err error) *catalog.Error {
-	if err == nil {
-		return nil
-	}
-	if catalogErr, ok := err.(*catalog.Error); ok {
-		return catalogErr
-	}
-	return catalog.NewError(500, "internal_error", "Internal server error.", nil)
 }

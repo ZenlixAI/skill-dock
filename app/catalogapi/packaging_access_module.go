@@ -6,13 +6,15 @@ import (
 	"strings"
 
 	"skill_registry/app/auth"
+	"skill_registry/app/catalogapi/audit"
+	"skill_registry/app/catalogapi/common"
 	"skill_registry/business/catalog"
 	"skill_registry/business/packaging"
 )
 
 type packagingAccessModule struct {
 	service packagingAccessService
-	audit   *AuditRecorder
+	audit   *audit.Recorder
 }
 
 type packagingAccessService interface {
@@ -32,7 +34,7 @@ func (m *packagingAccessModule) cleanup(ctx context.Context, principal auth.Prin
 		return packaging.CleanupResponse{}, 0, err
 	}
 	if err := m.service.CleanupContext(ctx, payload.WorkspacePath); err != nil {
-		catalogErr := catalogErrorFromError(err)
+		catalogErr := common.CatalogErrorFromError(err)
 		m.recordAudit(ctx, principal, "packaging.cleanup", "", "", catalogErr.Status, "failed", map[string]any{"errorCode": catalogErr.Code})
 		return packaging.CleanupResponse{}, 0, catalogErr
 	}
@@ -52,7 +54,7 @@ func (m *packagingAccessModule) downloadBundle(ctx context.Context, principal au
 		Version:     version,
 	})
 	if err != nil {
-		catalogErr := catalogErrorFromError(err)
+		catalogErr := common.CatalogErrorFromError(err)
 		m.recordAudit(ctx, principal, "packaging.bundle.download", packageName, version, catalogErr.Status, "failed", map[string]any{"errorCode": catalogErr.Code})
 		return "", catalogErr
 	}
