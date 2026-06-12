@@ -13,28 +13,28 @@ import {
 } from './installCommand';
 
 describe('buildInstallCommand', () => {
-  it('builds an npx install command pinned to version and the current catalog base url', () => {
+  it('builds an npx install command pinned to version and the public web npm entrypoint', () => {
     expect(
       buildInstallCommand({
-        catalogBaseUrl: 'http://192.168.10.127:4173',
+        registryBaseUrl: 'http://skills.local/repository/skills-npm/',
         packageName: '@platform.skill/agent-notes',
         version: '1.2.3',
       })
     ).toBe(
-      'npx --registry http://192.168.10.127:4173 skills add @platform.skill/agent-notes --version 1.2.3'
+      'npx --registry http://skills.local/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.2.3'
     );
   });
 
-  it('falls back when the catalog base url is missing', () => {
+  it('falls back when the public install registry is missing', () => {
     expect(getInstallHostLabel('')).toBe('待补充仓库 Host');
     expect(
       buildInstallCommand({
-        catalogBaseUrl: '',
+        registryBaseUrl: '',
         packageName: '@platform.skill/agent-notes',
         version: '1.2.3',
       })
     ).toBe(
-      'npx --registry <待补充 SKILLS_REGISTRY_URL> skills add @platform.skill/agent-notes --version 1.2.3'
+      'npx --registry 待补充 npm 仓库地址 skills add @platform.skill/agent-notes --version 1.2.3'
     );
   });
 

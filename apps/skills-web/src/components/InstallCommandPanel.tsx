@@ -60,9 +60,9 @@ export function InstallCommandPanel({
   const commandRef = useRef<HTMLTextAreaElement | null>(null);
   const registryHost = getInstallHostLabel(npmRegistry);
   const tarballLabel = rewriteInstallTarballUrl(tarballUrl, registryHost);
-  const catalogBaseUrl = window.location.origin;
+  const publicInstallRegistry = new URL('/repository/skills-npm/', window.location.origin).toString();
   const command = buildInstallCommand({
-    catalogBaseUrl,
+    registryBaseUrl: publicInstallRegistry,
     packageName,
     version,
   });

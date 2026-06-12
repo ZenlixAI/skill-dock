@@ -5,6 +5,7 @@
 ```bash
 pnpm install
 pnpm run dev
+pnpm exec slidev slides.md --remote 0.0.0.0 --bind 0.0.0.0 --port 3030
 ```
 
 ## Build

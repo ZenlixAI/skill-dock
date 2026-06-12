@@ -30,7 +30,8 @@ afterEach(() => {
 });
 
 describe('VersionDetailPage', () => {
-  const expectedCommand = `npx --registry ${window.location.origin} skills add @platform.skill/agent-notes --version 1.0.0`;
+  const expectedCommand =
+    `npx --registry ${window.location.origin}/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.0.0`;
 
   it('consumes provider session posture without issuing a page-local session fetch', async () => {
     vi.mocked(client.getSession).mockResolvedValue({

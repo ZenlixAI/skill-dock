@@ -8,7 +8,8 @@ afterEach(() => {
 });
 
 describe('InstallCommandPanel', () => {
-  const expectedCommand = `npx --registry ${window.location.origin} skills add @platform.skill/agent-notes --version 1.2.3`;
+  const expectedCommand =
+    `npx --registry ${window.location.origin}/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.2.3`;
 
   it('copies the generated install command', async () => {
     Object.defineProperty(window.navigator, 'clipboard', {

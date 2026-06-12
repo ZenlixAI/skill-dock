@@ -27,7 +27,8 @@ afterEach(() => {
 });
 
 describe('SkillDetailPage', () => {
-  const expectedCommand = `npx --registry ${window.location.origin} skills add @platform.skill/agent-notes --version 1.0.0`;
+  const expectedCommand =
+    `npx --registry ${window.location.origin}/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.0.0`;
 
   it('consumes provider session posture without issuing a page-local session fetch', async () => {
     vi.mocked(client.getSession).mockResolvedValue({
@@ -521,7 +522,7 @@ describe('SkillDetailPage', () => {
     expect(installPanel).not.toBeNull();
     expect(
       within(installPanel as HTMLElement).getByDisplayValue(
-        `npx --registry ${window.location.origin} skills add @platform.skill/agent-notes --version 1.9.0`
+        `npx --registry ${window.location.origin}/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.9.0`
       )
     ).toBeInTheDocument();
     expect(within(installPanel as HTMLElement).getByText('可直接安装')).toBeInTheDocument();
