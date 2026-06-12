@@ -7,6 +7,7 @@ const steps = [
   'Search',
   'Install',
   'Update',
+  'Remove',
   'Govern',
 ];
 </script>
