@@ -1,19 +1,17 @@
 import { execFileSync } from 'node:child_process';
 import {
-  cpSync,
-  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
-  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { builtinModules } from 'node:module';
 import { describe, expect, it } from 'vitest';
+import { gunzipSync } from 'node:zlib';
 
 const rootDir = resolve(import.meta.dirname, '..');
 const builtinModuleSpecifiers = new Set([
@@ -50,6 +48,33 @@ function commandOutput(error: unknown) {
   };
 
   return `${stdout.toString()}${stderr.toString()}`;
+}
+
+function readTarballEntry(tarballPath: string, entryName: string) {
+  const archive = gunzipSync(readFileSync(tarballPath));
+  let offset = 0;
+
+  while (offset + 512 <= archive.length) {
+    const header = archive.subarray(offset, offset + 512);
+
+    if (header.every((byte) => byte === 0)) {
+      break;
+    }
+
+    const name = header.subarray(0, 100).toString('utf-8').replace(/\0.*$/, '');
+    const sizeText = header.subarray(124, 136).toString('utf-8').replace(/\0.*$/, '').trim();
+    const size = sizeText ? Number.parseInt(sizeText, 8) : 0;
+    const dataStart = offset + 512;
+    const dataEnd = dataStart + size;
+
+    if (name === entryName) {
+      return archive.subarray(dataStart, dataEnd).toString('utf-8');
+    }
+
+    offset = dataStart + Math.ceil(size / 512) * 512;
+  }
+
+  throw new Error(`Entry not found in tarball: ${entryName}`);
 }
 
 function packageNameFromSpecifier(specifier: string) {
@@ -127,50 +152,22 @@ function createNpmEnv(baseDir: string): NodeJS.ProcessEnv {
   };
 }
 
-function stagePackageSource(sourceDir: string, packagedFiles: string[]) {
-  mkdirSync(sourceDir, { recursive: true });
-
-  const filesToCopy = ['package.json', 'build.config.mjs', 'tsconfig.json', ...packagedFiles];
-  const directoriesToCopy = ['src', 'scripts'];
-
-  for (const file of filesToCopy) {
-    cpSync(join(rootDir, file), join(sourceDir, file), { recursive: true });
-  }
-
-  for (const directory of directoriesToCopy) {
-    cpSync(join(rootDir, directory), join(sourceDir, directory), { recursive: true });
-  }
-
-  const rootNodeModules = join(rootDir, 'node_modules');
-  expect(existsSync(rootNodeModules)).toBe(true);
-  symlinkSync(rootNodeModules, join(sourceDir, 'node_modules'), 'dir');
-}
-
 describe('skills cli build config', () => {
-  it('keeps builtins external while forcing manifest dependencies inline for function externals', async () => {
+  it('keeps only Node builtins external at runtime', async () => {
     const { default: buildConfig } = await import('../build.config.mjs');
     const config = {
       external: (id: string) =>
         id === 'picocolors' || id.startsWith('picocolors/') || id === 'left-pad',
     };
 
-    await buildConfig.hooks?.rolldownConfig?.(config, {
-      pkgDir: rootDir,
-      pkg: {
-        name: 'skills',
-        dependencies: { picocolors: '^1.1.1' },
-        peerDependencies: { yaml: '^2.8.3' },
-      },
-    });
+    await buildConfig.hooks?.rolldownConfig?.(config, { pkgDir: rootDir, pkg: { name: 'skills' } });
 
-    expect(typeof config.external).toBe('function');
-    expect(config.external('node:path')).toBe(true);
-    expect(config.external('path')).toBe(true);
-    expect(config.external('picocolors')).toBe(false);
-    expect(config.external('picocolors/colors')).toBe(false);
-    expect(config.external('yaml')).toBe(false);
-    expect(config.external('yaml/types')).toBe(false);
-    expect(config.external('left-pad')).toBe(true);
+    expect(config.external).toEqual(
+      expect.arrayContaining(['node:path', 'path', 'node:fs', 'fs', 'node:module', 'module'])
+    );
+    expect(Array.isArray(config.external)).toBe(true);
+    expect((config.external as Array<string | RegExp>).includes('picocolors')).toBe(false);
+    expect((config.external as Array<string | RegExp>).includes('left-pad')).toBe(false);
   });
 });
 
@@ -180,7 +177,6 @@ describe('packed skills cli package', () => {
     { timeout: 120000 },
     () => {
       const workspaceDir = mkdtempSync(join(tmpdir(), 'skills-self-contained-'));
-      const sourceDir = join(workspaceDir, 'source');
       const packDir = join(workspaceDir, 'pack');
       const installDir = join(workspaceDir, 'install');
       const npmEnv = createNpmEnv(join(workspaceDir, 'npm'));
@@ -189,7 +185,6 @@ describe('packed skills cli package', () => {
         devDependencies?: Record<string, string>;
         optionalDependencies?: Record<string, string>;
         peerDependencies?: Record<string, string>;
-        files?: string[];
       };
       const declaredPackages = new Set([
         ...Object.keys(packageManifest.dependencies ?? {}),
@@ -200,27 +195,23 @@ describe('packed skills cli package', () => {
       const undeclaredRuntimeImports = collectRuntimePackageImports(join(rootDir, 'src')).filter(
         (packageName) => !declaredPackages.has(packageName)
       );
-      const packagedStaticFiles = (packageManifest.files ?? []).filter((entry) => entry !== 'dist');
 
       try {
         expect(undeclaredRuntimeImports).toEqual([]);
         mkdirSync(packDir, { recursive: true });
         mkdirSync(installDir, { recursive: true });
-        stagePackageSource(sourceDir, packagedStaticFiles);
 
-        run('npm', ['run', 'build'], sourceDir, npmEnv);
+        run('npm', ['run', 'build'], rootDir, npmEnv);
 
         const packed = run(
           'npm',
-          ['pack', sourceDir, '--json', '--ignore-scripts', '--pack-destination', packDir],
-          sourceDir,
+          ['pack', '--json', '--ignore-scripts', '--pack-destination', packDir],
+          rootDir,
           npmEnv
         );
         const [{ filename }] = parsePackOutput(packed);
         const tarballPath = join(packDir, filename);
-        const packedManifest = JSON.parse(
-          run('tar', ['-xOf', tarballPath, 'package/package.json'], packDir)
-        ) as {
+        const packedManifest = JSON.parse(readTarballEntry(tarballPath, 'package/package.json')) as {
           dependencies?: Record<string, string>;
         };
 
