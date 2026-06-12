@@ -23,9 +23,17 @@ pnpm run export
 
 ## Verify
 
-- `pnpm run dev` should start a local Slidev server and render a 9-slide deck.
-- `pnpm run build` should generate `dist/`.
-- If `playwright-chromium` is installed and usable in the environment, `pnpm run export` should generate a PDF in the project directory.
+Expected commands:
+
+- `pnpm run dev` starts a local Slidev server and renders a 9-slide deck.
+- `pnpm run build` generates `dist/`.
+- If `playwright-chromium` is installed and usable in the environment, `pnpm run export` generates a PDF in the project directory.
+
+Recorded outcome in this execution environment:
+
+- `build` was verified successfully with `pnpm run build`.
+- `dev` is currently unverified and environment-blocked here because Slidev could not bind a local port.
+- `export` remains unverified.
 
 Once deck content is added, the presentation source should live in `slides.md`.
 Shared presentation styling should live in `styles.css`.
