@@ -15,13 +15,7 @@ pnpm run build
 
 ## Export PDF
 
-If you need PDF export, install a Chromium runtime first:
-
-```bash
-pnpm add -D playwright-chromium
-```
-
-Then run:
+`playwright-chromium` is already declared as a dev dependency for PDF export. Install dependencies, then run:
 
 ```bash
 pnpm run export
