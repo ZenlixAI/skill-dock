@@ -23,7 +23,7 @@
     "format:check": "prettier --check \"src/**/*.ts\" \"scripts/**/*.ts\"",
     "prepare": "husky",
     "test": "vitest run --exclude tests/dist.test.ts",
-    "test:dist": "vitest run tests/dist.test.ts",
+    "test:dist": "vitest run tests/dist.test.ts tests/self-contained-package.test.ts",
     "test:full": "npm run test && npm run test:dist",
     "test:packaging": "vitest run src/inspect.test.ts src/packaging-session.test.ts src/publish.test.ts src/publish-workflow.test.ts",
     "type-check": "tsc --noEmit",
@@ -119,13 +119,11 @@
     "simple-git": "^3.27.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.17",
-    "xdg-basedir": "^5.1.0"
+    "xdg-basedir": "^5.1.0",
+    "yaml": "^2.8.3"
   },
   "engines": {
     "node": ">=18"
   },
-  "packageManager": "pnpm@10.17.1",
-  "dependencies": {
-    "yaml": "^2.8.3"
-  }
+  "packageManager": "pnpm@10.17.1"
 }
