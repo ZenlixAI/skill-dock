@@ -7,7 +7,7 @@ import (
 )
 
 func TestSQLAuditStoreBuildListSQLIncludesOnlyActiveFilters(t *testing.T) {
-	store := &SQLAuditStore{dialect: "sqlite"}
+	store := newSQLAuditStore(nil, "sqlite")
 	query := AuditQuery{
 		Actor:       "svc-publisher",
 		PackageName: "@platform.skill/pdf-skill",
@@ -15,7 +15,7 @@ func TestSQLAuditStoreBuildListSQLIncludesOnlyActiveFilters(t *testing.T) {
 		Cursor:      3,
 	}
 
-	sqlText := store.listSQL(query)
+	sqlText := auditListSQLForTest(store, query)
 	if strings.Contains(sqlText, "(? = '' OR") {
 		t.Fatalf("expected dynamic filters instead of optional predicate placeholders, got %q", sqlText)
 	}
@@ -26,7 +26,7 @@ func TestSQLAuditStoreBuildListSQLIncludesOnlyActiveFilters(t *testing.T) {
 		t.Fatalf("expected SQL pagination clauses, got %q", sqlText)
 	}
 
-	args := store.listArgs(query)
+	args := auditListArgsForTest(store, query)
 	want := []any{"svc-publisher", "@platform.skill/pdf-skill", 2, 3}
 	if !reflect.DeepEqual(args, want) {
 		t.Fatalf("expected dynamic audit args %v, got %v", want, args)
