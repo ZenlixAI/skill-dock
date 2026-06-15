@@ -1,62 +1,74 @@
 # 本地 skills-web + Catalog Playwright 冒烟流程
 
-这份文档只覆盖 `apps/skills-web` 在真实 Catalog API 模式下的本地联调和 Playwright 冒烟，不覆盖单独的发布脚本实现细节。
+这份文档只覆盖 `apps/skills-web` 在真实 Catalog API 模式下的本地联调和 Playwright 冒烟。
 
 ## 目标
 
-- 用本地 `kind` Catalog 验证 `skills-web` 不是 mock-only 页面
-- 再运行浏览器冒烟，覆盖 catalog、import、governance、audit 这些主链路
+- 用本地 `kind` Catalog 验证 `skills-web` 连接的是实时后端
+- 运行浏览器冒烟，覆盖 catalog、import、governance、audit 主链路
 
 注意：
 
-- 这些 Playwright 用例默认依赖已经存在的 fixture package，例如 `@platform.skill/pdf-skill`、`@platform.skill/code-review`
-- 如果你的本地 Nexus / Catalog 还是空库，先通过 `make cli ARGS="publish ..."`、`make cli ARGS="import-local ..."` 或 `batch-import` 准备一份测试数据
+- Playwright 用例默认依赖已有 fixture package，例如 `@platform.skill/pdf-skill`
+- 如果本地 Nexus / Catalog 还是空库，先参考 [local-nexus-e2e.zh-CN.md](./local-nexus-e2e.zh-CN.md) 用独立 `skills` CLI 准备测试数据
 
 ## 操作步骤
 
-1. 启动本地 `kind` 栈：
+1. 启动本地 kind 栈：
 
 ```bash
-make dev-run
+make dev
 ```
 
 2. 在另一个终端启动 web 开发服务器，并显式指向本地 Catalog：
 
 ```bash
-cd apps/skills-web && VITE_SKILL_REGISTRY_URL=http://127.0.0.1:18080 VITE_SKILL_REGISTRY_TOKEN=publisher-secret npm run dev
+cd apps/skills-web
+VITE_SKILL_REGISTRY_URL=http://127.0.0.1:18080 \
+VITE_SKILL_REGISTRY_TOKEN=publisher-secret \
+npm run dev
 ```
 
-3. 打开 <http://127.0.0.1:4174>，确认能看到真实 catalog 数据，而不是 mock 页面。
+3. 打开 <http://127.0.0.1:4174>，确认页面显示真实 catalog 数据。
 
-4. 在 `apps/skills-web` 目录执行构建。
-说明：如果你要让随后由 Playwright 拉起的 preview 也保持 real mode，请复用同样的 `VITE_SKILL_REGISTRY_URL` / `VITE_SKILL_REGISTRY_TOKEN` 环境变量。
+4. 构建前端：
 
 ```bash
 npm run build
 ```
 
-5. 运行 Playwright 冒烟。
-
-如果你还保留着第 3 步的 `npm run dev`，Playwright 会复用现有的 `127.0.0.1:4174` 服务。
-如果你已经停掉 dev server，先带上相同的环境变量再跑测试，让 Playwright 自动拉起 `preview:e2e`：
+5. 运行 Playwright 冒烟：
 
 ```bash
-VITE_SKILL_REGISTRY_URL=http://127.0.0.1:18080 VITE_SKILL_REGISTRY_TOKEN=publisher-secret npm run test:e2e
+VITE_SKILL_REGISTRY_URL=http://127.0.0.1:18080 \
+VITE_SKILL_REGISTRY_TOKEN=publisher-secret \
+npm run test:e2e
 ```
+
+如果第 2 步的 dev server 还在运行，Playwright 会复用现有 `127.0.0.1:4174` 服务；否则会自动拉起 `preview:e2e`。
 
 ## 浏览器登录流 E2E
 
-如果你要验证 session-cookie 登录而不是固定 bearer token，直接跑：
+如果你要验证 session-cookie 登录流，直接显式传入 session-enabled Catalog：
 
 ```bash
-make test-web-e2e-login
+cd apps/skills-web
+VITE_SKILL_REGISTRY_URL=http://127.0.0.1:18081 \
+VITE_SKILL_REGISTRY_TOKEN= \
+VITE_SKILL_REGISTRY_ROLE= \
+VITE_SKILL_REGISTRY_ACTOR= \
+PLAYWRIGHT_CATALOG_COMMAND="$(cd ../.. && pwd)/zarf/tools/start-session-e2e-catalog.sh" \
+PLAYWRIGHT_CATALOG_PORT=18081 \
+npm run build
+
+VITE_SKILL_REGISTRY_URL=http://127.0.0.1:18081 \
+VITE_SKILL_REGISTRY_TOKEN= \
+VITE_SKILL_REGISTRY_ROLE= \
+VITE_SKILL_REGISTRY_ACTOR= \
+PLAYWRIGHT_CATALOG_COMMAND="$(cd ../.. && pwd)/zarf/tools/start-session-e2e-catalog.sh" \
+PLAYWRIGHT_CATALOG_PORT=18081 \
+npm run test:e2e -- tests/e2e/session-login.spec.ts
 ```
-
-这条命令会：
-
-1. 用 `VITE_SKILL_REGISTRY_URL=http://127.0.0.1:18081` 构建 `skills-web`
-2. 自动拉起一个本地 session-enabled Catalog
-3. 运行 `tests/e2e/session-login.spec.ts`
 
 默认登录凭据：
 
@@ -65,23 +77,29 @@ make test-web-e2e-login
 
 ## 推荐做法
 
-- 想验证“构建产物 + preview”时，先停掉第 2 步的 dev server，再执行第 5 步
+- 想验证构建产物 + preview 时，先停掉第 2 步的 dev server，再运行 Playwright
 - 想快速排 UI 问题时，可以保留 dev server，让 Playwright 直接复用它
-- 每次重跑 `governance-audit.spec.ts` 前，最好先执行 `make dev-reset`，避免上一次治理动作已经把 fixture 版本推进到不可再次变更的状态
+- 每次重跑治理写链路前，最好确保 fixture 状态可重复；必要时完整重建本地环境
 
 ## 常见问题
 
-`Mock mode`
+`Real mode data missing`
 
-- 说明构建或 dev 启动时没有带 `VITE_SKILL_REGISTRY_URL`
-- 回看第 3 步和第 6 步的环境变量是否完整
+- 检查 `VITE_SKILL_REGISTRY_URL` 是否指向本地 Catalog
+- 检查本地 Catalog 是否已有 fixture package
 
 `package_forbidden` / `forbidden`
 
 - 这套冒烟默认使用 `publisher-secret`
 - 如果换成 reader token，治理和 packaging 写操作会失败
 
-`No governable fixture version remained`
+`Fixture already mutated`
 
-- 说明当前库里的治理 fixture 已经被你之前的测试推进到了最终状态
-- 先执行 `make dev-reset`
+- 当前库里的治理 fixture 可能已经被之前的测试推进到最终状态
+- 需要时执行：
+
+```bash
+kind delete cluster --name skill-registry
+make clean-dev
+make dev
+```

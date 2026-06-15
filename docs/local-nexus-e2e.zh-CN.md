@@ -1,70 +1,80 @@
 # 本地 Kind + Nexus E2E
 
-当前仓库的本地真实 E2E 只保留一条路径：
+这份文档描述当前仓库唯一保留的本地真实 E2E 路径：
 
 - `skills-web`
 - `catalog`
 - `postgres`
 - `nexus`
 
-全部跑在 `kind` 里，宿主机只负责：
-
-- 浏览器访问
-- 执行 `skills` CLI
-- 执行 `npm publish`
+全部运行在 `kind` 中。Makefile 只负责顶层环境拉起与部署，不再包装 CLI 子命令。
 
 ## 固定本地入口
 
-- Web：<http://127.0.0.1:8080>
-- Nexus UI / API：<http://127.0.0.1:8081>
-- Catalog API：<http://127.0.0.1:18080>
-- Nexus npm repository：<http://127.0.0.1:8081/repository/skills-npm>
-- Nexus `.npmrc`：`/private/tmp/skill-registry-nexus/.npmrc`
+- Web: <http://127.0.0.1:8080>
+- Nexus UI / API: <http://127.0.0.1:8081>
+- Catalog API: <http://127.0.0.1:18080>
+- Nexus npm repository: <http://127.0.0.1:8081/repository/skills-npm/>
+- Nexus `.npmrc`: `/private/tmp/skill-registry-nexus/.npmrc`
 
 ## 启动方式
 
 ```bash
 cd <repo-root>/skill_registry
-make dev-run
+make dev
 ```
 
-`make dev-run` 会完成：
+`make dev` 会完成：
 
-1. 构建 `catalog` / `skills-web` 本地镜像
-2. 创建 `kind` 集群
+1. 构建本地 `catalog` / `skills-web` 镜像
+2. 确保 `kind` 集群存在
 3. 把镜像 load 进集群
-4. apply `skills-web + catalog + postgres + nexus`
+4. apply 开发清单
 5. 初始化集群内 Nexus 仓，并在宿主机写出 `.npmrc`
+6. 等待 postgres、nexus、catalog、skills-web Ready
 
-如果你的环境拉 Docker Hub 不稳定，可以先改基础镜像来源：
+如果基础镜像需要替换来源：
 
 ```bash
-make dev-run \
+make dev \
   DEV_POSTGRES_IMAGE=registry.example.com/library/postgres:17 \
   DEV_NEXUS_IMAGE=registry.example.com/sonatype/nexus3:latest
-```
-
-这两个镜像现在会在 `dev-run` 里先由宿主机 `docker pull`，再 `kind load docker-image` 进集群。
-
-如果你只想重跑 Nexus 初始化：
-
-```bash
-make dev-bootstrap
 ```
 
 严格鉴权模式：
 
 ```bash
-make dev-run STRICT=1
+make dev STRICT=1
 ```
 
-## 路径 A：publish / find / add
+如果镜像已构建，只想把最新内容部署到已有 kind 环境：
 
 ```bash
-make dev-run
-make cli ARGS="publish /abs/path/to/skill" NPM_BACKEND=nexus
-make cli ARGS="find your-skill"
-make cli ARGS="add @company.skill/your-skill-name -y" NPM_BACKEND=nexus
+make build
+make deploy
+```
+
+## 使用独立 `skills` CLI
+
+本地 E2E 现在直接走独立 CLI，不再通过 Makefile 包装 CLI 子命令。
+
+先准备环境变量：
+
+```bash
+export SKILLS_REGISTRY_URL=http://127.0.0.1:18080
+export SKILLS_REGISTRY_TOKEN=publisher-secret
+export NPM_CONFIG_USERCONFIG=/private/tmp/skill-registry-nexus/.npmrc
+export npm_config_registry=http://127.0.0.1:8081/repository/skills-npm/
+```
+
+只读查询可以把 `SKILLS_REGISTRY_TOKEN` 改成 `reader-secret`。
+
+### 路径 A: publish / find / add
+
+```bash
+skills publish /abs/path/to/skill
+skills find your-skill
+skills add @company.skill/your-skill-name -y
 ```
 
 预期：
@@ -72,15 +82,15 @@ make cli ARGS="add @company.skill/your-skill-name -y" NPM_BACKEND=nexus
 - Nexus `skills-npm` 出现新 package/version
 - Catalog 可查询到 release record
 - 安装目录落到 `./.agents/skills/<skill-basename>`
-- `skills-lock.json` 写入 `packageName`、`version`、`registry`、`integrity`、`skillManifestDigest`
+- `skills-lock.json` 写入安装状态
 
-## 路径 B：import-local
+### 路径 B: import-local
 
 ```bash
-make dev-run
-make cli \
-  ARGS="import-local /abs/path/to/legacy-skill --package-name @company.skill/legacy-skill --version 0.1.0" \
-  NPM_BACKEND=nexus
+skills import-local /abs/path/to/legacy-skill \
+  --package-name @company.skill/legacy-skill \
+  --version 0.1.0 \
+  --npm-registry http://127.0.0.1:8081/repository/skills-npm/
 ```
 
 说明：
@@ -89,44 +99,34 @@ make cli \
 - CLI 会先归档源码，再把内容上传给 Catalog
 - Catalog 不直接依赖调用方的绝对路径
 
-## 批量导入
+### 批量导入
 
 ```bash
-make dev-run
-make batch-import MANIFEST=/abs/path/to/import.json NPM_BACKEND=nexus
+uv run python zarf/tools/batch-import/batch_import_skills.py \
+  --manifest /abs/path/to/import.json \
+  --catalog-url http://127.0.0.1:18080 \
+  --npm-registry http://127.0.0.1:8081/repository/skills-npm/
 ```
 
 manifest 里的本地 `path` 会先在调用方本地转成源码归档，再走 `source.type=upload_archive`。
-
-兼容说明：
-
-- `make cli-publish` / `make cli-find` / `make cli-add` / `make cli-import-local` 还可以继续用
-- 但现在内部都只是对 `make cli ARGS="..."` 的薄封装
-- `make cli` 会按命令自动补默认 token；支持 Catalog 的命令会自动补 `--registry`
-- `import-local + NPM_BACKEND=nexus` 会自动补 `--npm-registry`
-- 新增 CLI 子命令时，优先直接走 `make cli`
 
 ## 建议验收顺序
 
 1. 打开 <http://127.0.0.1:8080>，确认 web 正常
 2. 打开 <http://127.0.0.1:8081>，确认 Nexus 可访问且 `skills-npm` 已存在
 3. `curl http://127.0.0.1:18080/healthz`，确认 Catalog 返回 200
-4. 跑一次 `make cli ARGS="publish /abs/path/to/skill" NPM_BACKEND=nexus`
-5. 跑一次 `make cli ARGS="find your-skill"`
-6. 跑一次 `make cli ARGS="add @company.skill/your-skill-name -y" NPM_BACKEND=nexus`
-7. 跑一次 `make cli ARGS="import-local /abs/path/to/legacy-skill --package-name @company.skill/legacy-skill --version 0.1.0" NPM_BACKEND=nexus`
-8. 如有批量场景，再跑 `batch-import`
+4. 跑一次 `skills publish /abs/path/to/skill`
+5. 跑一次 `skills find your-skill`
+6. 跑一次 `skills add @company.skill/your-skill-name -y`
+7. 跑一次 `skills import-local ... --npm-registry http://127.0.0.1:8081/repository/skills-npm/`
+8. 如有批量场景，再跑批量导入脚本
 
 ## 重置本地环境
 
-```bash
-# 删除 kind 集群、本地 CLI/Nexus 临时状态，然后重新拉起
-make dev-reset
-```
-
-如果你只想停掉环境并清理本地临时文件，不自动重启：
+Makefile 不再提供 `dev-reset` / `dev-down`。需要完整重建时直接：
 
 ```bash
-make dev-down
+kind delete cluster --name skill-registry
 make clean-dev
+make dev
 ```
