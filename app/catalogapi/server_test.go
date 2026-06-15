@@ -34,6 +34,7 @@ import (
 	"skill_registry/business/packaging"
 	artifactadapter "skill_registry/foundation/artifact"
 	"skill_registry/foundation/persist"
+	platformhttp "skill_registry/internal/platform/http"
 )
 
 func TestSkillsRequiresAuthentication(t *testing.T) {
@@ -122,6 +123,26 @@ func TestServerRoutesEncodedPackageDetailThroughHandler(t *testing.T) {
 	}
 	if response.PackageName != "@platform.skill/pdf-skill" {
 		t.Fatalf("expected decoded package name, got %q", response.PackageName)
+	}
+}
+
+func TestPlatformEnginePreservesRawPathSettings(t *testing.T) {
+	engine := platformhttp.NewEngine(nil)
+
+	if !engine.UseRawPath {
+		t.Fatal("expected UseRawPath enabled")
+	}
+	if engine.UnescapePathValues {
+		t.Fatal("expected UnescapePathValues disabled")
+	}
+	if !engine.HandleMethodNotAllowed {
+		t.Fatal("expected HandleMethodNotAllowed enabled")
+	}
+	if engine.RedirectTrailingSlash {
+		t.Fatal("expected RedirectTrailingSlash disabled")
+	}
+	if engine.RedirectFixedPath {
+		t.Fatal("expected RedirectFixedPath disabled")
 	}
 }
 
