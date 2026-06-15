@@ -14,6 +14,7 @@ import (
 	artifactadapter "skill_registry/foundation/artifact"
 	"skill_registry/foundation/persist"
 	catalogapp "skill_registry/internal/catalog/application"
+	cataloginfra "skill_registry/internal/catalog/infra"
 )
 
 type DBPoolConfig struct {
@@ -67,11 +68,22 @@ func NewRuntime(ctx context.Context, config Config) (*Runtime, error) {
 	if repositoryOptions.ArtifactSource == nil {
 		repositoryOptions.ArtifactSource = config.ArtifactSource
 	}
-	repository, err := catalog.NewSQLRepositoryWithDB(ctx, db, driverName, catalog.SampleCatalogData{}, repositoryOptions)
+	if repositoryOptions.ArtifactSource == nil {
+		repositoryOptions.ArtifactSource = catalog.NewStaticArtifactSource(nil)
+	}
+
+	internalStateStore, err := cataloginfra.PrepareSQLStateStore(ctx, db, driverName)
 	if err != nil {
 		_ = db.Close()
 		return nil, err
 	}
+	catalogRead := catalogapp.NewReadService(internalStateStore)
+	catalogWrite := catalogapp.NewWriteService(internalStateStore, repositoryOptions.ArtifactSource)
+	repositoryStateStore := catalog.NewSQLStateStore(db, driverName)
+	repository := catalog.NewCatalogRepository(catalog.CatalogRepositoryConfig{
+		StateStore:     repositoryStateStore,
+		ArtifactSource: repositoryOptions.ArtifactSource,
+	})
 	runtimeRepository := catalog.Repository(repository)
 
 	idempotencyTTL := config.IdempotencyTTL
@@ -96,22 +108,12 @@ func NewRuntime(ctx context.Context, config Config) (*Runtime, error) {
 
 	serverConfig := config.Server
 	serverConfig.Repository = runtimeRepository
+	serverConfig.CatalogReadService = catalogRead
+	serverConfig.CatalogMutationService = catalogWrite
+	serverConfig.CatalogGovernanceService = catalogRead
 	serverConfig.Packaging = packagingService
 	serverConfig.Idempotency = storeSet.Idempotency
 	serverConfig.Audit = storeSet.Audit
-	serverConfig.PackagingPublishConfigured = true
-
-	var catalogRead *catalogapp.ReadService
-	var catalogWrite *catalogapp.WriteService
-	if provider, ok := any(runtimeRepository).(catalog.ApplicationServiceProvider); ok {
-		catalogRead = provider.CatalogReadService()
-		catalogWrite = provider.CatalogWriteService()
-		serverConfig.CatalogReadService = catalogRead
-		serverConfig.CatalogMutationService = catalogWrite
-		if catalogRead != nil {
-			serverConfig.CatalogGovernanceService = catalogRead
-		}
-	}
 
 	server := catalogapi.NewServer(serverConfig)
 	handler := server.Handler()

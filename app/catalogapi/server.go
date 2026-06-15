@@ -27,7 +27,6 @@ import (
 	"skill_registry/app/observability"
 	"skill_registry/business/catalog"
 	"skill_registry/business/packaging"
-	artifactadapter "skill_registry/foundation/artifact"
 	"skill_registry/foundation/persist"
 	packagingapplication "skill_registry/internal/packaging/application"
 )
@@ -60,7 +59,6 @@ type ServerConfig struct {
 	SessionSecret                   string
 	SessionUsers                    map[string]auth.SessionUserConfig
 	Packaging                       packagingApplication
-	PackagingPublishConfigured      bool
 	Idempotency                     persist.IdempotencyStore
 	Audit                           persist.AuditStore
 	Logger                          *log.Logger
@@ -119,16 +117,6 @@ func NewServer(config ServerConfig) *Server {
 	auditRecorder := audit.NewRecorder(config.Audit)
 	var packagingSvc packagingService
 	if config.Packaging != nil {
-		if !config.PackagingPublishConfigured {
-			config.Packaging.ConfigurePublishWorkflow(
-				config.Repository,
-				artifactadapter.NewNPMPublisher(
-					strings.TrimRight(strings.TrimSpace(config.NPMRegistryURL), "/"),
-					strings.TrimSpace(config.NPMRegistryPublishAuthorization),
-					config.NPMRegistryPublishClient,
-				),
-			)
-		}
 		packagingSvc = config.Packaging
 	}
 

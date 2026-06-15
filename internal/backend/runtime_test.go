@@ -62,3 +62,28 @@ func TestNewRuntimeBuildsCatalogReadServiceAndHTTPServer(t *testing.T) {
 		t.Fatalf("expected status %d, got %d body=%s", http.StatusUnauthorized, recorder.Code, recorder.Body.String())
 	}
 }
+
+func TestNewRuntimeBuildsExplicitCatalogServicesInsteadOfReusingRepositoryProvider(t *testing.T) {
+	root := t.TempDir()
+
+	runtime, err := NewRuntime(context.Background(), Config{
+		DatabaseURL:         "file:" + filepath.Join(root, "runtime.db"),
+		SharedWorkspaceRoot: filepath.Join(root, "workspaces"),
+		ArtifactSource:      catalog.NewStaticArtifactSource(nil),
+	})
+	if err != nil {
+		t.Fatalf("new runtime: %v", err)
+	}
+
+	provider, ok := any(runtime.Repository).(catalog.ApplicationServiceProvider)
+	if !ok {
+		t.Fatalf("expected runtime repository to expose compatibility provider, got %T", runtime.Repository)
+	}
+
+	if runtime.CatalogRead == provider.CatalogReadService() {
+		t.Fatal("expected runtime to construct explicit read service instead of reusing repository provider")
+	}
+	if runtime.CatalogWrite == provider.CatalogWriteService() {
+		t.Fatal("expected runtime to construct explicit write service instead of reusing repository provider")
+	}
+}

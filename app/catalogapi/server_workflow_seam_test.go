@@ -12,7 +12,9 @@ import (
 	"skill_registry/app/catalogapi/binding"
 	"skill_registry/app/catalogapi/system"
 	"skill_registry/business/catalog"
+	"skill_registry/business/packaging"
 	internalapp "skill_registry/internal/catalog/application"
+	packagingapplication "skill_registry/internal/packaging/application"
 )
 
 func TestServerRoutesAuditEventsThroughAuditQueryModule(t *testing.T) {
@@ -120,6 +122,19 @@ func TestNewServerUsesExplicitWorkflowServicesWhenProvided(t *testing.T) {
 
 	if server.governanceModule.service != explicitRead {
 		t.Fatal("expected explicit governance service to win over repository provider")
+	}
+}
+
+func TestNewServerDoesNotConfigurePackagingPublishWorkflow(t *testing.T) {
+	packagingService := &packagingApplicationStub{}
+
+	NewServer(ServerConfig{
+		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+		Packaging:  packagingService,
+	})
+
+	if packagingService.configurePublishWorkflowCalls != 0 {
+		t.Fatalf("expected server construction not to configure packaging publish workflow, got %d calls", packagingService.configurePublishWorkflowCalls)
 	}
 }
 
@@ -274,6 +289,38 @@ func TestServerSessionDeniedPathUsesSharedAccessWorkflow(t *testing.T) {
 
 type readAPIModuleStub struct {
 	listSkillsCalls atomic.Int64
+}
+
+type packagingApplicationStub struct {
+	configurePublishWorkflowCalls int
+}
+
+func (s *packagingApplicationStub) PrepareContext(context.Context, packaging.PrepareRequest) (packaging.PrepareResponse, error) {
+	return packaging.PrepareResponse{}, nil
+}
+
+func (s *packagingApplicationStub) ValidateContext(context.Context, packaging.ValidateRequest) (packaging.ValidateResponse, error) {
+	return packaging.ValidateResponse{}, nil
+}
+
+func (s *packagingApplicationStub) PackContext(context.Context, packaging.PackRequest) (packaging.PackResponse, error) {
+	return packaging.PackResponse{}, nil
+}
+
+func (s *packagingApplicationStub) CleanupContext(context.Context, string) error {
+	return nil
+}
+
+func (s *packagingApplicationStub) BundleFilePathContext(context.Context, string, packaging.Target) (string, error) {
+	return "", nil
+}
+
+func (s *packagingApplicationStub) PublishContext(context.Context, packaging.PublishRequest) (packaging.PublishResponse, error) {
+	return packaging.PublishResponse{}, nil
+}
+
+func (s *packagingApplicationStub) ConfigurePublishWorkflow(packagingapplication.ReleaseRecordCreator, packagingapplication.PackagePublisher) {
+	s.configurePublishWorkflowCalls++
 }
 
 func (m *readAPIModuleStub) listSkills(context.Context, auth.Principal, binding.SkillsQuery) (catalog.SkillsPage, *catalog.Error) {

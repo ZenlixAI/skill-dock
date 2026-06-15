@@ -1285,11 +1285,16 @@ func TestSkillPackagingPublishPublishesAndCreatesReleaseRecord(t *testing.T) {
 		"@platform.skill/fixture-skill",
 		"0.2.0",
 	)
+	repository := catalog.NewMemoryRepository(catalog.SampleData(), catalog.MemoryRepositoryOptions{
+		ArtifactSource: artifactadapter.NewNPMRegistryArtifactSource(registryBaseURL, registryClient),
+	})
+	packagingService.ConfigurePublishWorkflow(
+		repository,
+		artifactadapter.NewNPMPublisher(registryBaseURL, "", registryClient),
+	)
 
 	catalogServer := NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData(), catalog.MemoryRepositoryOptions{
-			ArtifactSource: artifactadapter.NewNPMRegistryArtifactSource(registryBaseURL, registryClient),
-		}),
+		Repository:               repository,
 		Packaging:                packagingService,
 		NPMRegistryURL:           registryBaseURL,
 		NPMRegistryPublishClient: registryClient,
