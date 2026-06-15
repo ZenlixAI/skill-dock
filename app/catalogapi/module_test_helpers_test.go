@@ -45,6 +45,22 @@ func (m *catalogReadModuleStub) listCuratedSkills(context.Context, auth.Principa
 	return catalog.CuratedSkillsPage{}, nil
 }
 
+func (m *catalogReadModuleStub) getSkill(context.Context, string) (catalog.SkillDetail, error) {
+	return catalog.SkillDetail{}, nil
+}
+
+func (m *catalogReadModuleStub) listVersions(context.Context, catalog.VersionQuery) (catalog.VersionsPage, error) {
+	return catalog.VersionsPage{}, nil
+}
+
+func (m *catalogReadModuleStub) getVersion(context.Context, string, string) (catalog.SkillVersionDetail, error) {
+	return catalog.SkillVersionDetail{}, nil
+}
+
+func (m *catalogReadModuleStub) resolveInstallTarget(context.Context, string, string) (catalog.InstallResolution, error) {
+	return catalog.InstallResolution{}, nil
+}
+
 func (m *catalogReadModuleStub) listSkillsCallCount() int {
 	return int(m.listSkillsCalls.Load())
 }

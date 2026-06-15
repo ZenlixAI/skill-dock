@@ -136,6 +136,106 @@ func TestNewServerPrefersCatalogApplicationServicesFromRepositoryProvider(t *tes
 	}
 }
 
+func TestServerRoutesCatalogDetailReadsThroughCatalogApplicationService(t *testing.T) {
+	store := &serverDetailReadServiceStoreStub{}
+	provider := &repositoryApplicationProviderStub{
+		Repository:   catalog.NewMemoryRepository(catalog.SampleData()),
+		readService:  internalapp.NewReadService(store),
+		writeService: internalapp.NewWriteService(serverAggregateStateStoreStub{}, serverArtifactSourceStub{}),
+	}
+	server := NewServer(ServerConfig{
+		Repository:  provider,
+		ReaderToken: "reader-secret",
+	})
+
+	requests := []struct {
+		name   string
+		path   string
+		decode func(*testing.T, *httptest.ResponseRecorder)
+	}{
+		{
+			name: "skill detail",
+			path: "/api/v1/skills/%40service%2Fonly-skill",
+			decode: func(t *testing.T, recorder *httptest.ResponseRecorder) {
+				var response catalog.SkillDetail
+				if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+					t.Fatalf("decode skill detail response: %v", err)
+				}
+				if response.PackageName != "@service/only-skill" {
+					t.Fatalf("expected service-routed package name, got %q", response.PackageName)
+				}
+			},
+		},
+		{
+			name: "version list",
+			path: "/api/v1/skills/%40service%2Fonly-skill/versions",
+			decode: func(t *testing.T, recorder *httptest.ResponseRecorder) {
+				var response catalog.VersionsPage
+				if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+					t.Fatalf("decode version list response: %v", err)
+				}
+				if len(response.Items) != 1 || response.Items[0].Version != "9.9.9" {
+					t.Fatalf("expected service-routed versions payload, got %+v", response.Items)
+				}
+			},
+		},
+		{
+			name: "version detail",
+			path: "/api/v1/skills/%40service%2Fonly-skill/versions/9.9.9",
+			decode: func(t *testing.T, recorder *httptest.ResponseRecorder) {
+				var response catalog.SkillVersionDetail
+				if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+					t.Fatalf("decode version detail response: %v", err)
+				}
+				if response.Version != "9.9.9" {
+					t.Fatalf("expected service-routed version detail, got %q", response.Version)
+				}
+			},
+		},
+		{
+			name: "install target",
+			path: "/api/v1/skills/%40service%2Fonly-skill/install-target",
+			decode: func(t *testing.T, recorder *httptest.ResponseRecorder) {
+				var response catalog.InstallResolution
+				if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+					t.Fatalf("decode install target response: %v", err)
+				}
+				if response.Version != "9.9.9" || response.TarballURL != "https://registry.example.com/service-only-skill-9.9.9.tgz" {
+					t.Fatalf("expected service-routed install target, got %+v", response)
+				}
+			},
+		},
+	}
+
+	for _, tc := range requests {
+		t.Run(tc.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			request.Header.Set("Authorization", "Bearer reader-secret")
+			recorder := httptest.NewRecorder()
+
+			server.Handler().ServeHTTP(recorder, request)
+
+			if recorder.Code != http.StatusOK {
+				t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
+			}
+			tc.decode(t, recorder)
+		})
+	}
+
+	if store.getSkillCalls != 2 {
+		t.Fatalf("expected read service GetSkill to be called twice, got %d", store.getSkillCalls)
+	}
+	if store.listVersionsCalls != 1 {
+		t.Fatalf("expected read service ListVersions to be called once, got %d", store.listVersionsCalls)
+	}
+	if store.getVersionCalls != 1 {
+		t.Fatalf("expected read service GetVersion to be called once, got %d", store.getVersionCalls)
+	}
+	if store.getLatestResolvableVersionCalls != 1 {
+		t.Fatalf("expected read service GetLatestResolvableVersion to be called once, got %d", store.getLatestResolvableVersionCalls)
+	}
+}
+
 func TestServerRoutesEncodedPackageDetailThroughHandler(t *testing.T) {
 	server := NewServer(ServerConfig{
 		Repository:  catalog.NewMemoryRepository(catalog.SampleData()),
@@ -304,6 +404,96 @@ func (serverQueryStoreStub) ListPackageVersions(context.Context, string) ([]inte
 
 func (serverQueryStoreStub) ListPackageGovernance(context.Context, string, internaldomain.GovernanceTargetType, *string) ([]internaldomain.GovernanceRecord, error) {
 	return nil, nil
+}
+
+type serverDetailReadServiceStoreStub struct {
+	getSkillCalls                   int
+	listVersionsCalls               int
+	getVersionCalls                 int
+	getLatestResolvableVersionCalls int
+}
+
+func (s *serverDetailReadServiceStoreStub) ListSkills(context.Context, internaldomain.SkillQuery) (internaldomain.SkillsPage, error) {
+	return internaldomain.SkillsPage{}, nil
+}
+
+func (s *serverDetailReadServiceStoreStub) ListCuratedSkills(context.Context, internaldomain.CuratedSkillQuery) (internaldomain.CuratedSkillsPage, error) {
+	return internaldomain.CuratedSkillsPage{}, nil
+}
+
+func (s *serverDetailReadServiceStoreStub) GetSkill(context.Context, string) (internaldomain.SkillDetail, error) {
+	s.getSkillCalls++
+	latestVersion := "9.9.9"
+	return internaldomain.SkillDetail{
+		SkillSummary: internaldomain.SkillSummary{
+			PackageName:   "@service/only-skill",
+			DisplayName:   "Service Only Skill",
+			Description:   "served by the read service",
+			SourceType:    internaldomain.SourceTypeImported,
+			Status:        internaldomain.SkillStatusActive,
+			LatestVersion: &latestVersion,
+		},
+		CreatedAt: time.Unix(1, 0).UTC(),
+	}, nil
+}
+
+func (s *serverDetailReadServiceStoreStub) ListVersions(context.Context, internaldomain.VersionQuery) (internaldomain.VersionsPage, error) {
+	s.listVersionsCalls++
+	return internaldomain.VersionsPage{
+		Items: []internaldomain.SkillVersionSummary{
+			{
+				PackageName:   "@service/only-skill",
+				Version:       "9.9.9",
+				VersionStatus: internaldomain.VersionStatusPublished,
+				InstallPolicy: internaldomain.InstallPolicyResolvable,
+				PublishedAt:   time.Unix(2, 0).UTC(),
+			},
+		},
+	}, nil
+}
+
+func (s *serverDetailReadServiceStoreStub) GetVersion(context.Context, string, string) (internaldomain.SkillVersionDetail, error) {
+	s.getVersionCalls++
+	return serverDetailReadServiceVersion(), nil
+}
+
+func (s *serverDetailReadServiceStoreStub) GetLatestResolvableVersion(context.Context, string) (internaldomain.SkillVersionDetail, error) {
+	s.getLatestResolvableVersionCalls++
+	return serverDetailReadServiceVersion(), nil
+}
+
+func (s *serverDetailReadServiceStoreStub) ListGovernanceChanges(context.Context, internaldomain.GovernanceQuery) (internaldomain.GovernancePage, error) {
+	return internaldomain.GovernancePage{}, nil
+}
+
+func (s *serverDetailReadServiceStoreStub) ListPackageVersions(context.Context, string) ([]internaldomain.SkillVersionDetail, error) {
+	return nil, nil
+}
+
+func (s *serverDetailReadServiceStoreStub) ListPackageGovernance(context.Context, string, internaldomain.GovernanceTargetType, *string) ([]internaldomain.GovernanceRecord, error) {
+	return nil, nil
+}
+
+func serverDetailReadServiceVersion() internaldomain.SkillVersionDetail {
+	return internaldomain.SkillVersionDetail{
+		SkillVersionSummary: internaldomain.SkillVersionSummary{
+			PackageName:   "@service/only-skill",
+			Version:       "9.9.9",
+			VersionStatus: internaldomain.VersionStatusPublished,
+			InstallPolicy: internaldomain.InstallPolicyResolvable,
+			PublishedAt:   time.Unix(2, 0).UTC(),
+		},
+		Registry: internaldomain.RegistryMetadata{
+			NPMRegistry: "https://registry.example.com",
+			TarballURL:  "https://registry.example.com/service-only-skill-9.9.9.tgz",
+			Integrity:   "sha512-service",
+			Shasum:      "service",
+			PublishedAt: time.Unix(2, 0).UTC(),
+		},
+		Bundle: internaldomain.BundleMetadata{
+			SkillManifestDigest: "sha256:service",
+		},
+	}
 }
 
 type serverAggregateStateStoreStub struct{}
@@ -4059,6 +4249,22 @@ func (w *capturingCatalogReadWorkflow) listSkills(_ context.Context, principal a
 
 func (w *capturingCatalogReadWorkflow) listCuratedSkills(context.Context, auth.Principal, int, int) (catalog.CuratedSkillsPage, *catalog.Error) {
 	return catalog.CuratedSkillsPage{}, nil
+}
+
+func (w *capturingCatalogReadWorkflow) getSkill(context.Context, string) (catalog.SkillDetail, error) {
+	return catalog.SkillDetail{}, nil
+}
+
+func (w *capturingCatalogReadWorkflow) listVersions(context.Context, catalog.VersionQuery) (catalog.VersionsPage, error) {
+	return catalog.VersionsPage{}, nil
+}
+
+func (w *capturingCatalogReadWorkflow) getVersion(context.Context, string, string) (catalog.SkillVersionDetail, error) {
+	return catalog.SkillVersionDetail{}, nil
+}
+
+func (w *capturingCatalogReadWorkflow) resolveInstallTarget(context.Context, string, string) (catalog.InstallResolution, error) {
+	return catalog.InstallResolution{}, nil
 }
 
 func (w *capturingCatalogReadWorkflow) listSkillsCallCount() int {

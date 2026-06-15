@@ -302,21 +302,19 @@ func (s *Server) routerConfig() routerpkg.Config {
 		},
 	})
 	catalogHTTPHandlers := cataloghandlers.New(cataloghandlers.Handlers{
-		AuthorizePackage:    s.authorizePackageAccess,
-		ServeCachedReadJSON: s.serveCachedReadJSON,
-		ReadListCacheTTL:    s.readListCacheTTL,
-		ReadDetailCacheTTL:  s.readDetailCacheTTL,
-		ListAuditEvents:     s.auditQueryModule.ListEvents,
-		ListSkillsFunc:      s.readAPIModule.listSkills,
-		ListCuratedSkills:   s.catalogReadModule.listCuratedSkills,
-		ListGovernance:      s.governanceModule.listChanges,
-		GetSkillFunc:        s.repo.GetSkill,
-		ListVersionsFunc:    s.repo.ListVersions,
-		GetVersionFunc:      s.repo.GetVersion,
-		ResolveInstallTarget: func(ctx context.Context, packageName string, version string) (catalog.InstallResolution, error) {
-			return s.repo.ResolveInstallTarget(ctx, packageName, version)
-		},
-		PublicInstallTarget: s.publicInstallTarget,
+		AuthorizePackage:     s.authorizePackageAccess,
+		ServeCachedReadJSON:  s.serveCachedReadJSON,
+		ReadListCacheTTL:     s.readListCacheTTL,
+		ReadDetailCacheTTL:   s.readDetailCacheTTL,
+		ListAuditEvents:      s.auditQueryModule.ListEvents,
+		ListSkillsFunc:       s.readAPIModule.listSkills,
+		ListCuratedSkills:    s.catalogReadModule.listCuratedSkills,
+		ListGovernance:       s.governanceModule.listChanges,
+		GetSkillFunc:         s.catalogReadModule.getSkill,
+		ListVersionsFunc:     s.catalogReadModule.listVersions,
+		GetVersionFunc:       s.catalogReadModule.getVersion,
+		ResolveInstallTarget: s.catalogReadModule.resolveInstallTarget,
+		PublicInstallTarget:  s.publicInstallTarget,
 	})
 	governanceHTTPHandlers := governancehandlers.New(governancehandlers.Handlers{
 		AuthorizePackage: s.authorizePackageAccess,
