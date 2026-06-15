@@ -19,7 +19,6 @@ type catalogMutationService interface {
 }
 
 type catalogMutationModule struct {
-	repo    catalog.WriteRepository
 	service catalogMutationService
 	audit   *audit.Recorder
 }
@@ -121,8 +120,5 @@ func (m *catalogMutationModule) recordAudit(ctx context.Context, principal auth.
 }
 
 func (m *catalogMutationModule) writeService() catalogMutationService {
-	if m != nil && m.service != nil {
-		return m.service
-	}
-	return m.repo
+	return m.service
 }

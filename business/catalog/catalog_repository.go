@@ -1,6 +1,10 @@
 package catalog
 
-import "context"
+import (
+	"context"
+
+	internalapp "skill_registry/internal/catalog/application"
+)
 
 type CatalogRepository struct {
 	reads  *ReadModule
@@ -68,4 +72,12 @@ func (r *CatalogRepository) ApplyVersionGovernanceChange(ctx context.Context, pa
 
 func (r *CatalogRepository) Seed(ctx context.Context, data SampleCatalogData) error {
 	return r.writes.Seed(ctx, data)
+}
+
+func (r *CatalogRepository) CatalogReadService() *internalapp.ReadService {
+	return r.reads.service
+}
+
+func (r *CatalogRepository) CatalogWriteService() *internalapp.WriteService {
+	return r.writes.service
 }

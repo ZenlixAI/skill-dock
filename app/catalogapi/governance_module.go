@@ -8,8 +8,12 @@ import (
 	"skill_registry/business/catalog"
 )
 
+type catalogGovernanceService interface {
+	ListGovernanceChanges(ctx context.Context, query catalog.GovernanceQuery) (catalog.GovernancePage, error)
+}
+
 type governanceModule struct {
-	repo       catalog.ReadRepository
+	service    catalogGovernanceService
 	authorizer *auth.Authorizer
 }
 
@@ -18,7 +22,7 @@ func (m *governanceModule) listChanges(ctx context.Context, principal auth.Princ
 		return catalog.GovernancePage{}, authErr.CatalogError()
 	}
 
-	response, err := m.repo.ListGovernanceChanges(ctx, query)
+	response, err := m.service.ListGovernanceChanges(ctx, query)
 	if err != nil {
 		return catalog.GovernancePage{}, common.CatalogErrorFromError(err)
 	}

@@ -7,6 +7,24 @@ import (
 	"time"
 )
 
+func TestCatalogRepositoryExposesApplicationServices(t *testing.T) {
+	repo := NewCatalogRepository(CatalogRepositoryConfig{
+		StateStore:     NewMemoryAggregateStateStore(SampleData(), MemoryAggregateStateStoreOptions{}),
+		ArtifactSource: NewStaticArtifactSource(SampleData().Artifacts),
+	})
+
+	provider, ok := any(repo).(ApplicationServiceProvider)
+	if !ok {
+		t.Fatal("expected catalog repository to expose application services")
+	}
+	if provider.CatalogReadService() == nil {
+		t.Fatal("expected catalog read service")
+	}
+	if provider.CatalogWriteService() == nil {
+		t.Fatal("expected catalog write service")
+	}
+}
+
 func TestCatalogRepositoryCreateReleaseRecordPersistsThroughStateStore(t *testing.T) {
 	store := NewMemoryAggregateStateStore(SampleData(), MemoryAggregateStateStoreOptions{})
 	repo := NewCatalogRepository(CatalogRepositoryConfig{

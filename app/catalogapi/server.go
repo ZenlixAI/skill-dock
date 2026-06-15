@@ -135,7 +135,7 @@ func NewServer(config ServerConfig) *Server {
 		writeLimiter:         newRequestLimiter(config.WriteMaxInFlight),
 	}
 	server.catalogReadModule = &catalogReadModule{
-		repo: config.Repository,
+		service: resolveCatalogReadService(config.Repository),
 	}
 	server.readAPIModule = &readAPIModule{
 		catalogReadModule: server.catalogReadModule,
@@ -147,11 +147,11 @@ func NewServer(config ServerConfig) *Server {
 	}
 	server.auditQueryModule = audit.NewQueryModule(config.Audit, authorizer)
 	server.catalogMutationModule = &catalogMutationModule{
-		repo:  config.Repository,
-		audit: auditRecorder,
+		service: resolveCatalogWriteService(config.Repository),
+		audit:   auditRecorder,
 	}
 	server.governanceModule = &governanceModule{
-		repo:       config.Repository,
+		service:    resolveCatalogGovernanceService(config.Repository),
 		authorizer: authorizer,
 	}
 	server.packagingModule = &packagingModule{
@@ -175,6 +175,27 @@ func NewServer(config ServerConfig) *Server {
 		system.NamedDependency{Name: "idempotency", Pinger: system.DependencyPinger(config.Idempotency)},
 	)
 	return server
+}
+
+func resolveCatalogReadService(repository catalog.Repository) catalogReadService {
+	if provider, ok := repository.(catalog.ApplicationServiceProvider); ok && provider.CatalogReadService() != nil {
+		return provider.CatalogReadService()
+	}
+	return repository
+}
+
+func resolveCatalogWriteService(repository catalog.Repository) catalogMutationService {
+	if provider, ok := repository.(catalog.ApplicationServiceProvider); ok && provider.CatalogWriteService() != nil {
+		return provider.CatalogWriteService()
+	}
+	return repository
+}
+
+func resolveCatalogGovernanceService(repository catalog.Repository) catalogGovernanceService {
+	if provider, ok := repository.(catalog.ApplicationServiceProvider); ok && provider.CatalogReadService() != nil {
+		return provider.CatalogReadService()
+	}
+	return repository
 }
 
 func (s *Server) authorizePackageAccess(writer http.ResponseWriter, request *http.Request, packageName string) bool {

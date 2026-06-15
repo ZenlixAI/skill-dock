@@ -36,6 +36,8 @@ import (
 	"skill_registry/business/packaging"
 	artifactadapter "skill_registry/foundation/artifact"
 	"skill_registry/foundation/persist"
+	internalapp "skill_registry/internal/catalog/application"
+	internaldomain "skill_registry/internal/catalog/domain"
 )
 
 func TestSkillsRequiresAuthentication(t *testing.T) {
@@ -97,6 +99,40 @@ func TestServerRoutesHeadSkillsThroughCatalogReadModule(t *testing.T) {
 	}
 	if got := module.listSkillsCallCount(); got != 1 {
 		t.Fatalf("expected catalog read module to handle one HEAD list request, got %d", got)
+	}
+}
+
+func TestNewServerPrefersCatalogApplicationServicesFromRepositoryProvider(t *testing.T) {
+	provider := &repositoryApplicationProviderStub{
+		Repository:   catalog.NewMemoryRepository(catalog.SampleData()),
+		readService:  internalapp.NewReadService(serverQueryStoreStub{}),
+		writeService: internalapp.NewWriteService(serverAggregateStateStoreStub{}, serverArtifactSourceStub{}),
+	}
+
+	server := NewServer(ServerConfig{
+		Repository:     provider,
+		ReaderToken:    "reader-secret",
+		PublisherToken: "publisher-secret",
+	})
+
+	readModule, ok := server.catalogReadModule.(*catalogReadModule)
+	if !ok {
+		t.Fatalf("expected concrete catalogReadModule, got %T", server.catalogReadModule)
+	}
+	if readModule.service != provider.readService {
+		t.Fatal("expected server to wire repository-provided catalog read service")
+	}
+
+	mutationModule, ok := server.catalogMutationModule.(*catalogMutationModule)
+	if !ok {
+		t.Fatalf("expected concrete catalogMutationModule, got %T", server.catalogMutationModule)
+	}
+	if mutationModule.service != provider.writeService {
+		t.Fatal("expected server to wire repository-provided catalog write service")
+	}
+
+	if server.governanceModule.service != provider.readService {
+		t.Fatal("expected server to wire repository-provided governance read service")
 	}
 }
 
@@ -216,6 +252,82 @@ func TestReadAPIModuleListsSkillsFromParsedQuery(t *testing.T) {
 	if !reflect.DeepEqual(response, workflow.response) {
 		t.Fatalf("expected response passthrough, got %#v", response)
 	}
+}
+
+type repositoryApplicationProviderStub struct {
+	catalog.Repository
+	readService  *internalapp.ReadService
+	writeService *internalapp.WriteService
+}
+
+func (s *repositoryApplicationProviderStub) CatalogReadService() *internalapp.ReadService {
+	return s.readService
+}
+
+func (s *repositoryApplicationProviderStub) CatalogWriteService() *internalapp.WriteService {
+	return s.writeService
+}
+
+type serverQueryStoreStub struct{}
+
+func (serverQueryStoreStub) ListSkills(context.Context, internaldomain.SkillQuery) (internaldomain.SkillsPage, error) {
+	return internaldomain.SkillsPage{}, nil
+}
+
+func (serverQueryStoreStub) ListCuratedSkills(context.Context, internaldomain.CuratedSkillQuery) (internaldomain.CuratedSkillsPage, error) {
+	return internaldomain.CuratedSkillsPage{}, nil
+}
+
+func (serverQueryStoreStub) GetSkill(context.Context, string) (internaldomain.SkillDetail, error) {
+	return internaldomain.SkillDetail{}, nil
+}
+
+func (serverQueryStoreStub) ListVersions(context.Context, internaldomain.VersionQuery) (internaldomain.VersionsPage, error) {
+	return internaldomain.VersionsPage{}, nil
+}
+
+func (serverQueryStoreStub) GetVersion(context.Context, string, string) (internaldomain.SkillVersionDetail, error) {
+	return internaldomain.SkillVersionDetail{}, nil
+}
+
+func (serverQueryStoreStub) GetLatestResolvableVersion(context.Context, string) (internaldomain.SkillVersionDetail, error) {
+	return internaldomain.SkillVersionDetail{}, nil
+}
+
+func (serverQueryStoreStub) ListGovernanceChanges(context.Context, internaldomain.GovernanceQuery) (internaldomain.GovernancePage, error) {
+	return internaldomain.GovernancePage{}, nil
+}
+
+func (serverQueryStoreStub) ListPackageVersions(context.Context, string) ([]internaldomain.SkillVersionDetail, error) {
+	return nil, nil
+}
+
+func (serverQueryStoreStub) ListPackageGovernance(context.Context, string, internaldomain.GovernanceTargetType, *string) ([]internaldomain.GovernanceRecord, error) {
+	return nil, nil
+}
+
+type serverAggregateStateStoreStub struct{}
+
+func (serverAggregateStateStoreStub) IsEmpty(context.Context) (bool, error) {
+	return true, nil
+}
+
+func (serverAggregateStateStoreStub) GetAggregate(context.Context, string) (internaldomain.AgentSkillAggregate, error) {
+	return internaldomain.AgentSkillAggregate{}, nil
+}
+
+func (serverAggregateStateStoreStub) PutAggregate(context.Context, internaldomain.AgentSkillAggregate, uint64) error {
+	return nil
+}
+
+func (serverAggregateStateStoreStub) Ping(context.Context) error {
+	return nil
+}
+
+type serverArtifactSourceStub struct{}
+
+func (serverArtifactSourceStub) FindReleaseArtifact(context.Context, string, string) (internaldomain.ReleaseArtifact, error) {
+	return internaldomain.ReleaseArtifact{}, nil
 }
 
 func TestBearerTokenAuthUsesConfiguredRoleMapping(t *testing.T) {
