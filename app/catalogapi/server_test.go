@@ -45,6 +45,12 @@ func TestSkillsRequiresAuthentication(t *testing.T) {
 	if recorder.Code != http.StatusUnauthorized {
 		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, recorder.Code)
 	}
+	if recorder.Header().Get("X-Request-Id") == "" {
+		t.Fatal("expected X-Request-Id response header")
+	}
+	if recorder.Header().Get("X-Trace-Id") == "" {
+		t.Fatal("expected X-Trace-Id response header")
+	}
 
 	assertErrorCode(t, recorder, "unauthorized")
 }
@@ -351,6 +357,29 @@ func TestSessionEndpointHandlesLocalOperatorPreflight(t *testing.T) {
 	})
 
 	request := httptest.NewRequest(http.MethodOptions, "/api/v1/session", nil)
+	request.Header.Set("Origin", "http://127.0.0.1:4174")
+	request.Header.Set("Access-Control-Request-Method", http.MethodGet)
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusNoContent, recorder.Code, recorder.Body.String())
+	}
+	if got := recorder.Header().Get("Access-Control-Allow-Origin"); got != "http://127.0.0.1:4174" {
+		t.Fatalf("expected allow origin header, got %q", got)
+	}
+	if got := recorder.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(got, "Authorization") {
+		t.Fatalf("expected Authorization in allow headers, got %q", got)
+	}
+}
+
+func TestSkillsEndpointHandlesLocalOperatorPreflight(t *testing.T) {
+	server := NewServer(ServerConfig{
+		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+	})
+
+	request := httptest.NewRequest(http.MethodOptions, "/api/v1/skills", nil)
 	request.Header.Set("Origin", "http://127.0.0.1:4174")
 	request.Header.Set("Access-Control-Request-Method", http.MethodGet)
 	recorder := httptest.NewRecorder()

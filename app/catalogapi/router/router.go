@@ -5,6 +5,7 @@ import "github.com/gin-gonic/gin"
 type Config struct {
 	ServesReadRoutes  bool
 	ServesWriteRoutes bool
+	Middleware        []gin.HandlerFunc
 
 	Healthz       gin.HandlerFunc
 	Readyz        gin.HandlerFunc
@@ -41,6 +42,9 @@ func New(config Config) *gin.Engine {
 	engine.HandleMethodNotAllowed = true
 	engine.RedirectTrailingSlash = false
 	engine.RedirectFixedPath = false
+	if len(config.Middleware) > 0 {
+		engine.Use(config.Middleware...)
+	}
 
 	registerSystemRoutes(engine, config)
 	registerSessionRoutes(engine, config)
