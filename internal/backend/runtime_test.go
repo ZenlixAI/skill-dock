@@ -10,6 +10,7 @@ import (
 
 	"skill_registry/app/catalogapi"
 	"skill_registry/business/catalog"
+	packagingapplication "skill_registry/internal/packaging/application"
 )
 
 func TestNewRuntimeBuildsCatalogReadServiceAndHTTPServer(t *testing.T) {
@@ -86,4 +87,13 @@ func TestNewRuntimeBuildsExplicitCatalogServicesInsteadOfReusingRepositoryProvid
 	if runtime.CatalogWrite == provider.CatalogWriteService() {
 		t.Fatal("expected runtime to construct explicit write service instead of reusing repository provider")
 	}
+}
+
+func TestNewPackagingServiceReturnsInternalApplicationService(t *testing.T) {
+	service := newPackagingService(t.TempDir(), nil)
+	if service == nil {
+		t.Fatal("expected packaging service")
+	}
+
+	var _ *packagingapplication.Service = service
 }

@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"skill_registry/foundation/persist"
 	packagingdomain "skill_registry/internal/packaging/domain"
 	packaginginfra "skill_registry/internal/packaging/infra"
+	persist "skill_registry/internal/platform/persistence"
 )
 
 type WorkspaceService struct {

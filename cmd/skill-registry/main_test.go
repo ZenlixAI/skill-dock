@@ -9,8 +9,9 @@ import (
 
 	"skill_registry/app/catalogapi"
 	"skill_registry/business/catalog"
-	artifactadapter "skill_registry/foundation/artifact"
 	"skill_registry/internal/backend"
+	platformartifact "skill_registry/internal/platform/artifact"
+	platformauth "skill_registry/internal/platform/auth"
 )
 
 func TestEnvIntOrDefaultUsesFallbackForEmptyValue(t *testing.T) {
@@ -71,9 +72,20 @@ func TestConfiguredArtifactSourceUsesConfiguredArtifactsPath(t *testing.T) {
 
 	source := configuredArtifactSource()
 
-	if _, ok := source.(*artifactadapter.JSONArtifactSource); !ok {
+	if _, ok := source.(*platformartifact.JSONArtifactSource); !ok {
 		t.Fatalf("expected JSON artifact source, got %T", source)
 	}
+}
+
+func TestConfiguredAuthTokensUsePlatformTypes(t *testing.T) {
+	t.Setenv("SKILL_REGISTRY_AUTH_TOKENS_JSON", `{"reader-token":{"role":"reader","actor":"alice"}}`)
+
+	tokens := configuredAuthTokens()
+	if _, ok := tokens["reader-token"]; !ok {
+		t.Fatal("expected configured token")
+	}
+
+	var _ platformauth.TokenConfig = tokens["reader-token"]
 }
 
 func TestConfiguredArtifactSourceUsesConfiguredNPMRegistry(t *testing.T) {
@@ -82,8 +94,16 @@ func TestConfiguredArtifactSourceUsesConfiguredNPMRegistry(t *testing.T) {
 
 	source := configuredArtifactSource()
 
-	if _, ok := source.(*artifactadapter.NPMRegistryArtifactSource); !ok {
+	if _, ok := source.(*platformartifact.NPMRegistryArtifactSource); !ok {
 		t.Fatalf("expected NPM registry artifact source, got %T", source)
+	}
+}
+
+func TestConfiguredArtifactSourceReturnsPlatformAdapter(t *testing.T) {
+	t.Setenv("SKILL_REGISTRY_NPM_REGISTRY_URL", "https://registry.example.com")
+
+	if _, ok := configuredArtifactSource().(*platformartifact.NPMRegistryArtifactSource); !ok {
+		t.Fatalf("expected internal platform artifact adapter, got %T", configuredArtifactSource())
 	}
 }
 

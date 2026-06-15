@@ -6,9 +6,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"skill_registry/app/auth"
 	"skill_registry/app/catalogapi/response"
 	"skill_registry/business/catalog"
+	"skill_registry/internal/platform/auth"
 )
 
 type AuthenticateFunc func(*http.Request) (auth.Principal, bool)

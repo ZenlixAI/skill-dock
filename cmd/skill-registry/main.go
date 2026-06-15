@@ -13,11 +13,11 @@ import (
 	"syscall"
 	"time"
 
-	"skill_registry/app/auth"
 	"skill_registry/app/catalogapi"
 	"skill_registry/business/catalog"
-	artifactadapter "skill_registry/foundation/artifact"
 	"skill_registry/internal/backend"
+	artifactadapter "skill_registry/internal/platform/artifact"
+	"skill_registry/internal/platform/auth"
 )
 
 func main() {

@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"skill_registry/app/auth"
-	"skill_registry/app/observability"
 	"skill_registry/business/catalog"
-	"skill_registry/foundation/persist"
+	"skill_registry/internal/platform/auth"
+	"skill_registry/internal/platform/observability"
+	persist "skill_registry/internal/platform/persistence"
 )
 
 func TestAuditQueryModuleRejectsInvalidAuthDecision(t *testing.T) {

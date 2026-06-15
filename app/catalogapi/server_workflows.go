@@ -5,12 +5,12 @@ import (
 	"net/http"
 	"strings"
 
-	"skill_registry/app/auth"
 	"skill_registry/app/catalogapi/common"
 	"skill_registry/business/catalog"
 	"skill_registry/business/packaging"
 	internaldomain "skill_registry/internal/catalog/domain"
 	packagingapplication "skill_registry/internal/packaging/application"
+	"skill_registry/internal/platform/auth"
 )
 
 type catalogMutationService interface {

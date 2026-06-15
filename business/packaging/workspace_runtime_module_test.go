@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"skill_registry/foundation/persist"
+	persist "skill_registry/internal/platform/persistence"
 )
 
 func TestPackagingWorkspaceRuntimeUsesManagedAdapterWhenWorkspaceStoreExists(t *testing.T) {

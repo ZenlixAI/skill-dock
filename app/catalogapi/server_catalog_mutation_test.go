@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"testing"
 
-	"skill_registry/app/auth"
 	"skill_registry/app/catalogapi/audit"
 	"skill_registry/business/catalog"
 	internaldomain "skill_registry/internal/catalog/domain"
+	"skill_registry/internal/platform/auth"
 )
 
 func TestServerCreatesReleaseRecordAndRecordsCreatedAudit(t *testing.T) {

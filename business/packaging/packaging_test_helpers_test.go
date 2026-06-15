@@ -17,8 +17,8 @@ import (
 	"time"
 
 	"skill_registry/business/catalog"
-	artifactadapter "skill_registry/foundation/artifact"
-	"skill_registry/foundation/persist"
+	artifactadapter "skill_registry/internal/platform/artifact"
+	persist "skill_registry/internal/platform/persistence"
 )
 
 type stubReleaseRecordOutcome struct {

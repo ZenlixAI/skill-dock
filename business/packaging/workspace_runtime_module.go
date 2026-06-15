@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"skill_registry/foundation/persist"
 	packagingapplication "skill_registry/internal/packaging/application"
+	persist "skill_registry/internal/platform/persistence"
 )
 
 type packagingWorkspaceRuntime struct {

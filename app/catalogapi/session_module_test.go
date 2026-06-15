@@ -8,7 +8,7 @@ import (
 	"sort"
 	"testing"
 
-	"skill_registry/app/auth"
+	"skill_registry/internal/platform/auth"
 )
 
 func TestSessionModuleReturnsCurrentPrincipalView(t *testing.T) {

@@ -10,11 +10,11 @@ import (
 
 	"skill_registry/app/catalogapi"
 	"skill_registry/business/catalog"
-	"skill_registry/business/packaging"
-	artifactadapter "skill_registry/foundation/artifact"
-	"skill_registry/foundation/persist"
 	catalogapp "skill_registry/internal/catalog/application"
 	cataloginfra "skill_registry/internal/catalog/infra"
+	packagingapplication "skill_registry/internal/packaging/application"
+	platformartifact "skill_registry/internal/platform/artifact"
+	platformpersist "skill_registry/internal/platform/persistence"
 )
 
 type DBPoolConfig struct {
@@ -39,7 +39,7 @@ type Config struct {
 type Runtime struct {
 	DB           *sql.DB
 	Repository   catalog.Repository
-	StoreSet     *persist.SQLStoreSet
+	StoreSet     *platformpersist.SQLStoreSet
 	CatalogRead  *catalogapp.ReadService
 	CatalogWrite *catalogapp.WriteService
 	Server       *catalogapi.Server
@@ -90,16 +90,16 @@ func NewRuntime(ctx context.Context, config Config) (*Runtime, error) {
 	if idempotencyTTL <= 0 {
 		idempotencyTTL = 10 * time.Minute
 	}
-	storeSet, err := persist.NewSQLStoreSetWithDB(ctx, db, driverName, idempotencyTTL)
+	storeSet, err := platformpersist.NewSQLStoreSetWithDB(ctx, db, driverName, idempotencyTTL)
 	if err != nil {
 		_ = db.Close()
 		return nil, err
 	}
 
-	packagingService := packaging.NewServiceWithWorkspaceStore(config.SharedWorkspaceRoot, storeSet.Workspace)
+	packagingService := newPackagingService(config.SharedWorkspaceRoot, storeSet.Workspace)
 	packagingService.ConfigurePublishWorkflow(
 		runtimeRepository,
-		artifactadapter.NewNPMPublisher(
+		platformartifact.NewNPMPublisher(
 			strings.TrimRight(strings.TrimSpace(config.Server.NPMRegistryURL), "/"),
 			strings.TrimSpace(config.Server.NPMRegistryPublishAuthorization),
 			config.Server.NPMRegistryPublishClient,
@@ -139,6 +139,10 @@ func configureDBPool(db *sql.DB, config DBPoolConfig) {
 	db.SetMaxIdleConns(config.MaxIdleConns)
 	db.SetConnMaxLifetime(config.ConnMaxLifetime)
 	db.SetConnMaxIdleTime(config.ConnMaxIdleTime)
+}
+
+func newPackagingService(root string, store platformpersist.WorkspaceStore) *packagingapplication.Service {
+	return packagingapplication.NewServiceWithWorkspaceStore(root, store)
 }
 
 func sqlDriverNameForURL(databaseURL string) string {

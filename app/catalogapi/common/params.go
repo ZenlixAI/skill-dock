@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"skill_registry/app/observability"
 	"skill_registry/business/catalog"
+	"skill_registry/internal/platform/observability"
 )
 
 func DecodeVersion(raw string) (string, *catalog.Error) {

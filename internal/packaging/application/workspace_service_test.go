@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"skill_registry/foundation/persist"
 	packagingdomain "skill_registry/internal/packaging/domain"
+	persist "skill_registry/internal/platform/persistence"
 )
 
 type memoryWorkspaceStore struct {

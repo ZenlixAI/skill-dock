@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"skill_registry/app/auth"
 	"skill_registry/app/catalogapi/audit"
 	"skill_registry/business/catalog"
 	"skill_registry/business/packaging"
 	packagingapplication "skill_registry/internal/packaging/application"
+	"skill_registry/internal/platform/auth"
 )
 
 func TestPackagingAccessModuleUsesPackagingApplicationAccessContract(t *testing.T) {

@@ -10,14 +10,14 @@ import (
 	"testing"
 	"time"
 
-	"skill_registry/app/auth"
 	"skill_registry/app/catalogapi/audit"
 	"skill_registry/app/catalogapi/binding"
 	"skill_registry/app/catalogapi/common"
 	"skill_registry/business/catalog"
 	"skill_registry/business/packaging"
-	"skill_registry/foundation/persist"
 	internalpackaginghttp "skill_registry/internal/packaging/http"
+	"skill_registry/internal/platform/auth"
+	persist "skill_registry/internal/platform/persistence"
 )
 
 func contextWithRequestMetadataForTest(ctx context.Context, requestID string, traceID string) context.Context {

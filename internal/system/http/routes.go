@@ -6,11 +6,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"skill_registry/app/auth"
 	"skill_registry/app/catalogapi/common"
 	"skill_registry/app/catalogapi/response"
 	systemmodule "skill_registry/app/catalogapi/system"
-	"skill_registry/app/observability"
+	"skill_registry/internal/platform/auth"
+	"skill_registry/internal/platform/observability"
 )
 
 type ReadyzFunc func(context.Context) (systemmodule.Readyz, int)

@@ -8,9 +8,9 @@ import (
 
 	"skill_registry/app/catalogapi/common"
 
-	"skill_registry/app/auth"
-	"skill_registry/app/observability"
-	"skill_registry/foundation/persist"
+	"skill_registry/internal/platform/auth"
+	"skill_registry/internal/platform/observability"
+	persist "skill_registry/internal/platform/persistence"
 )
 
 func TestAuditRecorderRecordMutationIncludesPrincipalAndAuthDecision(t *testing.T) {

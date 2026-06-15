@@ -6,9 +6,9 @@ import (
 
 	"skill_registry/app/catalogapi/common"
 
-	"skill_registry/app/auth"
 	"skill_registry/app/catalogapi/audit"
-	"skill_registry/app/observability"
+	"skill_registry/internal/platform/auth"
+	"skill_registry/internal/platform/observability"
 )
 
 type accessWorkflow struct {

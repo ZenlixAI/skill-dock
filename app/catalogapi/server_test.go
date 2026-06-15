@@ -28,16 +28,16 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"skill_registry/app/auth"
 	"skill_registry/app/catalogapi/binding"
 	"skill_registry/app/catalogapi/common"
-	"skill_registry/app/observability"
 	"skill_registry/business/catalog"
 	"skill_registry/business/packaging"
-	artifactadapter "skill_registry/foundation/artifact"
-	"skill_registry/foundation/persist"
 	internalapp "skill_registry/internal/catalog/application"
 	internaldomain "skill_registry/internal/catalog/domain"
+	artifactadapter "skill_registry/internal/platform/artifact"
+	"skill_registry/internal/platform/auth"
+	"skill_registry/internal/platform/observability"
+	persist "skill_registry/internal/platform/persistence"
 )
 
 func TestSkillsRequiresAuthentication(t *testing.T) {

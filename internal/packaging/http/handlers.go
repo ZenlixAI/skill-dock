@@ -10,11 +10,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"skill_registry/app/auth"
 	"skill_registry/app/catalogapi/common"
 	"skill_registry/app/catalogapi/response"
 	"skill_registry/business/catalog"
 	"skill_registry/business/packaging"
+	"skill_registry/internal/platform/auth"
 )
 
 type AuthorizePackageFunc func(stdhttp.ResponseWriter, *stdhttp.Request, string) bool

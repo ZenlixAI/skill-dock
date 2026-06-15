@@ -3,7 +3,7 @@ package catalogapi
 import (
 	"net/http"
 
-	"skill_registry/app/auth"
+	"skill_registry/internal/platform/auth"
 )
 
 type sessionResponse = SessionResponse

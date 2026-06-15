@@ -5,8 +5,8 @@ import (
 	"errors"
 
 	"skill_registry/business/catalog"
-	artifactadapter "skill_registry/foundation/artifact"
 	packagingdomain "skill_registry/internal/packaging/domain"
+	artifactadapter "skill_registry/internal/platform/artifact"
 )
 
 var (

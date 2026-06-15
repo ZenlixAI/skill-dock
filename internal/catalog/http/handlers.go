@@ -8,11 +8,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"skill_registry/app/auth"
 	"skill_registry/app/catalogapi/common"
 	"skill_registry/app/catalogapi/response"
 	"skill_registry/business/catalog"
-	"skill_registry/foundation/persist"
+	"skill_registry/internal/platform/auth"
+	persist "skill_registry/internal/platform/persistence"
 )
 
 type ServeCachedReadJSONFunc func(stdhttp.ResponseWriter, *stdhttp.Request, time.Duration, func() (any, *catalog.Error))

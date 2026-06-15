@@ -13,7 +13,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"skill_registry/app/auth"
 	"skill_registry/app/catalogapi/audit"
 	"skill_registry/app/catalogapi/common"
 	cataloghandlers "skill_registry/app/catalogapi/handlers/catalog"
@@ -24,12 +23,13 @@ import (
 	catalogmiddleware "skill_registry/app/catalogapi/middleware"
 	routerpkg "skill_registry/app/catalogapi/router"
 	"skill_registry/app/catalogapi/system"
-	"skill_registry/app/observability"
 	"skill_registry/business/catalog"
 	"skill_registry/business/packaging"
-	"skill_registry/foundation/persist"
 	packagingapplication "skill_registry/internal/packaging/application"
 	internalpackaginghttp "skill_registry/internal/packaging/http"
+	"skill_registry/internal/platform/auth"
+	"skill_registry/internal/platform/observability"
+	persist "skill_registry/internal/platform/persistence"
 )
 
 type packagingApplication interface {

@@ -4,10 +4,10 @@ import (
 	"context"
 	"strings"
 
-	"skill_registry/app/auth"
 	"skill_registry/app/catalogapi/binding"
 	"skill_registry/app/catalogapi/common"
 	"skill_registry/business/catalog"
+	"skill_registry/internal/platform/auth"
 )
 
 type catalogReadService interface {

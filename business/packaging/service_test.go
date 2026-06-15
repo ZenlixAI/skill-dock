@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"skill_registry/business/catalog"
-	"skill_registry/foundation/persist"
+	persist "skill_registry/internal/platform/persistence"
 )
 
 func TestValidateTargetAcceptsCompanySpecificSkillScope(t *testing.T) {

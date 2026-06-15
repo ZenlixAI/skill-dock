@@ -10,11 +10,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"skill_registry/app/auth"
 	"skill_registry/app/catalogapi/audit"
 	"skill_registry/app/catalogapi/common"
 	catalogmiddleware "skill_registry/app/catalogapi/middleware"
-	"skill_registry/app/observability"
+	"skill_registry/internal/platform/auth"
+	"skill_registry/internal/platform/observability"
 )
 
 func TestAccessWorkflowDeniesPackageAccessAndRecordsAudit(t *testing.T) {

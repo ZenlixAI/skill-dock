@@ -191,3 +191,7 @@ func parseSkillMetadata(content []byte) (string, string) {
 	}
 	return displayName, description
 }
+
+func ScanNPMPackageTarballForTest(reader io.Reader, expectedPackageName string, expectedVersion string) (BundleScanResult, string) {
+	return scanNPMPackageTarball(reader, expectedPackageName, expectedVersion)
+}
