@@ -29,7 +29,15 @@ import (
 	"skill_registry/business/packaging"
 	artifactadapter "skill_registry/foundation/artifact"
 	"skill_registry/foundation/persist"
+	packagingapplication "skill_registry/internal/packaging/application"
 )
+
+type packagingApplication interface {
+	packagingService
+	packagingAccessService
+	PublishContext(ctx context.Context, input packaging.PublishRequest) (packaging.PublishResponse, error)
+	ConfigurePublishWorkflow(repo packagingapplication.ReleaseRecordCreator, publisher packagingapplication.PackagePublisher)
+}
 
 type ServerConfig struct {
 	Repository                      catalog.Repository
@@ -48,7 +56,7 @@ type ServerConfig struct {
 	AuthTokens                      map[string]auth.TokenConfig
 	SessionSecret                   string
 	SessionUsers                    map[string]auth.SessionUserConfig
-	Packaging                       *packaging.Service
+	Packaging                       packagingApplication
 	Idempotency                     persist.IdempotencyStore
 	Audit                           persist.AuditStore
 	Logger                          *log.Logger
@@ -69,7 +77,7 @@ type Server struct {
 	sessionModule         sessionWorkflow
 	systemModule          systemWorkflow
 	publicNPMRegistryURL  string
-	packaging             *packaging.Service
+	packaging             packagingApplication
 	auditRecorder         *audit.Recorder
 	logger                *log.Logger
 	metrics               *observability.Collector

@@ -2,6 +2,7 @@ package packaging
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -196,7 +197,10 @@ func TestPublishedReleaseWorkflowReturnsReleaseRecordRetryFailureAfterArtifactAl
 	if err == nil {
 		t.Fatal("expected publish to fail")
 	}
-	catalogErr := packagingCatalogError(err)
+	var catalogErr *catalog.Error
+	if !errors.As(err, &catalogErr) {
+		t.Fatalf("expected catalog error, got %T", err)
+	}
 	if catalogErr.Code != "release_record_retry_failed" {
 		t.Fatalf("expected retry failure error, got %#v", catalogErr)
 	}
