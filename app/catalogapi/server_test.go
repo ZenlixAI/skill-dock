@@ -691,8 +691,8 @@ func TestMockNPMRegistryRootRedirectsToTrailingSlash(t *testing.T) {
 
 	server.Handler().ServeHTTP(recorder, request)
 
-	if recorder.Code != http.StatusTemporaryRedirect {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusTemporaryRedirect, recorder.Code, recorder.Body.String())
+	if recorder.Code != http.StatusMovedPermanently {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusMovedPermanently, recorder.Code, recorder.Body.String())
 	}
 	if got := recorder.Header().Get("Location"); got != "/mock-npm/" {
 		t.Fatalf("expected redirect location /mock-npm/, got %q", got)
