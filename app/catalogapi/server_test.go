@@ -1038,6 +1038,34 @@ func TestSkillPackagingPublishPublishesAndCreatesReleaseRecord(t *testing.T) {
 	}
 }
 
+func TestPackagingPrepareRejectsInvalidJSON(t *testing.T) {
+	server := newTestServer()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", strings.NewReader("{"))
+	request.Header.Set("X-Role", "authoring")
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusUnprocessableEntity, recorder.Code, recorder.Body.String())
+	}
+	assertErrorCode(t, recorder, "invalid_request")
+}
+
+func TestPackagingPrepareRejectsGetMethod(t *testing.T) {
+	server := newTestServer()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/skill-packaging/prepare", nil)
+	request.Header.Set("X-Role", "authoring")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusMethodNotAllowed, recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestSkillPackagingPackMetadataAndBundleDownload(t *testing.T) {
 	server := newTestServer()
 	fixtureDir := createPackagingFixture(t)

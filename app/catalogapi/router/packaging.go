@@ -7,10 +7,11 @@ func registerPackagingRoutes(engine *gin.Engine, config Config) {
 		return
 	}
 
-	engine.Any("/api/v1/skill-packaging/prepare", config.PackagingPrepare)
-	engine.Any("/api/v1/skill-packaging/validate", config.PackagingValidate)
-	engine.Any("/api/v1/skill-packaging/pack", config.PackagingPack)
-	engine.Any("/api/v1/skill-packaging/publish", config.PackagingPublish)
-	engine.Any("/api/v1/skill-packaging/cleanup", config.PackagingCleanup)
-	engine.Any("/api/v1/skill-packaging/bundle", config.PackagingBundle)
+	group := engine.Group("/api/v1/skill-packaging")
+	group.POST("/prepare", config.PackagingPrepare)
+	group.POST("/validate", config.PackagingValidate)
+	group.POST("/pack", config.PackagingPack)
+	group.POST("/publish", config.PackagingPublish)
+	group.POST("/cleanup", config.PackagingCleanup)
+	group.GET("/bundle", config.PackagingBundle)
 }

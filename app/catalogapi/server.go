@@ -17,6 +17,8 @@ import (
 	"skill_registry/app/catalogapi/audit"
 	"skill_registry/app/catalogapi/common"
 	cataloghandlers "skill_registry/app/catalogapi/handlers/catalog"
+	governancehandlers "skill_registry/app/catalogapi/handlers/governance"
+	packaginghandlers "skill_registry/app/catalogapi/handlers/packaging"
 	sessionhandlers "skill_registry/app/catalogapi/handlers/session"
 	systemhandlers "skill_registry/app/catalogapi/handlers/system"
 	catalogmiddleware "skill_registry/app/catalogapi/middleware"
@@ -295,6 +297,62 @@ func (s *Server) routerConfig() routerpkg.Config {
 		},
 		PublicInstallTarget: s.publicInstallTarget,
 	})
+	governanceHTTPHandlers := governancehandlers.New(governancehandlers.Handlers{
+		AuthorizePackage: s.authorizePackageAccess,
+		AuthorizeAction:  s.accessWorkflow.authorizeAction,
+		AcquireWriteLimiter: func() (func(), *catalog.Error) {
+			return s.writeLimiter.acquire()
+		},
+		CreateReleaseRecord: func(request *http.Request, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.ReleaseRecordResult, int, *catalog.Error) {
+			return s.catalogMutationModule.createReleaseRecord(request.Context(), principal, packageName, versionPath, rawBody)
+		},
+		ApplySkillGovernanceChange: func(request *http.Request, principal auth.Principal, packageName string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error) {
+			return s.catalogMutationModule.applySkillGovernanceChange(request.Context(), principal, packageName, rawBody)
+		},
+		ApplyVersionGovernance: func(request *http.Request, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error) {
+			return s.catalogMutationModule.applyVersionGovernanceChange(request.Context(), principal, packageName, versionPath, rawBody)
+		},
+	})
+	packagingHTTPHandlers := packaginghandlers.New(packaginghandlers.Handlers{
+		HasPackaging: func() bool {
+			return s.packaging != nil
+		},
+		AuthorizePackage: s.authorizePackageAccess,
+		AcquireWriteLimiter: func() (func(), *catalog.Error) {
+			return s.writeLimiter.acquire()
+		},
+		DecodePrepareRequest: func(ctx context.Context, principal auth.Principal, rawBody []byte) (packaging.PrepareRequest, *catalog.Error) {
+			return s.packagingModule.decodePrepareRequest(ctx, principal, rawBody)
+		},
+		DecodeValidateRequest: func(ctx context.Context, principal auth.Principal, rawBody []byte) (packaging.ValidateRequest, *catalog.Error) {
+			return s.packagingModule.decodeValidateRequest(ctx, principal, rawBody)
+		},
+		DecodePackRequest: func(ctx context.Context, principal auth.Principal, rawBody []byte) (packaging.PackRequest, *catalog.Error) {
+			return s.packagingModule.decodePackRequest(ctx, principal, rawBody)
+		},
+		Prepare: func(ctx context.Context, principal auth.Principal, payload packaging.PrepareRequest) (any, int, *catalog.Error) {
+			return s.packagingModule.prepare(ctx, principal, payload)
+		},
+		Validate: func(ctx context.Context, principal auth.Principal, payload packaging.ValidateRequest) (any, int, *catalog.Error) {
+			return s.packagingModule.validate(ctx, principal, payload)
+		},
+		Pack: func(ctx context.Context, principal auth.Principal, payload packaging.PackRequest) (any, int, *catalog.Error) {
+			return s.packagingModule.pack(ctx, principal, payload)
+		},
+		Publish: func(ctx context.Context, payload packaging.PublishRequest) (packaging.PublishResponse, error) {
+			if s.packaging == nil {
+				return packaging.PublishResponse{}, catalog.NewError(http.StatusNotFound, "not_found", "Not found.", nil)
+			}
+			return s.packaging.PublishContext(ctx, payload)
+		},
+		Cleanup: func(ctx context.Context, principal auth.Principal, payload packaging.CleanupRequest) (packaging.CleanupResponse, int, *catalog.Error) {
+			return s.packagingAccessModule.cleanup(ctx, principal, payload)
+		},
+		DownloadBundle: func(ctx context.Context, principal auth.Principal, workspacePath string, packageName string, version string) (string, *catalog.Error) {
+			return s.packagingAccessModule.downloadBundle(ctx, principal, workspacePath, packageName, version)
+		},
+		RecordMutationAudit: s.recordMutationAudit,
+	})
 
 	return routerpkg.Config{
 		ServesReadRoutes:  s.mode.servesReadRoutes(),
@@ -321,15 +379,15 @@ func (s *Server) routerConfig() routerpkg.Config {
 		VersionList:       s.protectedCatalogHandler(auth.ActionReadCatalog, catalogHTTPHandlers.VersionList),
 		VersionDetail:     s.protectedCatalogHandler(auth.ActionReadCatalog, catalogHTTPHandlers.VersionDetail),
 		InstallTarget:     s.protectedCatalogHandler(auth.ActionReadCatalog, catalogHTTPHandlers.InstallTarget),
-		SkillGovernance:   s.protectedGinHandler(auth.ActionReadCatalog, http.HandlerFunc(s.handleSkillGovernanceRoute), "package"),
-		ReleaseRecord:     s.protectedGinHandler(auth.ActionReadCatalog, http.HandlerFunc(s.handleReleaseRecordRoute), "package", "version"),
-		VersionGovernance: s.protectedGinHandler(auth.ActionReadCatalog, http.HandlerFunc(s.handleVersionGovernanceRoute), "package", "version"),
-		PackagingPrepare:  s.protectedGinHandler(auth.ActionPackagingPrepare, http.HandlerFunc(s.handlePackagingPrepare)),
-		PackagingValidate: s.protectedGinHandler(auth.ActionPackagingValidate, http.HandlerFunc(s.handlePackagingValidate)),
-		PackagingPack:     s.protectedGinHandler(auth.ActionPackagingPack, http.HandlerFunc(s.handlePackagingPack)),
-		PackagingPublish:  s.protectedGinHandler(auth.ActionPackagingPublish, http.HandlerFunc(s.handlePackagingPublish)),
-		PackagingCleanup:  s.protectedGinHandler(auth.ActionPackagingPack, http.HandlerFunc(s.handlePackagingCleanup)),
-		PackagingBundle:   s.protectedGinHandler(auth.ActionPackagingPack, http.HandlerFunc(s.handlePackagingBundleDownload)),
+		SkillGovernance:   s.protectedActionHandler(auth.ActionReadCatalog, governanceHTTPHandlers.SkillGovernance),
+		ReleaseRecord:     s.protectedActionHandler(auth.ActionReadCatalog, governanceHTTPHandlers.ReleaseRecord),
+		VersionGovernance: s.protectedActionHandler(auth.ActionReadCatalog, governanceHTTPHandlers.VersionGovernance),
+		PackagingPrepare:  s.protectedActionHandler(auth.ActionPackagingPrepare, packagingHTTPHandlers.PrepareHandler),
+		PackagingValidate: s.protectedActionHandler(auth.ActionPackagingValidate, packagingHTTPHandlers.ValidateHandler),
+		PackagingPack:     s.protectedActionHandler(auth.ActionPackagingPack, packagingHTTPHandlers.PackHandler),
+		PackagingPublish:  s.protectedActionHandler(auth.ActionPackagingPublish, packagingHTTPHandlers.PublishHandler),
+		PackagingCleanup:  s.protectedActionHandler(auth.ActionPackagingPack, packagingHTTPHandlers.CleanupHandler),
+		PackagingBundle:   s.protectedActionHandler(auth.ActionPackagingPack, packagingHTTPHandlers.BundleHandler),
 	}
 }
 
@@ -357,6 +415,10 @@ func (s *Server) protectedGinHandler(action auth.Action, handler http.Handler, p
 }
 
 func (s *Server) protectedCatalogHandler(action auth.Action, handler gin.HandlerFunc) gin.HandlerFunc {
+	return s.protectedActionHandler(action, handler)
+}
+
+func (s *Server) protectedActionHandler(action auth.Action, handler gin.HandlerFunc) gin.HandlerFunc {
 	return catalogmiddleware.RequireAction(
 		handler,
 		action,
