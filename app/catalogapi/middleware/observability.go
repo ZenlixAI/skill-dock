@@ -3,12 +3,10 @@ package middleware
 import (
 	"encoding/json"
 	"log"
-	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
-	"skill_registry/app/auth"
 	"skill_registry/app/catalogapi/common"
 	"skill_registry/app/observability"
 )
@@ -60,20 +58,4 @@ func WithObservability(metrics *observability.Collector, logger *log.Logger) gin
 			}
 		}
 	}
-}
-
-func SetObservedPrincipal(request *http.Request, current auth.Principal) {
-	common.SetObservedPrincipal(request, current)
-}
-
-func SetObservedAction(request *http.Request, action string) {
-	common.SetObservedAction(request, action)
-}
-
-func SetObservedAuthDecision(request *http.Request, decision observability.AuthDecision) {
-	common.SetObservedAuthDecision(request, decision)
-}
-
-func SetObservedOutcome(request *http.Request, outcome string) {
-	common.SetObservedOutcome(request, outcome)
 }

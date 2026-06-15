@@ -8,11 +8,9 @@ import (
 )
 
 // Handler builds the HTTP routing tree with a gin engine while preserving the
-// exported http.Handler contract. Canonical redirects stay outside gin, but
-// still apply the public response contract before issuing the redirect.
+// exported http.Handler contract.
 func (s *Server) Handler() http.Handler {
-	engine := routerpkg.New(s.routerConfig())
-	return s.withCanonicalRoutes(engine)
+	return routerpkg.New(s.routerConfig())
 }
 
 // The skill subtree adapters resolve the {package} and {version} path values,

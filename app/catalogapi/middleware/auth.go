@@ -25,7 +25,7 @@ func WithAuthentication(authenticate AuthenticateFunc) gin.HandlerFunc {
 		current, ok := authenticate(context.Request)
 		if ok {
 			context.Request = context.Request.WithContext(auth.ContextWithPrincipal(context.Request.Context(), current))
-			SetObservedPrincipal(context.Request, current)
+			common.SetObservedPrincipal(context.Request, current)
 		}
 		context.Next()
 	}
@@ -33,12 +33,12 @@ func WithAuthentication(authenticate AuthenticateFunc) gin.HandlerFunc {
 
 func RequireAction(next gin.HandlerFunc, action auth.Action, authorize AuthorizeActionFunc, recordDenied RecordAuthenticationDeniedFunc) gin.HandlerFunc {
 	return func(context *gin.Context) {
-		SetObservedAction(context.Request, string(action))
+		common.SetObservedAction(context.Request, string(action))
 
 		current := auth.PrincipalFromContext(context.Request.Context())
 		if !principalPresent(current) {
-			SetObservedAuthDecision(context.Request, observability.AuthDecisionDenied)
-			SetObservedOutcome(context.Request, "unauthorized")
+			common.SetObservedAuthDecision(context.Request, observability.AuthDecisionDenied)
+			common.SetObservedOutcome(context.Request, "unauthorized")
 			common.WriteCatalogError(context.Writer, context.Request, catalog.NewError(401, "unauthorized", "Authentication is required.", nil))
 			if recordDenied != nil {
 				recordDenied(context.Request)

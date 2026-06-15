@@ -1,14 +1,11 @@
 package catalogapi
 
 import (
-	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
-	"path"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -258,6 +255,7 @@ func (s *Server) routerConfig() routerpkg.Config {
 			catalogmiddleware.WithCORS(),
 			catalogmiddleware.WithRequestMetadata(&s.requestID),
 			catalogmiddleware.WithObservability(s.metrics, s.logger),
+			catalogmiddleware.WithCanonicalRedirect(),
 			catalogmiddleware.WithAuthentication(s.authenticateRequest),
 		},
 		Healthz:           s.ginHandler(http.HandlerFunc(s.handleHealthz)),
@@ -308,164 +306,4 @@ func (s *Server) protectedGinHandler(action auth.Action, handler http.Handler, p
 		s.accessWorkflow.authorizeAction,
 		s.recordAuthenticationDeniedAudit,
 	)
-}
-
-func (s *Server) withCanonicalRoutes(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if target, ok := s.canonicalRouteTarget(request); ok {
-			startedAt := time.Now()
-			request = s.prepareCanonicalRedirectRequest(writer, request)
-			http.Redirect(writer, request, target, http.StatusTemporaryRedirect)
-			s.recordCanonicalRedirect(request, http.StatusTemporaryRedirect, time.Since(startedAt))
-			return
-		}
-		next.ServeHTTP(writer, request)
-	})
-}
-
-func (s *Server) prepareCanonicalRedirectRequest(writer http.ResponseWriter, request *http.Request) *http.Request {
-	request = s.withCanonicalRequestMetadata(writer, request)
-	request = common.EnsureObservedState(request)
-	s.applyCanonicalCORSHeaders(writer, request)
-	return request
-}
-
-func (s *Server) withCanonicalRequestMetadata(writer http.ResponseWriter, request *http.Request) *http.Request {
-	if request == nil {
-		return nil
-	}
-
-	requestID := strings.TrimSpace(common.RequestIDFromContext(request.Context()))
-	if requestID == "" {
-		requestID = "req_" + strconv.FormatUint(s.requestID.Add(1), 10)
-	}
-
-	traceID := strings.TrimSpace(common.TraceIDFromContext(request.Context()))
-	if traceID == "" {
-		traceID = strings.TrimSpace(request.Header.Get("X-Trace-Id"))
-		if traceID == "" {
-			traceID = "trace_" + strings.TrimPrefix(requestID, "req_")
-		}
-	}
-
-	writer.Header().Set("X-Request-Id", requestID)
-	writer.Header().Set("X-Trace-Id", traceID)
-	return request.WithContext(common.ContextWithRequestMetadata(request.Context(), requestID, traceID))
-}
-
-func (s *Server) applyCanonicalCORSHeaders(writer http.ResponseWriter, request *http.Request) {
-	if request == nil {
-		return
-	}
-	origin := strings.TrimSpace(request.Header.Get("Origin"))
-	if origin == "" || !isLocalOperatorOrigin(origin) {
-		return
-	}
-	writer.Header().Set("Access-Control-Allow-Origin", origin)
-	writer.Header().Set("Vary", "Origin")
-	writer.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Actor, X-Role, X-Trace-Id")
-	writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
-	writer.Header().Set("Access-Control-Allow-Credentials", "true")
-	writer.Header().Set("Access-Control-Max-Age", "600")
-}
-
-func (s *Server) recordCanonicalRedirect(request *http.Request, status int, duration time.Duration) {
-	path := ""
-	method := ""
-	var state *common.ObservedState
-	if request != nil {
-		method = request.Method
-		if request.URL != nil {
-			path = request.URL.EscapedPath()
-			if path == "" {
-				path = request.URL.Path
-			}
-		}
-		state = common.ObservedStateFromContext(request.Context())
-	}
-	if state == nil {
-		state = &common.ObservedState{}
-	}
-	outcome := common.ObservedOutcome(status, state)
-
-	if s.metrics != nil {
-		s.metrics.RecordRequest(method, path, status, duration, state.Action, state.AuthDecision, outcome)
-	}
-	if s.logger != nil {
-		fields := map[string]any{
-			"event":         "http_request",
-			"requestId":     requestMetadataValue(request, common.RequestIDFromContext),
-			"traceId":       requestMetadataValue(request, common.TraceIDFromContext),
-			"method":        method,
-			"path":          path,
-			"status":        status,
-			"durationMs":    duration.Milliseconds(),
-			"role":          state.Principal.Role,
-			"actor":         state.Principal.Actor,
-			"authMechanism": state.Principal.AuthMechanism,
-			"action":        state.Action,
-			"authDecision":  state.AuthDecision,
-			"outcome":       outcome,
-		}
-		if payload, err := json.Marshal(fields); err == nil {
-			s.logger.Print(string(payload))
-		}
-	}
-}
-
-func requestMetadataValue(request *http.Request, lookup func(context.Context) string) string {
-	if request == nil {
-		return ""
-	}
-	return lookup(request.Context())
-}
-
-func (s *Server) canonicalRouteTarget(request *http.Request) (string, bool) {
-	if request == nil || request.URL == nil || request.Method == http.MethodConnect {
-		return "", false
-	}
-
-	escapedPath := request.URL.EscapedPath()
-	if escapedPath == "" {
-		escapedPath = request.URL.Path
-	}
-	cleanedPath := cleanCanonicalPath(escapedPath)
-	if cleanedPath != escapedPath {
-		return canonicalRedirectTarget(cleanedPath, request.URL.RawQuery), true
-	}
-	return "", false
-}
-
-func cleanCanonicalPath(rawPath string) string {
-	if rawPath == "" {
-		return "/"
-	}
-	if rawPath[0] != '/' {
-		rawPath = "/" + rawPath
-	}
-	cleanedPath := path.Clean(rawPath)
-	if rawPath[len(rawPath)-1] == '/' && cleanedPath != "/" {
-		if len(rawPath) == len(cleanedPath)+1 && strings.HasPrefix(rawPath, cleanedPath) {
-			cleanedPath = rawPath
-		} else {
-			cleanedPath += "/"
-		}
-	}
-	return cleanedPath
-}
-
-func canonicalRedirectTarget(path string, rawQuery string) string {
-	if strings.TrimSpace(rawQuery) == "" {
-		return path
-	}
-	return path + "?" + rawQuery
-}
-
-func isLocalOperatorOrigin(origin string) bool {
-	parsed, err := url.Parse(origin)
-	if err != nil {
-		return false
-	}
-	host := strings.ToLower(parsed.Hostname())
-	return host == "127.0.0.1" || host == "localhost"
 }
