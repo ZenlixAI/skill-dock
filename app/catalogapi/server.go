@@ -317,7 +317,6 @@ func (s *Server) routerConfig() routerpkg.Config {
 		ListAuditEvents:      s.auditQueryModule.ListEvents,
 		ListSkillsFunc:       s.readAPIModule.listSkills,
 		ListCuratedSkills:    s.catalogReadModule.listCuratedSkills,
-		ListGovernance:       s.governanceModule.listChanges,
 		GetSkillFunc:         s.catalogReadModule.getSkill,
 		ListVersionsFunc:     s.catalogReadModule.listVersions,
 		GetVersionFunc:       s.catalogReadModule.getVersion,
@@ -325,8 +324,11 @@ func (s *Server) routerConfig() routerpkg.Config {
 		PublicInstallTarget:  s.publicInstallTarget,
 	})
 	governanceHTTPHandlers := governancehandlers.New(governancehandlers.Handlers{
-		AuthorizePackage: s.authorizePackageAccess,
-		AuthorizeAction:  s.accessWorkflow.authorizeAction,
+		ServeCachedReadJSON: s.serveCachedReadJSON,
+		ReadListCacheTTL:    s.readListCacheTTL,
+		AuthorizePackage:    s.authorizePackageAccess,
+		AuthorizeAction:     s.accessWorkflow.authorizeAction,
+		ListGovernance:      s.governanceModule.listChanges,
 		AcquireWriteLimiter: func() (func(), *catalog.Error) {
 			return s.writeLimiter.acquire()
 		},
@@ -401,7 +403,7 @@ func (s *Server) routerConfig() routerpkg.Config {
 		Skills:            s.protectedCatalogHandler(auth.ActionReadCatalog, catalogHTTPHandlers.Skills),
 		SkillsSearch:      s.protectedCatalogHandler(auth.ActionReadCatalog, catalogHTTPHandlers.SkillsSearch),
 		CuratedSkills:     s.protectedCatalogHandler(auth.ActionReadCatalog, catalogHTTPHandlers.CuratedSkills),
-		GovernanceChanges: s.protectedCatalogHandler(auth.ActionReadCatalog, catalogHTTPHandlers.GovernanceChanges),
+		GovernanceChanges: s.protectedCatalogHandler(auth.ActionReadCatalog, governanceHTTPHandlers.GovernanceChanges),
 		SkillDetail:       s.protectedCatalogHandler(auth.ActionReadCatalog, catalogHTTPHandlers.SkillDetail),
 		VersionList:       s.protectedCatalogHandler(auth.ActionReadCatalog, catalogHTTPHandlers.VersionList),
 		VersionDetail:     s.protectedCatalogHandler(auth.ActionReadCatalog, catalogHTTPHandlers.VersionDetail),

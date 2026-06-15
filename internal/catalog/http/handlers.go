@@ -20,7 +20,6 @@ type AuthorizePackageFunc func(stdhttp.ResponseWriter, *stdhttp.Request, string)
 type ListAuditEventsFunc func(context.Context, auth.Principal, url.Values) (persist.AuditPage, *catalog.Error)
 type ListSkillsFunc func(context.Context, auth.Principal, SkillsQuery) (catalog.SkillsPage, *catalog.Error)
 type ListCuratedSkillsFunc func(context.Context, auth.Principal, int, int) (catalog.CuratedSkillsPage, *catalog.Error)
-type ListGovernanceChangesFunc func(context.Context, auth.Principal, catalog.GovernanceQuery) (catalog.GovernancePage, *catalog.Error)
 type GetSkillFunc func(context.Context, string) (catalog.SkillDetail, error)
 type ListVersionsFunc func(context.Context, catalog.VersionQuery) (catalog.VersionsPage, error)
 type GetVersionFunc func(context.Context, string, string) (catalog.SkillVersionDetail, error)
@@ -35,7 +34,6 @@ type Handlers struct {
 	ListAuditEvents      ListAuditEventsFunc
 	ListSkillsFunc       ListSkillsFunc
 	ListCuratedSkills    ListCuratedSkillsFunc
-	ListGovernance       ListGovernanceChangesFunc
 	GetSkillFunc         GetSkillFunc
 	ListVersionsFunc     ListVersionsFunc
 	GetVersionFunc       GetVersionFunc
@@ -105,50 +103,6 @@ func (h Handlers) CuratedSkills(context *gin.Context) {
 			return catalog.CuratedSkillsPage{}, nil
 		}
 		return h.ListCuratedSkills(context.Request.Context(), auth.PrincipalFromContext(context.Request.Context()), pageSize, cursor)
-	})
-}
-
-func (h Handlers) GovernanceChanges(context *gin.Context) {
-	query, err := BindGovernanceChangesQuery(context)
-	if err != nil {
-		response.WriteCatalogError(context, err)
-		return
-	}
-	pageSize, pageSizeErr := common.ParsePageSizeValue(query.PageSize)
-	if pageSizeErr != nil {
-		response.WriteCatalogError(context, pageSizeErr)
-		return
-	}
-	cursor, cursorErr := common.ParseCursorValue(query.Cursor)
-	if cursorErr != nil {
-		response.WriteCatalogError(context, cursorErr)
-		return
-	}
-	if query.PackageName != "" && !h.authorizePackage(context, query.PackageName) {
-		return
-	}
-	targetType, targetTypeErr := common.ParseGovernanceTargetTypeFilter(query.TargetType)
-	if targetTypeErr != nil {
-		response.WriteCatalogError(context, targetTypeErr)
-		return
-	}
-	versionFilter, versionFilterErr := common.ParseExactVersionQueryParam(query.Version, "version")
-	if versionFilterErr != nil {
-		response.WriteCatalogError(context, versionFilterErr)
-		return
-	}
-
-	h.serveCachedReadJSON(context, h.ReadListCacheTTL, func() (any, *catalog.Error) {
-		if h.ListGovernance == nil {
-			return catalog.GovernancePage{}, nil
-		}
-		return h.ListGovernance(context.Request.Context(), auth.PrincipalFromContext(context.Request.Context()), catalog.GovernanceQuery{
-			PackageName: query.PackageName,
-			Version:     versionFilter,
-			TargetType:  targetType,
-			PageSize:    pageSize,
-			Cursor:      cursor,
-		})
 	})
 }
 

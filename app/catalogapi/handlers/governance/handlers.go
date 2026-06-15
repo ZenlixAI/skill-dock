@@ -2,9 +2,11 @@ package governancehandlers
 
 import internalgovernancehttp "skill_registry/internal/governance/http"
 
+type ServeCachedReadJSONFunc = internalgovernancehttp.ServeCachedReadJSONFunc
 type AuthorizePackageFunc = internalgovernancehttp.AuthorizePackageFunc
 type AuthorizeActionFunc = internalgovernancehttp.AuthorizeActionFunc
 type AcquireWriteLimiterFunc = internalgovernancehttp.AcquireWriteLimiterFunc
+type ListGovernanceChangesFunc = internalgovernancehttp.ListGovernanceChangesFunc
 type CreateReleaseRecordFunc = internalgovernancehttp.CreateReleaseRecordFunc
 type ApplySkillGovernanceChangeFunc = internalgovernancehttp.ApplySkillGovernanceChangeFunc
 type ApplyVersionGovernanceChangeFunc = internalgovernancehttp.ApplyVersionGovernanceChangeFunc

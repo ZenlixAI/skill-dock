@@ -7,7 +7,6 @@ type AuthorizePackageFunc = internalcataloghttp.AuthorizePackageFunc
 type ListAuditEventsFunc = internalcataloghttp.ListAuditEventsFunc
 type ListSkillsFunc = internalcataloghttp.ListSkillsFunc
 type ListCuratedSkillsFunc = internalcataloghttp.ListCuratedSkillsFunc
-type ListGovernanceChangesFunc = internalcataloghttp.ListGovernanceChangesFunc
 type GetSkillFunc = internalcataloghttp.GetSkillFunc
 type ListVersionsFunc = internalcataloghttp.ListVersionsFunc
 type GetVersionFunc = internalcataloghttp.GetVersionFunc

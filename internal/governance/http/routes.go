@@ -1,28 +1,36 @@
 package http
 
 import (
+	"context"
 	"io"
 	stdhttp "net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"skill_registry/app/auth"
+	"skill_registry/app/catalogapi/common"
 	"skill_registry/app/catalogapi/response"
 	"skill_registry/business/catalog"
 	cataloghttp "skill_registry/internal/catalog/http"
 )
 
+type ServeCachedReadJSONFunc func(stdhttp.ResponseWriter, *stdhttp.Request, time.Duration, func() (any, *catalog.Error))
 type AuthorizePackageFunc func(stdhttp.ResponseWriter, *stdhttp.Request, string) bool
 type AuthorizeActionFunc func(stdhttp.ResponseWriter, *stdhttp.Request, auth.Action, string, string) bool
 type AcquireWriteLimiterFunc func() (func(), *catalog.Error)
+type ListGovernanceChangesFunc func(context.Context, auth.Principal, catalog.GovernanceQuery) (catalog.GovernancePage, *catalog.Error)
 type CreateReleaseRecordFunc func(ctx any, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.ReleaseRecordResult, int, *catalog.Error)
 type ApplySkillGovernanceChangeFunc func(ctx any, principal auth.Principal, packageName string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error)
 type ApplyVersionGovernanceChangeFunc func(ctx any, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error)
 
 type Handlers struct {
+	ServeCachedReadJSON        ServeCachedReadJSONFunc
+	ReadListCacheTTL           time.Duration
 	AuthorizePackage           AuthorizePackageFunc
 	AuthorizeAction            AuthorizeActionFunc
 	AcquireWriteLimiter        AcquireWriteLimiterFunc
+	ListGovernance             ListGovernanceChangesFunc
 	CreateReleaseRecord        func(request *stdhttp.Request, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.ReleaseRecordResult, int, *catalog.Error)
 	ApplySkillGovernanceChange func(request *stdhttp.Request, principal auth.Principal, packageName string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error)
 	ApplyVersionGovernance     func(request *stdhttp.Request, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error)
@@ -53,6 +61,50 @@ func RegisterRoutes(engine *gin.Engine, config Config) {
 	engine.POST("/api/v1/skills/:package/governance-changes", config.SkillGovernance)
 	engine.PUT("/api/v1/skills/:package/versions/:version/release-record", config.ReleaseRecord)
 	engine.POST("/api/v1/skills/:package/versions/:version/governance-changes", config.VersionGovernance)
+}
+
+func (h Handlers) GovernanceChanges(context *gin.Context) {
+	query, err := cataloghttp.BindGovernanceChangesQuery(context)
+	if err != nil {
+		response.WriteCatalogError(context, err)
+		return
+	}
+	pageSize, pageSizeErr := common.ParsePageSizeValue(query.PageSize)
+	if pageSizeErr != nil {
+		response.WriteCatalogError(context, pageSizeErr)
+		return
+	}
+	cursor, cursorErr := common.ParseCursorValue(query.Cursor)
+	if cursorErr != nil {
+		response.WriteCatalogError(context, cursorErr)
+		return
+	}
+	if query.PackageName != "" && !h.authorizePackage(context, query.PackageName) {
+		return
+	}
+	targetType, targetTypeErr := common.ParseGovernanceTargetTypeFilter(query.TargetType)
+	if targetTypeErr != nil {
+		response.WriteCatalogError(context, targetTypeErr)
+		return
+	}
+	versionFilter, versionFilterErr := common.ParseExactVersionQueryParam(query.Version, "version")
+	if versionFilterErr != nil {
+		response.WriteCatalogError(context, versionFilterErr)
+		return
+	}
+
+	h.serveCachedReadJSON(context, h.ReadListCacheTTL, func() (any, *catalog.Error) {
+		if h.ListGovernance == nil {
+			return catalog.GovernancePage{}, nil
+		}
+		return h.ListGovernance(context.Request.Context(), auth.PrincipalFromContext(context.Request.Context()), catalog.GovernanceQuery{
+			PackageName: query.PackageName,
+			Version:     versionFilter,
+			TargetType:  targetType,
+			PageSize:    pageSize,
+			Cursor:      cursor,
+		})
+	})
 }
 
 func (h Handlers) SkillGovernance(context *gin.Context) {
@@ -202,6 +254,19 @@ func (h Handlers) acquireWriteLimiter(context *gin.Context) func() {
 		return nil
 	}
 	return release
+}
+
+func (h Handlers) serveCachedReadJSON(context *gin.Context, ttl time.Duration, load func() (any, *catalog.Error)) {
+	if h.ServeCachedReadJSON != nil {
+		h.ServeCachedReadJSON(context.Writer, context.Request, ttl, load)
+		return
+	}
+	payload, err := load()
+	if err != nil {
+		response.WriteCatalogError(context, err)
+		return
+	}
+	response.WriteJSON(context, stdhttp.StatusOK, payload)
 }
 
 func registerHeadCompatibleRoute(engine *gin.Engine, path string, handler gin.HandlerFunc) {
