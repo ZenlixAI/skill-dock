@@ -109,8 +109,6 @@ func configuredServerConfig(repository catalog.Repository, storeSet *persist.SQL
 		AuthTokens:                      configuredAuthTokens(),
 		SessionSecret:                   os.Getenv("SKILL_REGISTRY_SESSION_SECRET"),
 		SessionUsers:                    configuredSessionUsers(),
-		MockRegistry:                    nil,
-		DisableMockRegistry:             true,
 		Packaging:                       packaging.NewServiceWithWorkspaceStore(sharedWorkspaceRoot, workspaceStore),
 		Repository:                      repository,
 		Idempotency:                     idempotencyStore,

@@ -132,13 +132,16 @@ func TestConfiguredServerConfigUsesProductionOnlyStartupWiring(t *testing.T) {
 	if config.Repository != repository {
 		t.Fatalf("expected repository to be preserved, got %T", config.Repository)
 	}
-	if config.MockRegistry != nil {
-		t.Fatalf("expected no mock registry in production startup, got %T", config.MockRegistry)
-	}
-	if !config.DisableMockRegistry {
-		t.Fatal("expected production startup to disable mock registry routes")
-	}
 	if config.Packaging == nil {
 		t.Fatal("expected production startup to configure packaging service")
+	}
+	if config.Idempotency != nil {
+		t.Fatalf("expected nil idempotency store without SQL stores, got %T", config.Idempotency)
+	}
+	if config.Audit != nil {
+		t.Fatalf("expected nil audit store without SQL stores, got %T", config.Audit)
+	}
+	if config.Logger == nil {
+		t.Fatal("expected production startup to configure a logger")
 	}
 }
