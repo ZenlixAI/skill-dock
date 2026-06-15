@@ -2981,6 +2981,48 @@ func TestRequestLoggingIncludesTraceIDAndResponseHeader(t *testing.T) {
 	}
 }
 
+func TestRequestMetadataMiddlewareGeneratesTraceIDAndLogsHeaders(t *testing.T) {
+	var logBuffer bytes.Buffer
+	server := NewServer(ServerConfig{
+		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+		Packaging:  packaging.NewService(""),
+		Logger:     log.New(&logBuffer, "", 0),
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills", nil)
+	request.Header.Set("X-Role", "reader")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, recorder.Code)
+	}
+
+	requestID := recorder.Header().Get("X-Request-Id")
+	if requestID == "" {
+		t.Fatal("expected X-Request-Id response header")
+	}
+
+	traceID := recorder.Header().Get("X-Trace-Id")
+	if traceID == "" {
+		t.Fatal("expected X-Trace-Id response header")
+	}
+
+	wantTraceID := "trace_" + strings.TrimPrefix(requestID, "req_")
+	if traceID != wantTraceID {
+		t.Fatalf("expected generated trace ID %q, got %q", wantTraceID, traceID)
+	}
+
+	payload := findLoggedEvent(t, logBuffer.String(), "http_request")
+	if payload["requestId"] != requestID {
+		t.Fatalf("expected logged requestId %q, got %+v", requestID, payload)
+	}
+	if payload["traceId"] != traceID {
+		t.Fatalf("expected logged traceId %q, got %+v", traceID, payload)
+	}
+}
+
 func TestMetricsEndpointReportsRequests(t *testing.T) {
 	server := NewServer(ServerConfig{
 		Repository: catalog.NewMemoryRepository(catalog.SampleData()),

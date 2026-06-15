@@ -1,14 +1,18 @@
 package catalogapi
 
 import (
+	"bytes"
 	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/gin-gonic/gin"
+
 	"skill_registry/app/auth"
 	"skill_registry/app/catalogapi/audit"
+	catalogmiddleware "skill_registry/app/catalogapi/middleware"
 	"skill_registry/app/observability"
 )
 
@@ -46,5 +50,56 @@ func TestAccessWorkflowDeniesPackageAccessAndRecordsAudit(t *testing.T) {
 	}
 	if store.events[0].AuthDecision != observability.AuthDecisionDenied {
 		t.Fatalf("expected denied auth decision, got %+v", store.events[0])
+	}
+}
+
+func TestAccessWorkflowAuthorizeActionFeedsGinObservability(t *testing.T) {
+	var logBuffer bytes.Buffer
+	workflow := &accessWorkflow{
+		authorizer: auth.NewAuthorizer(auth.Config{}),
+		audit:      audit.NewRecorder(&captureAuditStore{}),
+		logger:     log.New(io.Discard, "", 0),
+	}
+
+	engine := gin.New()
+	engine.Use(
+		catalogmiddleware.WithRequestMetadata(nil),
+		catalogmiddleware.WithObservability(nil, log.New(&logBuffer, "", 0)),
+		catalogmiddleware.WithAuthentication(func(request *http.Request) (auth.Principal, bool) {
+			return auth.Principal{
+				Role:          "reader",
+				Actor:         "svc-reader",
+				AuthMechanism: "configured_token",
+			}, true
+		}),
+	)
+	engine.GET("/authorized", func(context *gin.Context) {
+		if !workflow.authorizeAction(context.Writer, context.Request, auth.ActionReadCatalog, "", "") {
+			return
+		}
+		context.Status(http.StatusNoContent)
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/authorized", nil)
+	recorder := httptest.NewRecorder()
+
+	engine.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusNoContent, recorder.Code, recorder.Body.String())
+	}
+
+	payload := findLoggedEvent(t, logBuffer.String(), "http_request")
+	if payload["action"] != string(auth.ActionReadCatalog) {
+		t.Fatalf("expected action %q, got %+v", auth.ActionReadCatalog, payload)
+	}
+	if payload["authDecision"] != string(observability.AuthDecisionAllowed) {
+		t.Fatalf("expected authDecision %q, got %+v", observability.AuthDecisionAllowed, payload)
+	}
+	if payload["outcome"] != "succeeded" {
+		t.Fatalf("expected succeeded outcome, got %+v", payload)
+	}
+	if payload["role"] != "reader" {
+		t.Fatalf("expected role reader, got %+v", payload)
 	}
 }
