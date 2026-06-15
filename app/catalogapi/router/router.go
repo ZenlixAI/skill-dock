@@ -45,6 +45,7 @@ func New(config Config) *gin.Engine {
 	registerSystemRoutes(engine, config)
 	registerSessionRoutes(engine, config)
 	registerCatalogRoutes(engine, config)
+	registerGovernanceRoutes(engine, config)
 	registerPackagingRoutes(engine, config)
 
 	return engine

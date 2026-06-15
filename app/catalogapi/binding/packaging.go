@@ -4,14 +4,11 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"skill_registry/business/catalog"
+	internalpackaginghttp "skill_registry/internal/packaging/http"
 )
 
-type BundleDownloadQuery struct {
-	WorkspacePath string `form:"workspacePath"`
-	PackageName   string `form:"packageName"`
-	Version       string `form:"version"`
-}
+type BundleDownloadQuery = internalpackaginghttp.BundleDownloadQuery
 
 func BindBundleDownloadQuery(context *gin.Context) (BundleDownloadQuery, *catalog.Error) {
-	return bindQuery[BundleDownloadQuery](context)
+	return internalpackaginghttp.BindBundleDownloadQuery(context)
 }

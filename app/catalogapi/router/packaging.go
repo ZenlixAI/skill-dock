@@ -1,17 +1,19 @@
 package router
 
-import "github.com/gin-gonic/gin"
+import (
+	"github.com/gin-gonic/gin"
+
+	packaginghttp "skill_registry/internal/packaging/http"
+)
 
 func registerPackagingRoutes(engine *gin.Engine, config Config) {
-	if !config.ServesWriteRoutes {
-		return
-	}
-
-	group := engine.Group("/api/v1/skill-packaging")
-	group.POST("/prepare", config.PackagingPrepare)
-	group.POST("/validate", config.PackagingValidate)
-	group.POST("/pack", config.PackagingPack)
-	group.POST("/publish", config.PackagingPublish)
-	group.POST("/cleanup", config.PackagingCleanup)
-	group.GET("/bundle", config.PackagingBundle)
+	packaginghttp.RegisterRoutes(engine, packaginghttp.Config{
+		ServesWriteRoutes: config.ServesWriteRoutes,
+		Prepare:           config.PackagingPrepare,
+		Validate:          config.PackagingValidate,
+		Pack:              config.PackagingPack,
+		Publish:           config.PackagingPublish,
+		Cleanup:           config.PackagingCleanup,
+		Bundle:            config.PackagingBundle,
+	})
 }
