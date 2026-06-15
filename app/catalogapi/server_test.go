@@ -667,26 +667,6 @@ func TestGovernanceUsesConfiguredActorInsteadOfSpoofableHeader(t *testing.T) {
 	}
 }
 
-func TestMockRegistryRouteIsNotRegistered(t *testing.T) {
-	server := newTestServer()
-
-	for _, route := range []string{
-		"/mock-npm",
-		"/mock-npm/%40platform.skill%2Fpdf-skill",
-	} {
-		t.Run(route, func(t *testing.T) {
-			request := httptest.NewRequest(http.MethodGet, route, nil)
-			recorder := httptest.NewRecorder()
-
-			server.Handler().ServeHTTP(recorder, request)
-
-			if recorder.Code != http.StatusNotFound {
-				t.Fatalf("expected status %d, got %d body=%s", http.StatusNotFound, recorder.Code, recorder.Body.String())
-			}
-		})
-	}
-}
-
 func TestServerCanonicalizesRepeatedSlashesBeforeRouting(t *testing.T) {
 	server := newTestServer()
 

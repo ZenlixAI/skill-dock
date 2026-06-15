@@ -338,7 +338,7 @@ Catalog：
 - `SKILL_REGISTRY_NPM_REGISTRY_URL` 给 Catalog 自己读 registry 元数据；`SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL` 给宿主机 CLI 下载 tarball
 - 如果要让 Web 里的“发布 skill”由 Catalog 直接发到 Nexus，还需要给 Catalog 配 `SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION`（例如 `Bearer NpmToken.xxxxx`）；也可改用 `SKILL_REGISTRY_NPM_PUBLISH_TOKEN`
 - CLI 永远连 Catalog；切换后端 npm registry 时，需要同时确认 Catalog 的内部访问地址和对外下载地址
-- Catalog 运行时不再提供 sample data 或 `/mock-npm` 启动分支
+- Catalog 运行时已收敛为生产路径：只使用显式配置的 artifact 元数据文件或 npm registry，不再提供 runtime sample/mock 启动分支
 
 ### `SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION` 怎么取
 

@@ -177,3 +177,8 @@ func digestTarball(content []byte) (string, string) {
 func packageAttachmentName(packageName string, version string) string {
 	return packageBasename(packageName) + "-" + version + ".tgz"
 }
+
+func packageBasename(packageName string) string {
+	parts := strings.Split(packageName, "/")
+	return parts[len(parts)-1]
+}
