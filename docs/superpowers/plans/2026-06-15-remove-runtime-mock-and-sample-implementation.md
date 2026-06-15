@@ -203,7 +203,7 @@ git commit -m "refactor: remove mock registry http surface"
 
 - [ ] **Step 1: Add a failing repository-wide check that ensures production code no longer references the deleted runtime features**
 
-Run: `rg -n 'SKILL_REGISTRY_ENABLE_SAMPLE_DATA|SKILL_REGISTRY_ENABLE_MOCK_REGISTRY|/mock-npm|MockRegistry' cmd app foundation README.md docs`
+Run: `rg -n 'SKILL_REGISTRY_ENABLE_SAMPLE_DATA|SKILL_REGISTRY_ENABLE_MOCK_REGISTRY|/mock-npm|MockRegistry' cmd app foundation README.md docs --glob '!docs/superpowers/**' --glob '!app/**/*_test.go' --glob '!foundation/**/*_test.go'`
 Expected: matches still present before cleanup.
 
 - [ ] **Step 2: Delete the artifact-layer mock registry implementation and remove now-dead publish-flow tests that depended on it**
@@ -221,7 +221,7 @@ git rm foundation/artifact/mock_registry.go
 
 - [ ] **Step 4: Re-run the search and verify production references are gone**
 
-Run: `rg -n 'SKILL_REGISTRY_ENABLE_SAMPLE_DATA|SKILL_REGISTRY_ENABLE_MOCK_REGISTRY|/mock-npm|MockRegistry' cmd app foundation README.md docs`
+Run: `rg -n 'SKILL_REGISTRY_ENABLE_SAMPLE_DATA|SKILL_REGISTRY_ENABLE_MOCK_REGISTRY|/mock-npm|MockRegistry' cmd app foundation README.md docs --glob '!docs/superpowers/**' --glob '!app/**/*_test.go' --glob '!foundation/**/*_test.go'`
 Expected: no matches in production code or runtime-facing docs; any remaining `SampleData()` references should be test-fixture usage only.
 
 - [ ] **Step 5: Run targeted package tests after the deletions**
