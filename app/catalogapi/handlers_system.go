@@ -30,11 +30,3 @@ func (s *Server) handleMetrics(writer http.ResponseWriter, request *http.Request
 	writer.WriteHeader(http.StatusOK)
 	_, _ = writer.Write([]byte(s.metrics.RenderPrometheus()))
 }
-
-func (s *Server) handleMockRegistry(writer http.ResponseWriter, request *http.Request) {
-	if s.mockRegistryModule == nil {
-		http.NotFound(writer, request)
-		return
-	}
-	s.mockRegistryModule.handleRequest(writer, request)
-}

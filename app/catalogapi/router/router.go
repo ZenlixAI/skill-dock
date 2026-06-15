@@ -3,9 +3,8 @@ package router
 import "github.com/gin-gonic/gin"
 
 type Config struct {
-	ServesReadRoutes    bool
-	ServesWriteRoutes   bool
-	DisableMockRegistry bool
+	ServesReadRoutes  bool
+	ServesWriteRoutes bool
 
 	Healthz       gin.HandlerFunc
 	Readyz        gin.HandlerFunc
@@ -33,8 +32,6 @@ type Config struct {
 	PackagingPublish  gin.HandlerFunc
 	PackagingCleanup  gin.HandlerFunc
 	PackagingBundle   gin.HandlerFunc
-
-	MockRegistry gin.HandlerFunc
 }
 
 func New(config Config) *gin.Engine {

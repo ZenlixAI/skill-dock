@@ -42,8 +42,6 @@ type ServerConfig struct {
 	AuthTokens                      map[string]auth.TokenConfig
 	SessionSecret                   string
 	SessionUsers                    map[string]auth.SessionUserConfig
-	MockRegistry                    *artifactadapter.MockRegistry
-	DisableMockRegistry             bool
 	Packaging                       *packaging.Service
 	Idempotency                     persist.IdempotencyStore
 	Audit                           persist.AuditStore
@@ -64,9 +62,7 @@ type Server struct {
 	packagingAccessModule packagingAccessWorkflow
 	sessionModule         sessionWorkflow
 	systemModule          systemWorkflow
-	mockRegistryModule    mockRegistryWorkflow
 	publicNPMRegistryURL  string
-	disableMockRegistry   bool
 	packaging             *packaging.Service
 	auditRecorder         *audit.Recorder
 	logger                *log.Logger
@@ -121,7 +117,6 @@ func NewServer(config ServerConfig) *Server {
 		authorizer:           authorizer,
 		sessionManager:       sessionManager,
 		publicNPMRegistryURL: strings.TrimRight(strings.TrimSpace(config.PublicNPMRegistryURL), "/"),
-		disableMockRegistry:  config.DisableMockRegistry,
 		packaging:            config.Packaging,
 		auditRecorder:        auditRecorder,
 		logger:               logger,
@@ -173,9 +168,6 @@ func NewServer(config ServerConfig) *Server {
 		system.NamedDependency{Name: "audit", Pinger: system.DependencyPinger(config.Audit)},
 		system.NamedDependency{Name: "idempotency", Pinger: system.DependencyPinger(config.Idempotency)},
 	)
-	server.mockRegistryModule = &mockRegistryModule{
-		registry: config.MockRegistry,
-	}
 	return server
 }
 
@@ -257,34 +249,32 @@ func (s *Server) logAuditWriteFailure(request *http.Request, action string, err 
 
 func (s *Server) routerConfig() routerpkg.Config {
 	return routerpkg.Config{
-		ServesReadRoutes:    s.mode.servesReadRoutes(),
-		ServesWriteRoutes:   s.mode.servesWriteRoutes(),
-		DisableMockRegistry: s.disableMockRegistry,
-		Healthz:             s.ginHandler(http.HandlerFunc(s.handleHealthz)),
-		Readyz:              s.ginHandler(http.HandlerFunc(s.handleReadyz)),
-		Metrics:             s.ginHandler(http.HandlerFunc(s.handleMetrics)),
-		Session:             s.ginHandler(http.HandlerFunc(s.handleSession)),
-		SessionLogin:        s.ginHandler(http.HandlerFunc(s.handleSessionLogin)),
-		SessionLogout:       s.ginHandler(http.HandlerFunc(s.handleSessionLogout)),
-		AuditEvents:         s.ginHandler(s.requireAction(s.handleAuditEvents, auth.ActionReadAuditEvents)),
-		Skills:              s.ginHandler(s.requireAction(s.handleSkills, auth.ActionReadCatalog)),
-		SkillsSearch:        s.ginHandler(s.requireAction(s.handleSkills, auth.ActionReadCatalog)),
-		CuratedSkills:       s.ginHandler(s.requireAction(s.handleCuratedSkills, auth.ActionReadCatalog)),
-		GovernanceChanges:   s.ginHandler(s.requireAction(s.handleGovernanceChanges, auth.ActionReadCatalog)),
-		SkillDetail:         s.ginHandler(s.requireAction(s.handleSkillDetailRoute, auth.ActionReadCatalog), "package"),
-		VersionList:         s.ginHandler(s.requireAction(s.handleVersionListRoute, auth.ActionReadCatalog), "package"),
-		VersionDetail:       s.ginHandler(s.requireAction(s.handleVersionDetailRoute, auth.ActionReadCatalog), "package", "version"),
-		InstallTarget:       s.ginHandler(s.requireAction(s.handleInstallTargetRoute, auth.ActionReadCatalog), "package"),
-		SkillGovernance:     s.ginHandler(s.requireAction(s.handleSkillGovernanceRoute, auth.ActionReadCatalog), "package"),
-		ReleaseRecord:       s.ginHandler(s.requireAction(s.handleReleaseRecordRoute, auth.ActionReadCatalog), "package", "version"),
-		VersionGovernance:   s.ginHandler(s.requireAction(s.handleVersionGovernanceRoute, auth.ActionReadCatalog), "package", "version"),
-		PackagingPrepare:    s.ginHandler(s.requireAction(s.handlePackagingPrepare, auth.ActionPackagingPrepare)),
-		PackagingValidate:   s.ginHandler(s.requireAction(s.handlePackagingValidate, auth.ActionPackagingValidate)),
-		PackagingPack:       s.ginHandler(s.requireAction(s.handlePackagingPack, auth.ActionPackagingPack)),
-		PackagingPublish:    s.ginHandler(s.requireAction(s.handlePackagingPublish, auth.ActionPackagingPublish)),
-		PackagingCleanup:    s.ginHandler(s.requireAction(s.handlePackagingCleanup, auth.ActionPackagingPack)),
-		PackagingBundle:     s.ginHandler(s.requireAction(s.handlePackagingBundleDownload, auth.ActionPackagingPack)),
-		MockRegistry:        s.ginHandler(http.HandlerFunc(s.handleMockRegistry)),
+		ServesReadRoutes:  s.mode.servesReadRoutes(),
+		ServesWriteRoutes: s.mode.servesWriteRoutes(),
+		Healthz:           s.ginHandler(http.HandlerFunc(s.handleHealthz)),
+		Readyz:            s.ginHandler(http.HandlerFunc(s.handleReadyz)),
+		Metrics:           s.ginHandler(http.HandlerFunc(s.handleMetrics)),
+		Session:           s.ginHandler(http.HandlerFunc(s.handleSession)),
+		SessionLogin:      s.ginHandler(http.HandlerFunc(s.handleSessionLogin)),
+		SessionLogout:     s.ginHandler(http.HandlerFunc(s.handleSessionLogout)),
+		AuditEvents:       s.ginHandler(s.requireAction(s.handleAuditEvents, auth.ActionReadAuditEvents)),
+		Skills:            s.ginHandler(s.requireAction(s.handleSkills, auth.ActionReadCatalog)),
+		SkillsSearch:      s.ginHandler(s.requireAction(s.handleSkills, auth.ActionReadCatalog)),
+		CuratedSkills:     s.ginHandler(s.requireAction(s.handleCuratedSkills, auth.ActionReadCatalog)),
+		GovernanceChanges: s.ginHandler(s.requireAction(s.handleGovernanceChanges, auth.ActionReadCatalog)),
+		SkillDetail:       s.ginHandler(s.requireAction(s.handleSkillDetailRoute, auth.ActionReadCatalog), "package"),
+		VersionList:       s.ginHandler(s.requireAction(s.handleVersionListRoute, auth.ActionReadCatalog), "package"),
+		VersionDetail:     s.ginHandler(s.requireAction(s.handleVersionDetailRoute, auth.ActionReadCatalog), "package", "version"),
+		InstallTarget:     s.ginHandler(s.requireAction(s.handleInstallTargetRoute, auth.ActionReadCatalog), "package"),
+		SkillGovernance:   s.ginHandler(s.requireAction(s.handleSkillGovernanceRoute, auth.ActionReadCatalog), "package"),
+		ReleaseRecord:     s.ginHandler(s.requireAction(s.handleReleaseRecordRoute, auth.ActionReadCatalog), "package", "version"),
+		VersionGovernance: s.ginHandler(s.requireAction(s.handleVersionGovernanceRoute, auth.ActionReadCatalog), "package", "version"),
+		PackagingPrepare:  s.ginHandler(s.requireAction(s.handlePackagingPrepare, auth.ActionPackagingPrepare)),
+		PackagingValidate: s.ginHandler(s.requireAction(s.handlePackagingValidate, auth.ActionPackagingValidate)),
+		PackagingPack:     s.ginHandler(s.requireAction(s.handlePackagingPack, auth.ActionPackagingPack)),
+		PackagingPublish:  s.ginHandler(s.requireAction(s.handlePackagingPublish, auth.ActionPackagingPublish)),
+		PackagingCleanup:  s.ginHandler(s.requireAction(s.handlePackagingCleanup, auth.ActionPackagingPack)),
+		PackagingBundle:   s.ginHandler(s.requireAction(s.handlePackagingBundleDownload, auth.ActionPackagingPack)),
 	}
 }
 
@@ -329,9 +319,6 @@ func (s *Server) canonicalRouteTarget(request *http.Request) (string, bool) {
 		escapedPath = request.URL.Path
 	}
 	cleanedPath := cleanCanonicalPath(escapedPath)
-	if !s.disableMockRegistry && cleanedPath == "/mock-npm" {
-		return canonicalRedirectTarget(cleanedPath+"/", request.URL.RawQuery), true
-	}
 	if cleanedPath != escapedPath {
 		return canonicalRedirectTarget(cleanedPath, request.URL.RawQuery), true
 	}

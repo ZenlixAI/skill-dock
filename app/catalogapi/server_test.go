@@ -5,9 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"crypto/sha1"
 	"crypto/sha256"
-	"crypto/sha512"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -23,6 +21,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -668,74 +667,16 @@ func TestGovernanceUsesConfiguredActorInsteadOfSpoofableHeader(t *testing.T) {
 	}
 }
 
-func TestMockNPMRegistryServesPackageMetadata(t *testing.T) {
-	server := NewServer(ServerConfig{
-		Repository:   catalog.NewMemoryRepository(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm")),
-		MockRegistry: artifactadapter.NewMockRegistry(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm").Artifacts),
-	})
-
-	request := httptest.NewRequest(http.MethodGet, "/mock-npm/%40platform.skill%2Fpdf-skill", nil)
-	recorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d", http.StatusOK, recorder.Code)
-	}
-
-	var payload struct {
-		Name     string `json:"name"`
-		Versions map[string]struct {
-			Name string `json:"name"`
-		} `json:"versions"`
-	}
-	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("decode mock metadata: %v", err)
-	}
-
-	if payload.Name != "@platform.skill/pdf-skill" {
-		t.Fatalf("unexpected package name: %s", payload.Name)
-	}
-	if _, ok := payload.Versions["1.2.0"]; !ok {
-		t.Fatal("expected version 1.2.0 in mock metadata")
-	}
-}
-
-func TestMockNPMRegistryRootRedirectsToTrailingSlash(t *testing.T) {
-	server := NewServer(ServerConfig{
-		Repository:   catalog.NewMemoryRepository(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm")),
-		MockRegistry: artifactadapter.NewMockRegistry(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm").Artifacts),
-	})
+func TestMockRegistryRouteIsNotRegistered(t *testing.T) {
+	server := newTestServer()
 
 	request := httptest.NewRequest(http.MethodGet, "/mock-npm", nil)
 	recorder := httptest.NewRecorder()
 
 	server.Handler().ServeHTTP(recorder, request)
 
-	if recorder.Code != http.StatusTemporaryRedirect {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusTemporaryRedirect, recorder.Code, recorder.Body.String())
-	}
-	if got := recorder.Header().Get("Location"); got != "/mock-npm/" {
-		t.Fatalf("expected redirect location /mock-npm/, got %q", got)
-	}
-}
-
-func TestMockNPMRegistryRootPutRedirectsToTrailingSlash(t *testing.T) {
-	server := NewServer(ServerConfig{
-		Repository:   catalog.NewMemoryRepository(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm")),
-		MockRegistry: artifactadapter.NewMockRegistry(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm").Artifacts),
-	})
-
-	request := httptest.NewRequest(http.MethodPut, "/mock-npm", nil)
-	recorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusTemporaryRedirect {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusTemporaryRedirect, recorder.Code, recorder.Body.String())
-	}
-	if got := recorder.Header().Get("Location"); got != "/mock-npm/" {
-		t.Fatalf("expected redirect location /mock-npm/, got %q", got)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusNotFound, recorder.Code, recorder.Body.String())
 	}
 }
 
@@ -752,277 +693,6 @@ func TestServerCanonicalizesRepeatedSlashesBeforeRouting(t *testing.T) {
 	}
 	if got := recorder.Header().Get("Location"); got != "/api/v1/skills/foo" {
 		t.Fatalf("expected redirect location /api/v1/skills/foo, got %q", got)
-	}
-}
-
-func TestMockNPMRegistryCanBeDisabled(t *testing.T) {
-	server := NewServer(ServerConfig{
-		Repository:          catalog.NewMemoryRepository(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm")),
-		MockRegistry:        artifactadapter.NewMockRegistry(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm").Artifacts),
-		DisableMockRegistry: true,
-	})
-
-	request := httptest.NewRequest(http.MethodGet, "/mock-npm/%40platform.skill%2Fpdf-skill", nil)
-	recorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusNotFound {
-		t.Fatalf("expected status %d when mock registry is disabled, got %d", http.StatusNotFound, recorder.Code)
-	}
-}
-
-func TestMockNPMRegistryTarballRejectsNonGETMethods(t *testing.T) {
-	server := NewServer(ServerConfig{
-		Repository:   catalog.NewMemoryRepository(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm")),
-		MockRegistry: artifactadapter.NewMockRegistry(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm").Artifacts),
-	})
-
-	request := httptest.NewRequest(http.MethodPut, "/mock-npm/platform.skill/pdf-skill/-/pdf-skill-1.2.0.tgz", nil)
-	recorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusMethodNotAllowed, recorder.Code, recorder.Body.String())
-	}
-}
-
-func TestMockNPMRegistryRejectsInvalidPublishPayload(t *testing.T) {
-	server := NewServer(ServerConfig{
-		Repository:   catalog.NewMemoryRepository(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm")),
-		MockRegistry: artifactadapter.NewMockRegistry(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm").Artifacts),
-	})
-
-	request := httptest.NewRequest(http.MethodPut, "/mock-npm/%40platform.skill%2Fprobe-skill", strings.NewReader(`not-json`))
-	recorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusBadRequest, recorder.Code, recorder.Body.String())
-	}
-	if !strings.Contains(recorder.Body.String(), "invalid publish payload") {
-		t.Fatalf("expected invalid publish payload body, got %s", recorder.Body.String())
-	}
-}
-
-func TestMockNPMRegistryReturnsNotFoundForUnknownTarball(t *testing.T) {
-	server := NewServer(ServerConfig{
-		Repository:   catalog.NewMemoryRepository(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm")),
-		MockRegistry: artifactadapter.NewMockRegistry(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm").Artifacts),
-	})
-
-	request := httptest.NewRequest(http.MethodGet, "/mock-npm/platform.skill/pdf-skill/-/pdf-skill-9.9.9.tgz", nil)
-	recorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusNotFound {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusNotFound, recorder.Code, recorder.Body.String())
-	}
-}
-
-func TestMockNPMRegistryMetadataIntegrityMatchesServedTarball(t *testing.T) {
-	server := NewServer(ServerConfig{
-		Repository:   catalog.NewMemoryRepository(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm")),
-		MockRegistry: artifactadapter.NewMockRegistry(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm").Artifacts),
-	})
-
-	metadataRequest := httptest.NewRequest(http.MethodGet, "/mock-npm/%40platform.skill%2Fpdf-skill", nil)
-	metadataRecorder := httptest.NewRecorder()
-	server.Handler().ServeHTTP(metadataRecorder, metadataRequest)
-
-	if metadataRecorder.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d", http.StatusOK, metadataRecorder.Code)
-	}
-
-	var payload struct {
-		Versions map[string]struct {
-			Dist struct {
-				Integrity string `json:"integrity"`
-				Shasum    string `json:"shasum"`
-				Tarball   string `json:"tarball"`
-			} `json:"dist"`
-		} `json:"versions"`
-	}
-	if err := json.Unmarshal(metadataRecorder.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("decode mock metadata: %v", err)
-	}
-
-	version, ok := payload.Versions["1.2.0"]
-	if !ok {
-		t.Fatal("expected version 1.2.0 in mock metadata")
-	}
-
-	tarballPath := mustPathFromURL(t, version.Dist.Tarball)
-	tarballRequest := httptest.NewRequest(http.MethodGet, tarballPath, nil)
-	tarballRecorder := httptest.NewRecorder()
-	server.Handler().ServeHTTP(tarballRecorder, tarballRequest)
-
-	if tarballRecorder.Code != http.StatusOK {
-		t.Fatalf("expected tarball status %d, got %d", http.StatusOK, tarballRecorder.Code)
-	}
-
-	tarball := tarballRecorder.Body.Bytes()
-	sha512Sum := sha512.Sum512(tarball)
-	sha1Sum := sha1.Sum(tarball)
-	expectedIntegrity := "sha512-" + base64.StdEncoding.EncodeToString(sha512Sum[:])
-	expectedShasum := hex.EncodeToString(sha1Sum[:])
-	if version.Dist.Integrity != expectedIntegrity {
-		t.Fatalf("expected integrity %s, got %s", expectedIntegrity, version.Dist.Integrity)
-	}
-	if version.Dist.Shasum != expectedShasum {
-		t.Fatalf("expected shasum %s, got %s", expectedShasum, version.Dist.Shasum)
-	}
-}
-
-func TestInstallTargetFromSampleCatalogMatchesServedTarball(t *testing.T) {
-	server := NewServer(ServerConfig{
-		Repository:   catalog.NewMemoryRepository(catalog.SampleDataWithRegistryBase("http://127.0.0.1:18080/mock-npm")),
-		MockRegistry: artifactadapter.NewMockRegistry(catalog.SampleDataWithRegistryBase("http://127.0.0.1:18080/mock-npm").Artifacts),
-	})
-
-	installTargetRequest := httptest.NewRequest(http.MethodGet, "/api/v1/skills/%40platform.skill%2Fpdf-skill/install-target", nil)
-	installTargetRequest.Header.Set("X-Role", "reader")
-	installTargetRecorder := httptest.NewRecorder()
-	server.Handler().ServeHTTP(installTargetRecorder, installTargetRequest)
-
-	if installTargetRecorder.Code != http.StatusOK {
-		t.Fatalf("expected install target status %d, got %d body=%s", http.StatusOK, installTargetRecorder.Code, installTargetRecorder.Body.String())
-	}
-
-	var resolution catalog.InstallResolution
-	if err := json.Unmarshal(installTargetRecorder.Body.Bytes(), &resolution); err != nil {
-		t.Fatalf("decode install target: %v", err)
-	}
-
-	tarballPath := mustPathFromURL(t, resolution.TarballURL)
-	tarballRequest := httptest.NewRequest(http.MethodGet, tarballPath, nil)
-	tarballRecorder := httptest.NewRecorder()
-	server.Handler().ServeHTTP(tarballRecorder, tarballRequest)
-
-	if tarballRecorder.Code != http.StatusOK {
-		t.Fatalf("expected tarball status %d, got %d", http.StatusOK, tarballRecorder.Code)
-	}
-
-	tarball := tarballRecorder.Body.Bytes()
-	sha512Sum := sha512.Sum512(tarball)
-	expectedIntegrity := "sha512-" + base64.StdEncoding.EncodeToString(sha512Sum[:])
-	if resolution.Integrity != expectedIntegrity {
-		t.Fatalf("expected install target integrity %s, got %s", expectedIntegrity, resolution.Integrity)
-	}
-
-	packageSkillMD := readTarballFile(t, tarball, "package/SKILL.md")
-	expectedManifestDigest := manifestDigest(string(packageSkillMD))
-	if resolution.SkillManifestDigest != expectedManifestDigest {
-		t.Fatalf("expected install target manifest digest %s, got %s", expectedManifestDigest, resolution.SkillManifestDigest)
-	}
-}
-
-func TestMockNPMRegistryServesTarballBundle(t *testing.T) {
-	server := NewServer(ServerConfig{
-		Repository:   catalog.NewMemoryRepository(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm")),
-		MockRegistry: artifactadapter.NewMockRegistry(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm").Artifacts),
-	})
-
-	request := httptest.NewRequest(http.MethodGet, "/mock-npm/platform.skill/pdf-skill/-/pdf-skill-1.2.0.tgz", nil)
-	recorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d", http.StatusOK, recorder.Code)
-	}
-
-	result, validationError := artifactadapter.ScanNPMPackageTarballForTest(bytes.NewReader(recorder.Body.Bytes()), "@platform.skill/pdf-skill", "1.2.0")
-	if validationError != "" {
-		t.Fatalf("expected valid tarball, got validation error: %s", validationError)
-	}
-	if result.DisplayName != "PDF Skill" {
-		t.Fatalf("unexpected display name: %s", result.DisplayName)
-	}
-}
-
-func TestMockNPMRegistryAcceptsPublishedPackagePayload(t *testing.T) {
-	server := NewServer(ServerConfig{
-		Repository:   catalog.NewMemoryRepository(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm")),
-		MockRegistry: artifactadapter.NewMockRegistry(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm").Artifacts),
-	})
-
-	publishTarball := buildTarball(t, map[string]string{
-		"package/SKILL.md":         "---\nname: Probe Skill\ndescription: Probe publish payload\n---\n",
-		"package/package.json":     `{"name":"@platform.skill/probe-skill","version":"0.1.0"}`,
-		"package/commands/run.txt": "echo run",
-	})
-	encodedTarball := base64.StdEncoding.EncodeToString(publishTarball)
-
-	request := jsonRequest(http.MethodPut, "/mock-npm/%40platform.skill%2Fprobe-skill", `{
-		"_id":"@platform.skill/probe-skill",
-		"name":"@platform.skill/probe-skill",
-		"dist-tags":{"latest":"0.1.0"},
-		"versions":{
-			"0.1.0":{
-				"name":"@platform.skill/probe-skill",
-				"version":"0.1.0",
-				"description":"Probe publish payload",
-				"dist":{
-					"integrity":"sha512-test",
-					"shasum":"sha1-test",
-					"tarball":"http://127.0.0.1:19090/@platform.skill/probe-skill/-/@platform.skill/probe-skill-0.1.0.tgz"
-				}
-			}
-		},
-		"_attachments":{
-			"@platform.skill/probe-skill-0.1.0.tgz":{
-				"content_type":"application/octet-stream",
-				"data":"`+encodedTarball+`",
-				"length":`+itoa(len(publishTarball))+`
-			}
-		}
-	}`)
-	recorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusCreated {
-		t.Fatalf("expected status %d, got %d", http.StatusCreated, recorder.Code)
-	}
-
-	metadataRequest := httptest.NewRequest(http.MethodGet, "/mock-npm/%40platform.skill%2Fprobe-skill", nil)
-	metadataRecorder := httptest.NewRecorder()
-	server.Handler().ServeHTTP(metadataRecorder, metadataRequest)
-
-	if metadataRecorder.Code != http.StatusOK {
-		t.Fatalf("expected metadata status %d, got %d", http.StatusOK, metadataRecorder.Code)
-	}
-
-	var metadata struct {
-		Versions map[string]struct {
-			Dist struct {
-				Tarball string `json:"tarball"`
-			} `json:"dist"`
-		} `json:"versions"`
-	}
-	if err := json.Unmarshal(metadataRecorder.Body.Bytes(), &metadata); err != nil {
-		t.Fatalf("decode metadata: %v", err)
-	}
-
-	tarballPath := mustPathFromURL(t, metadata.Versions["0.1.0"].Dist.Tarball)
-	tarballRequest := httptest.NewRequest(http.MethodGet, tarballPath, nil)
-	tarballRecorder := httptest.NewRecorder()
-	server.Handler().ServeHTTP(tarballRecorder, tarballRequest)
-
-	if tarballRecorder.Code != http.StatusOK {
-		t.Fatalf("expected tarball status %d, got %d", http.StatusOK, tarballRecorder.Code)
-	}
-
-	result, validationError := artifactadapter.ScanNPMPackageTarballForTest(bytes.NewReader(tarballRecorder.Body.Bytes()), "@platform.skill/probe-skill", "0.1.0")
-	if validationError != "" {
-		t.Fatalf("expected valid tarball, got validation error: %s", validationError)
-	}
-	if result.DisplayName != "Probe Skill" {
-		t.Fatalf("unexpected display name: %s", result.DisplayName)
 	}
 }
 
@@ -1147,27 +817,9 @@ func TestSkillPackagingPrepareValidateAndPack(t *testing.T) {
 }
 
 func TestSkillPackagingPublishPublishesAndCreatesReleaseRecord(t *testing.T) {
-	mockRegistry := artifactadapter.NewMockRegistry(nil)
-	registryBaseURL := "https://registry.example.com/mock-npm"
-	registryServer := NewServer(ServerConfig{
-		Repository:   catalog.NewMemoryRepository(catalog.SampleData()),
-		MockRegistry: mockRegistry,
-	})
-
-	registryClient := &http.Client{
-		Transport: httpRoundTripFunc(func(request *http.Request) (*http.Response, error) {
-			recorder := httptest.NewRecorder()
-			proxyRequest := httptest.NewRequest(request.Method, request.URL.String(), request.Body)
-			proxyRequest.Header = request.Header.Clone()
-			registryServer.Handler().ServeHTTP(recorder, proxyRequest)
-
-			return &http.Response{
-				StatusCode: recorder.Code,
-				Header:     recorder.Result().Header.Clone(),
-				Body:       io.NopCloser(bytes.NewReader(recorder.Body.Bytes())),
-			}, nil
-		}),
-	}
+	registry := newTestNPMRegistry(t)
+	registryBaseURL := registry.baseURL()
+	registryClient := registry.client()
 
 	packagingService := packaging.NewService("")
 	workspacePath, _ := prepareManagedWorkspaceForTest(
@@ -2222,26 +1874,9 @@ func TestSkillPackagingPackReturnsNotFoundWithoutPackagingService(t *testing.T) 
 }
 
 func TestPublishedPackageCanBeReleasedAndResolvedThroughCatalog(t *testing.T) {
-	mockRegistry := artifactadapter.NewMockRegistry(nil)
-	registryBaseURL := "https://registry.example.com/mock-npm"
-	registryServer := NewServer(ServerConfig{
-		Repository:   catalog.NewMemoryRepository(catalog.SampleData()),
-		MockRegistry: mockRegistry,
-	})
-
-	registryClient := &http.Client{
-		Transport: httpRoundTripFunc(func(request *http.Request) (*http.Response, error) {
-			recorder := httptest.NewRecorder()
-			proxyRequest := httptest.NewRequest(request.Method, request.URL.String(), nil)
-			registryServer.Handler().ServeHTTP(recorder, proxyRequest)
-
-			return &http.Response{
-				StatusCode: recorder.Code,
-				Header:     recorder.Result().Header.Clone(),
-				Body:       io.NopCloser(bytes.NewReader(recorder.Body.Bytes())),
-			}, nil
-		}),
-	}
+	registry := newTestNPMRegistry(t)
+	registryBaseURL := registry.baseURL()
+	registryClient := registry.client()
 
 	catalogServer := NewServer(ServerConfig{
 		Repository: catalog.NewMemoryRepository(catalog.SampleData(), catalog.MemoryRepositoryOptions{
@@ -2256,7 +1891,7 @@ func TestPublishedPackageCanBeReleasedAndResolvedThroughCatalog(t *testing.T) {
 	})
 	encodedTarball := base64.StdEncoding.EncodeToString(publishTarball)
 
-	publishRequest := jsonRequest(http.MethodPut, "/mock-npm/%40platform.skill%2Fprobe-skill", `{
+	registry.publish(t, "@platform.skill/probe-skill", `{
 		"_id":"@platform.skill/probe-skill",
 		"name":"@platform.skill/probe-skill",
 		"dist-tags":{"latest":"0.1.1"},
@@ -2268,7 +1903,7 @@ func TestPublishedPackageCanBeReleasedAndResolvedThroughCatalog(t *testing.T) {
 				"dist":{
 					"integrity":"sha512-test",
 					"shasum":"sha1-test",
-					"tarball":"`+registryBaseURL+`/@platform.skill/probe-skill/-/@platform.skill/probe-skill-0.1.1.tgz"
+					"tarball":"`+registryBaseURL+`/platform.skill/probe-skill/-/probe-skill-0.1.1.tgz"
 				}
 			}
 		},
@@ -2280,11 +1915,6 @@ func TestPublishedPackageCanBeReleasedAndResolvedThroughCatalog(t *testing.T) {
 			}
 		}
 	}`)
-	publishRecorder := httptest.NewRecorder()
-	registryServer.Handler().ServeHTTP(publishRecorder, publishRequest)
-	if publishRecorder.Code != http.StatusCreated {
-		t.Fatalf("expected publish status %d, got %d", http.StatusCreated, publishRecorder.Code)
-	}
 
 	releaseRecordBody := `{
 		"publishRegistry":"` + registryBaseURL + `",
@@ -3046,27 +2676,10 @@ func TestReleaseRecordWithNPMRegistryArtifactSourcePersistsAndReloads(t *testing
 	}
 }
 
-func TestMockRegistryPublishedPackagePreservesSkillSourceTypeInReleaseRecord(t *testing.T) {
-	mockRegistry := artifactadapter.NewMockRegistry(nil)
-	registryBaseURL := "https://registry.example.com/mock-npm"
-	registryServer := NewServer(ServerConfig{
-		Repository:   catalog.NewMemoryRepository(catalog.SampleData()),
-		MockRegistry: mockRegistry,
-	})
-
-	registryClient := &http.Client{
-		Transport: httpRoundTripFunc(func(request *http.Request) (*http.Response, error) {
-			recorder := httptest.NewRecorder()
-			proxyRequest := httptest.NewRequest(request.Method, request.URL.String(), nil)
-			registryServer.Handler().ServeHTTP(recorder, proxyRequest)
-
-			return &http.Response{
-				StatusCode: recorder.Code,
-				Header:     recorder.Result().Header.Clone(),
-				Body:       io.NopCloser(bytes.NewReader(recorder.Body.Bytes())),
-			}, nil
-		}),
-	}
+func TestPublishedPackagePreservesSkillSourceTypeInReleaseRecord(t *testing.T) {
+	registry := newTestNPMRegistry(t)
+	registryBaseURL := registry.baseURL()
+	registryClient := registry.client()
 
 	catalogServer := NewServer(ServerConfig{
 		Repository: catalog.NewMemoryRepository(catalog.SampleData(), catalog.MemoryRepositoryOptions{
@@ -3081,7 +2694,7 @@ func TestMockRegistryPublishedPackagePreservesSkillSourceTypeInReleaseRecord(t *
 	})
 	encodedTarball := base64.StdEncoding.EncodeToString(publishTarball)
 
-	publishRequest := jsonRequest(http.MethodPut, "/mock-npm/%40platform.skill%2Fnative-probe", `{
+	registry.publish(t, "@platform.skill/native-probe", `{
 		"_id":"@platform.skill/native-probe",
 		"name":"@platform.skill/native-probe",
 		"dist-tags":{"latest":"0.1.0"},
@@ -3097,7 +2710,7 @@ func TestMockRegistryPublishedPackagePreservesSkillSourceTypeInReleaseRecord(t *
 				"dist":{
 					"integrity":"sha512-native",
 					"shasum":"sha1-native",
-					"tarball":"`+registryBaseURL+`/@platform.skill/native-probe/-/native-probe-0.1.0.tgz"
+					"tarball":"`+registryBaseURL+`/platform.skill/native-probe/-/native-probe-0.1.0.tgz"
 				}
 			}
 		},
@@ -3109,11 +2722,6 @@ func TestMockRegistryPublishedPackagePreservesSkillSourceTypeInReleaseRecord(t *
 			}
 		}
 	}`)
-	publishRecorder := httptest.NewRecorder()
-	registryServer.Handler().ServeHTTP(publishRecorder, publishRequest)
-	if publishRecorder.Code != http.StatusCreated {
-		t.Fatalf("expected publish status %d, got %d body=%s", http.StatusCreated, publishRecorder.Code, publishRecorder.Body.String())
-	}
 
 	releaseRecordRequest := jsonRequest(http.MethodPut, "/api/v1/skills/%40platform.skill%2Fnative-probe/versions/0.1.0/release-record", `{
 		"publishRegistry":"`+registryBaseURL+`",
@@ -3768,6 +3376,280 @@ func httpBinaryResponse(status int, body []byte) *http.Response {
 		Header:     http.Header{"Content-Type": []string{"application/octet-stream"}},
 		Body:       io.NopCloser(bytes.NewReader(body)),
 	}
+}
+
+type testNPMRegistry struct {
+	mu         sync.RWMutex
+	packages   map[string]testNPMRegistryPackage
+	base       string
+	httpClient *http.Client
+}
+
+type testNPMRegistryPackage struct {
+	name        string
+	description string
+	distTags    map[string]string
+	versions    map[string]testNPMRegistryVersion
+}
+
+type testNPMRegistryVersion struct {
+	name        string
+	version     string
+	description string
+	displayName string
+	sourceType  catalog.SourceType
+	integrity   string
+	shasum      string
+	publishedAt time.Time
+	tarball     []byte
+}
+
+type testNPMRegistryPublishPayload struct {
+	Name        string                                   `json:"name"`
+	Description string                                   `json:"description"`
+	DistTags    map[string]string                        `json:"dist-tags"`
+	Versions    map[string]testNPMRegistryVersionPayload `json:"versions"`
+	Attachments map[string]testNPMRegistryAttachment     `json:"_attachments"`
+}
+
+type testNPMRegistryVersionPayload struct {
+	Name        string `json:"name"`
+	Version     string `json:"version"`
+	Description string `json:"description"`
+	Dist        struct {
+		Integrity string `json:"integrity"`
+		Shasum    string `json:"shasum"`
+	} `json:"dist"`
+	Skill struct {
+		DisplayName string             `json:"displayName"`
+		SourceType  catalog.SourceType `json:"sourceType"`
+	} `json:"skill"`
+}
+
+type testNPMRegistryAttachment struct {
+	Data string `json:"data"`
+}
+
+func newTestNPMRegistry(t *testing.T) *testNPMRegistry {
+	t.Helper()
+
+	registry := &testNPMRegistry{
+		packages: make(map[string]testNPMRegistryPackage),
+		base:     "https://registry.example.com",
+	}
+	registry.httpClient = &http.Client{Transport: registry}
+	return registry
+}
+
+func (r *testNPMRegistry) baseURL() string {
+	return r.base
+}
+
+func (r *testNPMRegistry) client() *http.Client {
+	return r.httpClient
+}
+
+func (r *testNPMRegistry) RoundTrip(request *http.Request) (*http.Response, error) {
+	recorder := httptest.NewRecorder()
+	r.serveHTTP(recorder, request.Clone(request.Context()))
+	return recorder.Result(), nil
+}
+
+func (r *testNPMRegistry) publish(t *testing.T, packageName string, body string) {
+	t.Helper()
+
+	request, err := http.NewRequest(http.MethodPut, r.baseURL()+"/"+url.PathEscape(packageName), strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("create registry publish request: %v", err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+
+	response, err := r.client().Do(request)
+	if err != nil {
+		t.Fatalf("publish package to test registry: %v", err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusCreated {
+		content, _ := io.ReadAll(response.Body)
+		t.Fatalf("expected publish status %d, got %d body=%s", http.StatusCreated, response.StatusCode, strings.TrimSpace(string(content)))
+	}
+}
+
+func (r *testNPMRegistry) serveHTTP(writer http.ResponseWriter, request *http.Request) {
+	remainder := strings.TrimPrefix(request.URL.EscapedPath(), "/")
+	if remainder == "" {
+		http.NotFound(writer, request)
+		return
+	}
+	if strings.Contains(remainder, "/-/") {
+		r.handleTarball(writer, request, remainder)
+		return
+	}
+
+	packageName, err := url.PathUnescape(remainder)
+	if err != nil {
+		http.NotFound(writer, request)
+		return
+	}
+
+	switch request.Method {
+	case http.MethodGet:
+		r.handleMetadata(writer, request, packageName)
+	case http.MethodPut:
+		r.handlePublish(writer, request, packageName)
+	default:
+		writer.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (r *testNPMRegistry) handleMetadata(writer http.ResponseWriter, request *http.Request, packageName string) {
+	r.mu.RLock()
+	pkg, ok := r.packages[packageName]
+	r.mu.RUnlock()
+	if !ok {
+		http.NotFound(writer, request)
+		return
+	}
+
+	versions := make(map[string]map[string]any, len(pkg.versions))
+	timeMap := make(map[string]string, len(pkg.versions))
+	for version, item := range pkg.versions {
+		versionPayload := map[string]any{
+			"name":        item.name,
+			"version":     item.version,
+			"description": item.description,
+			"dist": map[string]any{
+				"tarball":   r.tarballURL(packageName, version),
+				"integrity": item.integrity,
+				"shasum":    item.shasum,
+			},
+		}
+		if item.displayName != "" || item.sourceType != "" {
+			versionPayload["skill"] = map[string]any{
+				"displayName": item.displayName,
+				"sourceType":  item.sourceType,
+			}
+		}
+		versions[version] = versionPayload
+		timeMap[version] = item.publishedAt.UTC().Format(time.RFC3339)
+	}
+
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(writer).Encode(map[string]any{
+		"name":        pkg.name,
+		"description": pkg.description,
+		"dist-tags":   pkg.distTags,
+		"time":        timeMap,
+		"versions":    versions,
+	}); err != nil {
+		t := strings.TrimSpace(err.Error())
+		http.Error(writer, t, http.StatusInternalServerError)
+	}
+}
+
+func (r *testNPMRegistry) handlePublish(writer http.ResponseWriter, request *http.Request, packageName string) {
+	body, err := io.ReadAll(request.Body)
+	if err != nil {
+		http.Error(writer, "failed to read request body", http.StatusBadRequest)
+		return
+	}
+
+	var payload testNPMRegistryPublishPayload
+	if err := json.Unmarshal(body, &payload); err != nil || payload.Name != packageName {
+		http.Error(writer, "invalid publish payload", http.StatusBadRequest)
+		return
+	}
+
+	published := testNPMRegistryPackage{
+		name:        payload.Name,
+		description: strings.TrimSpace(payload.Description),
+		distTags:    payload.DistTags,
+		versions:    make(map[string]testNPMRegistryVersion, len(payload.Versions)),
+	}
+	for version, item := range payload.Versions {
+		attachment, ok := payload.Attachments[packageName+"-"+version+".tgz"]
+		if !ok {
+			attachment, ok = payload.Attachments[testNPMRegistryBasename(packageName)+"-"+version+".tgz"]
+		}
+		if !ok {
+			attachment, ok = payload.Attachments[testNPMRegistryAttachmentName(packageName, version)]
+		}
+		if !ok {
+			continue
+		}
+		tarball, err := base64.StdEncoding.DecodeString(attachment.Data)
+		if err != nil {
+			http.Error(writer, "invalid publish payload", http.StatusBadRequest)
+			return
+		}
+		published.versions[version] = testNPMRegistryVersion{
+			name:        item.Name,
+			version:     item.Version,
+			description: item.Description,
+			displayName: item.Skill.DisplayName,
+			sourceType:  item.Skill.SourceType,
+			integrity:   item.Dist.Integrity,
+			shasum:      item.Dist.Shasum,
+			publishedAt: time.Now().UTC(),
+			tarball:     tarball,
+		}
+		if published.description == "" {
+			published.description = strings.TrimSpace(item.Description)
+		}
+	}
+
+	r.mu.Lock()
+	r.packages[packageName] = published
+	r.mu.Unlock()
+	writer.WriteHeader(http.StatusCreated)
+}
+
+func (r *testNPMRegistry) handleTarball(writer http.ResponseWriter, request *http.Request, remainder string) {
+	if request.Method != http.MethodGet {
+		writer.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	packagePart, filePart, ok := strings.Cut(remainder, "/-/")
+	if !ok {
+		http.NotFound(writer, request)
+		return
+	}
+	packageName := "@" + packagePart
+	version := strings.TrimSuffix(strings.TrimPrefix(filePart, testNPMRegistryBasename(packageName)+"-"), ".tgz")
+
+	r.mu.RLock()
+	pkg, ok := r.packages[packageName]
+	if !ok {
+		r.mu.RUnlock()
+		http.NotFound(writer, request)
+		return
+	}
+	item, ok := pkg.versions[version]
+	r.mu.RUnlock()
+	if !ok {
+		http.NotFound(writer, request)
+		return
+	}
+
+	writer.Header().Set("Content-Type", "application/octet-stream")
+	writer.WriteHeader(http.StatusOK)
+	_, _ = writer.Write(item.tarball)
+}
+
+func (r *testNPMRegistry) tarballURL(packageName string, version string) string {
+	return r.baseURL() + "/" + strings.TrimPrefix(packageName, "@") + "/-/" + testNPMRegistryBasename(packageName) + "-" + version + ".tgz"
+}
+
+func testNPMRegistryAttachmentName(packageName string, version string) string {
+	return testNPMRegistryBasename(packageName) + "-" + version + ".tgz"
+}
+
+func testNPMRegistryBasename(packageName string) string {
+	parts := strings.Split(packageName, "/")
+	return parts[len(parts)-1]
 }
 
 type pingingRepository struct {

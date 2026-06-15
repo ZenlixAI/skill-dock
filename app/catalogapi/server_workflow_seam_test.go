@@ -232,24 +232,6 @@ func TestServerSessionDeniedPathUsesSharedAccessWorkflow(t *testing.T) {
 	}
 }
 
-func TestServerRoutesMockRegistryThroughMockRegistryModule(t *testing.T) {
-	module := &mockRegistryModuleStub{}
-	server := newTestServer()
-	server.mockRegistryModule = module
-
-	request := httptest.NewRequest(http.MethodGet, "/mock-npm/%40platform.skill%2Fpdf-skill", nil)
-	recorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
-	}
-	if got := module.handleCallCount(); got != 1 {
-		t.Fatalf("expected mock registry module to be called once, got %d", got)
-	}
-}
-
 type readAPIModuleStub struct {
 	listSkillsCalls atomic.Int64
 }
@@ -281,17 +263,4 @@ func (m *systemModuleStub) Readyz(context.Context) (system.Readyz, int) {
 
 func (m *systemModuleStub) readyzCallCount() int {
 	return int(m.readyzCalls.Load())
-}
-
-type mockRegistryModuleStub struct {
-	handleCalls atomic.Int64
-}
-
-func (m *mockRegistryModuleStub) handleRequest(writer http.ResponseWriter, _ *http.Request) {
-	m.handleCalls.Add(1)
-	writer.WriteHeader(http.StatusOK)
-}
-
-func (m *mockRegistryModuleStub) handleCallCount() int {
-	return int(m.handleCalls.Load())
 }
