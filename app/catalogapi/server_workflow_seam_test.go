@@ -4,12 +4,12 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
 
 	"skill_registry/app/auth"
+	"skill_registry/app/catalogapi/binding"
 	"skill_registry/app/catalogapi/system"
 	"skill_registry/business/catalog"
 )
@@ -236,7 +236,7 @@ type readAPIModuleStub struct {
 	listSkillsCalls atomic.Int64
 }
 
-func (m *readAPIModuleStub) listSkills(context.Context, auth.Principal, url.Values) (catalog.SkillsPage, *catalog.Error) {
+func (m *readAPIModuleStub) listSkills(context.Context, auth.Principal, binding.SkillsQuery) (catalog.SkillsPage, *catalog.Error) {
 	m.listSkillsCalls.Add(1)
 	return catalog.SkillsPage{}, nil
 }

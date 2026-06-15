@@ -17,38 +17,6 @@ func (s *Server) Handler() http.Handler {
 // enforce package-scoped access (and the action-specific authorization that
 // mutating routes require) before delegating to the concrete handler.
 
-func (s *Server) handleSkillDetailRoute(writer http.ResponseWriter, request *http.Request) {
-	packageName := request.PathValue("package")
-	if !s.authorizePackageAccess(writer, request, packageName) {
-		return
-	}
-	s.handleSkillDetail(writer, request, packageName)
-}
-
-func (s *Server) handleVersionListRoute(writer http.ResponseWriter, request *http.Request) {
-	packageName := request.PathValue("package")
-	if !s.authorizePackageAccess(writer, request, packageName) {
-		return
-	}
-	s.handleVersionList(writer, request, packageName)
-}
-
-func (s *Server) handleVersionDetailRoute(writer http.ResponseWriter, request *http.Request) {
-	packageName := request.PathValue("package")
-	if !s.authorizePackageAccess(writer, request, packageName) {
-		return
-	}
-	s.handleVersionDetail(writer, request, packageName, request.PathValue("version"))
-}
-
-func (s *Server) handleInstallTargetRoute(writer http.ResponseWriter, request *http.Request) {
-	packageName := request.PathValue("package")
-	if !s.authorizePackageAccess(writer, request, packageName) {
-		return
-	}
-	s.handleInstallTarget(writer, request, packageName)
-}
-
 func (s *Server) handleSkillGovernanceRoute(writer http.ResponseWriter, request *http.Request) {
 	packageName := request.PathValue("package")
 	if !s.authorizePackageAccess(writer, request, packageName) {

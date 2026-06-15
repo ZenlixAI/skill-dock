@@ -1,6 +1,7 @@
 package catalogapi
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"skill_registry/app/auth"
 	"skill_registry/app/catalogapi/audit"
 	"skill_registry/app/catalogapi/common"
+	cataloghandlers "skill_registry/app/catalogapi/handlers/catalog"
 	sessionhandlers "skill_registry/app/catalogapi/handlers/session"
 	systemhandlers "skill_registry/app/catalogapi/handlers/system"
 	catalogmiddleware "skill_registry/app/catalogapi/middleware"
@@ -276,6 +278,23 @@ func (s *Server) routerConfig() routerpkg.Config {
 			return s.sessionModule != nil && s.sessionModule.enabled()
 		},
 	})
+	catalogHTTPHandlers := cataloghandlers.New(cataloghandlers.Handlers{
+		AuthorizePackage:    s.authorizePackageAccess,
+		ServeCachedReadJSON: s.serveCachedReadJSON,
+		ReadListCacheTTL:    s.readListCacheTTL,
+		ReadDetailCacheTTL:  s.readDetailCacheTTL,
+		ListAuditEvents:     s.auditQueryModule.ListEvents,
+		ListSkillsFunc:      s.readAPIModule.listSkills,
+		ListCuratedSkills:   s.catalogReadModule.listCuratedSkills,
+		ListGovernance:      s.governanceModule.listChanges,
+		GetSkillFunc:        s.repo.GetSkill,
+		ListVersionsFunc:    s.repo.ListVersions,
+		GetVersionFunc:      s.repo.GetVersion,
+		ResolveInstallTarget: func(ctx context.Context, packageName string, version string) (catalog.InstallResolution, error) {
+			return s.repo.ResolveInstallTarget(ctx, packageName, version)
+		},
+		PublicInstallTarget: s.publicInstallTarget,
+	})
 
 	return routerpkg.Config{
 		ServesReadRoutes:  s.mode.servesReadRoutes(),
@@ -293,15 +312,15 @@ func (s *Server) routerConfig() routerpkg.Config {
 		Session:           sessionHTTPHandlers.Current,
 		SessionLogin:      sessionHTTPHandlers.Login,
 		SessionLogout:     sessionHTTPHandlers.Logout,
-		AuditEvents:       s.protectedGinHandler(auth.ActionReadAuditEvents, http.HandlerFunc(s.handleAuditEvents)),
-		Skills:            s.protectedGinHandler(auth.ActionReadCatalog, http.HandlerFunc(s.handleSkills)),
-		SkillsSearch:      s.protectedGinHandler(auth.ActionReadCatalog, http.HandlerFunc(s.handleSkills)),
-		CuratedSkills:     s.protectedGinHandler(auth.ActionReadCatalog, http.HandlerFunc(s.handleCuratedSkills)),
-		GovernanceChanges: s.protectedGinHandler(auth.ActionReadCatalog, http.HandlerFunc(s.handleGovernanceChanges)),
-		SkillDetail:       s.protectedGinHandler(auth.ActionReadCatalog, http.HandlerFunc(s.handleSkillDetailRoute), "package"),
-		VersionList:       s.protectedGinHandler(auth.ActionReadCatalog, http.HandlerFunc(s.handleVersionListRoute), "package"),
-		VersionDetail:     s.protectedGinHandler(auth.ActionReadCatalog, http.HandlerFunc(s.handleVersionDetailRoute), "package", "version"),
-		InstallTarget:     s.protectedGinHandler(auth.ActionReadCatalog, http.HandlerFunc(s.handleInstallTargetRoute), "package"),
+		AuditEvents:       s.protectedCatalogHandler(auth.ActionReadAuditEvents, catalogHTTPHandlers.AuditEvents),
+		Skills:            s.protectedCatalogHandler(auth.ActionReadCatalog, catalogHTTPHandlers.Skills),
+		SkillsSearch:      s.protectedCatalogHandler(auth.ActionReadCatalog, catalogHTTPHandlers.SkillsSearch),
+		CuratedSkills:     s.protectedCatalogHandler(auth.ActionReadCatalog, catalogHTTPHandlers.CuratedSkills),
+		GovernanceChanges: s.protectedCatalogHandler(auth.ActionReadCatalog, catalogHTTPHandlers.GovernanceChanges),
+		SkillDetail:       s.protectedCatalogHandler(auth.ActionReadCatalog, catalogHTTPHandlers.SkillDetail),
+		VersionList:       s.protectedCatalogHandler(auth.ActionReadCatalog, catalogHTTPHandlers.VersionList),
+		VersionDetail:     s.protectedCatalogHandler(auth.ActionReadCatalog, catalogHTTPHandlers.VersionDetail),
+		InstallTarget:     s.protectedCatalogHandler(auth.ActionReadCatalog, catalogHTTPHandlers.InstallTarget),
 		SkillGovernance:   s.protectedGinHandler(auth.ActionReadCatalog, http.HandlerFunc(s.handleSkillGovernanceRoute), "package"),
 		ReleaseRecord:     s.protectedGinHandler(auth.ActionReadCatalog, http.HandlerFunc(s.handleReleaseRecordRoute), "package", "version"),
 		VersionGovernance: s.protectedGinHandler(auth.ActionReadCatalog, http.HandlerFunc(s.handleVersionGovernanceRoute), "package", "version"),
@@ -331,6 +350,15 @@ func (s *Server) ginHandler(handler http.Handler, pathParams ...string) gin.Hand
 func (s *Server) protectedGinHandler(action auth.Action, handler http.Handler, pathParams ...string) gin.HandlerFunc {
 	return catalogmiddleware.RequireAction(
 		s.ginHandler(handler, pathParams...),
+		action,
+		s.accessWorkflow.authorizeAction,
+		s.recordAuthenticationDeniedAudit,
+	)
+}
+
+func (s *Server) protectedCatalogHandler(action auth.Action, handler gin.HandlerFunc) gin.HandlerFunc {
+	return catalogmiddleware.RequireAction(
+		handler,
 		action,
 		s.accessWorkflow.authorizeAction,
 		s.recordAuthenticationDeniedAudit,

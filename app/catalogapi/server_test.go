@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"skill_registry/app/auth"
+	"skill_registry/app/catalogapi/binding"
 	"skill_registry/app/catalogapi/common"
 	"skill_registry/app/observability"
 	"skill_registry/business/catalog"
@@ -140,14 +141,14 @@ func TestReadAPIModuleListsSkillsFromParsedQuery(t *testing.T) {
 		Actor: "reader",
 	}
 
-	response, err := module.listSkills(context.Background(), principal, url.Values{
-		"q":               []string{"pdf"},
-		"package_name":    []string{"@platform.skill/pdf-skill"},
-		"source_type":     []string{string(catalog.SourceTypeImported)},
-		"include_retired": []string{"true"},
-		"sort":            []string{"package_name_asc"},
-		"pageSize":        []string{"7"},
-		"cursor":          []string{"cursor_12"},
+	response, err := module.listSkills(context.Background(), principal, binding.SkillsQuery{
+		Query:          "pdf",
+		PackageName:    "@platform.skill/pdf-skill",
+		SourceType:     string(catalog.SourceTypeImported),
+		IncludeRetired: "true",
+		Sort:           "package_name_asc",
+		PageSize:       "7",
+		Cursor:         "cursor_12",
 	})
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)

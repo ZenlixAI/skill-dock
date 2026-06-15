@@ -21,7 +21,11 @@ func DecodeVersion(raw string) (string, *catalog.Error) {
 }
 
 func ParsePageSize(values url.Values) (int, *catalog.Error) {
-	raw := strings.TrimSpace(values.Get("pageSize"))
+	return ParsePageSizeValue(values.Get("pageSize"))
+}
+
+func ParsePageSizeValue(raw string) (int, *catalog.Error) {
+	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return 20, nil
 	}
@@ -36,7 +40,11 @@ func ParsePageSize(values url.Values) (int, *catalog.Error) {
 }
 
 func ParseCursor(values url.Values) (int, *catalog.Error) {
-	raw := strings.TrimSpace(values.Get("cursor"))
+	return ParseCursorValue(values.Get("cursor"))
+}
+
+func ParseCursorValue(raw string) (int, *catalog.Error) {
+	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return 0, nil
 	}

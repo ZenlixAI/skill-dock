@@ -2,47 +2,47 @@ package catalogapi
 
 import (
 	"context"
-	"net/url"
 	"strings"
 
 	"skill_registry/app/auth"
+	"skill_registry/app/catalogapi/binding"
 	"skill_registry/app/catalogapi/common"
 	"skill_registry/business/catalog"
 )
 
 type readAPIWorkflow interface {
-	listSkills(ctx context.Context, principal auth.Principal, values url.Values) (catalog.SkillsPage, *catalog.Error)
+	listSkills(ctx context.Context, principal auth.Principal, query binding.SkillsQuery) (catalog.SkillsPage, *catalog.Error)
 }
 
 type readAPIModule struct {
 	catalogReadModule catalogReadWorkflow
 }
 
-func (m *readAPIModule) listSkills(ctx context.Context, principal auth.Principal, values url.Values) (catalog.SkillsPage, *catalog.Error) {
-	sourceType, sourceTypeErr := parseSourceTypeFilter(values.Get("source_type"))
+func (m *readAPIModule) listSkills(ctx context.Context, principal auth.Principal, query binding.SkillsQuery) (catalog.SkillsPage, *catalog.Error) {
+	sourceType, sourceTypeErr := parseSourceTypeFilter(query.SourceType)
 	if sourceTypeErr != nil {
 		return catalog.SkillsPage{}, sourceTypeErr
 	}
-	includeRetired, includeRetiredErr := common.ParseBooleanQueryParam(values.Get("include_retired"), "include_retired", false)
+	includeRetired, includeRetiredErr := common.ParseBooleanQueryParam(query.IncludeRetired, "include_retired", false)
 	if includeRetiredErr != nil {
 		return catalog.SkillsPage{}, includeRetiredErr
 	}
-	sortValue, sortErr := parseSkillsSort(values.Get("sort"))
+	sortValue, sortErr := parseSkillsSort(query.Sort)
 	if sortErr != nil {
 		return catalog.SkillsPage{}, sortErr
 	}
-	pageSize, pageSizeErr := common.ParsePageSize(values)
+	pageSize, pageSizeErr := common.ParsePageSizeValue(query.PageSize)
 	if pageSizeErr != nil {
 		return catalog.SkillsPage{}, pageSizeErr
 	}
-	cursor, cursorErr := common.ParseCursor(values)
+	cursor, cursorErr := common.ParseCursorValue(query.Cursor)
 	if cursorErr != nil {
 		return catalog.SkillsPage{}, cursorErr
 	}
 
 	return m.catalogReadModule.listSkills(ctx, principal, catalog.SkillQuery{
-		Query:          values.Get("q"),
-		PackageName:    values.Get("package_name"),
+		Query:          query.Query,
+		PackageName:    query.PackageName,
 		SourceType:     sourceType,
 		IncludeRetired: includeRetired,
 		Sort:           sortValue,
