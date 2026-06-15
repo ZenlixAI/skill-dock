@@ -11,7 +11,12 @@ import (
 	"skill_registry/app/catalogapi/audit"
 	"skill_registry/app/catalogapi/common"
 	"skill_registry/business/packaging"
+	packagingapplication "skill_registry/internal/packaging/application"
 )
+
+func TestPackagingModuleUsesPackagingApplicationWorkflowContract(t *testing.T) {
+	var _ packagingService = (*packagingapplication.Service)(nil)
+}
 
 func TestPackagingModuleReplaysCachedPrepareResponse(t *testing.T) {
 	module := newPackagingModuleForTest(t)

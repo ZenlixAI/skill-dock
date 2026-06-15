@@ -15,13 +15,10 @@ import (
 	"skill_registry/business/catalog"
 	"skill_registry/business/packaging"
 	"skill_registry/foundation/persist"
+	packagingapplication "skill_registry/internal/packaging/application"
 )
 
-type packagingService interface {
-	PrepareContext(ctx context.Context, input packaging.PrepareRequest) (packaging.PrepareResponse, error)
-	ValidateContext(ctx context.Context, input packaging.ValidateRequest) (packaging.ValidateResponse, error)
-	PackContext(ctx context.Context, input packaging.PackRequest) (packaging.PackResponse, error)
-}
+type packagingService = packagingapplication.WorkflowService
 
 type packagingModule struct {
 	service             packagingService

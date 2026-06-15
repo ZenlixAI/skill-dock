@@ -8,11 +8,11 @@ import (
 
 	"skill_registry/business/catalog"
 	"skill_registry/foundation/persist"
+	packagingapplication "skill_registry/internal/packaging/application"
 )
 
 type Service struct {
-	workspaceRuntime *packagingWorkspaceRuntime
-	publishWorkflow  *publishedReleaseWorkflow
+	impl *packagingapplication.Service
 }
 
 func NewService(tempRoot string) *Service {
@@ -20,18 +20,11 @@ func NewService(tempRoot string) *Service {
 }
 
 func NewServiceWithWorkspaceStore(tempRoot string, store persist.WorkspaceStore) *Service {
-	runtime := newPackagingWorkspaceRuntime(tempRoot, store)
-	return &Service{
-		workspaceRuntime: runtime,
-		publishWorkflow:  newPublishedReleaseWorkflow(runtime),
-	}
+	return &Service{impl: packagingapplication.NewServiceWithWorkspaceStore(tempRoot, store)}
 }
 
 func (s *Service) ConfigurePublishWorkflow(repo releaseRecordCreator, publisher packagePublisher) {
-	if s.publishWorkflow == nil {
-		s.publishWorkflow = newPublishedReleaseWorkflow(s.workspaceRuntime)
-	}
-	s.publishWorkflow.Configure(repo, publisher)
+	s.impl.ConfigurePublishWorkflow(repo, publisher)
 }
 
 func (s *Service) Prepare(input PrepareRequest) (PrepareResponse, error) {
@@ -39,7 +32,7 @@ func (s *Service) Prepare(input PrepareRequest) (PrepareResponse, error) {
 }
 
 func (s *Service) PrepareContext(ctx context.Context, input PrepareRequest) (PrepareResponse, error) {
-	return s.workspaceRuntime.Prepare(ctx, input)
+	return s.impl.PrepareContext(ctx, input)
 }
 
 func (s *Service) Validate(input ValidateRequest) (ValidateResponse, error) {
@@ -47,7 +40,7 @@ func (s *Service) Validate(input ValidateRequest) (ValidateResponse, error) {
 }
 
 func (s *Service) ValidateContext(ctx context.Context, input ValidateRequest) (ValidateResponse, error) {
-	return s.workspaceRuntime.Validate(ctx, input)
+	return s.impl.ValidateContext(ctx, input)
 }
 
 func (s *Service) Pack(input PackRequest) (PackResponse, error) {
@@ -55,7 +48,7 @@ func (s *Service) Pack(input PackRequest) (PackResponse, error) {
 }
 
 func (s *Service) PackContext(ctx context.Context, input PackRequest) (PackResponse, error) {
-	return s.workspaceRuntime.Pack(ctx, input)
+	return s.impl.PackContext(ctx, input)
 }
 
 func (s *Service) Cleanup(workspacePath string) error {
@@ -63,7 +56,7 @@ func (s *Service) Cleanup(workspacePath string) error {
 }
 
 func (s *Service) CleanupContext(ctx context.Context, workspacePath string) error {
-	return s.workspaceRuntime.Cleanup(ctx, workspacePath)
+	return s.impl.CleanupContext(ctx, workspacePath)
 }
 
 func (s *Service) BundlePath(workspacePath string, target Target) (string, error) {
@@ -71,7 +64,7 @@ func (s *Service) BundlePath(workspacePath string, target Target) (string, error
 }
 
 func (s *Service) BundlePathContext(ctx context.Context, workspacePath string, target Target) (string, error) {
-	return s.workspaceRuntime.BundlePath(ctx, workspacePath, target)
+	return s.impl.BundlePathContext(ctx, workspacePath, target)
 }
 
 func (s *Service) BundleFilePath(workspacePath string, target Target) (string, error) {
@@ -79,7 +72,7 @@ func (s *Service) BundleFilePath(workspacePath string, target Target) (string, e
 }
 
 func (s *Service) BundleFilePathContext(ctx context.Context, workspacePath string, target Target) (string, error) {
-	return s.workspaceRuntime.BundleFilePath(ctx, workspacePath, target)
+	return s.impl.BundleFilePathContext(ctx, workspacePath, target)
 }
 
 func (s *Service) BundleContent(workspacePath string, target Target) ([]byte, error) {
@@ -87,7 +80,7 @@ func (s *Service) BundleContent(workspacePath string, target Target) ([]byte, er
 }
 
 func (s *Service) BundleContentContext(ctx context.Context, workspacePath string, target Target) ([]byte, error) {
-	return s.workspaceRuntime.BundleContent(ctx, workspacePath, target)
+	return s.impl.BundleContentContext(ctx, workspacePath, target)
 }
 
 func (s *Service) PackageMetadata(workspacePath string) (map[string]any, error) {
@@ -95,7 +88,7 @@ func (s *Service) PackageMetadata(workspacePath string) (map[string]any, error) 
 }
 
 func (s *Service) PackageMetadataContext(ctx context.Context, workspacePath string) (map[string]any, error) {
-	return s.workspaceRuntime.PackageMetadata(ctx, workspacePath)
+	return s.impl.PackageMetadataContext(ctx, workspacePath)
 }
 
 func (s *Service) Publish(input PublishRequest) (PublishResponse, error) {
@@ -103,14 +96,11 @@ func (s *Service) Publish(input PublishRequest) (PublishResponse, error) {
 }
 
 func (s *Service) PublishContext(ctx context.Context, input PublishRequest) (PublishResponse, error) {
-	if s.publishWorkflow == nil {
-		s.publishWorkflow = newPublishedReleaseWorkflow(s.workspaceRuntime)
-	}
-	return s.publishWorkflow.Publish(ctx, input)
+	return s.impl.PublishContext(ctx, input)
 }
 
 func (s *Service) PruneExpiredWorkspaces(ttl time.Duration) error {
-	return s.workspaceRuntime.PruneExpiredWorkspaces(context.Background(), ttl)
+	return s.impl.PruneExpiredWorkspaces(ttl)
 }
 
 func packagingContextError(ctx context.Context) error {

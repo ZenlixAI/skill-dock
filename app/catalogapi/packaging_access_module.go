@@ -10,6 +10,7 @@ import (
 	"skill_registry/app/catalogapi/common"
 	"skill_registry/business/catalog"
 	"skill_registry/business/packaging"
+	packagingapplication "skill_registry/internal/packaging/application"
 )
 
 type packagingAccessModule struct {
@@ -17,10 +18,7 @@ type packagingAccessModule struct {
 	audit   *audit.Recorder
 }
 
-type packagingAccessService interface {
-	CleanupContext(ctx context.Context, workspacePath string) error
-	BundleFilePathContext(ctx context.Context, workspacePath string, target packaging.Target) (string, error)
-}
+type packagingAccessService = packagingapplication.AccessService
 
 type packagingAccessWorkflow interface {
 	cleanup(ctx context.Context, principal auth.Principal, payload packaging.CleanupRequest) (packaging.CleanupResponse, int, *catalog.Error)
