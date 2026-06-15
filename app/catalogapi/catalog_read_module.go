@@ -14,7 +14,7 @@ type catalogReadWorkflow interface {
 }
 
 type catalogReadModule struct {
-	repo catalog.Repository
+	repo catalog.ReadRepository
 }
 
 func (m *catalogReadModule) listSkills(ctx context.Context, principal auth.Principal, query catalog.SkillQuery) (catalog.SkillsPage, *catalog.Error) {

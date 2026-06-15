@@ -1,23 +1,7 @@
 package catalog
 
-import "fmt"
+import internaldomain "skill_registry/internal/catalog/domain"
 
-type Error struct {
-	Status  int
-	Code    string
-	Message string
-	Details map[string]any
-}
+type Error = internaldomain.Error
 
-func (e *Error) Error() string {
-	return fmt.Sprintf("%s: %s", e.Code, e.Message)
-}
-
-func NewError(status int, code string, message string, details map[string]any) *Error {
-	return &Error{
-		Status:  status,
-		Code:    code,
-		Message: message,
-		Details: details,
-	}
-}
+var NewError = internaldomain.NewError

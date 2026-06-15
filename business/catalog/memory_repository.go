@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	internaldomain "skill_registry/internal/catalog/domain"
 )
 
 type MemoryRepositoryOptions struct {
@@ -14,11 +16,8 @@ type MemoryRepositoryOptions struct {
 	AggregateStore AggregateStore
 }
 
-type skillRecord struct {
-	Detail         SkillDetail
-	CurationReason string
-	Versions       []SkillVersionDetail
-}
+type skillRecord = internaldomain.SkillRecord
+type SampleCatalogData = internaldomain.SampleCatalogData
 
 func NewMemoryRepository(data SampleCatalogData, options ...MemoryRepositoryOptions) *CatalogRepository {
 	config := MemoryRepositoryOptions{}
@@ -245,12 +244,6 @@ func paginate[T any](items []T, cursor int, pageSize int) ([]T, PageInfo, error)
 
 func formatCursorToken(offset int) string {
 	return "cursor_" + strconv.Itoa(offset)
-}
-
-type SampleCatalogData struct {
-	Skills     []skillRecord
-	Governance []GovernanceRecord
-	Artifacts  []ReleaseArtifact
 }
 
 func SampleData() SampleCatalogData {

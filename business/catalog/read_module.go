@@ -3,108 +3,93 @@ package catalog
 import (
 	"context"
 	"errors"
+
+	internalapp "skill_registry/internal/catalog/application"
+	internaldomain "skill_registry/internal/catalog/domain"
 )
 
 var errNoResolvableVersion = errors.New("no resolvable version")
 
 type ReadModule struct {
-	store QueryStore
+	store   QueryStore
+	service *internalapp.ReadService
 }
 
 func newReadModule(store QueryStore) *ReadModule {
-	return &ReadModule{store: store}
+	return &ReadModule{
+		store:   store,
+		service: internalapp.NewReadService(&queryStoreAdapter{store: store}),
+	}
 }
 
 func (m *ReadModule) ListSkills(ctx context.Context, query SkillQuery) (SkillsPage, error) {
-	return m.store.ListSkills(ctx, query)
+	return m.service.ListSkills(ctx, query)
 }
 
 func (m *ReadModule) ListCuratedSkills(ctx context.Context, query CuratedSkillQuery) (CuratedSkillsPage, error) {
-	return m.store.ListCuratedSkills(ctx, query)
+	return m.service.ListCuratedSkills(ctx, query)
 }
 
 func (m *ReadModule) GetSkill(ctx context.Context, packageName string) (SkillDetail, error) {
-	return m.store.GetSkill(ctx, packageName)
+	return m.service.GetSkill(ctx, packageName)
 }
 
 func (m *ReadModule) ListVersions(ctx context.Context, query VersionQuery) (VersionsPage, error) {
-	return m.store.ListVersions(ctx, query)
+	return m.service.ListVersions(ctx, query)
 }
 
 func (m *ReadModule) GetVersion(ctx context.Context, packageName string, version string) (SkillVersionDetail, error) {
-	return m.store.GetVersion(ctx, packageName, version)
+	return m.service.GetVersion(ctx, packageName, version)
 }
 
 func (m *ReadModule) ListGovernanceChanges(ctx context.Context, query GovernanceQuery) (GovernancePage, error) {
-	if query.TargetType != "" && query.TargetType != string(GovernanceTargetSkill) && query.TargetType != string(GovernanceTargetVersion) {
-		return GovernancePage{}, NewError(400, "invalid_request", "target_type is invalid.", map[string]any{"targetType": query.TargetType})
-	}
-	return m.store.ListGovernanceChanges(ctx, query)
+	return m.service.ListGovernanceChanges(ctx, query)
 }
 
 func (m *ReadModule) ResolveInstallTarget(ctx context.Context, packageName string, version string) (InstallResolution, error) {
-	skill, err := m.store.GetSkill(ctx, packageName)
-	if err != nil {
-		return InstallResolution{}, err
-	}
-	if skill.Status == SkillStatusRetired {
-		return InstallResolution{}, NewError(409, "skill_retired", "Skill is retired.", map[string]any{"packageName": packageName})
-	}
-
-	target, err := m.resolveInstallVersion(ctx, packageName, version)
-	if err != nil {
-		return InstallResolution{}, err
-	}
-
-	if target.VersionStatus == VersionStatusYanked {
-		return InstallResolution{}, NewError(409, "version_yanked", "Version is yanked.", m.versionErrorDetails(ctx, skill, target.Version))
-	}
-	if target.InstallPolicy != InstallPolicyResolvable {
-		return InstallResolution{}, NewError(409, "not_resolvable_by_policy", "Version is not resolvable by current install policy.", m.versionErrorDetails(ctx, skill, target.Version))
-	}
-
-	return InstallResolution{
-		PackageName:         target.PackageName,
-		Version:             target.Version,
-		NPMRegistry:         target.Registry.NPMRegistry,
-		Integrity:           target.Registry.Integrity,
-		TarballURL:          target.Registry.TarballURL,
-		SkillManifestDigest: target.Bundle.SkillManifestDigest,
-		VersionStatus:       target.VersionStatus,
-	}, nil
+	return m.service.ResolveInstallTarget(ctx, packageName, version)
 }
 
-func (m *ReadModule) resolveInstallVersion(ctx context.Context, packageName string, version string) (SkillVersionDetail, error) {
-	if version != "" {
-		if !isExactVersion(version) {
-			return SkillVersionDetail{}, NewError(422, "invalid_request", "version must be an exact semver string.", map[string]any{"version": version})
-		}
-		return m.store.GetVersion(ctx, packageName, version)
-	}
+type queryStoreAdapter struct {
+	store QueryStore
+}
 
-	target, err := m.store.GetLatestResolvableVersion(ctx, packageName)
-	if err == nil {
-		return target, nil
-	}
+func (a *queryStoreAdapter) ListSkills(ctx context.Context, query internaldomain.SkillQuery) (internaldomain.SkillsPage, error) {
+	return a.store.ListSkills(ctx, query)
+}
+
+func (a *queryStoreAdapter) ListCuratedSkills(ctx context.Context, query internaldomain.CuratedSkillQuery) (internaldomain.CuratedSkillsPage, error) {
+	return a.store.ListCuratedSkills(ctx, query)
+}
+
+func (a *queryStoreAdapter) GetSkill(ctx context.Context, packageName string) (internaldomain.SkillDetail, error) {
+	return a.store.GetSkill(ctx, packageName)
+}
+
+func (a *queryStoreAdapter) ListVersions(ctx context.Context, query internaldomain.VersionQuery) (internaldomain.VersionsPage, error) {
+	return a.store.ListVersions(ctx, query)
+}
+
+func (a *queryStoreAdapter) GetVersion(ctx context.Context, packageName string, version string) (internaldomain.SkillVersionDetail, error) {
+	return a.store.GetVersion(ctx, packageName, version)
+}
+
+func (a *queryStoreAdapter) GetLatestResolvableVersion(ctx context.Context, packageName string) (internaldomain.SkillVersionDetail, error) {
+	version, err := a.store.GetLatestResolvableVersion(ctx, packageName)
 	if errors.Is(err, errNoResolvableVersion) {
-		return SkillVersionDetail{}, NewError(409, "not_resolvable_by_policy", "No installable version is currently resolvable.", map[string]any{"packageName": packageName})
+		return internaldomain.SkillVersionDetail{}, internaldomain.ErrNoResolvableVersion
 	}
-	return SkillVersionDetail{}, err
+	return version, err
 }
 
-func (m *ReadModule) versionErrorDetails(ctx context.Context, skill SkillDetail, version string) map[string]any {
-	details := map[string]any{
-		"packageName": skill.PackageName,
-		"version":     version,
-	}
+func (a *queryStoreAdapter) ListGovernanceChanges(ctx context.Context, query internaldomain.GovernanceQuery) (internaldomain.GovernancePage, error) {
+	return a.store.ListGovernanceChanges(ctx, query)
+}
 
-	governance, err := m.store.ListPackageGovernance(ctx, skill.PackageName, GovernanceTargetVersion, stringPtr(version))
-	if err != nil {
-		return details
-	}
+func (a *queryStoreAdapter) ListPackageVersions(ctx context.Context, packageName string) ([]internaldomain.SkillVersionDetail, error) {
+	return a.store.ListPackageVersions(ctx, packageName)
+}
 
-	if recommendation := latestReplacementRecommendation(skill.PackageName, version, governance); recommendation != nil {
-		details["replacementRecommendation"] = *recommendation
-	}
-	return details
+func (a *queryStoreAdapter) ListPackageGovernance(ctx context.Context, packageName string, targetType internaldomain.GovernanceTargetType, version *string) ([]internaldomain.GovernanceRecord, error) {
+	return a.store.ListPackageGovernance(ctx, packageName, GovernanceTargetType(targetType), version)
 }

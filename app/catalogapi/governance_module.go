@@ -9,7 +9,7 @@ import (
 )
 
 type governanceModule struct {
-	repo       catalog.Repository
+	repo       catalog.ReadRepository
 	authorizer *auth.Authorizer
 }
 
