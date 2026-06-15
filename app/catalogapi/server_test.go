@@ -71,6 +71,33 @@ func TestServerRoutesSkillsThroughCatalogReadModule(t *testing.T) {
 	}
 }
 
+func TestServerRoutesEncodedPackageDetailThroughHandler(t *testing.T) {
+	server := NewServer(ServerConfig{
+		Repository:  catalog.NewMemoryRepository(catalog.SampleData()),
+		ReaderToken: "reader-secret",
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills/%40platform.skill%2Fpdf-skill", nil)
+	request.Header.Set("Authorization", "Bearer reader-secret")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+
+	var response struct {
+		PackageName string `json:"packageName"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.PackageName != "@platform.skill/pdf-skill" {
+		t.Fatalf("expected decoded package name, got %q", response.PackageName)
+	}
+}
+
 func TestReadAPIModuleListsSkillsFromParsedQuery(t *testing.T) {
 	workflow := &capturingCatalogReadWorkflow{
 		response: catalog.SkillsPage{

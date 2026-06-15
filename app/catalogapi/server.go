@@ -4,14 +4,18 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync/atomic"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	"skill_registry/app/auth"
 	"skill_registry/app/catalogapi/audit"
 	"skill_registry/app/catalogapi/common"
+	routerpkg "skill_registry/app/catalogapi/router"
 	"skill_registry/app/catalogapi/system"
 	"skill_registry/app/observability"
 	"skill_registry/business/catalog"
@@ -248,4 +252,51 @@ func (s *Server) logAuditWriteFailure(request *http.Request, action string, err 
 		observability.AuthDecisionAllowed,
 		err.Error(),
 	)
+}
+
+func (s *Server) routerConfig() routerpkg.Config {
+	return routerpkg.Config{
+		ServesReadRoutes:    s.mode.servesReadRoutes(),
+		ServesWriteRoutes:   s.mode.servesWriteRoutes(),
+		DisableMockRegistry: s.disableMockRegistry,
+		Healthz:             s.ginHandler(http.HandlerFunc(s.handleHealthz)),
+		Readyz:              s.ginHandler(http.HandlerFunc(s.handleReadyz)),
+		Metrics:             s.ginHandler(http.HandlerFunc(s.handleMetrics)),
+		Session:             s.ginHandler(http.HandlerFunc(s.handleSession)),
+		SessionLogin:        s.ginHandler(http.HandlerFunc(s.handleSessionLogin)),
+		SessionLogout:       s.ginHandler(http.HandlerFunc(s.handleSessionLogout)),
+		AuditEvents:         s.ginHandler(s.requireAction(s.handleAuditEvents, auth.ActionReadAuditEvents)),
+		Skills:              s.ginHandler(s.requireAction(s.handleSkills, auth.ActionReadCatalog)),
+		SkillsSearch:        s.ginHandler(s.requireAction(s.handleSkills, auth.ActionReadCatalog)),
+		CuratedSkills:       s.ginHandler(s.requireAction(s.handleCuratedSkills, auth.ActionReadCatalog)),
+		GovernanceChanges:   s.ginHandler(s.requireAction(s.handleGovernanceChanges, auth.ActionReadCatalog)),
+		SkillDetail:         s.ginHandler(s.requireAction(s.handleSkillDetailRoute, auth.ActionReadCatalog), "package"),
+		VersionList:         s.ginHandler(s.requireAction(s.handleVersionListRoute, auth.ActionReadCatalog), "package"),
+		VersionDetail:       s.ginHandler(s.requireAction(s.handleVersionDetailRoute, auth.ActionReadCatalog), "package", "version"),
+		InstallTarget:       s.ginHandler(s.requireAction(s.handleInstallTargetRoute, auth.ActionReadCatalog), "package"),
+		SkillGovernance:     s.ginHandler(s.requireAction(s.handleSkillGovernanceRoute, auth.ActionReadCatalog), "package"),
+		ReleaseRecord:       s.ginHandler(s.requireAction(s.handleReleaseRecordRoute, auth.ActionReadCatalog), "package", "version"),
+		VersionGovernance:   s.ginHandler(s.requireAction(s.handleVersionGovernanceRoute, auth.ActionReadCatalog), "package", "version"),
+		PackagingPrepare:    s.ginHandler(s.requireAction(s.handlePackagingPrepare, auth.ActionPackagingPrepare)),
+		PackagingValidate:   s.ginHandler(s.requireAction(s.handlePackagingValidate, auth.ActionPackagingValidate)),
+		PackagingPack:       s.ginHandler(s.requireAction(s.handlePackagingPack, auth.ActionPackagingPack)),
+		PackagingPublish:    s.ginHandler(s.requireAction(s.handlePackagingPublish, auth.ActionPackagingPublish)),
+		PackagingCleanup:    s.ginHandler(s.requireAction(s.handlePackagingCleanup, auth.ActionPackagingPack)),
+		PackagingBundle:     s.ginHandler(s.requireAction(s.handlePackagingBundleDownload, auth.ActionPackagingPack)),
+		MockRegistry:        s.ginHandler(http.HandlerFunc(s.handleMockRegistry)),
+	}
+}
+
+func (s *Server) ginHandler(handler http.Handler, pathParams ...string) gin.HandlerFunc {
+	return func(context *gin.Context) {
+		request := context.Request
+		for _, key := range pathParams {
+			value := context.Param(key)
+			if decoded, err := url.PathUnescape(value); err == nil {
+				value = decoded
+			}
+			request.SetPathValue(key, value)
+		}
+		handler.ServeHTTP(context.Writer, request)
+	}
 }
