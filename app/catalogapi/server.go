@@ -29,14 +29,17 @@ import (
 	"skill_registry/business/packaging"
 	"skill_registry/foundation/persist"
 	packagingapplication "skill_registry/internal/packaging/application"
+	internalpackaginghttp "skill_registry/internal/packaging/http"
 )
 
 type packagingApplication interface {
 	packagingService
-	packagingAccessService
+	packagingapplication.AccessService
 	PublishContext(ctx context.Context, input packaging.PublishRequest) (packaging.PublishResponse, error)
 	ConfigurePublishWorkflow(repo packagingapplication.ReleaseRecordCreator, publisher packagingapplication.PackagePublisher)
 }
+
+type packagingService = packagingapplication.WorkflowService
 
 type ServerConfig struct {
 	Repository                      catalog.Repository
@@ -65,31 +68,35 @@ type ServerConfig struct {
 }
 
 type Server struct {
-	repo                  catalog.Repository
-	authorizer            *auth.Authorizer
-	sessionManager        *auth.SessionManager
-	accessWorkflow        accessWorkflowHandler
-	catalogReadModule     catalogReadWorkflow
-	readAPIModule         readAPIWorkflow
-	auditQueryModule      auditQueryWorkflow
-	catalogMutationModule catalogMutationWorkflow
-	governanceModule      *governanceModule
-	packagingModule       *packagingModule
-	packagingAccessModule packagingAccessWorkflow
-	sessionModule         sessionWorkflow
-	systemModule          systemWorkflow
-	publicNPMRegistryURL  string
-	packaging             packagingApplication
-	auditRecorder         *audit.Recorder
-	logger                *log.Logger
-	metrics               *observability.Collector
-	requestID             atomic.Uint64
-	mode                  ServerMode
-	readListCacheTTL      time.Duration
-	readDetailCacheTTL    time.Duration
-	readCache             *readCache
-	readLimiter           *requestLimiter
-	writeLimiter          *requestLimiter
+	repo                             catalog.Repository
+	authorizer                       *auth.Authorizer
+	sessionManager                   *auth.SessionManager
+	accessWorkflow                   accessWorkflowHandler
+	catalogReadModule                catalogReadWorkflow
+	auditQueryModule                 auditQueryWorkflow
+	catalogMutationService           catalogMutationService
+	catalogGovernanceService         catalogGovernanceService
+	listGovernanceChangesFunc        func(ctx context.Context, principal auth.Principal, query catalog.GovernanceQuery) (catalog.GovernancePage, *catalog.Error)
+	createReleaseRecordFunc          func(ctx context.Context, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.ReleaseRecordResult, int, *catalog.Error)
+	applySkillGovernanceChangeFunc   func(ctx context.Context, principal auth.Principal, packageName string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error)
+	applyVersionGovernanceChangeFunc func(ctx context.Context, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error)
+	packagingWorkflow                *internalpackaginghttp.Workflow
+	cleanupPackagingFunc             func(ctx context.Context, principal auth.Principal, payload packaging.CleanupRequest) (packaging.CleanupResponse, int, *catalog.Error)
+	downloadBundleFunc               func(ctx context.Context, principal auth.Principal, workspacePath string, packageName string, version string) (string, *catalog.Error)
+	sessionModule                    sessionWorkflow
+	systemModule                     systemWorkflow
+	publicNPMRegistryURL             string
+	packaging                        packagingApplication
+	auditRecorder                    *audit.Recorder
+	logger                           *log.Logger
+	metrics                          *observability.Collector
+	requestID                        atomic.Uint64
+	mode                             ServerMode
+	readListCacheTTL                 time.Duration
+	readDetailCacheTTL               time.Duration
+	readCache                        *readCache
+	readLimiter                      *requestLimiter
+	writeLimiter                     *requestLimiter
 }
 
 func NewServer(config ServerConfig) *Server {
@@ -152,34 +159,27 @@ func NewServer(config ServerConfig) *Server {
 	server.catalogReadModule = &catalogReadModule{
 		service: catalogReadService,
 	}
-	server.readAPIModule = &readAPIModule{
-		catalogReadModule: server.catalogReadModule,
-	}
+	server.catalogMutationService = catalogMutationService
+	server.catalogGovernanceService = catalogGovernanceService
 	server.accessWorkflow = &accessWorkflow{
 		authorizer: authorizer,
 		audit:      auditRecorder,
 		logger:     logger,
 	}
 	server.auditQueryModule = audit.NewQueryModule(config.Audit, authorizer)
-	server.catalogMutationModule = &catalogMutationModule{
-		service: catalogMutationService,
-		audit:   auditRecorder,
-	}
-	server.governanceModule = &governanceModule{
-		service:    catalogGovernanceService,
-		authorizer: authorizer,
-	}
-	server.packagingModule = &packagingModule{
-		service:             packagingSvc,
-		idempotency:         config.Idempotency,
-		audit:               auditRecorder,
-		cache:               newPackagingResponseCache(10 * time.Minute),
-		allowAnonymousCache: false,
-	}
-	server.packagingAccessModule = &packagingAccessModule{
-		service: config.Packaging,
-		audit:   auditRecorder,
-	}
+	server.listGovernanceChangesFunc = server.listGovernanceChanges
+	server.createReleaseRecordFunc = server.createReleaseRecord
+	server.applySkillGovernanceChangeFunc = server.applySkillGovernanceChange
+	server.applyVersionGovernanceChangeFunc = server.applyVersionGovernanceChange
+	server.packagingWorkflow = internalpackaginghttp.NewWorkflow(internalpackaginghttp.WorkflowConfig{
+		Service:             packagingSvc,
+		Idempotency:         config.Idempotency,
+		Audit:               auditRecorder,
+		CacheTTL:            10 * time.Minute,
+		AllowAnonymousCache: false,
+	})
+	server.cleanupPackagingFunc = server.cleanupPackaging
+	server.downloadBundleFunc = server.downloadBundle
 	server.sessionModule = &sessionModule{
 		authorizer:     authorizer,
 		sessionManager: sessionManager,
@@ -322,7 +322,7 @@ func (s *Server) routerConfig() routerpkg.Config {
 		ReadListCacheTTL:     s.readListCacheTTL,
 		ReadDetailCacheTTL:   s.readDetailCacheTTL,
 		ListAuditEvents:      s.auditQueryModule.ListEvents,
-		ListSkillsFunc:       s.readAPIModule.listSkills,
+		ListSkillsFunc:       s.catalogReadModule.listSkills,
 		ListCuratedSkills:    s.catalogReadModule.listCuratedSkills,
 		GetSkillFunc:         s.catalogReadModule.getSkill,
 		ListVersionsFunc:     s.catalogReadModule.listVersions,
@@ -335,18 +335,18 @@ func (s *Server) routerConfig() routerpkg.Config {
 		ReadListCacheTTL:    s.readListCacheTTL,
 		AuthorizePackage:    s.authorizePackageAccess,
 		AuthorizeAction:     s.accessWorkflow.authorizeAction,
-		ListGovernance:      s.governanceModule.listChanges,
+		ListGovernance:      s.listGovernanceChangesFunc,
 		AcquireWriteLimiter: func() (func(), *catalog.Error) {
 			return s.writeLimiter.acquire()
 		},
 		CreateReleaseRecord: func(request *http.Request, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.ReleaseRecordResult, int, *catalog.Error) {
-			return s.catalogMutationModule.createReleaseRecord(request.Context(), principal, packageName, versionPath, rawBody)
+			return s.createReleaseRecordFunc(request.Context(), principal, packageName, versionPath, rawBody)
 		},
 		ApplySkillGovernanceChange: func(request *http.Request, principal auth.Principal, packageName string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error) {
-			return s.catalogMutationModule.applySkillGovernanceChange(request.Context(), principal, packageName, rawBody)
+			return s.applySkillGovernanceChangeFunc(request.Context(), principal, packageName, rawBody)
 		},
 		ApplyVersionGovernance: func(request *http.Request, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error) {
-			return s.catalogMutationModule.applyVersionGovernanceChange(request.Context(), principal, packageName, versionPath, rawBody)
+			return s.applyVersionGovernanceChangeFunc(request.Context(), principal, packageName, versionPath, rawBody)
 		},
 	})
 	packagingHTTPHandlers := packaginghandlers.New(packaginghandlers.Handlers{
@@ -358,22 +358,22 @@ func (s *Server) routerConfig() routerpkg.Config {
 			return s.writeLimiter.acquire()
 		},
 		DecodePrepareRequest: func(ctx context.Context, principal auth.Principal, rawBody []byte) (packaging.PrepareRequest, *catalog.Error) {
-			return s.packagingModule.decodePrepareRequest(ctx, principal, rawBody)
+			return s.packagingWorkflow.DecodePrepareRequest(ctx, principal, rawBody)
 		},
 		DecodeValidateRequest: func(ctx context.Context, principal auth.Principal, rawBody []byte) (packaging.ValidateRequest, *catalog.Error) {
-			return s.packagingModule.decodeValidateRequest(ctx, principal, rawBody)
+			return s.packagingWorkflow.DecodeValidateRequest(ctx, principal, rawBody)
 		},
 		DecodePackRequest: func(ctx context.Context, principal auth.Principal, rawBody []byte) (packaging.PackRequest, *catalog.Error) {
-			return s.packagingModule.decodePackRequest(ctx, principal, rawBody)
+			return s.packagingWorkflow.DecodePackRequest(ctx, principal, rawBody)
 		},
 		Prepare: func(ctx context.Context, principal auth.Principal, payload packaging.PrepareRequest) (any, int, *catalog.Error) {
-			return s.packagingModule.prepare(ctx, principal, payload)
+			return s.packagingWorkflow.Prepare(ctx, principal, payload)
 		},
 		Validate: func(ctx context.Context, principal auth.Principal, payload packaging.ValidateRequest) (any, int, *catalog.Error) {
-			return s.packagingModule.validate(ctx, principal, payload)
+			return s.packagingWorkflow.Validate(ctx, principal, payload)
 		},
 		Pack: func(ctx context.Context, principal auth.Principal, payload packaging.PackRequest) (any, int, *catalog.Error) {
-			return s.packagingModule.pack(ctx, principal, payload)
+			return s.packagingWorkflow.Pack(ctx, principal, payload)
 		},
 		Publish: func(ctx context.Context, payload packaging.PublishRequest) (packaging.PublishResponse, error) {
 			if s.packaging == nil {
@@ -382,10 +382,10 @@ func (s *Server) routerConfig() routerpkg.Config {
 			return s.packaging.PublishContext(ctx, payload)
 		},
 		Cleanup: func(ctx context.Context, principal auth.Principal, payload packaging.CleanupRequest) (packaging.CleanupResponse, int, *catalog.Error) {
-			return s.packagingAccessModule.cleanup(ctx, principal, payload)
+			return s.cleanupPackagingFunc(ctx, principal, payload)
 		},
 		DownloadBundle: func(ctx context.Context, principal auth.Principal, workspacePath string, packageName string, version string) (string, *catalog.Error) {
-			return s.packagingAccessModule.downloadBundle(ctx, principal, workspacePath, packageName, version)
+			return s.downloadBundleFunc(ctx, principal, workspacePath, packageName, version)
 		},
 		RecordMutationAudit: s.recordMutationAudit,
 	})

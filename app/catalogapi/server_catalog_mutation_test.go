@@ -11,11 +11,11 @@ import (
 	internaldomain "skill_registry/internal/catalog/domain"
 )
 
-func TestCatalogMutationModuleCreatesReleaseRecordAndRecordsCreatedAudit(t *testing.T) {
+func TestServerCreatesReleaseRecordAndRecordsCreatedAudit(t *testing.T) {
 	store := &captureAuditStore{}
-	module := &catalogMutationModule{
-		service: catalog.NewMemoryRepository(catalog.SampleData()),
-		audit:   audit.NewRecorder(store),
+	server := &Server{
+		catalogMutationService: catalog.NewMemoryRepository(catalog.SampleData()),
+		auditRecorder:          audit.NewRecorder(store),
 	}
 	principal := auth.Principal{
 		Role:          "publisher",
@@ -24,7 +24,7 @@ func TestCatalogMutationModuleCreatesReleaseRecordAndRecordsCreatedAudit(t *test
 	}
 	ctx := contextWithRequestMetadataForTest(context.Background(), "req_release", "trace_release")
 
-	response, status, err := module.createReleaseRecord(ctx, principal, "@platform.skill/agent-notes", "0.1.0", nil)
+	response, status, err := server.createReleaseRecord(ctx, principal, "@platform.skill/agent-notes", "0.1.0", nil)
 	if err != nil {
 		t.Fatalf("create release record: %v", err)
 	}
@@ -42,11 +42,11 @@ func TestCatalogMutationModuleCreatesReleaseRecordAndRecordsCreatedAudit(t *test
 	}
 }
 
-func TestCatalogMutationModuleAppliesSkillGovernanceAndRecordsAudit(t *testing.T) {
+func TestServerAppliesSkillGovernanceAndRecordsAudit(t *testing.T) {
 	store := &captureAuditStore{}
-	module := &catalogMutationModule{
-		service: catalog.NewMemoryRepository(catalog.SampleData()),
-		audit:   audit.NewRecorder(store),
+	server := &Server{
+		catalogMutationService: catalog.NewMemoryRepository(catalog.SampleData()),
+		auditRecorder:          audit.NewRecorder(store),
 	}
 	principal := auth.Principal{
 		Role:          "publisher",
@@ -55,7 +55,7 @@ func TestCatalogMutationModuleAppliesSkillGovernanceAndRecordsAudit(t *testing.T
 	}
 	ctx := contextWithRequestMetadataForTest(context.Background(), "req_skill_governance", "trace_skill_governance")
 
-	response, status, err := module.applySkillGovernanceChange(ctx, principal, "@platform.skill/code-review", []byte(`{"action":"retire","reason":"merged into new pack"}`))
+	response, status, err := server.applySkillGovernanceChange(ctx, principal, "@platform.skill/code-review", []byte(`{"action":"retire","reason":"merged into new pack"}`))
 	if err != nil {
 		t.Fatalf("apply skill governance: %v", err)
 	}
@@ -70,11 +70,11 @@ func TestCatalogMutationModuleAppliesSkillGovernanceAndRecordsAudit(t *testing.T
 	}
 }
 
-func TestCatalogMutationModuleAppliesVersionGovernanceAndRecordsAudit(t *testing.T) {
+func TestServerAppliesVersionGovernanceAndRecordsAudit(t *testing.T) {
 	store := &captureAuditStore{}
-	module := &catalogMutationModule{
-		service: catalog.NewMemoryRepository(catalog.SampleData()),
-		audit:   audit.NewRecorder(store),
+	server := &Server{
+		catalogMutationService: catalog.NewMemoryRepository(catalog.SampleData()),
+		auditRecorder:          audit.NewRecorder(store),
 	}
 	principal := auth.Principal{
 		Role:          "publisher",
@@ -83,7 +83,7 @@ func TestCatalogMutationModuleAppliesVersionGovernanceAndRecordsAudit(t *testing
 	}
 	ctx := contextWithRequestMetadataForTest(context.Background(), "req_version_governance", "trace_version_governance")
 
-	response, status, err := module.applyVersionGovernanceChange(ctx, principal, "@platform.skill/pdf-skill", "1.2.0", []byte(`{"action":"yank","reason":"security issue","replacementRecommendation":"1.1.0"}`))
+	response, status, err := server.applyVersionGovernanceChange(ctx, principal, "@platform.skill/pdf-skill", "1.2.0", []byte(`{"action":"yank","reason":"security issue","replacementRecommendation":"1.1.0"}`))
 	if err != nil {
 		t.Fatalf("apply version governance: %v", err)
 	}
@@ -112,11 +112,11 @@ func (catalogMutationServiceStub) ApplyVersionGovernanceChange(context.Context, 
 	return internaldomain.GovernanceChangeResponse{}, nil
 }
 
-func TestCatalogMutationModuleAcceptsCatalogWriteServiceSeam(t *testing.T) {
-	module := &catalogMutationModule{
-		service: catalogMutationServiceStub{},
+func TestServerAcceptsCatalogWriteServiceSeam(t *testing.T) {
+	server := &Server{
+		catalogMutationService: catalogMutationServiceStub{},
 	}
-	if module.service == nil {
-		t.Fatal("expected catalog mutation module to keep a write service seam")
+	if server.catalogMutationService == nil {
+		t.Fatal("expected server to keep a catalog write service seam")
 	}
 }

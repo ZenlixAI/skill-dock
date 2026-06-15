@@ -11,10 +11,13 @@ import (
 	"time"
 
 	"skill_registry/app/auth"
+	"skill_registry/app/catalogapi/audit"
+	"skill_registry/app/catalogapi/binding"
 	"skill_registry/app/catalogapi/common"
 	"skill_registry/business/catalog"
 	"skill_registry/business/packaging"
 	"skill_registry/foundation/persist"
+	internalpackaginghttp "skill_registry/internal/packaging/http"
 )
 
 func contextWithRequestMetadataForTest(ctx context.Context, requestID string, traceID string) context.Context {
@@ -36,7 +39,7 @@ func newTestServerWithCatalogReadModule(_ interface{ Helper() }, module catalogR
 	return server
 }
 
-func (m *catalogReadModuleStub) listSkills(context.Context, auth.Principal, catalog.SkillQuery) (catalog.SkillsPage, *catalog.Error) {
+func (m *catalogReadModuleStub) listSkills(context.Context, auth.Principal, binding.SkillsQuery) (catalog.SkillsPage, *catalog.Error) {
 	m.listSkillsCalls.Add(1)
 	return catalog.SkillsPage{}, nil
 }
@@ -130,8 +133,8 @@ func (m *sessionModuleStub) logoutCallCount() int {
 	return int(m.logoutCalls.Load())
 }
 
-type testPackagingModule struct {
-	*packagingModule
+type testPackagingWorkflow struct {
+	*internalpackaginghttp.Workflow
 	service *stubPackagingService
 }
 
@@ -164,7 +167,11 @@ func (s *stubPackagingService) PackContext(ctx context.Context, input packaging.
 	return packaging.PackResponse{}, nil
 }
 
-func newPackagingModuleForTest(_ interface{ Helper() }) *testPackagingModule {
+func newPackagingWorkflowForTest(_ interface{ Helper() }) *testPackagingWorkflow {
+	return newPackagingWorkflowWithAuditForTest(nil)
+}
+
+func newPackagingWorkflowWithAuditForTest(auditRecorder *audit.Recorder) *testPackagingWorkflow {
 	service := &stubPackagingService{
 		prepareFunc: func(_ context.Context, input packaging.PrepareRequest) (packaging.PrepareResponse, error) {
 			return packaging.PrepareResponse{
@@ -176,17 +183,18 @@ func newPackagingModuleForTest(_ interface{ Helper() }) *testPackagingModule {
 			}, nil
 		},
 	}
-	return &testPackagingModule{
-		packagingModule: &packagingModule{
-			service:             service,
-			cache:               newPackagingResponseCache(10 * time.Minute),
-			allowAnonymousCache: true,
-		},
+	return &testPackagingWorkflow{
+		Workflow: internalpackaginghttp.NewWorkflow(internalpackaginghttp.WorkflowConfig{
+			Service:             service,
+			Audit:               auditRecorder,
+			CacheTTL:            10 * time.Minute,
+			AllowAnonymousCache: true,
+		}),
 		service: service,
 	}
 }
 
-func (m *testPackagingModule) prepareCallCount() int {
+func (m *testPackagingWorkflow) prepareCallCount() int {
 	return int(m.service.prepareCalls.Load())
 }
 
@@ -289,77 +297,76 @@ func (m *auditQueryModuleStub) listEventsCallCount() int {
 	return int(m.listEventsCalls.Load())
 }
 
-type catalogMutationModuleStub struct {
+type catalogMutationWorkflowStub struct {
 	createReleaseRecordCalls    atomic.Int64
 	applySkillGovernanceCalls   atomic.Int64
 	applyVersionGovernanceCalls atomic.Int64
 }
 
-func newCatalogMutationModuleStubForTest(_ interface{ Helper() }) *catalogMutationModuleStub {
-	return &catalogMutationModuleStub{}
+func newCatalogMutationWorkflowStubForTest(_ interface{ Helper() }) *catalogMutationWorkflowStub {
+	return &catalogMutationWorkflowStub{}
 }
 
-func (m *catalogMutationModuleStub) createReleaseRecord(context.Context, auth.Principal, string, string, []byte) (catalog.ReleaseRecordResult, int, *catalog.Error) {
+func (m *catalogMutationWorkflowStub) createReleaseRecord(context.Context, auth.Principal, string, string, []byte) (catalog.ReleaseRecordResult, int, *catalog.Error) {
 	m.createReleaseRecordCalls.Add(1)
 	return catalog.ReleaseRecordResult{Created: true}, http.StatusCreated, nil
 }
 
-func (m *catalogMutationModuleStub) applySkillGovernanceChange(context.Context, auth.Principal, string, []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error) {
+func (m *catalogMutationWorkflowStub) applySkillGovernanceChange(context.Context, auth.Principal, string, []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error) {
 	m.applySkillGovernanceCalls.Add(1)
 	return catalog.GovernanceChangeResponse{}, http.StatusCreated, nil
 }
 
-func (m *catalogMutationModuleStub) applyVersionGovernanceChange(context.Context, auth.Principal, string, string, []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error) {
+func (m *catalogMutationWorkflowStub) applyVersionGovernanceChange(context.Context, auth.Principal, string, string, []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error) {
 	m.applyVersionGovernanceCalls.Add(1)
 	return catalog.GovernanceChangeResponse{}, http.StatusCreated, nil
 }
 
-func (m *catalogMutationModuleStub) createReleaseRecordCallCount() int {
+func (m *catalogMutationWorkflowStub) createReleaseRecordCallCount() int {
 	return int(m.createReleaseRecordCalls.Load())
 }
 
-func (m *catalogMutationModuleStub) applySkillGovernanceCallCount() int {
+func (m *catalogMutationWorkflowStub) applySkillGovernanceCallCount() int {
 	return int(m.applySkillGovernanceCalls.Load())
 }
 
-func (m *catalogMutationModuleStub) applyVersionGovernanceCallCount() int {
+func (m *catalogMutationWorkflowStub) applyVersionGovernanceCallCount() int {
 	return int(m.applyVersionGovernanceCalls.Load())
 }
 
-type packagingAccessModuleStub struct {
+type packagingAccessWorkflowStub struct {
 	cleanupCalls        atomic.Int64
 	downloadBundleCalls atomic.Int64
 	bundlePath          string
 }
 
-func newPackagingAccessModuleStubForTest(t interface {
+func newPackagingAccessWorkflowStubForTest(t interface {
 	Helper()
 	TempDir() string
-},
-) *packagingAccessModuleStub {
+}) *packagingAccessWorkflowStub {
 	t.Helper()
 	bundlePath := filepath.Join(t.TempDir(), "bundle.tgz")
 	if err := os.WriteFile(bundlePath, []byte("bundle"), 0o644); err != nil {
 		panic(err)
 	}
-	return &packagingAccessModuleStub{bundlePath: bundlePath}
+	return &packagingAccessWorkflowStub{bundlePath: bundlePath}
 }
 
-func (m *packagingAccessModuleStub) cleanup(context.Context, auth.Principal, packaging.CleanupRequest) (packaging.CleanupResponse, int, *catalog.Error) {
+func (m *packagingAccessWorkflowStub) cleanup(context.Context, auth.Principal, packaging.CleanupRequest) (packaging.CleanupResponse, int, *catalog.Error) {
 	m.cleanupCalls.Add(1)
 	return packaging.CleanupResponse{Removed: true}, http.StatusOK, nil
 }
 
-func (m *packagingAccessModuleStub) downloadBundle(context.Context, auth.Principal, string, string, string) (string, *catalog.Error) {
+func (m *packagingAccessWorkflowStub) downloadBundle(context.Context, auth.Principal, string, string, string) (string, *catalog.Error) {
 	m.downloadBundleCalls.Add(1)
 	return m.bundlePath, nil
 }
 
-func (m *packagingAccessModuleStub) downloadBundleCallCount() int {
+func (m *packagingAccessWorkflowStub) downloadBundleCallCount() int {
 	return int(m.downloadBundleCalls.Load())
 }
 
-func (m *packagingAccessModuleStub) cleanupCallCount() int {
+func (m *packagingAccessWorkflowStub) cleanupCallCount() int {
 	return int(m.cleanupCalls.Load())
 }
 

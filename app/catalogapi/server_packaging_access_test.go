@@ -15,11 +15,23 @@ import (
 )
 
 func TestPackagingAccessModuleUsesPackagingApplicationAccessContract(t *testing.T) {
-	var _ packagingAccessService = (*packagingapplication.Service)(nil)
+	var _ packagingapplication.AccessService = (*packagingapplication.Service)(nil)
 }
 
 type bundlePathOnlyPackagingService struct {
 	bundlePath string
+}
+
+func (s *bundlePathOnlyPackagingService) PrepareContext(context.Context, packaging.PrepareRequest) (packaging.PrepareResponse, error) {
+	return packaging.PrepareResponse{}, nil
+}
+
+func (s *bundlePathOnlyPackagingService) ValidateContext(context.Context, packaging.ValidateRequest) (packaging.ValidateResponse, error) {
+	return packaging.ValidateResponse{}, nil
+}
+
+func (s *bundlePathOnlyPackagingService) PackContext(context.Context, packaging.PackRequest) (packaging.PackResponse, error) {
+	return packaging.PackResponse{}, nil
 }
 
 func (s *bundlePathOnlyPackagingService) CleanupContext(context.Context, string) error {
@@ -30,16 +42,23 @@ func (s *bundlePathOnlyPackagingService) BundleFilePathContext(context.Context, 
 	return s.bundlePath, nil
 }
 
-func TestPackagingAccessModuleResolvesBundlePathAndRecordsAudit(t *testing.T) {
+func (s *bundlePathOnlyPackagingService) PublishContext(context.Context, packaging.PublishRequest) (packaging.PublishResponse, error) {
+	return packaging.PublishResponse{}, nil
+}
+
+func (s *bundlePathOnlyPackagingService) ConfigurePublishWorkflow(packagingapplication.ReleaseRecordCreator, packagingapplication.PackagePublisher) {
+}
+
+func TestServerResolvesBundlePathAndRecordsAudit(t *testing.T) {
 	tempDir := t.TempDir()
 	bundlePath := filepath.Join(tempDir, "fixture.tgz")
 	if err := os.WriteFile(bundlePath, []byte("bundle"), 0o644); err != nil {
 		t.Fatalf("write bundle: %v", err)
 	}
 	store := &captureAuditStore{}
-	module := &packagingAccessModule{
-		service: &bundlePathOnlyPackagingService{bundlePath: bundlePath},
-		audit:   audit.NewRecorder(store),
+	server := &Server{
+		packaging:     &bundlePathOnlyPackagingService{bundlePath: bundlePath},
+		auditRecorder: audit.NewRecorder(store),
 	}
 	principal := auth.Principal{
 		Role:          "publisher",
@@ -48,7 +67,7 @@ func TestPackagingAccessModuleResolvesBundlePathAndRecordsAudit(t *testing.T) {
 	}
 	ctx := contextWithRequestMetadataForTest(context.Background(), "req_bundle", "trace_bundle")
 
-	resolvedPath, err := module.downloadBundle(ctx, principal, "ws_fixture", "@platform.skill/fixture-skill", "0.2.0")
+	resolvedPath, err := server.downloadBundle(ctx, principal, "ws_fixture", "@platform.skill/fixture-skill", "0.2.0")
 	if err != nil {
 		t.Fatalf("download bundle: %v", err)
 	}
@@ -63,12 +82,12 @@ func TestPackagingAccessModuleResolvesBundlePathAndRecordsAudit(t *testing.T) {
 	}
 }
 
-func TestPackagingAccessModuleReturnsBundleLoadError(t *testing.T) {
-	module := &packagingAccessModule{
-		service: &bundlePathOnlyPackagingService{bundlePath: ""},
+func TestServerReturnsBundleLoadError(t *testing.T) {
+	server := &Server{
+		packaging: &bundlePathOnlyPackagingService{bundlePath: ""},
 	}
 
-	_, err := module.downloadBundle(context.Background(), auth.Principal{}, "", "@platform.skill/fixture-skill", "0.2.0")
+	_, err := server.downloadBundle(context.Background(), auth.Principal{}, "", "@platform.skill/fixture-skill", "0.2.0")
 	if err == nil {
 		t.Fatal("expected invalid request error")
 	}
@@ -77,13 +96,13 @@ func TestPackagingAccessModuleReturnsBundleLoadError(t *testing.T) {
 	}
 }
 
-func TestPackagingAccessModuleCleanupRemovesWorkspaceAndBundle(t *testing.T) {
+func TestServerCleanupRemovesWorkspaceAndBundle(t *testing.T) {
 	service := packaging.NewService(t.TempDir())
 	workspacePath, bundlePath := prepareManagedWorkspaceForTest(t, service, "@platform.skill/fixture-skill", "0.2.0")
 	store := &captureAuditStore{}
-	module := &packagingAccessModule{
-		service: service,
-		audit:   audit.NewRecorder(store),
+	server := &Server{
+		packaging:     service,
+		auditRecorder: audit.NewRecorder(store),
 	}
 	principal := auth.Principal{
 		Role:          "publisher",
@@ -92,7 +111,7 @@ func TestPackagingAccessModuleCleanupRemovesWorkspaceAndBundle(t *testing.T) {
 	}
 	ctx := contextWithRequestMetadataForTest(context.Background(), "req_cleanup", "trace_cleanup")
 
-	response, status, err := module.cleanup(ctx, principal, packaging.CleanupRequest{WorkspacePath: workspacePath})
+	response, status, err := server.cleanupPackaging(ctx, principal, packaging.CleanupRequest{WorkspacePath: workspacePath})
 	if err != nil {
 		t.Fatalf("cleanup workspace: %v", err)
 	}

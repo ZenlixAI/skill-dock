@@ -8,8 +8,6 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"skill_registry/app/auth"
-	"skill_registry/app/catalogapi/binding"
 	"skill_registry/app/catalogapi/system"
 	"skill_registry/business/catalog"
 	"skill_registry/business/packaging"
@@ -36,10 +34,9 @@ func TestServerRoutesAuditEventsThroughAuditQueryModule(t *testing.T) {
 	}
 }
 
-func TestServerRoutesSkillsThroughReadAPIModule(t *testing.T) {
-	module := &readAPIModuleStub{}
-	server := newTestServer()
-	server.readAPIModule = module
+func TestServerWorkflowRoutesSkillsThroughCatalogReadModule(t *testing.T) {
+	module := newCatalogReadModuleStubForTest(t)
+	server := newTestServerWithCatalogReadModule(t, module)
 
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills?q=pdf", nil)
 	request.Header.Set("X-Role", "reader")
@@ -51,7 +48,7 @@ func TestServerRoutesSkillsThroughReadAPIModule(t *testing.T) {
 		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
 	}
 	if got := module.listSkillsCallCount(); got != 1 {
-		t.Fatalf("expected read API module to be called once, got %d", got)
+		t.Fatalf("expected catalog read module to be called once, got %d", got)
 	}
 }
 
@@ -112,15 +109,11 @@ func TestNewServerUsesExplicitWorkflowServicesWhenProvided(t *testing.T) {
 		t.Fatal("expected explicit catalog read service to win over repository provider")
 	}
 
-	mutationModule, ok := server.catalogMutationModule.(*catalogMutationModule)
-	if !ok {
-		t.Fatalf("expected concrete catalogMutationModule, got %T", server.catalogMutationModule)
-	}
-	if mutationModule.service != explicitWrite {
+	if server.catalogMutationService != explicitWrite {
 		t.Fatal("expected explicit catalog mutation service to win over repository provider")
 	}
 
-	if server.governanceModule.service != explicitRead {
+	if server.catalogGovernanceService != explicitRead {
 		t.Fatal("expected explicit governance service to win over repository provider")
 	}
 }
@@ -172,10 +165,10 @@ func TestServerRoutesReadyzThroughSystemModule(t *testing.T) {
 	}
 }
 
-func TestServerRoutesReleaseRecordThroughCatalogMutationModule(t *testing.T) {
-	module := newCatalogMutationModuleStubForTest(t)
+func TestServerRoutesReleaseRecordThroughCatalogMutationWorkflow(t *testing.T) {
+	module := newCatalogMutationWorkflowStubForTest(t)
 	server := newTestServer()
-	server.catalogMutationModule = module
+	server.createReleaseRecordFunc = module.createReleaseRecord
 
 	request := httptest.NewRequest(http.MethodPut, "/api/v1/skills/%40platform.skill%2Fpdf-skill/versions/1.2.0/release-record", strings.NewReader(`{}`))
 	request.Header.Set("X-Role", "publisher")
@@ -191,10 +184,10 @@ func TestServerRoutesReleaseRecordThroughCatalogMutationModule(t *testing.T) {
 	}
 }
 
-func TestServerRoutesSkillGovernanceThroughCatalogMutationModule(t *testing.T) {
-	module := newCatalogMutationModuleStubForTest(t)
+func TestServerRoutesSkillGovernanceThroughCatalogMutationWorkflow(t *testing.T) {
+	module := newCatalogMutationWorkflowStubForTest(t)
 	server := newTestServer()
-	server.catalogMutationModule = module
+	server.applySkillGovernanceChangeFunc = module.applySkillGovernanceChange
 
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/skills/%40platform.skill%2Fcode-review/governance-changes", strings.NewReader(`{"action":"retire","reason":"merged"}`))
 	request.Header.Set("X-Role", "publisher")
@@ -210,10 +203,10 @@ func TestServerRoutesSkillGovernanceThroughCatalogMutationModule(t *testing.T) {
 	}
 }
 
-func TestServerRoutesVersionGovernanceThroughCatalogMutationModule(t *testing.T) {
-	module := newCatalogMutationModuleStubForTest(t)
+func TestServerRoutesVersionGovernanceThroughCatalogMutationWorkflow(t *testing.T) {
+	module := newCatalogMutationWorkflowStubForTest(t)
 	server := newTestServer()
-	server.catalogMutationModule = module
+	server.applyVersionGovernanceChangeFunc = module.applyVersionGovernanceChange
 
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/skills/%40platform.skill%2Fpdf-skill/versions/1.2.0/governance-changes", strings.NewReader(`{"action":"yank","reason":"security issue"}`))
 	request.Header.Set("X-Role", "publisher")
@@ -229,10 +222,10 @@ func TestServerRoutesVersionGovernanceThroughCatalogMutationModule(t *testing.T)
 	}
 }
 
-func TestServerRoutesBundleDownloadThroughPackagingAccessModule(t *testing.T) {
-	module := newPackagingAccessModuleStubForTest(t)
+func TestServerRoutesBundleDownloadThroughPackagingAccessWorkflow(t *testing.T) {
+	module := newPackagingAccessWorkflowStubForTest(t)
 	server := newTestServer()
-	server.packagingAccessModule = module
+	server.downloadBundleFunc = module.downloadBundle
 
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/skill-packaging/bundle?workspacePath=/tmp/workspace&packageName=%40platform.skill%2Fpdf-skill&version=1.2.0", nil)
 	request.Header.Set("X-Role", "publisher")
@@ -248,10 +241,10 @@ func TestServerRoutesBundleDownloadThroughPackagingAccessModule(t *testing.T) {
 	}
 }
 
-func TestServerRoutesPackagingCleanupThroughPackagingAccessModule(t *testing.T) {
-	module := newPackagingAccessModuleStubForTest(t)
+func TestServerRoutesPackagingCleanupThroughPackagingAccessWorkflow(t *testing.T) {
+	module := newPackagingAccessWorkflowStubForTest(t)
 	server := newTestServer()
-	server.packagingAccessModule = module
+	server.cleanupPackagingFunc = module.cleanup
 
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/skill-packaging/cleanup", strings.NewReader(`{"workspacePath":"/tmp/workspace"}`))
 	request.Header.Set("X-Role", "publisher")
@@ -287,10 +280,6 @@ func TestServerSessionDeniedPathUsesSharedAccessWorkflow(t *testing.T) {
 	}
 }
 
-type readAPIModuleStub struct {
-	listSkillsCalls atomic.Int64
-}
-
 type packagingApplicationStub struct {
 	configurePublishWorkflowCalls int
 }
@@ -321,15 +310,6 @@ func (s *packagingApplicationStub) PublishContext(context.Context, packaging.Pub
 
 func (s *packagingApplicationStub) ConfigurePublishWorkflow(packagingapplication.ReleaseRecordCreator, packagingapplication.PackagePublisher) {
 	s.configurePublishWorkflowCalls++
-}
-
-func (m *readAPIModuleStub) listSkills(context.Context, auth.Principal, binding.SkillsQuery) (catalog.SkillsPage, *catalog.Error) {
-	m.listSkillsCalls.Add(1)
-	return catalog.SkillsPage{}, nil
-}
-
-func (m *readAPIModuleStub) listSkillsCallCount() int {
-	return int(m.listSkillsCalls.Load())
 }
 
 type systemModuleStub struct {

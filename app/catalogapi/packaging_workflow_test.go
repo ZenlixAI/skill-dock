@@ -12,20 +12,21 @@ import (
 	"skill_registry/app/catalogapi/common"
 	"skill_registry/business/packaging"
 	packagingapplication "skill_registry/internal/packaging/application"
+	internalpackaginghttp "skill_registry/internal/packaging/http"
 )
 
-func TestPackagingModuleUsesPackagingApplicationWorkflowContract(t *testing.T) {
-	var _ packagingService = (*packagingapplication.Service)(nil)
+func TestPackagingWorkflowUsesPackagingApplicationWorkflowContract(t *testing.T) {
+	var _ internalpackaginghttp.WorkflowService = (*packagingapplication.Service)(nil)
 }
 
-func TestPackagingModuleReplaysCachedPrepareResponse(t *testing.T) {
-	module := newPackagingModuleForTest(t)
+func TestPackagingWorkflowReplaysCachedPrepareResponse(t *testing.T) {
+	workflow := newPackagingWorkflowForTest(t)
 	payload := packaging.PrepareRequest{
 		Target: packaging.Target{PackageName: "@platform.skill/zoom-out", Version: "1.0.0"},
 	}
 
-	first, firstStatus, firstErr := module.prepare(context.Background(), auth.Principal{Role: "authoring"}, payload)
-	second, secondStatus, secondErr := module.prepare(context.Background(), auth.Principal{Role: "authoring"}, payload)
+	first, firstStatus, firstErr := workflow.Prepare(context.Background(), auth.Principal{Role: "authoring"}, payload)
+	second, secondStatus, secondErr := workflow.Prepare(context.Background(), auth.Principal{Role: "authoring"}, payload)
 
 	if firstErr != nil || secondErr != nil {
 		t.Fatalf("expected cached success, got firstErr=%v secondErr=%v", firstErr, secondErr)
@@ -36,19 +37,18 @@ func TestPackagingModuleReplaysCachedPrepareResponse(t *testing.T) {
 	if !reflect.DeepEqual(first, second) {
 		t.Fatalf("expected cached replay body to match")
 	}
-	if got := module.prepareCallCount(); got != 1 {
+	if got := workflow.prepareCallCount(); got != 1 {
 		t.Fatalf("expected underlying prepare path to execute once, got %d", got)
 	}
 }
 
-func TestPackagingModulePrepareRecordsSuccessAudit(t *testing.T) {
+func TestPackagingWorkflowPrepareRecordsSuccessAudit(t *testing.T) {
 	store := &captureAuditStore{}
-	module := newPackagingModuleForTest(t)
-	module.audit = audit.NewRecorder(store)
+	workflow := newPackagingWorkflowWithAuditForTest(audit.NewRecorder(store))
 	principal := auth.Principal{Role: "authoring", Actor: "svc-authoring", AuthMechanism: "configured_token"}
 	ctx := common.ContextWithRequestMetadata(context.Background(), "req_packaging_success", "trace_packaging_success")
 
-	_, status, err := module.prepare(ctx, principal, packaging.PrepareRequest{
+	_, status, err := workflow.Prepare(ctx, principal, packaging.PrepareRequest{
 		Target: packaging.Target{PackageName: "@platform.skill/zoom-out", Version: "1.0.0"},
 	})
 
@@ -63,14 +63,13 @@ func TestPackagingModulePrepareRecordsSuccessAudit(t *testing.T) {
 	}
 }
 
-func TestPackagingModulePrepareRecordsFailureAudit(t *testing.T) {
+func TestPackagingWorkflowPrepareRecordsFailureAudit(t *testing.T) {
 	store := &captureAuditStore{}
-	module := newPackagingModuleForTest(t)
-	module.audit = audit.NewRecorder(store)
+	workflow := newPackagingWorkflowWithAuditForTest(audit.NewRecorder(store))
 	principal := auth.Principal{Role: "authoring", Actor: "svc-authoring", AuthMechanism: "configured_token"}
 	ctx := common.ContextWithRequestMetadata(context.Background(), "req_packaging_failure", "trace_packaging_failure")
 
-	_, status, err := module.prepare(ctx, principal, packaging.PrepareRequest{
+	_, status, err := workflow.Prepare(ctx, principal, packaging.PrepareRequest{
 		Source: packaging.Source{Type: "local"},
 		Target: packaging.Target{PackageName: "@platform.skill/zoom-out", Version: "1.0.0"},
 	})
@@ -86,14 +85,13 @@ func TestPackagingModulePrepareRecordsFailureAudit(t *testing.T) {
 	}
 }
 
-func TestPackagingModuleDecodePrepareRequestRecordsFailureAudit(t *testing.T) {
+func TestPackagingWorkflowDecodePrepareRequestRecordsFailureAudit(t *testing.T) {
 	store := &captureAuditStore{}
-	module := newPackagingModuleForTest(t)
-	module.audit = audit.NewRecorder(store)
+	workflow := newPackagingWorkflowWithAuditForTest(audit.NewRecorder(store))
 	principal := auth.Principal{Role: "authoring", Actor: "svc-authoring", AuthMechanism: "configured_token"}
 	ctx := common.ContextWithRequestMetadata(context.Background(), "req_packaging_decode_failure", "trace_packaging_decode_failure")
 
-	_, err := module.decodePrepareRequest(ctx, principal, []byte(`{"source":{"type":"local"},"target":{"packageName":"@platform.skill/test","version":"1.0.0"}}{"extra":true}`))
+	_, err := workflow.DecodePrepareRequest(ctx, principal, []byte(`{"source":{"type":"local"},"target":{"packageName":"@platform.skill/test","version":"1.0.0"}}{"extra":true}`))
 
 	if err == nil {
 		t.Fatal("expected decode error")
@@ -109,10 +107,10 @@ func TestPackagingModuleDecodePrepareRequestRecordsFailureAudit(t *testing.T) {
 	}
 }
 
-func TestPackagingModulePassesRequestContextToPackagingService(t *testing.T) {
+func TestPackagingWorkflowPassesRequestContextToPackagingService(t *testing.T) {
 	seenRequestID := ""
-	module := &packagingModule{
-		service: &stubPackagingService{
+	workflow := internalpackaginghttp.NewWorkflow(internalpackaginghttp.WorkflowConfig{
+		Service: &stubPackagingService{
 			prepareFunc: func(ctx context.Context, input packaging.PrepareRequest) (packaging.PrepareResponse, error) {
 				value := common.RequestIDFromContext(ctx)
 				seenRequestID = value
@@ -123,12 +121,12 @@ func TestPackagingModulePassesRequestContextToPackagingService(t *testing.T) {
 				}, nil
 			},
 		},
-		cache:               newPackagingResponseCache(10 * time.Minute),
-		allowAnonymousCache: true,
-	}
+		CacheTTL:            10 * time.Minute,
+		AllowAnonymousCache: true,
+	})
 	ctx := common.ContextWithRequestMetadata(context.Background(), "req_packaging_ctx", "")
 
-	_, status, err := module.prepare(ctx, auth.Principal{Role: "authoring"}, packaging.PrepareRequest{
+	_, status, err := workflow.Prepare(ctx, auth.Principal{Role: "authoring"}, packaging.PrepareRequest{
 		Target: packaging.Target{PackageName: "@platform.skill/zoom-out", Version: "1.0.0"},
 	})
 

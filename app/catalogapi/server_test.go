@@ -64,9 +64,6 @@ func TestServerRoutesSkillsThroughCatalogReadModule(t *testing.T) {
 	module := newCatalogReadModuleStubForTest(t)
 	server := newTestServer()
 	server.catalogReadModule = module
-	server.readAPIModule = &readAPIModule{
-		catalogReadModule: module,
-	}
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills", nil)
 	request.Header.Set("X-Role", "reader")
 	recorder := httptest.NewRecorder()
@@ -85,9 +82,6 @@ func TestServerRoutesHeadSkillsThroughCatalogReadModule(t *testing.T) {
 	module := newCatalogReadModuleStubForTest(t)
 	server := newTestServer()
 	server.catalogReadModule = module
-	server.readAPIModule = &readAPIModule{
-		catalogReadModule: module,
-	}
 	request := httptest.NewRequest(http.MethodHead, "/api/v1/skills", nil)
 	request.Header.Set("X-Role", "reader")
 	recorder := httptest.NewRecorder()
@@ -123,15 +117,11 @@ func TestNewServerPrefersCatalogApplicationServicesFromRepositoryProvider(t *tes
 		t.Fatal("expected server to wire repository-provided catalog read service")
 	}
 
-	mutationModule, ok := server.catalogMutationModule.(*catalogMutationModule)
-	if !ok {
-		t.Fatalf("expected concrete catalogMutationModule, got %T", server.catalogMutationModule)
-	}
-	if mutationModule.service != provider.writeService {
+	if server.catalogMutationService != provider.writeService {
 		t.Fatal("expected server to wire repository-provided catalog write service")
 	}
 
-	if server.governanceModule.service != provider.readService {
+	if server.catalogGovernanceService != provider.readService {
 		t.Fatal("expected server to wire repository-provided governance read service")
 	}
 }
@@ -302,16 +292,16 @@ func TestPlatformEnginePreservesRawPathSettings(t *testing.T) {
 	}
 }
 
-func TestReadAPIModuleListsSkillsFromParsedQuery(t *testing.T) {
-	workflow := &capturingCatalogReadWorkflow{
+func TestCatalogReadModuleListsSkillsFromParsedQuery(t *testing.T) {
+	service := &capturingCatalogReadService{
 		response: catalog.SkillsPage{
 			Items: []catalog.SkillSummary{
 				{PackageName: "@platform.skill/pdf-skill"},
 			},
 		},
 	}
-	module := &readAPIModule{
-		catalogReadModule: workflow,
+	module := &catalogReadModule{
+		service: service,
 	}
 	principal := auth.Principal{
 		Role:  "reader",
@@ -330,13 +320,14 @@ func TestReadAPIModuleListsSkillsFromParsedQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
-	if got := workflow.listSkillsCallCount(); got != 1 {
-		t.Fatalf("expected catalog read workflow to be called once, got %d", got)
+	if got := service.listSkillsCallCount(); got != 1 {
+		t.Fatalf("expected catalog read service to be called once, got %d", got)
 	}
-	if !reflect.DeepEqual(workflow.principal, principal) {
-		t.Fatalf("unexpected principal (-want +got):\nwant: %#v\ngot:  %#v", principal, workflow.principal)
+	if !reflect.DeepEqual(service.query.AllowedPackages, principal.AllowedPackages) {
+		t.Fatalf("unexpected allowed packages (-want +got):\nwant: %#v\ngot:  %#v", principal.AllowedPackages, service.query.AllowedPackages)
 	}
 
+	service.query.AllowedPackages = nil
 	wantQuery := catalog.SkillQuery{
 		Query:          "pdf",
 		PackageName:    "@platform.skill/pdf-skill",
@@ -346,10 +337,10 @@ func TestReadAPIModuleListsSkillsFromParsedQuery(t *testing.T) {
 		PageSize:       7,
 		Cursor:         12,
 	}
-	if !reflect.DeepEqual(workflow.query, wantQuery) {
-		t.Fatalf("unexpected parsed query (-want +got):\nwant: %#v\ngot:  %#v", wantQuery, workflow.query)
+	if !reflect.DeepEqual(service.query, wantQuery) {
+		t.Fatalf("unexpected parsed query (-want +got):\nwant: %#v\ngot:  %#v", wantQuery, service.query)
 	}
-	if !reflect.DeepEqual(response, workflow.response) {
+	if !reflect.DeepEqual(response, service.response) {
 		t.Fatalf("expected response passthrough, got %#v", response)
 	}
 }
@@ -4237,43 +4228,42 @@ func (s stubIdempotencyStore) Ping(context.Context) error {
 	return s.pingErr
 }
 
-type capturingCatalogReadWorkflow struct {
+type capturingCatalogReadService struct {
 	listSkillsCalls atomic.Int64
-	principal       auth.Principal
 	query           catalog.SkillQuery
 	response        catalog.SkillsPage
-	err             *catalog.Error
+	listCuratedResp catalog.CuratedSkillsPage
+	err             error
 }
 
-func (w *capturingCatalogReadWorkflow) listSkills(_ context.Context, principal auth.Principal, query catalog.SkillQuery) (catalog.SkillsPage, *catalog.Error) {
-	w.listSkillsCalls.Add(1)
-	w.principal = principal
-	w.query = query
-	return w.response, w.err
+func (s *capturingCatalogReadService) ListSkills(_ context.Context, query catalog.SkillQuery) (catalog.SkillsPage, error) {
+	s.listSkillsCalls.Add(1)
+	s.query = query
+	return s.response, s.err
 }
 
-func (w *capturingCatalogReadWorkflow) listCuratedSkills(context.Context, auth.Principal, int, int) (catalog.CuratedSkillsPage, *catalog.Error) {
-	return catalog.CuratedSkillsPage{}, nil
+func (s *capturingCatalogReadService) ListCuratedSkills(context.Context, catalog.CuratedSkillQuery) (catalog.CuratedSkillsPage, error) {
+	return s.listCuratedResp, nil
 }
 
-func (w *capturingCatalogReadWorkflow) getSkill(context.Context, string) (catalog.SkillDetail, error) {
+func (s *capturingCatalogReadService) GetSkill(context.Context, string) (catalog.SkillDetail, error) {
 	return catalog.SkillDetail{}, nil
 }
 
-func (w *capturingCatalogReadWorkflow) listVersions(context.Context, catalog.VersionQuery) (catalog.VersionsPage, error) {
+func (s *capturingCatalogReadService) ListVersions(context.Context, catalog.VersionQuery) (catalog.VersionsPage, error) {
 	return catalog.VersionsPage{}, nil
 }
 
-func (w *capturingCatalogReadWorkflow) getVersion(context.Context, string, string) (catalog.SkillVersionDetail, error) {
+func (s *capturingCatalogReadService) GetVersion(context.Context, string, string) (catalog.SkillVersionDetail, error) {
 	return catalog.SkillVersionDetail{}, nil
 }
 
-func (w *capturingCatalogReadWorkflow) resolveInstallTarget(context.Context, string, string) (catalog.InstallResolution, error) {
+func (s *capturingCatalogReadService) ResolveInstallTarget(context.Context, string, string) (catalog.InstallResolution, error) {
 	return catalog.InstallResolution{}, nil
 }
 
-func (w *capturingCatalogReadWorkflow) listSkillsCallCount() int {
-	return int(w.listSkillsCalls.Load())
+func (s *capturingCatalogReadService) listSkillsCallCount() int {
+	return int(s.listSkillsCalls.Load())
 }
 
 type testAuditRecord struct {
