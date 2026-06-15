@@ -36,7 +36,6 @@ import (
 	"skill_registry/business/packaging"
 	artifactadapter "skill_registry/foundation/artifact"
 	"skill_registry/foundation/persist"
-	platformhttp "skill_registry/internal/platform/http"
 )
 
 func TestSkillsRequiresAuthentication(t *testing.T) {
@@ -129,23 +128,12 @@ func TestServerRoutesEncodedPackageDetailThroughHandler(t *testing.T) {
 }
 
 func TestPlatformEnginePreservesRawPathSettings(t *testing.T) {
-	var seamEngine any
-	platformhttp.TestNewEngineHook = func(engine *gin.Engine) {
-		seamEngine = engine
-	}
-	defer func() {
-		platformhttp.TestNewEngineHook = nil
-	}()
-
 	server := newTestServer()
 	handler := server.Handler()
 
 	engine, ok := handler.(*gin.Engine)
 	if !ok {
 		t.Fatalf("expected *gin.Engine handler, got %T", handler)
-	}
-	if seamEngine != engine {
-		t.Fatal("expected server handler to be constructed through platformhttp.NewEngine")
 	}
 	if !engine.UseRawPath {
 		t.Fatal("expected UseRawPath enabled")
@@ -161,6 +149,20 @@ func TestPlatformEnginePreservesRawPathSettings(t *testing.T) {
 	}
 	if engine.RedirectFixedPath {
 		t.Fatal("expected RedirectFixedPath disabled")
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills", nil)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, recorder.Code)
+	}
+	if recorder.Header().Get("X-Request-Id") == "" {
+		t.Fatal("expected X-Request-Id response header")
+	}
+	if recorder.Header().Get("X-Trace-Id") == "" {
+		t.Fatal("expected X-Trace-Id response header")
 	}
 }
 
