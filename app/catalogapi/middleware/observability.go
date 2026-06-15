@@ -1,11 +1,9 @@
 package middleware
 
 import (
-	"context"
 	"encoding/json"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -15,18 +13,9 @@ import (
 	"skill_registry/app/observability"
 )
 
-type observedState struct {
-	principal    auth.Principal
-	action       string
-	authDecision observability.AuthDecision
-	outcome      string
-}
-
-type observedStateKey struct{}
-
 func WithObservability(metrics *observability.Collector, logger *log.Logger) gin.HandlerFunc {
 	return func(context *gin.Context) {
-		context.Request = withObservedState(context.Request)
+		context.Request = common.EnsureObservedState(context.Request)
 		startedAt := time.Now()
 
 		context.Next()
@@ -43,12 +32,12 @@ func WithObservability(metrics *observability.Collector, logger *log.Logger) gin
 			method = context.Request.Method
 		}
 
-		state := observedStateFromContext(context.Request.Context())
+		state := common.ObservedStateFromContext(context.Request.Context())
 		status := context.Writer.Status()
-		outcome := observedOutcome(status, state)
+		outcome := common.ObservedOutcome(status, state)
 
 		if metrics != nil {
-			metrics.RecordRequest(method, path, status, time.Since(startedAt), state.action, state.authDecision, outcome)
+			metrics.RecordRequest(method, path, status, time.Since(startedAt), state.Action, state.AuthDecision, outcome)
 		}
 		if logger != nil {
 			fields := map[string]any{
@@ -59,11 +48,11 @@ func WithObservability(metrics *observability.Collector, logger *log.Logger) gin
 				"path":          path,
 				"status":        status,
 				"durationMs":    time.Since(startedAt).Milliseconds(),
-				"role":          state.principal.Role,
-				"actor":         state.principal.Actor,
-				"authMechanism": state.principal.AuthMechanism,
-				"action":        state.action,
-				"authDecision":  state.authDecision,
+				"role":          state.Principal.Role,
+				"actor":         state.Principal.Actor,
+				"authMechanism": state.Principal.AuthMechanism,
+				"action":        state.Action,
+				"authDecision":  state.AuthDecision,
 				"outcome":       outcome,
 			}
 			if payload, err := json.Marshal(fields); err == nil {
@@ -74,68 +63,17 @@ func WithObservability(metrics *observability.Collector, logger *log.Logger) gin
 }
 
 func SetObservedPrincipal(request *http.Request, current auth.Principal) {
-	state := observedStateFromContext(request.Context())
-	if state == nil {
-		return
-	}
-	state.principal = current
+	common.SetObservedPrincipal(request, current)
 }
 
 func SetObservedAction(request *http.Request, action string) {
-	state := observedStateFromContext(request.Context())
-	if state == nil {
-		return
-	}
-	state.action = action
+	common.SetObservedAction(request, action)
 }
 
 func SetObservedAuthDecision(request *http.Request, decision observability.AuthDecision) {
-	state := observedStateFromContext(request.Context())
-	if state == nil {
-		return
-	}
-	state.authDecision = decision
+	common.SetObservedAuthDecision(request, decision)
 }
 
 func SetObservedOutcome(request *http.Request, outcome string) {
-	state := observedStateFromContext(request.Context())
-	if state == nil {
-		return
-	}
-	state.outcome = outcome
-}
-
-func withObservedState(request *http.Request) *http.Request {
-	if request == nil {
-		return nil
-	}
-	if observedStateFromContext(request.Context()) != nil {
-		return request
-	}
-	ctx := context.WithValue(request.Context(), observedStateKey{}, &observedState{})
-	return request.WithContext(ctx)
-}
-
-func observedStateFromContext(ctx context.Context) *observedState {
-	if ctx == nil {
-		return nil
-	}
-	state, _ := ctx.Value(observedStateKey{}).(*observedState)
-	return state
-}
-
-func observedOutcome(status int, state *observedState) string {
-	if state != nil && strings.TrimSpace(state.outcome) != "" {
-		return state.outcome
-	}
-	if status >= 200 && status < 400 {
-		return "succeeded"
-	}
-	if status == http.StatusUnauthorized {
-		return "unauthorized"
-	}
-	if status == http.StatusForbidden {
-		return "forbidden"
-	}
-	return "failed"
+	common.SetObservedOutcome(request, outcome)
 }

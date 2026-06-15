@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"skill_registry/app/catalogapi/common"
-	catalogmiddleware "skill_registry/app/catalogapi/middleware"
 
 	"skill_registry/app/auth"
 	"skill_registry/app/catalogapi/audit"
@@ -26,8 +25,8 @@ type accessWorkflowHandler interface {
 
 func (w *accessWorkflow) authorizeAction(writer http.ResponseWriter, request *http.Request, action auth.Action, packageName string, version string) bool {
 	current := auth.PrincipalFromContext(request.Context())
-	catalogmiddleware.SetObservedAction(request, string(action))
-	catalogmiddleware.SetObservedAuthDecision(request, observability.AuthDecisionAllowed)
+	common.SetObservedAction(request, string(action))
+	common.SetObservedAuthDecision(request, observability.AuthDecisionAllowed)
 	if authErr := w.authorizer.AuthorizeAction(current, action); authErr != nil {
 		w.deny(writer, request, current, authErr, packageName, version)
 		return false
@@ -45,8 +44,8 @@ func (w *accessWorkflow) authorizePackage(writer http.ResponseWriter, request *h
 }
 
 func (w *accessWorkflow) deny(writer http.ResponseWriter, request *http.Request, current auth.Principal, authErr *auth.AuthorizationError, packageName string, version string) {
-	catalogmiddleware.SetObservedAuthDecision(request, observability.AuthDecisionDenied)
-	catalogmiddleware.SetObservedOutcome(request, authErr.Code)
+	common.SetObservedAuthDecision(request, observability.AuthDecisionDenied)
+	common.SetObservedOutcome(request, authErr.Code)
 	if w.audit != nil {
 		if err := w.audit.RecordAuthorizationDenied(request, current, authErr.Code, authErr.Status, packageName, version, authErr.Details); err != nil && w.logger != nil {
 			w.logger.Printf(

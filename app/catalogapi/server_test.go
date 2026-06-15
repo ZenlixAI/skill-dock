@@ -732,6 +732,59 @@ func TestServerCanonicalizesRepeatedSlashesBeforeRouting(t *testing.T) {
 	}
 }
 
+func TestServerCanonicalRedirectIncludesMetadataAndLocalCORS(t *testing.T) {
+	var logBuffer bytes.Buffer
+	server := NewServer(ServerConfig{
+		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+		Packaging:  packaging.NewService(""),
+		Logger:     log.New(&logBuffer, "", 0),
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills//foo", nil)
+	request.Header.Set("Origin", "http://127.0.0.1:4174")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusTemporaryRedirect, recorder.Code, recorder.Body.String())
+	}
+	if got := recorder.Header().Get("Location"); got != "/api/v1/skills/foo" {
+		t.Fatalf("expected redirect location /api/v1/skills/foo, got %q", got)
+	}
+
+	requestID := recorder.Header().Get("X-Request-Id")
+	if requestID == "" {
+		t.Fatal("expected X-Request-Id response header")
+	}
+
+	traceID := recorder.Header().Get("X-Trace-Id")
+	if traceID == "" {
+		t.Fatal("expected X-Trace-Id response header")
+	}
+
+	if got := recorder.Header().Get("Access-Control-Allow-Origin"); got != "http://127.0.0.1:4174" {
+		t.Fatalf("expected allow origin header, got %q", got)
+	}
+	if got := recorder.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(got, "Authorization") {
+		t.Fatalf("expected Authorization in allow headers, got %q", got)
+	}
+
+	payload := findLoggedEvent(t, logBuffer.String(), "http_request")
+	if payload["status"] != float64(http.StatusTemporaryRedirect) {
+		t.Fatalf("expected redirect status in request log, got %+v", payload)
+	}
+	if payload["path"] != "/api/v1/skills//foo" {
+		t.Fatalf("expected original redirect path in request log, got %+v", payload)
+	}
+	if payload["requestId"] != requestID {
+		t.Fatalf("expected logged requestId %q, got %+v", requestID, payload)
+	}
+	if payload["traceId"] != traceID {
+		t.Fatalf("expected logged traceId %q, got %+v", traceID, payload)
+	}
+}
+
 func TestSkillPackagingPrepareValidateAndPack(t *testing.T) {
 	server := newTestServer()
 	fixtureDir := createPackagingFixture(t)

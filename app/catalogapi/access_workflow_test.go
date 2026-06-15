@@ -12,6 +12,7 @@ import (
 
 	"skill_registry/app/auth"
 	"skill_registry/app/catalogapi/audit"
+	"skill_registry/app/catalogapi/common"
 	catalogmiddleware "skill_registry/app/catalogapi/middleware"
 	"skill_registry/app/observability"
 )
@@ -101,5 +102,38 @@ func TestAccessWorkflowAuthorizeActionFeedsGinObservability(t *testing.T) {
 	}
 	if payload["role"] != "reader" {
 		t.Fatalf("expected role reader, got %+v", payload)
+	}
+}
+
+func TestAccessWorkflowAuthorizeActionSetsNeutralObservedState(t *testing.T) {
+	workflow := &accessWorkflow{
+		authorizer: auth.NewAuthorizer(auth.Config{}),
+		audit:      audit.NewRecorder(&captureAuditStore{}),
+		logger:     log.New(io.Discard, "", 0),
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills", nil)
+	request = common.EnsureObservedState(request)
+	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{
+		Role:          "reader",
+		Actor:         "svc-reader",
+		AuthMechanism: "configured_token",
+	}))
+	recorder := httptest.NewRecorder()
+
+	ok := workflow.authorizeAction(recorder, request, auth.ActionReadCatalog, "", "")
+	if !ok {
+		t.Fatal("expected action to be authorized")
+	}
+
+	state := common.ObservedStateFromContext(request.Context())
+	if state == nil {
+		t.Fatal("expected observed state in request context")
+	}
+	if state.Action != string(auth.ActionReadCatalog) {
+		t.Fatalf("expected action %q, got %+v", auth.ActionReadCatalog, state)
+	}
+	if state.AuthDecision != observability.AuthDecisionAllowed {
+		t.Fatalf("expected authDecision %q, got %+v", observability.AuthDecisionAllowed, state)
 	}
 }
