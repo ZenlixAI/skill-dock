@@ -290,6 +290,10 @@ func (s *Server) routerConfig() routerpkg.Config {
 func (s *Server) ginHandler(handler http.Handler, pathParams ...string) gin.HandlerFunc {
 	return func(context *gin.Context) {
 		request := context.Request
+		writer := http.ResponseWriter(context.Writer)
+		if unwrapper, ok := any(context.Writer).(interface{ Unwrap() http.ResponseWriter }); ok {
+			writer = unwrapper.Unwrap()
+		}
 		for _, key := range pathParams {
 			value := context.Param(key)
 			if decoded, err := url.PathUnescape(value); err == nil {
@@ -297,6 +301,9 @@ func (s *Server) ginHandler(handler http.Handler, pathParams ...string) gin.Hand
 			}
 			request.SetPathValue(key, value)
 		}
-		handler.ServeHTTP(context.Writer, request)
+		handler.ServeHTTP(writer, request)
+		if recorder, ok := writer.(*observability.StatusRecorder); ok {
+			context.Writer.WriteHeader(recorder.Status)
+		}
 	}
 }
