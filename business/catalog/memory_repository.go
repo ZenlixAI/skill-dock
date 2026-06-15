@@ -9,6 +9,7 @@ import (
 	"time"
 
 	internaldomain "skill_registry/internal/catalog/domain"
+	internalinfra "skill_registry/internal/catalog/infra"
 )
 
 type MemoryRepositoryOptions struct {
@@ -247,148 +248,11 @@ func formatCursorToken(offset int) string {
 }
 
 func SampleData() SampleCatalogData {
-	return SampleDataWithRegistryBase("https://npm.internal.example.com")
+	return internalinfra.SampleData()
 }
 
 func SampleDataWithRegistryBase(registryBase string) SampleCatalogData {
-	latestPublished := "1.2.0"
-	latestPublishedStatus := "published"
-	curatedVersion := "0.9.0"
-	curatedVersionStatus := "published"
-	retiredVersion := "2.0.0"
-	retiredVersionStatus := "published"
-
-	pdfVersions := []SkillVersionDetail{
-		newMaterializedVersion(registryBase, "@platform.skill/pdf-skill", "1.0.0", VersionStatusPublished, InstallPolicyResolvable, time.Date(2026, 5, 20, 8, 0, 0, 0, time.UTC), "PDF Skill", "PDF processing workflow", []string{"commands", "scripts"}),
-		newMaterializedVersion(registryBase, "@platform.skill/pdf-skill", "1.1.0", VersionStatusDeprecated, InstallPolicyResolvable, time.Date(2026, 5, 23, 8, 0, 0, 0, time.UTC), "PDF Skill", "PDF processing workflow", []string{"commands", "scripts"}),
-		newMaterializedVersion(registryBase, "@platform.skill/pdf-skill", "1.2.0", VersionStatusPublished, InstallPolicyResolvable, time.Date(2026, 5, 28, 8, 20, 0, 0, time.UTC), "PDF Skill", "PDF processing workflow", []string{"commands", "scripts"}),
-		newMaterializedVersion(registryBase, "@platform.skill/pdf-skill", "1.3.0", VersionStatusYanked, InstallPolicyBlocked, time.Date(2026, 5, 29, 8, 20, 0, 0, time.UTC), "PDF Skill", "PDF processing workflow", []string{"commands", "scripts"}),
-	}
-
-	curatedVersions := []SkillVersionDetail{
-		newMaterializedVersion(registryBase, "@platform.skill/code-review", "0.9.0", VersionStatusPublished, InstallPolicyResolvable, time.Date(2026, 5, 26, 12, 0, 0, 0, time.UTC), "Code Review Accelerator", "Structured code review prompts and checklists", []string{"commands", "scripts"}),
-	}
-
-	retiredVersions := []SkillVersionDetail{
-		newMaterializedVersion(registryBase, "@community/legacy-notes", "2.0.0", VersionStatusPublished, InstallPolicyResolvable, time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC), "Legacy Notes", "Old note-taking workflow retained for migration", []string{"commands", "scripts"}),
-	}
-
-	yankedVersion := "1.3.0"
-	replacementRecommendation := "1.2.0"
-
-	return SampleCatalogData{
-		Skills: []skillRecord{
-			{
-				Detail: SkillDetail{
-					SkillSummary: SkillSummary{
-						PackageName:         "@platform.skill/pdf-skill",
-						DisplayName:         "PDF Skill",
-						Description:         "PDF processing workflow",
-						SourceType:          SourceTypeImported,
-						Status:              SkillStatusActive,
-						LatestVersion:       &latestPublished,
-						LatestVersionStatus: &latestPublishedStatus,
-						UpdatedAt:           time.Date(2026, 5, 29, 9, 0, 0, 0, time.UTC),
-					},
-					CreatedAt: time.Date(2026, 5, 20, 2, 0, 0, 0, time.UTC),
-				},
-				Versions: pdfVersions,
-			},
-			{
-				Detail: SkillDetail{
-					SkillSummary: SkillSummary{
-						PackageName:         "@platform.skill/code-review",
-						DisplayName:         "Code Review Accelerator",
-						Description:         "Structured code review prompts and checklists",
-						SourceType:          SourceTypeNative,
-						Status:              SkillStatusActive,
-						LatestVersion:       &curatedVersion,
-						LatestVersionStatus: &curatedVersionStatus,
-						UpdatedAt:           time.Date(2026, 5, 27, 7, 0, 0, 0, time.UTC),
-					},
-					CreatedAt: time.Date(2026, 5, 19, 3, 0, 0, 0, time.UTC),
-				},
-				CurationReason: "featured",
-				Versions:       curatedVersions,
-			},
-			{
-				Detail: SkillDetail{
-					SkillSummary: SkillSummary{
-						PackageName:         "@community/legacy-notes",
-						DisplayName:         "Legacy Notes",
-						Description:         "Old note-taking workflow retained for migration",
-						SourceType:          SourceTypeImported,
-						Status:              SkillStatusRetired,
-						LatestVersion:       &retiredVersion,
-						LatestVersionStatus: &retiredVersionStatus,
-						UpdatedAt:           time.Date(2026, 5, 25, 6, 0, 0, 0, time.UTC),
-					},
-					CreatedAt: time.Date(2026, 5, 10, 1, 0, 0, 0, time.UTC),
-				},
-				Versions: retiredVersions,
-			},
-		},
-		Governance: []GovernanceRecord{
-			{
-				ID:                        "gov_01hxyank",
-				TargetType:                GovernanceTargetVersion,
-				PackageName:               "@platform.skill/pdf-skill",
-				Version:                   &yankedVersion,
-				Action:                    GovernanceActionYank,
-				Reason:                    "security issue",
-				ReplacementRecommendation: &replacementRecommendation,
-				ChangedBy:                 "user_123",
-				ChangedAt:                 time.Date(2026, 5, 29, 9, 10, 0, 0, time.UTC),
-			},
-			{
-				ID:          "gov_01hxretire",
-				TargetType:  GovernanceTargetSkill,
-				PackageName: "@community/legacy-notes",
-				Action:      GovernanceActionRetire,
-				Reason:      "merged into successor skill",
-				ChangedBy:   "user_456",
-				ChangedAt:   time.Date(2026, 5, 26, 9, 10, 0, 0, time.UTC),
-			},
-		},
-		Artifacts: []ReleaseArtifact{
-			{
-				SkillDisplayName: "Agent Notes",
-				SkillDescription: "Capture agent workflow notes",
-				SkillSourceType:  SourceTypePlatformCreated,
-				Version:          newMaterializedVersion(registryBase, "@platform.skill/agent-notes", "0.1.0", VersionStatusPublished, InstallPolicyResolvable, time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC), "Agent Notes", "Capture agent workflow notes", []string{"commands", "scripts"}),
-			},
-			{
-				SkillDisplayName: "PDF Skill",
-				SkillDescription: "PDF processing workflow",
-				SkillSourceType:  SourceTypeImported,
-				Version:          newMaterializedVersion(registryBase, "@platform.skill/pdf-skill", "1.2.0", VersionStatusPublished, InstallPolicyResolvable, time.Date(2026, 5, 28, 8, 20, 0, 0, time.UTC), "PDF Skill", "PDF processing workflow", []string{"commands", "scripts"}),
-			},
-			{
-				SkillDisplayName: "PDF Skill",
-				SkillDescription: "PDF processing workflow",
-				SkillSourceType:  SourceTypeImported,
-				Version: func() SkillVersionDetail {
-					version := newMaterializedVersion(registryBase, "@platform.skill/pdf-skill", "1.1.0", VersionStatusDeprecated, InstallPolicyResolvable, time.Date(2026, 5, 23, 8, 0, 0, 0, time.UTC), "PDF Skill", "PDF processing workflow", []string{"commands", "scripts"})
-					version.Bundle.SkillManifestDigest = "sha256:conflict"
-					return version
-				}(),
-			},
-			{
-				SkillDisplayName: "Broken Bundle",
-				SkillDescription: "Invalid bundle for testing",
-				SkillSourceType:  SourceTypeImported,
-				Version:          newMaterializedVersion(registryBase, "@platform.skill/broken-bundle", "0.1.0", VersionStatusPublished, InstallPolicyResolvable, time.Date(2026, 5, 30, 11, 0, 0, 0, time.UTC), "Broken Bundle", "Invalid bundle for testing", []string{"commands", "scripts"}),
-				ValidationError:  "single-skill bundle must contain exactly one root SKILL.md",
-			},
-			{
-				SkillDisplayName: "Registry Down",
-				SkillDescription: "Simulate an upstream outage",
-				SkillSourceType:  SourceTypeImported,
-				Version:          newMaterializedVersion(registryBase, "@platform.skill/registry-down", "0.1.0", VersionStatusPublished, InstallPolicyResolvable, time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC), "Registry Down", "Simulate an upstream outage", []string{"commands", "scripts"}),
-				RegistryDown:     true,
-			},
-		},
-	}
+	return internalinfra.SampleDataWithRegistryBase(registryBase)
 }
 
 func newVersion(registryBase string, packageName string, version string, versionStatus VersionStatus, policy InstallPolicy, publishedAt time.Time) SkillVersionDetail {

@@ -8,13 +8,14 @@ import (
 	"skill_registry/app/auth"
 	"skill_registry/app/catalogapi/audit"
 	"skill_registry/business/catalog"
+	internaldomain "skill_registry/internal/catalog/domain"
 )
 
 func TestCatalogMutationModuleCreatesReleaseRecordAndRecordsCreatedAudit(t *testing.T) {
 	store := &captureAuditStore{}
 	module := &catalogMutationModule{
-		repo:  catalog.NewMemoryRepository(catalog.SampleData()),
-		audit: audit.NewRecorder(store),
+		service: catalog.NewMemoryRepository(catalog.SampleData()),
+		audit:   audit.NewRecorder(store),
 	}
 	principal := auth.Principal{
 		Role:          "publisher",
@@ -44,8 +45,8 @@ func TestCatalogMutationModuleCreatesReleaseRecordAndRecordsCreatedAudit(t *test
 func TestCatalogMutationModuleAppliesSkillGovernanceAndRecordsAudit(t *testing.T) {
 	store := &captureAuditStore{}
 	module := &catalogMutationModule{
-		repo:  catalog.NewMemoryRepository(catalog.SampleData()),
-		audit: audit.NewRecorder(store),
+		service: catalog.NewMemoryRepository(catalog.SampleData()),
+		audit:   audit.NewRecorder(store),
 	}
 	principal := auth.Principal{
 		Role:          "publisher",
@@ -72,8 +73,8 @@ func TestCatalogMutationModuleAppliesSkillGovernanceAndRecordsAudit(t *testing.T
 func TestCatalogMutationModuleAppliesVersionGovernanceAndRecordsAudit(t *testing.T) {
 	store := &captureAuditStore{}
 	module := &catalogMutationModule{
-		repo:  catalog.NewMemoryRepository(catalog.SampleData()),
-		audit: audit.NewRecorder(store),
+		service: catalog.NewMemoryRepository(catalog.SampleData()),
+		audit:   audit.NewRecorder(store),
 	}
 	principal := auth.Principal{
 		Role:          "publisher",
@@ -94,5 +95,28 @@ func TestCatalogMutationModuleAppliesVersionGovernanceAndRecordsAudit(t *testing
 	}
 	if len(store.events) != 1 || store.events[0].Action != "governance.version" {
 		t.Fatalf("unexpected audit events: %+v", store.events)
+	}
+}
+
+type catalogMutationServiceStub struct{}
+
+func (catalogMutationServiceStub) CreateReleaseRecord(context.Context, string, string, internaldomain.ReleaseRecordInput) (internaldomain.ReleaseRecordResult, error) {
+	return internaldomain.ReleaseRecordResult{Created: true}, nil
+}
+
+func (catalogMutationServiceStub) ApplySkillGovernanceChange(context.Context, string, internaldomain.SkillGovernanceChangeInput, string) (internaldomain.GovernanceChangeResponse, error) {
+	return internaldomain.GovernanceChangeResponse{}, nil
+}
+
+func (catalogMutationServiceStub) ApplyVersionGovernanceChange(context.Context, string, string, internaldomain.VersionGovernanceChangeInput, string) (internaldomain.GovernanceChangeResponse, error) {
+	return internaldomain.GovernanceChangeResponse{}, nil
+}
+
+func TestCatalogMutationModuleAcceptsCatalogWriteServiceSeam(t *testing.T) {
+	module := &catalogMutationModule{
+		service: catalogMutationServiceStub{},
+	}
+	if module.service == nil {
+		t.Fatal("expected catalog mutation module to keep a write service seam")
 	}
 }

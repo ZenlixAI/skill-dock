@@ -3,7 +3,8 @@ package catalog
 import (
 	"context"
 	"database/sql"
-	"strings"
+
+	internalinfra "skill_registry/internal/catalog/infra"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	_ "modernc.org/sqlite"
@@ -15,25 +16,22 @@ type SQLRepositoryOptions struct {
 }
 
 func NewSQLRepository(ctx context.Context, databaseURL string, seedData SampleCatalogData, options SQLRepositoryOptions) (*CatalogRepository, error) {
-	driverName := sqlDriverNameForURL(databaseURL)
-	db, err := sql.Open(driverName, databaseURL)
+	db, _, store, err := internalinfra.OpenSQLStateStore(ctx, databaseURL)
 	if err != nil {
 		return nil, err
 	}
-	repository, err := NewSQLRepositoryWithDB(ctx, db, driverName, seedData, options)
-	if err != nil {
-		_ = db.Close()
-		return nil, err
-	}
-	return repository, nil
+	return newSQLRepositoryWithStore(ctx, &SQLStateStore{inner: store}, seedData, options, db)
 }
 
 func NewSQLRepositoryWithDB(ctx context.Context, db *sql.DB, driverName string, seedData SampleCatalogData, options SQLRepositoryOptions) (*CatalogRepository, error) {
-	store := NewSQLStateStore(db, driverName)
-	if err := store.Migrate(ctx); err != nil {
+	store, err := internalinfra.PrepareSQLStateStore(ctx, db, driverName)
+	if err != nil {
 		return nil, err
 	}
+	return newSQLRepositoryWithStore(ctx, &SQLStateStore{inner: store}, seedData, options, nil)
+}
 
+func newSQLRepositoryWithStore(ctx context.Context, store *SQLStateStore, seedData SampleCatalogData, options SQLRepositoryOptions, ownedDB *sql.DB) (*CatalogRepository, error) {
 	artifactSource := options.ArtifactSource
 	if artifactSource == nil {
 		artifactSource = NewStaticArtifactSource(seedData.Artifacts)
@@ -45,6 +43,9 @@ func NewSQLRepositoryWithDB(ctx context.Context, db *sql.DB, driverName string, 
 	})
 	if !options.DisableSeed {
 		if err := repository.Seed(ctx, seedData); err != nil {
+			if ownedDB != nil {
+				_ = ownedDB.Close()
+			}
 			return nil, err
 		}
 	}
@@ -52,10 +53,5 @@ func NewSQLRepositoryWithDB(ctx context.Context, db *sql.DB, driverName string, 
 }
 
 func sqlDriverNameForURL(databaseURL string) string {
-	switch {
-	case strings.HasPrefix(databaseURL, "postgres://"), strings.HasPrefix(databaseURL, "postgresql://"):
-		return "pgx"
-	default:
-		return "sqlite"
-	}
+	return internalinfra.SQLDriverNameForURL(databaseURL)
 }

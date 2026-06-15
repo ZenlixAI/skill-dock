@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -129,119 +128,6 @@ func TestSQLRepositoryListVersionsPagesWithVersionAwareOrderInStore(t *testing.T
 	}
 }
 
-func TestSQLStateStoreListSkillsSQLAppliesSortLimitOffset(t *testing.T) {
-	store := &SQLStateStore{dialect: "sqlite"}
-	query := SkillQuery{
-		Sort:     "package_name_asc",
-		PageSize: 1,
-		Cursor:   1,
-	}
-
-	sortKey, err := normalizedSkillsSort(query.Sort, query.Query)
-	if err != nil {
-		t.Fatalf("normalize sort: %v", err)
-	}
-
-	sqlText := store.listSkillsSQL(query, sortKey)
-	if !strings.Contains(sqlText, "ORDER BY package_name ASC") {
-		t.Fatalf("expected package sort in SQL, got %q", sqlText)
-	}
-	if !strings.Contains(sqlText, "LIMIT ?") {
-		t.Fatalf("expected SQL limit clause, got %q", sqlText)
-	}
-	if !strings.Contains(sqlText, "OFFSET ?") {
-		t.Fatalf("expected SQL offset clause, got %q", sqlText)
-	}
-
-	args := store.listSkillsArgs(query, sortKey)
-	want := []any{2, 1}
-	if !reflect.DeepEqual(args, want) {
-		t.Fatalf("expected limit/offset args %v, got %v", want, args)
-	}
-}
-
-func TestSQLStateStoreListSkillsSQLAppliesAllowedPackageFilters(t *testing.T) {
-	store := &SQLStateStore{dialect: "sqlite"}
-	query := SkillQuery{
-		AllowedPackages: []string{
-			"@platform.skill/pdf-skill",
-			"@platform.skill/code*",
-		},
-		PageSize: 10,
-	}
-
-	sortKey, err := normalizedSkillsSort(query.Sort, query.Query)
-	if err != nil {
-		t.Fatalf("normalize sort: %v", err)
-	}
-
-	sqlText := store.listSkillsSQL(query, sortKey)
-	if !strings.Contains(sqlText, "package_name = ?") {
-		t.Fatalf("expected exact package filter in SQL, got %q", sqlText)
-	}
-	if !strings.Contains(sqlText, "package_name LIKE ?") {
-		t.Fatalf("expected prefix package filter in SQL, got %q", sqlText)
-	}
-
-	args := store.listSkillsFilterArgs(query)
-	want := []any{"@platform.skill/pdf-skill", "@platform.skill/code%"}
-	if !reflect.DeepEqual(args, want) {
-		t.Fatalf("expected allowed package args %v, got %v", want, args)
-	}
-}
-
-func TestSQLStateStoreListCuratedSkillsSQLAppliesLimitOffsetAndAllowedPackages(t *testing.T) {
-	store := &SQLStateStore{dialect: "sqlite"}
-	query := CuratedSkillQuery{
-		AllowedPackages: []string{"@platform.skill/code*"},
-		PageSize:        1,
-		Cursor:          2,
-	}
-
-	sqlText := store.listCuratedSkillsSQL(query)
-	if !strings.Contains(sqlText, "ORDER BY updated_at DESC") {
-		t.Fatalf("expected curated ordering in SQL, got %q", sqlText)
-	}
-	if !strings.Contains(sqlText, "LIMIT ?") || !strings.Contains(sqlText, "OFFSET ?") {
-		t.Fatalf("expected curated SQL pagination clauses, got %q", sqlText)
-	}
-	if !strings.Contains(sqlText, "package_name LIKE ?") {
-		t.Fatalf("expected curated allowed-package filter, got %q", sqlText)
-	}
-
-	args := store.listCuratedSkillsArgs(query)
-	want := []any{"@platform.skill/code%", 2, 2}
-	if !reflect.DeepEqual(args, want) {
-		t.Fatalf("expected curated args %v, got %v", want, args)
-	}
-}
-
-func TestSQLStateStoreListGovernanceSQLAppliesLimitOffset(t *testing.T) {
-	store := &SQLStateStore{dialect: "sqlite"}
-	query := GovernanceQuery{
-		PackageName: "@platform.skill/pdf-skill",
-		PageSize:    1,
-		Cursor:      1,
-	}
-
-	sqlText := store.listGovernanceSQL(query)
-	if !strings.Contains(sqlText, "ORDER BY changed_at DESC, id ASC") {
-		t.Fatalf("expected governance ordering in SQL, got %q", sqlText)
-	}
-	if !strings.Contains(sqlText, "LIMIT ?") {
-		t.Fatalf("expected SQL limit clause, got %q", sqlText)
-	}
-	if !strings.Contains(sqlText, "OFFSET ?") {
-		t.Fatalf("expected SQL offset clause, got %q", sqlText)
-	}
-
-	args := store.listGovernanceArgs(query)
-	want := []any{"@platform.skill/pdf-skill", 2, 1}
-	if !reflect.DeepEqual(args, want) {
-		t.Fatalf("expected governance args %v, got %v", want, args)
-	}
-}
-
 func TestSQLRepositoryPersistsReleaseRecordsAcrossInstances(t *testing.T) {
 	ctx := context.Background()
 	databaseURL := "file:" + filepath.Join(t.TempDir(), "catalog.db")
@@ -309,12 +195,16 @@ func TestSQLRepositoryWithDBUsesInjectedHandle(t *testing.T) {
 		t.Fatalf("create repository with shared db: %v", err)
 	}
 
-	store, ok := repo.reads.store.(*SQLStateStore)
-	if !ok {
-		t.Fatalf("expected SQLStateStore, got %T", repo.reads.store)
+	if _, err := repo.CreateReleaseRecord(ctx, "@platform.skill/agent-notes", "0.1.0", ReleaseRecordInput{}); err != nil {
+		t.Fatalf("create release record via injected db handle: %v", err)
 	}
-	if store.db != db {
-		t.Fatal("expected repository to reuse injected *sql.DB")
+
+	var skillCount int
+	if err := db.QueryRowContext(ctx, bindSQL(driverName, `SELECT COUNT(*) FROM skills WHERE package_name = ?`), "@platform.skill/agent-notes").Scan(&skillCount); err != nil {
+		t.Fatalf("query injected db handle: %v", err)
+	}
+	if skillCount != 1 {
+		t.Fatalf("expected injected db handle to observe persisted row, got %d", skillCount)
 	}
 }
 

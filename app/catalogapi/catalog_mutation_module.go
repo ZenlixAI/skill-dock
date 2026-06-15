@@ -9,11 +9,19 @@ import (
 	"skill_registry/app/auth"
 	"skill_registry/app/catalogapi/audit"
 	"skill_registry/business/catalog"
+	internaldomain "skill_registry/internal/catalog/domain"
 )
 
+type catalogMutationService interface {
+	CreateReleaseRecord(ctx context.Context, packageName string, version string, input internaldomain.ReleaseRecordInput) (internaldomain.ReleaseRecordResult, error)
+	ApplySkillGovernanceChange(ctx context.Context, packageName string, input internaldomain.SkillGovernanceChangeInput, actor string) (internaldomain.GovernanceChangeResponse, error)
+	ApplyVersionGovernanceChange(ctx context.Context, packageName string, version string, input internaldomain.VersionGovernanceChangeInput, actor string) (internaldomain.GovernanceChangeResponse, error)
+}
+
 type catalogMutationModule struct {
-	repo  catalog.WriteRepository
-	audit *audit.Recorder
+	repo    catalog.WriteRepository
+	service catalogMutationService
+	audit   *audit.Recorder
 }
 
 type catalogMutationWorkflow interface {
@@ -36,7 +44,7 @@ func (m *catalogMutationModule) createReleaseRecord(ctx context.Context, princip
 		return catalog.ReleaseRecordResult{}, 0, decodeErr
 	}
 
-	response, repoErr := m.repo.CreateReleaseRecord(ctx, packageName, version, input)
+	response, repoErr := m.writeService().CreateReleaseRecord(ctx, packageName, version, input)
 	if repoErr != nil {
 		catalogErr := common.CatalogErrorFromError(repoErr)
 		m.recordAudit(ctx, principal, http.MethodPut, "/api/v1/skills/"+packageName+"/versions/"+version+"/release-record", "release.record", packageName, version, catalogErr.Status, "failed", map[string]any{
@@ -62,7 +70,7 @@ func (m *catalogMutationModule) applySkillGovernanceChange(ctx context.Context, 
 		return catalog.GovernanceChangeResponse{}, 0, err
 	}
 
-	response, repoErr := m.repo.ApplySkillGovernanceChange(ctx, packageName, payload, principal.Actor)
+	response, repoErr := m.writeService().ApplySkillGovernanceChange(ctx, packageName, payload, principal.Actor)
 	if repoErr != nil {
 		catalogErr := common.CatalogErrorFromError(repoErr)
 		m.recordAudit(ctx, principal, http.MethodPost, "/api/v1/skills/"+packageName+"/governance-changes", "governance.skill", packageName, "", catalogErr.Status, "failed", map[string]any{
@@ -89,7 +97,7 @@ func (m *catalogMutationModule) applyVersionGovernanceChange(ctx context.Context
 		return catalog.GovernanceChangeResponse{}, 0, err
 	}
 
-	response, repoErr := m.repo.ApplyVersionGovernanceChange(ctx, packageName, version, payload, principal.Actor)
+	response, repoErr := m.writeService().ApplyVersionGovernanceChange(ctx, packageName, version, payload, principal.Actor)
 	if repoErr != nil {
 		catalogErr := common.CatalogErrorFromError(repoErr)
 		m.recordAudit(ctx, principal, http.MethodPost, "/api/v1/skills/"+packageName+"/versions/"+version+"/governance-changes", "governance.version", packageName, version, catalogErr.Status, "failed", map[string]any{
@@ -110,4 +118,11 @@ func (m *catalogMutationModule) recordAudit(ctx context.Context, principal auth.
 		return
 	}
 	_ = m.audit.RecordMutationForEndpoint(ctx, principal, method, endpoint, action, packageName, version, status, outcome, details)
+}
+
+func (m *catalogMutationModule) writeService() catalogMutationService {
+	if m != nil && m.service != nil {
+		return m.service
+	}
+	return m.repo
 }
