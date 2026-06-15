@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -17,44 +16,18 @@ import (
 	"skill_registry/app/auth"
 	"skill_registry/app/catalogapi"
 	"skill_registry/business/catalog"
-	"skill_registry/business/packaging"
 	artifactadapter "skill_registry/foundation/artifact"
-	"skill_registry/foundation/persist"
+	"skill_registry/internal/backend"
 )
 
 func main() {
-	addr := envOrDefault("SKILL_REGISTRY_ADDR", ":8080")
-	sharedWorkspaceRoot := envOrDefault("SKILL_REGISTRY_SHARED_WORKSPACE_ROOT", filepath.Join("data", "packaging-workspaces"))
-
-	artifactSource := configuredArtifactSource()
-	databaseURL := envOrDefault("SKILL_REGISTRY_DATABASE_URL", "file:"+filepath.Join("data", "skill-registry.db"))
-	driverName := sharedSQLDriverNameForURL(databaseURL)
-	db, err := sql.Open(driverName, databaseURL)
-	if err != nil {
-		log.Fatal(err)
-	}
-	configureDBPool(db)
-
-	repository, err := catalog.NewSQLRepositoryWithDB(context.Background(), db, driverName, catalog.SampleCatalogData{}, configuredRepositoryOptions(artifactSource))
-	if err != nil {
-		log.Fatal(err)
-	}
-	storeSet, err := persist.NewSQLStoreSetWithDB(context.Background(), db, driverName, 10*time.Minute)
+	runtime, err := backend.NewRuntime(context.Background(), configuredRuntimeConfig())
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	server := catalogapi.NewServer(configuredServerConfig(repository, storeSet, sharedWorkspaceRoot))
-
-	httpServer := catalogapi.NewHTTPServer(addr, server.Handler(), catalogapi.HTTPServerConfig{
-		ReadHeaderTimeout: envDurationOrDefault("SKILL_REGISTRY_HTTP_READ_HEADER_TIMEOUT", 2*time.Second),
-		ReadTimeout:       envDurationOrDefault("SKILL_REGISTRY_HTTP_READ_TIMEOUT", 15*time.Second),
-		WriteTimeout:      envDurationOrDefault("SKILL_REGISTRY_HTTP_WRITE_TIMEOUT", 60*time.Second),
-		IdleTimeout:       envDurationOrDefault("SKILL_REGISTRY_HTTP_IDLE_TIMEOUT", 60*time.Second),
-	})
-
-	log.Printf("skill registry listening on %s", addr)
-	if err := serveHTTPServer(httpServer); err != nil {
+	log.Printf("skill registry listening on %s", runtime.HTTPServer.Addr)
+	if err := serveHTTPServer(runtime.HTTPServer); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -84,36 +57,45 @@ func configuredRepositoryOptions(artifactSource catalog.ArtifactSource) catalog.
 	}
 }
 
-func configuredServerConfig(repository catalog.Repository, storeSet *persist.SQLStoreSet, sharedWorkspaceRoot string) catalogapi.ServerConfig {
-	var workspaceStore persist.WorkspaceStore
-	var idempotencyStore persist.IdempotencyStore
-	var auditStore persist.AuditStore
-	if storeSet != nil {
-		workspaceStore = storeSet.Workspace
-		idempotencyStore = storeSet.Idempotency
-		auditStore = storeSet.Audit
-	}
+func configuredRuntimeConfig() backend.Config {
+	artifactSource := configuredArtifactSource()
 
-	return catalogapi.ServerConfig{
-		Mode:                            catalogapi.ServerMode(os.Getenv("SKILL_REGISTRY_SERVER_MODE")),
-		ReadListCacheTTL:                envDurationOrDefault("SKILL_REGISTRY_READ_CACHE_LIST_TTL", 2*time.Second),
-		ReadDetailCacheTTL:              envDurationOrDefault("SKILL_REGISTRY_READ_CACHE_DETAIL_TTL", 5*time.Second),
-		ReadMaxInFlight:                 envIntOrDefault("SKILL_REGISTRY_READ_MAX_IN_FLIGHT", 64),
-		WriteMaxInFlight:                envIntOrDefault("SKILL_REGISTRY_WRITE_MAX_IN_FLIGHT", 4),
-		ReaderToken:                     os.Getenv("SKILL_REGISTRY_READER_TOKEN"),
-		AuthoringToken:                  os.Getenv("SKILL_REGISTRY_AUTHORING_TOKEN"),
-		PublisherToken:                  os.Getenv("SKILL_REGISTRY_PUBLISHER_TOKEN"),
-		NPMRegistryURL:                  os.Getenv("SKILL_REGISTRY_NPM_REGISTRY_URL"),
-		NPMRegistryPublishAuthorization: configuredNPMPublishAuthorization(),
-		PublicNPMRegistryURL:            os.Getenv("SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL"),
-		AuthTokens:                      configuredAuthTokens(),
-		SessionSecret:                   os.Getenv("SKILL_REGISTRY_SESSION_SECRET"),
-		SessionUsers:                    configuredSessionUsers(),
-		Packaging:                       packaging.NewServiceWithWorkspaceStore(sharedWorkspaceRoot, workspaceStore),
-		Repository:                      repository,
-		Idempotency:                     idempotencyStore,
-		Audit:                           auditStore,
-		Logger:                          log.New(os.Stderr, "", 0),
+	return backend.Config{
+		Addr:                envOrDefault("SKILL_REGISTRY_ADDR", ":8080"),
+		DatabaseURL:         envOrDefault("SKILL_REGISTRY_DATABASE_URL", "file:"+filepath.Join("data", "skill-registry.db")),
+		SharedWorkspaceRoot: envOrDefault("SKILL_REGISTRY_SHARED_WORKSPACE_ROOT", filepath.Join("data", "packaging-workspaces")),
+		ArtifactSource:      artifactSource,
+		RepositoryOptions:   configuredRepositoryOptions(artifactSource),
+		Server: catalogapi.ServerConfig{
+			Mode:                            catalogapi.ServerMode(os.Getenv("SKILL_REGISTRY_SERVER_MODE")),
+			ReadListCacheTTL:                envDurationOrDefault("SKILL_REGISTRY_READ_CACHE_LIST_TTL", 2*time.Second),
+			ReadDetailCacheTTL:              envDurationOrDefault("SKILL_REGISTRY_READ_CACHE_DETAIL_TTL", 5*time.Second),
+			ReadMaxInFlight:                 envIntOrDefault("SKILL_REGISTRY_READ_MAX_IN_FLIGHT", 64),
+			WriteMaxInFlight:                envIntOrDefault("SKILL_REGISTRY_WRITE_MAX_IN_FLIGHT", 4),
+			ReaderToken:                     os.Getenv("SKILL_REGISTRY_READER_TOKEN"),
+			AuthoringToken:                  os.Getenv("SKILL_REGISTRY_AUTHORING_TOKEN"),
+			PublisherToken:                  os.Getenv("SKILL_REGISTRY_PUBLISHER_TOKEN"),
+			NPMRegistryURL:                  os.Getenv("SKILL_REGISTRY_NPM_REGISTRY_URL"),
+			NPMRegistryPublishAuthorization: configuredNPMPublishAuthorization(),
+			PublicNPMRegistryURL:            os.Getenv("SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL"),
+			AuthTokens:                      configuredAuthTokens(),
+			SessionSecret:                   os.Getenv("SKILL_REGISTRY_SESSION_SECRET"),
+			SessionUsers:                    configuredSessionUsers(),
+			Logger:                          log.New(os.Stderr, "", 0),
+		},
+		HTTPServer: catalogapi.HTTPServerConfig{
+			ReadHeaderTimeout: envDurationOrDefault("SKILL_REGISTRY_HTTP_READ_HEADER_TIMEOUT", 2*time.Second),
+			ReadTimeout:       envDurationOrDefault("SKILL_REGISTRY_HTTP_READ_TIMEOUT", 15*time.Second),
+			WriteTimeout:      envDurationOrDefault("SKILL_REGISTRY_HTTP_WRITE_TIMEOUT", 60*time.Second),
+			IdleTimeout:       envDurationOrDefault("SKILL_REGISTRY_HTTP_IDLE_TIMEOUT", 60*time.Second),
+		},
+		DBPool: backend.DBPoolConfig{
+			MaxOpenConns:    envIntOrDefault("SKILL_REGISTRY_DB_MAX_OPEN_CONNS", 20),
+			MaxIdleConns:    envIntOrDefault("SKILL_REGISTRY_DB_MAX_IDLE_CONNS", 20),
+			ConnMaxLifetime: envDurationOrDefault("SKILL_REGISTRY_DB_CONN_MAX_LIFETIME", time.Hour),
+			ConnMaxIdleTime: envDurationOrDefault("SKILL_REGISTRY_DB_CONN_MAX_IDLE_TIME", 15*time.Minute),
+		},
+		IdempotencyTTL: 10 * time.Minute,
 	}
 }
 
@@ -177,16 +159,6 @@ func configuredNPMPublishAuthorization() string {
 	return ""
 }
 
-func configureDBPool(db *sql.DB) {
-	if db == nil {
-		return
-	}
-	db.SetMaxOpenConns(envIntOrDefault("SKILL_REGISTRY_DB_MAX_OPEN_CONNS", 20))
-	db.SetMaxIdleConns(envIntOrDefault("SKILL_REGISTRY_DB_MAX_IDLE_CONNS", 20))
-	db.SetConnMaxLifetime(envDurationOrDefault("SKILL_REGISTRY_DB_CONN_MAX_LIFETIME", time.Hour))
-	db.SetConnMaxIdleTime(envDurationOrDefault("SKILL_REGISTRY_DB_CONN_MAX_IDLE_TIME", 15*time.Minute))
-}
-
 func serveHTTPServer(httpServer *http.Server) error {
 	if httpServer == nil {
 		return nil
@@ -219,13 +191,4 @@ func serveHTTPServer(httpServer *http.Server) error {
 		return err
 	}
 	return nil
-}
-
-func sharedSQLDriverNameForURL(databaseURL string) string {
-	switch {
-	case strings.HasPrefix(databaseURL, "postgres://"), strings.HasPrefix(databaseURL, "postgresql://"):
-		return "pgx"
-	default:
-		return "sqlite"
-	}
 }

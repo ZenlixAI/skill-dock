@@ -10,6 +10,7 @@ import (
 	"skill_registry/app/catalogapi"
 	"skill_registry/business/catalog"
 	artifactadapter "skill_registry/foundation/artifact"
+	"skill_registry/internal/backend"
 )
 
 func TestEnvIntOrDefaultUsesFallbackForEmptyValue(t *testing.T) {
@@ -124,24 +125,39 @@ func TestConfiguredRepositoryOptionsDisableSeedAndPreserveArtifactSource(t *test
 	}
 }
 
-func TestConfiguredServerConfigUsesProductionOnlyStartupWiring(t *testing.T) {
-	repository := catalog.NewMemoryRepository(catalog.SampleCatalogData{})
+func TestConfiguredRuntimeConfigUsesProductionOnlyStartupWiring(t *testing.T) {
+	t.Setenv("SKILL_REGISTRY_DATABASE_URL", "file:test.db")
+	t.Setenv("SKILL_REGISTRY_SHARED_WORKSPACE_ROOT", "packaging-root")
 
-	config := configuredServerConfig(repository, nil, "packaging-root")
+	config := configuredRuntimeConfig()
 
-	if config.Repository != repository {
-		t.Fatalf("expected repository to be preserved, got %T", config.Repository)
+	if config.DatabaseURL != "file:test.db" {
+		t.Fatalf("expected database URL to be preserved, got %q", config.DatabaseURL)
 	}
-	if config.Packaging == nil {
-		t.Fatal("expected production startup to configure packaging service")
+	if config.SharedWorkspaceRoot != "packaging-root" {
+		t.Fatalf("expected shared workspace root to be preserved, got %q", config.SharedWorkspaceRoot)
 	}
-	if config.Idempotency != nil {
-		t.Fatalf("expected nil idempotency store without SQL stores, got %T", config.Idempotency)
+	if config.ArtifactSource == nil {
+		t.Fatal("expected runtime config to carry an artifact source")
 	}
-	if config.Audit != nil {
-		t.Fatalf("expected nil audit store without SQL stores, got %T", config.Audit)
+	if config.Server.Repository != nil {
+		t.Fatalf("expected runtime config to defer repository assembly, got %T", config.Server.Repository)
 	}
-	if config.Logger == nil {
-		t.Fatal("expected production startup to configure a logger")
+	if config.Server.Packaging != nil {
+		t.Fatalf("expected runtime config to defer packaging assembly, got %T", config.Server.Packaging)
 	}
+	if config.Server.Idempotency != nil {
+		t.Fatalf("expected runtime config to defer idempotency assembly, got %T", config.Server.Idempotency)
+	}
+	if config.Server.Audit != nil {
+		t.Fatalf("expected runtime config to defer audit assembly, got %T", config.Server.Audit)
+	}
+	if config.Server.Logger == nil {
+		t.Fatal("expected runtime config to configure a logger")
+	}
+	if config.IdempotencyTTL != 10*time.Minute {
+		t.Fatalf("expected default idempotency TTL, got %v", config.IdempotencyTTL)
+	}
+
+	var _ backend.Config = config
 }

@@ -12,6 +12,7 @@ import (
 	"skill_registry/app/catalogapi/binding"
 	"skill_registry/app/catalogapi/system"
 	"skill_registry/business/catalog"
+	internalapp "skill_registry/internal/catalog/application"
 )
 
 func TestServerRoutesAuditEventsThroughAuditQueryModule(t *testing.T) {
@@ -80,6 +81,45 @@ func TestServerWriteModeDoesNotRegisterCatalogListRoutes(t *testing.T) {
 
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("expected status %d, got %d body=%s", http.StatusNotFound, recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestNewServerUsesExplicitWorkflowServicesWhenProvided(t *testing.T) {
+	providerRead := internalapp.NewReadService(serverQueryStoreStub{})
+	providerWrite := internalapp.NewWriteService(serverAggregateStateStoreStub{}, serverArtifactSourceStub{})
+	explicitRead := internalapp.NewReadService(serverQueryStoreStub{})
+	explicitWrite := internalapp.NewWriteService(serverAggregateStateStoreStub{}, serverArtifactSourceStub{})
+	provider := &repositoryApplicationProviderStub{
+		Repository:   catalog.NewMemoryRepository(catalog.SampleData()),
+		readService:  providerRead,
+		writeService: providerWrite,
+	}
+
+	server := NewServer(ServerConfig{
+		Repository:               provider,
+		CatalogReadService:       explicitRead,
+		CatalogMutationService:   explicitWrite,
+		CatalogGovernanceService: explicitRead,
+	})
+
+	readModule, ok := server.catalogReadModule.(*catalogReadModule)
+	if !ok {
+		t.Fatalf("expected concrete catalogReadModule, got %T", server.catalogReadModule)
+	}
+	if readModule.service != explicitRead {
+		t.Fatal("expected explicit catalog read service to win over repository provider")
+	}
+
+	mutationModule, ok := server.catalogMutationModule.(*catalogMutationModule)
+	if !ok {
+		t.Fatalf("expected concrete catalogMutationModule, got %T", server.catalogMutationModule)
+	}
+	if mutationModule.service != explicitWrite {
+		t.Fatal("expected explicit catalog mutation service to win over repository provider")
+	}
+
+	if server.governanceModule.service != explicitRead {
+		t.Fatal("expected explicit governance service to win over repository provider")
 	}
 }
 

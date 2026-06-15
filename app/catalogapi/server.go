@@ -41,6 +41,9 @@ type packagingApplication interface {
 
 type ServerConfig struct {
 	Repository                      catalog.Repository
+	CatalogReadService              catalogReadService
+	CatalogMutationService          catalogMutationService
+	CatalogGovernanceService        catalogGovernanceService
 	Mode                            ServerMode
 	ReadListCacheTTL                time.Duration
 	ReadDetailCacheTTL              time.Duration
@@ -57,6 +60,7 @@ type ServerConfig struct {
 	SessionSecret                   string
 	SessionUsers                    map[string]auth.SessionUserConfig
 	Packaging                       packagingApplication
+	PackagingPublishConfigured      bool
 	Idempotency                     persist.IdempotencyStore
 	Audit                           persist.AuditStore
 	Logger                          *log.Logger
@@ -115,15 +119,30 @@ func NewServer(config ServerConfig) *Server {
 	auditRecorder := audit.NewRecorder(config.Audit)
 	var packagingSvc packagingService
 	if config.Packaging != nil {
-		config.Packaging.ConfigurePublishWorkflow(
-			config.Repository,
-			artifactadapter.NewNPMPublisher(
-				strings.TrimRight(strings.TrimSpace(config.NPMRegistryURL), "/"),
-				strings.TrimSpace(config.NPMRegistryPublishAuthorization),
-				config.NPMRegistryPublishClient,
-			),
-		)
+		if !config.PackagingPublishConfigured {
+			config.Packaging.ConfigurePublishWorkflow(
+				config.Repository,
+				artifactadapter.NewNPMPublisher(
+					strings.TrimRight(strings.TrimSpace(config.NPMRegistryURL), "/"),
+					strings.TrimSpace(config.NPMRegistryPublishAuthorization),
+					config.NPMRegistryPublishClient,
+				),
+			)
+		}
 		packagingSvc = config.Packaging
+	}
+
+	catalogReadService := config.CatalogReadService
+	if catalogReadService == nil {
+		catalogReadService = resolveCatalogReadService(config.Repository)
+	}
+	catalogMutationService := config.CatalogMutationService
+	if catalogMutationService == nil {
+		catalogMutationService = resolveCatalogWriteService(config.Repository)
+	}
+	catalogGovernanceService := config.CatalogGovernanceService
+	if catalogGovernanceService == nil {
+		catalogGovernanceService = resolveCatalogGovernanceService(config.Repository)
 	}
 
 	server := &Server{
@@ -143,7 +162,7 @@ func NewServer(config ServerConfig) *Server {
 		writeLimiter:         newRequestLimiter(config.WriteMaxInFlight),
 	}
 	server.catalogReadModule = &catalogReadModule{
-		service: resolveCatalogReadService(config.Repository),
+		service: catalogReadService,
 	}
 	server.readAPIModule = &readAPIModule{
 		catalogReadModule: server.catalogReadModule,
@@ -155,11 +174,11 @@ func NewServer(config ServerConfig) *Server {
 	}
 	server.auditQueryModule = audit.NewQueryModule(config.Audit, authorizer)
 	server.catalogMutationModule = &catalogMutationModule{
-		service: resolveCatalogWriteService(config.Repository),
+		service: catalogMutationService,
 		audit:   auditRecorder,
 	}
 	server.governanceModule = &governanceModule{
-		service:    resolveCatalogGovernanceService(config.Repository),
+		service:    catalogGovernanceService,
 		authorizer: authorizer,
 	}
 	server.packagingModule = &packagingModule{
