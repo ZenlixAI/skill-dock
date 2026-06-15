@@ -11,7 +11,7 @@ import (
 // exported http.Handler contract and the existing outer middleware chain.
 func (s *Server) Handler() http.Handler {
 	engine := routerpkg.New(s.routerConfig())
-	return s.withCORS(s.withRequestMetadata(s.withObservability(engine)))
+	return s.withCORS(s.withRequestMetadata(s.withObservability(s.withCanonicalRoutes(engine))))
 }
 
 // The skill subtree adapters resolve the {package} and {version} path values,

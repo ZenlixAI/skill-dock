@@ -71,6 +71,27 @@ func TestServerRoutesSkillsThroughCatalogReadModule(t *testing.T) {
 	}
 }
 
+func TestServerRoutesHeadSkillsThroughCatalogReadModule(t *testing.T) {
+	module := newCatalogReadModuleStubForTest(t)
+	server := newTestServer()
+	server.catalogReadModule = module
+	server.readAPIModule = &readAPIModule{
+		catalogReadModule: module,
+	}
+	request := httptest.NewRequest(http.MethodHead, "/api/v1/skills", nil)
+	request.Header.Set("X-Role", "reader")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+	if got := module.listSkillsCallCount(); got != 1 {
+		t.Fatalf("expected catalog read module to handle one HEAD list request, got %d", got)
+	}
+}
+
 func TestServerRoutesEncodedPackageDetailThroughHandler(t *testing.T) {
 	server := NewServer(ServerConfig{
 		Repository:  catalog.NewMemoryRepository(catalog.SampleData()),
@@ -691,11 +712,46 @@ func TestMockNPMRegistryRootRedirectsToTrailingSlash(t *testing.T) {
 
 	server.Handler().ServeHTTP(recorder, request)
 
-	if recorder.Code != http.StatusMovedPermanently {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusMovedPermanently, recorder.Code, recorder.Body.String())
+	if recorder.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusTemporaryRedirect, recorder.Code, recorder.Body.String())
 	}
 	if got := recorder.Header().Get("Location"); got != "/mock-npm/" {
 		t.Fatalf("expected redirect location /mock-npm/, got %q", got)
+	}
+}
+
+func TestMockNPMRegistryRootPutRedirectsToTrailingSlash(t *testing.T) {
+	server := NewServer(ServerConfig{
+		Repository:   catalog.NewMemoryRepository(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm")),
+		MockRegistry: artifactadapter.NewMockRegistry(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm").Artifacts),
+	})
+
+	request := httptest.NewRequest(http.MethodPut, "/mock-npm", nil)
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusTemporaryRedirect, recorder.Code, recorder.Body.String())
+	}
+	if got := recorder.Header().Get("Location"); got != "/mock-npm/" {
+		t.Fatalf("expected redirect location /mock-npm/, got %q", got)
+	}
+}
+
+func TestServerCanonicalizesRepeatedSlashesBeforeRouting(t *testing.T) {
+	server := newTestServer()
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills//foo", nil)
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusTemporaryRedirect, recorder.Code, recorder.Body.String())
+	}
+	if got := recorder.Header().Get("Location"); got != "/api/v1/skills/foo" {
+		t.Fatalf("expected redirect location /api/v1/skills/foo, got %q", got)
 	}
 }
 

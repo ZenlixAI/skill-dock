@@ -13,7 +13,7 @@ func registerSystemRoutes(engine *gin.Engine, config Config) {
 
 	if !config.DisableMockRegistry {
 		engine.Any("/mock-npm", func(context *gin.Context) {
-			context.Redirect(http.StatusMovedPermanently, "/mock-npm/")
+			context.Redirect(http.StatusTemporaryRedirect, "/mock-npm/")
 		})
 		engine.Any("/mock-npm/*path", config.MockRegistry)
 	}
