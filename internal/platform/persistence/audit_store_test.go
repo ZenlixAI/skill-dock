@@ -1,4 +1,4 @@
-package persist
+package persistence
 
 import (
 	"reflect"
@@ -15,7 +15,7 @@ func TestSQLAuditStoreBuildListSQLIncludesOnlyActiveFilters(t *testing.T) {
 		Cursor:      3,
 	}
 
-	sqlText := auditListSQLForTest(store, query)
+	sqlText := store.listSQL(query)
 	if strings.Contains(sqlText, "(? = '' OR") {
 		t.Fatalf("expected dynamic filters instead of optional predicate placeholders, got %q", sqlText)
 	}
@@ -26,7 +26,7 @@ func TestSQLAuditStoreBuildListSQLIncludesOnlyActiveFilters(t *testing.T) {
 		t.Fatalf("expected SQL pagination clauses, got %q", sqlText)
 	}
 
-	args := auditListArgsForTest(store, query)
+	args := store.listArgs(query)
 	want := []any{"svc-publisher", "@platform.skill/pdf-skill", 2, 3}
 	if !reflect.DeepEqual(args, want) {
 		t.Fatalf("expected dynamic audit args %v, got %v", want, args)

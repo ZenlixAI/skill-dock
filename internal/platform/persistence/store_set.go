@@ -30,9 +30,9 @@ func NewSQLStoreSet(ctx context.Context, databaseURL string, idempotencyTTL time
 func NewSQLStoreSetWithDB(ctx context.Context, db *sql.DB, driver string, idempotencyTTL time.Duration) (*SQLStoreSet, error) {
 	storeSet := &SQLStoreSet{
 		DB:          db,
-		Idempotency: NewSQLIdempotencyStoreWithDB(db, driver, idempotencyTTL),
-		Workspace:   NewSQLWorkspaceStoreWithDB(db, driver),
-		Audit:       NewSQLAuditStoreWithDB(db, auditSQLDialectForDriver(driver)),
+		Idempotency: newSQLIdempotencyStore(db, driver, idempotencyTTL),
+		Workspace:   newSQLWorkspaceStore(db, driver),
+		Audit:       newSQLAuditStore(db, auditSQLDialectForDriver(driver)),
 	}
 
 	if err := storeSet.Idempotency.Migrate(ctx); err != nil {

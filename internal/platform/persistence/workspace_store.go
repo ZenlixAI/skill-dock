@@ -64,10 +64,6 @@ func NewSQLWorkspaceStore(ctx context.Context, databaseURL string) (*SQLWorkspac
 	return store, nil
 }
 
-func NewSQLWorkspaceStoreWithDB(db *sql.DB, dialect string) *SQLWorkspaceStore {
-	return newSQLWorkspaceStore(db, dialect)
-}
-
 func newSQLWorkspaceStore(db *sql.DB, dialect string) *SQLWorkspaceStore {
 	return &SQLWorkspaceStore{db: db, dialect: dialect}
 }
@@ -94,10 +90,6 @@ func workspaceMigrationStatements(dialect string) []string {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_packaging_workspaces_updated_at ON packaging_workspaces(updated_at)`,
 	}
-}
-
-func WorkspaceMigrationStatements(dialect string) []string {
-	return workspaceMigrationStatements(dialect)
 }
 
 func (s *SQLWorkspaceStore) ensureManagedPathColumns(ctx context.Context) error {

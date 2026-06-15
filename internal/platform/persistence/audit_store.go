@@ -92,10 +92,6 @@ func NewSQLAuditStore(ctx context.Context, databaseURL string) (*SQLAuditStore, 
 	return store, nil
 }
 
-func NewSQLAuditStoreWithDB(db *sql.DB, dialect string) *SQLAuditStore {
-	return newSQLAuditStore(db, dialect)
-}
-
 func newSQLAuditStore(db *sql.DB, dialect string) *SQLAuditStore {
 	return &SQLAuditStore{
 		db:      db,
@@ -355,14 +351,6 @@ func auditSQLDriverNameForURL(databaseURL string) string {
 	default:
 		return "sqlite"
 	}
-}
-
-func AuditListSQLForTest(store *SQLAuditStore, query AuditQuery) string {
-	return store.listSQL(query)
-}
-
-func AuditListArgsForTest(store *SQLAuditStore, query AuditQuery) []any {
-	return store.listArgs(query)
 }
 
 func auditSQLDialectForDriver(driver string) string {

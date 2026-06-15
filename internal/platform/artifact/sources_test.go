@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -59,7 +61,7 @@ func TestNPMRegistryArtifactSourceReadsPackageMetadata(t *testing.T) {
 	client := &http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			if request.URL.EscapedPath() != "/@platform.skill%2Ftest-skill" {
-				if request.URL.Path == ExpectedPackageTarballPathForTest("@platform.skill/test-skill", "0.2.0") {
+				if request.URL.Path == expectedPackageTarballPath("@platform.skill/test-skill", "0.2.0") {
 					return binaryResponse(http.StatusOK, tarball), nil
 				}
 				return jsonResponse(http.StatusNotFound, `{}`), nil
@@ -100,7 +102,7 @@ func TestNPMRegistryArtifactSourceReadsPackageMetadata(t *testing.T) {
 	if len(artifact.Version.Registry.DistTags) != 2 {
 		t.Fatalf("expected 2 dist tags, got %d", len(artifact.Version.Registry.DistTags))
 	}
-	if artifact.Version.Bundle.SkillManifestDigest != BundleDigestFromStringForTest(skillContent) {
+	if artifact.Version.Bundle.SkillManifestDigest != bundleDigestFromString(skillContent) {
 		t.Fatalf("unexpected manifest digest: %s", artifact.Version.Bundle.SkillManifestDigest)
 	}
 	if len(artifact.Version.Bundle.Components) != 3 || artifact.Version.Bundle.Components[0] != "commands" || artifact.Version.Bundle.Components[1] != "plugin" || artifact.Version.Bundle.Components[2] != "scripts" {
@@ -116,7 +118,7 @@ func TestNPMRegistryArtifactSourceAcceptsPluginOnlyBundleMetadata(t *testing.T) 
 	})
 	client := &http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
-			if request.URL.Path == ExpectedPackageTarballPathForTest("@platform.skill/test-skill", "0.2.0") {
+			if request.URL.Path == expectedPackageTarballPath("@platform.skill/test-skill", "0.2.0") {
 				return binaryResponse(http.StatusOK, tarball), nil
 			}
 			return jsonResponse(http.StatusOK, `{
@@ -158,7 +160,7 @@ func TestNPMRegistryArtifactSourceAcceptsSkillMdOnlyBundleMetadata(t *testing.T)
 	})
 	client := &http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
-			if request.URL.Path == ExpectedPackageTarballPathForTest("@platform.skill/test-skill", "0.2.0") {
+			if request.URL.Path == expectedPackageTarballPath("@platform.skill/test-skill", "0.2.0") {
 				return binaryResponse(http.StatusOK, tarball), nil
 			}
 			return jsonResponse(http.StatusOK, `{
@@ -268,4 +270,13 @@ func buildNPMPackageTarball(t *testing.T, files map[string]string) []byte {
 		t.Fatalf("close gzip writer: %v", err)
 	}
 	return archive.Bytes()
+}
+
+func bundleDigestFromString(content string) string {
+	sum := sha256.Sum256([]byte(content))
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+func expectedPackageTarballPath(packageName string, version string) string {
+	return "/" + strings.TrimPrefix(packageName, "@") + "/-/" + packageBasename(packageName) + "-" + version + ".tgz"
 }

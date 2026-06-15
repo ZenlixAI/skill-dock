@@ -158,10 +158,6 @@ func buildNPMPublishPayload(baseURL string, input NPMPublishInput) ([]byte, erro
 	return json.Marshal(payload)
 }
 
-func BuildNPMPublishPayloadForTest(baseURL string, input NPMPublishInput) ([]byte, error) {
-	return buildNPMPublishPayload(baseURL, input)
-}
-
 func loadPublishTarball(input NPMPublishInput) ([]byte, error) {
 	if len(input.Tarball) > 0 {
 		return input.Tarball, nil

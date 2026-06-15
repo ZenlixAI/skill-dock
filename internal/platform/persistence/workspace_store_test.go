@@ -1,4 +1,4 @@
-package persist
+package persistence
 
 import (
 	"context"

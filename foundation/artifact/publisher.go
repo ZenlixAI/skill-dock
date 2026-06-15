@@ -6,7 +6,3 @@ type NPMPublisher = platformartifact.NPMPublisher
 type NPMPublishInput = platformartifact.NPMPublishInput
 
 var NewNPMPublisher = platformartifact.NewNPMPublisher
-
-func buildNPMPublishPayload(baseURL string, input NPMPublishInput) ([]byte, error) {
-	return platformartifact.BuildNPMPublishPayloadForTest(baseURL, input)
-}

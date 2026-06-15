@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"io"
 	"path"
 	"sort"
@@ -115,19 +114,6 @@ func scanNPMPackageTarball(reader io.Reader, expectedPackageName string, expecte
 		ManifestDigest: "sha256:" + hex.EncodeToString(digest[:]),
 		Components:     components,
 	}, ""
-}
-
-func ScanNPMPackageTarballForTest(reader io.Reader, expectedPackageName string, expectedVersion string) (BundleScanResult, string) {
-	return scanNPMPackageTarball(reader, expectedPackageName, expectedVersion)
-}
-
-func BundleDigestFromStringForTest(content string) string {
-	sum := sha256.Sum256([]byte(content))
-	return "sha256:" + hex.EncodeToString(sum[:])
-}
-
-func ExpectedPackageTarballPathForTest(packageName string, version string) string {
-	return fmt.Sprintf("/%s/-/%s-%s.tgz", strings.TrimPrefix(packageName, "@"), packageBasename(packageName), version)
 }
 
 func validateTarHeaderName(name string) string {
