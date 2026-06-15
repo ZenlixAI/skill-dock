@@ -489,6 +489,30 @@ func TestSessionLoginSetsCookieAndReturnsOperatorSession(t *testing.T) {
 	}
 }
 
+func TestSessionLoginRejectsInvalidJSON(t *testing.T) {
+	server := NewServer(ServerConfig{
+		Repository:    catalog.NewMemoryRepository(catalog.SampleData()),
+		SessionSecret: "session-secret",
+		SessionUsers: map[string]auth.SessionUserConfig{
+			"operator": {
+				Password: "op-secret",
+				Role:     "operator",
+			},
+		},
+	})
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/session/login", strings.NewReader(`{"username":"operator"`))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusBadRequest, recorder.Code, recorder.Body.String())
+	}
+	assertErrorCode(t, recorder, "invalid_request")
+}
+
 func TestSessionEndpointAcceptsCookieAuthentication(t *testing.T) {
 	server := NewServer(ServerConfig{
 		Repository:    catalog.NewMemoryRepository(catalog.SampleData()),

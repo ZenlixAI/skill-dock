@@ -15,6 +15,8 @@ import (
 	"skill_registry/app/auth"
 	"skill_registry/app/catalogapi/audit"
 	"skill_registry/app/catalogapi/common"
+	sessionhandlers "skill_registry/app/catalogapi/handlers/session"
+	systemhandlers "skill_registry/app/catalogapi/handlers/system"
 	catalogmiddleware "skill_registry/app/catalogapi/middleware"
 	routerpkg "skill_registry/app/catalogapi/router"
 	"skill_registry/app/catalogapi/system"
@@ -248,6 +250,33 @@ func (s *Server) logAuditWriteFailure(request *http.Request, action string, err 
 }
 
 func (s *Server) routerConfig() routerpkg.Config {
+	systemHTTPHandlers := systemhandlers.New(s.systemModule.Readyz, s.metrics.RenderPrometheus)
+	sessionHTTPHandlers := sessionhandlers.New(sessionhandlers.Handlers{
+		Authenticate:    s.authenticateRequest,
+		AuthorizeAction: s.accessWorkflow.authorizeAction,
+		CurrentFunc: func(principal auth.Principal) any {
+			if s.sessionModule == nil {
+				return nil
+			}
+			return s.sessionModule.current(principal)
+		},
+		LoginFunc: func(request *http.Request, username string, password string) (auth.Principal, *http.Cookie, bool) {
+			if s.sessionModule == nil {
+				return auth.Principal{}, nil, false
+			}
+			return s.sessionModule.login(request, username, password)
+		},
+		LogoutCookie: func(request *http.Request) *http.Cookie {
+			if s.sessionModule == nil {
+				return nil
+			}
+			return s.sessionModule.logoutCookie(request)
+		},
+		Enabled: func() bool {
+			return s.sessionModule != nil && s.sessionModule.enabled()
+		},
+	})
+
 	return routerpkg.Config{
 		ServesReadRoutes:  s.mode.servesReadRoutes(),
 		ServesWriteRoutes: s.mode.servesWriteRoutes(),
@@ -258,12 +287,12 @@ func (s *Server) routerConfig() routerpkg.Config {
 			catalogmiddleware.WithCanonicalRedirect(),
 			catalogmiddleware.WithAuthentication(s.authenticateRequest),
 		},
-		Healthz:           s.ginHandler(http.HandlerFunc(s.handleHealthz)),
-		Readyz:            s.ginHandler(http.HandlerFunc(s.handleReadyz)),
-		Metrics:           s.ginHandler(http.HandlerFunc(s.handleMetrics)),
-		Session:           s.ginHandler(http.HandlerFunc(s.handleSession)),
-		SessionLogin:      s.ginHandler(http.HandlerFunc(s.handleSessionLogin)),
-		SessionLogout:     s.ginHandler(http.HandlerFunc(s.handleSessionLogout)),
+		Healthz:           systemHTTPHandlers.Healthz,
+		Readyz:            systemHTTPHandlers.Readyz,
+		Metrics:           systemHTTPHandlers.Metrics,
+		Session:           sessionHTTPHandlers.Current,
+		SessionLogin:      sessionHTTPHandlers.Login,
+		SessionLogout:     sessionHTTPHandlers.Logout,
 		AuditEvents:       s.protectedGinHandler(auth.ActionReadAuditEvents, http.HandlerFunc(s.handleAuditEvents)),
 		Skills:            s.protectedGinHandler(auth.ActionReadCatalog, http.HandlerFunc(s.handleSkills)),
 		SkillsSearch:      s.protectedGinHandler(auth.ActionReadCatalog, http.HandlerFunc(s.handleSkills)),
