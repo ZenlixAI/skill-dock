@@ -426,3 +426,19 @@ func (s *Server) protectedActionHandler(action auth.Action, handler gin.HandlerF
 		s.recordAuthenticationDeniedAudit,
 	)
 }
+
+// Handler builds the HTTP routing tree with a gin engine while preserving the
+// exported http.Handler contract.
+func (s *Server) Handler() http.Handler {
+	return routerpkg.New(s.routerConfig())
+}
+
+func (s *Server) authenticateRequest(request *http.Request) (auth.Principal, bool) {
+	if current, ok := s.authorizer.Authenticate(request); ok {
+		return current, true
+	}
+	if current, ok := s.sessionManager.Authenticate(request); ok {
+		return current, true
+	}
+	return auth.Principal{}, false
+}
