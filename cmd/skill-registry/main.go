@@ -35,7 +35,7 @@ func main() {
 	}
 	configureDBPool(db)
 
-	repository, err := catalog.NewSQLRepositoryWithDB(context.Background(), db, driverName, productionSeedData(), productionRepositoryOptions(artifactSource))
+	repository, err := catalog.NewSQLRepositoryWithDB(context.Background(), db, driverName, catalog.SampleCatalogData{}, configuredRepositoryOptions(artifactSource))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -43,31 +43,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	mockRegistry, disableMockRegistry := productionMockRegistry()
 
-	server := catalogapi.NewServer(catalogapi.ServerConfig{
-		Mode:                            catalogapi.ServerMode(os.Getenv("SKILL_REGISTRY_SERVER_MODE")),
-		ReadListCacheTTL:                envDurationOrDefault("SKILL_REGISTRY_READ_CACHE_LIST_TTL", 2*time.Second),
-		ReadDetailCacheTTL:              envDurationOrDefault("SKILL_REGISTRY_READ_CACHE_DETAIL_TTL", 5*time.Second),
-		ReadMaxInFlight:                 envIntOrDefault("SKILL_REGISTRY_READ_MAX_IN_FLIGHT", 64),
-		WriteMaxInFlight:                envIntOrDefault("SKILL_REGISTRY_WRITE_MAX_IN_FLIGHT", 4),
-		ReaderToken:                     os.Getenv("SKILL_REGISTRY_READER_TOKEN"),
-		AuthoringToken:                  os.Getenv("SKILL_REGISTRY_AUTHORING_TOKEN"),
-		PublisherToken:                  os.Getenv("SKILL_REGISTRY_PUBLISHER_TOKEN"),
-		NPMRegistryURL:                  os.Getenv("SKILL_REGISTRY_NPM_REGISTRY_URL"),
-		NPMRegistryPublishAuthorization: configuredNPMPublishAuthorization(),
-		PublicNPMRegistryURL:            os.Getenv("SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL"),
-		AuthTokens:                      configuredAuthTokens(),
-		SessionSecret:                   os.Getenv("SKILL_REGISTRY_SESSION_SECRET"),
-		SessionUsers:                    configuredSessionUsers(),
-		MockRegistry:                    mockRegistry,
-		DisableMockRegistry:             disableMockRegistry,
-		Packaging:                       packaging.NewServiceWithWorkspaceStore(sharedWorkspaceRoot, storeSet.Workspace),
-		Repository:                      repository,
-		Idempotency:                     storeSet.Idempotency,
-		Audit:                           storeSet.Audit,
-		Logger:                          log.New(os.Stderr, "", 0),
-	})
+	server := catalogapi.NewServer(configuredServerConfig(repository, storeSet, sharedWorkspaceRoot))
 
 	httpServer := catalogapi.NewHTTPServer(addr, server.Handler(), catalogapi.HTTPServerConfig{
 		ReadHeaderTimeout: envDurationOrDefault("SKILL_REGISTRY_HTTP_READ_HEADER_TIMEOUT", 2*time.Second),
@@ -100,19 +77,46 @@ func configuredArtifactSource() catalog.ArtifactSource {
 	return catalog.NewStaticArtifactSource(nil)
 }
 
-func productionSeedData() catalog.SampleCatalogData {
-	return catalog.SampleCatalogData{}
-}
-
-func productionRepositoryOptions(artifactSource catalog.ArtifactSource) catalog.SQLRepositoryOptions {
+func configuredRepositoryOptions(artifactSource catalog.ArtifactSource) catalog.SQLRepositoryOptions {
 	return catalog.SQLRepositoryOptions{
 		ArtifactSource: artifactSource,
 		DisableSeed:    true,
 	}
 }
 
-func productionMockRegistry() (*artifactadapter.MockRegistry, bool) {
-	return nil, true
+func configuredServerConfig(repository catalog.Repository, storeSet *persist.SQLStoreSet, sharedWorkspaceRoot string) catalogapi.ServerConfig {
+	var workspaceStore persist.WorkspaceStore
+	var idempotencyStore persist.IdempotencyStore
+	var auditStore persist.AuditStore
+	if storeSet != nil {
+		workspaceStore = storeSet.Workspace
+		idempotencyStore = storeSet.Idempotency
+		auditStore = storeSet.Audit
+	}
+
+	return catalogapi.ServerConfig{
+		Mode:                            catalogapi.ServerMode(os.Getenv("SKILL_REGISTRY_SERVER_MODE")),
+		ReadListCacheTTL:                envDurationOrDefault("SKILL_REGISTRY_READ_CACHE_LIST_TTL", 2*time.Second),
+		ReadDetailCacheTTL:              envDurationOrDefault("SKILL_REGISTRY_READ_CACHE_DETAIL_TTL", 5*time.Second),
+		ReadMaxInFlight:                 envIntOrDefault("SKILL_REGISTRY_READ_MAX_IN_FLIGHT", 64),
+		WriteMaxInFlight:                envIntOrDefault("SKILL_REGISTRY_WRITE_MAX_IN_FLIGHT", 4),
+		ReaderToken:                     os.Getenv("SKILL_REGISTRY_READER_TOKEN"),
+		AuthoringToken:                  os.Getenv("SKILL_REGISTRY_AUTHORING_TOKEN"),
+		PublisherToken:                  os.Getenv("SKILL_REGISTRY_PUBLISHER_TOKEN"),
+		NPMRegistryURL:                  os.Getenv("SKILL_REGISTRY_NPM_REGISTRY_URL"),
+		NPMRegistryPublishAuthorization: configuredNPMPublishAuthorization(),
+		PublicNPMRegistryURL:            os.Getenv("SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL"),
+		AuthTokens:                      configuredAuthTokens(),
+		SessionSecret:                   os.Getenv("SKILL_REGISTRY_SESSION_SECRET"),
+		SessionUsers:                    configuredSessionUsers(),
+		MockRegistry:                    nil,
+		DisableMockRegistry:             true,
+		Packaging:                       packaging.NewServiceWithWorkspaceStore(sharedWorkspaceRoot, workspaceStore),
+		Repository:                      repository,
+		Idempotency:                     idempotencyStore,
+		Audit:                           auditStore,
+		Logger:                          log.New(os.Stderr, "", 0),
+	}
 }
 
 func configuredAuthTokens() map[string]auth.TokenConfig {

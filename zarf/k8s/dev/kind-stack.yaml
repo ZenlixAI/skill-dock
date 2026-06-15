@@ -223,10 +223,6 @@ spec:
                 secretKeyRef:
                   name: catalog-secrets
                   key: skill_registry_session_users_json
-            - name: SKILL_REGISTRY_ENABLE_SAMPLE_DATA
-              value: "false"
-            - name: SKILL_REGISTRY_ENABLE_MOCK_REGISTRY
-              value: "false"
           readinessProbe:
             httpGet:
               path: /readyz

@@ -111,21 +111,34 @@ func TestConfiguredArtifactSourceFallsBackToEmptyStaticSource(t *testing.T) {
 	}
 }
 
-func TestProductionSeedDataIsAlwaysEmpty(t *testing.T) {
-	data := productionSeedData()
+func TestConfiguredRepositoryOptionsDisableSeedAndPreserveArtifactSource(t *testing.T) {
+	artifactSource := catalog.NewStaticArtifactSource(nil)
 
-	if len(data.Skills) != 0 || len(data.Governance) != 0 || len(data.Artifacts) != 0 {
-		t.Fatalf("expected empty production seed data, got %+v", data)
+	options := configuredRepositoryOptions(artifactSource)
+
+	if options.ArtifactSource != artifactSource {
+		t.Fatalf("expected repository options to preserve artifact source, got %T", options.ArtifactSource)
+	}
+	if !options.DisableSeed {
+		t.Fatal("expected production repository options to disable seeding")
 	}
 }
 
-func TestProductionMockRegistryIsAlwaysDisabled(t *testing.T) {
-	registry, disabled := productionMockRegistry()
+func TestConfiguredServerConfigUsesProductionOnlyStartupWiring(t *testing.T) {
+	repository := catalog.NewMemoryRepository(catalog.SampleCatalogData{})
 
-	if registry != nil {
-		t.Fatalf("expected no mock registry, got %T", registry)
+	config := configuredServerConfig(repository, nil, "packaging-root")
+
+	if config.Repository != repository {
+		t.Fatalf("expected repository to be preserved, got %T", config.Repository)
 	}
-	if !disabled {
-		t.Fatal("expected mock registry to stay disabled in production startup")
+	if config.MockRegistry != nil {
+		t.Fatalf("expected no mock registry in production startup, got %T", config.MockRegistry)
+	}
+	if !config.DisableMockRegistry {
+		t.Fatal("expected production startup to disable mock registry routes")
+	}
+	if config.Packaging == nil {
+		t.Fatal("expected production startup to configure packaging service")
 	}
 }

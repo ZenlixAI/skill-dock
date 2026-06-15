@@ -63,8 +63,6 @@ USER skill-registry
 
 ENV SKILL_REGISTRY_ADDR=:8080
 ENV SKILL_REGISTRY_DATABASE_URL=file:/var/lib/skill-registry/skill-registry.db
-ENV SKILL_REGISTRY_ENABLE_SAMPLE_DATA=false
-ENV SKILL_REGISTRY_ENABLE_MOCK_REGISTRY=false
 
 EXPOSE 8080
 VOLUME ["/var/lib/skill-registry"]
