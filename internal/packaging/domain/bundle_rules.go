@@ -23,6 +23,8 @@ var (
 
 const importReportPath = ".skill-packaging-import-report.json"
 
+const ImportReportPath = importReportPath
+
 var packagingIgnoredDirectories = map[string]struct{}{
 	".dist": {},
 	".git":  {},
@@ -76,6 +78,14 @@ func PackageBasename(packageName string) string {
 
 func ReadImportReport(workspacePath string, warnings []string) *ImportReport {
 	return readImportReport(workspacePath, warnings)
+}
+
+func WritePackageJSON(workspacePath string, target Target, metadata Metadata, options Options, normalizedFromImport bool) error {
+	return writePackageJSON(workspacePath, target, metadata, options, normalizedFromImport)
+}
+
+func CreateBundleArchive(workspacePath string, bundlePath string) error {
+	return createBundleArchive(workspacePath, bundlePath)
 }
 
 func newBundleRuleModule() bundleRuleModule {

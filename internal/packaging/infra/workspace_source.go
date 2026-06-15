@@ -29,9 +29,51 @@ var packagingIgnoredDirectories = map[string]struct{}{
 
 const defaultGitCloneTimeout = 45 * time.Second
 
+const DefaultGitCloneTimeout = defaultGitCloneTimeout
+
 type PrepareRequest = packagingdomain.PrepareRequest
 type Source = packagingdomain.Source
 type Target = packagingdomain.Target
+
+type WorkspaceSourceModule struct {
+	workspaceSourceModule
+}
+
+func NewWorkspaceSourceModule(tempRoot string, workspaceTTL time.Duration) WorkspaceSourceModule {
+	return WorkspaceSourceModule{workspaceSourceModule: newWorkspaceSourceModule(tempRoot, workspaceTTL)}
+}
+
+func (m WorkspaceSourceModule) Prepare(input PrepareRequest) (string, error) {
+	return m.prepare(input)
+}
+
+func (m WorkspaceSourceModule) Cleanup(workspacePath string) error {
+	return m.cleanup(workspacePath)
+}
+
+func (m WorkspaceSourceModule) BundlePath(workspacePath string, target Target) (string, error) {
+	return m.bundlePath(workspacePath, target)
+}
+
+func (m WorkspaceSourceModule) PruneExpiredWorkspaces(ttl time.Duration) error {
+	return m.pruneExpiredWorkspaces(ttl)
+}
+
+func (m WorkspaceSourceModule) ManagesWorkspace(workspacePath string) bool {
+	return m.managesWorkspace(workspacePath)
+}
+
+func CopySourceDirectory(sourcePath string, workspacePath string) error {
+	return copySourceDirectory(sourcePath, workspacePath)
+}
+
+func ShouldIgnorePackagingPath(relativePath string) bool {
+	return shouldIgnorePackagingPath(relativePath)
+}
+
+func RunGitCommand(directory string, args ...string) error {
+	return runGitCommand(directory, args...)
+}
 
 type workspaceSourceModule struct {
 	tempRoot     string

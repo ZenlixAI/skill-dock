@@ -12,57 +12,10 @@ import (
 	"skill_registry/foundation/persist"
 )
 
-type packSpyWorkspaceAdapter struct {
-	prepareResponse         PrepareResponse
-	validateResponse        ValidateResponse
-	packResponse            PackResponse
-	packageMetadataResponse map[string]any
-	bundleContentResponse   []byte
-	bundlePathResponse      string
-	packCalls               int
-}
-
-func (a *packSpyWorkspaceAdapter) prepare(context.Context, PrepareRequest, bundleRuleModule) (PrepareResponse, error) {
-	return a.prepareResponse, nil
-}
-
-func (a *packSpyWorkspaceAdapter) validateLocked(context.Context, ValidateRequest, bundleRuleModule) (ValidateResponse, error) {
-	return a.validateResponse, nil
-}
-
-func (a *packSpyWorkspaceAdapter) packLocked(context.Context, PackRequest, bundleRuleModule) (packExecutionResult, error) {
-	a.packCalls++
-	return packExecutionResult{response: a.packResponse, cleanup: func() {}}, nil
-}
-
-func (a *packSpyWorkspaceAdapter) cleanupLocked(context.Context, string) error {
-	return nil
-}
-
-func (a *packSpyWorkspaceAdapter) bundlePathLocked(context.Context, string, Target) (string, error) {
-	return a.bundlePathResponse, nil
-}
-
-func (a *packSpyWorkspaceAdapter) bundleContentLocked(context.Context, string, Target, func(context.Context, PackRequest) (PackResponse, error)) ([]byte, error) {
-	return a.bundleContentResponse, nil
-}
-
-func (a *packSpyWorkspaceAdapter) packageMetadataLocked(context.Context, string) (map[string]any, error) {
-	return a.packageMetadataResponse, nil
-}
-
-func (a *packSpyWorkspaceAdapter) pruneExpired(context.Context, time.Duration) error {
-	return nil
-}
-
 func TestPackagingWorkspaceRuntimeUsesManagedAdapterWhenWorkspaceStoreExists(t *testing.T) {
 	root := t.TempDir()
 	store := newMemoryWorkspaceStore()
 	runtime := newPackagingWorkspaceRuntime(root, store)
-
-	if _, ok := runtime.adapter.(*managedWorkspaceAdapter); !ok {
-		t.Fatalf("expected managed workspace adapter, got %T", runtime.adapter)
-	}
 
 	response, err := runtime.Prepare(context.Background(), PrepareRequest{
 		Source: Source{
@@ -86,10 +39,6 @@ func TestPackagingWorkspaceRuntimeUsesEphemeralAdapterWithoutWorkspaceStore(t *t
 	root := t.TempDir()
 	runtime := newPackagingWorkspaceRuntime(root, nil)
 
-	if _, ok := runtime.adapter.(*ephemeralWorkspaceAdapter); !ok {
-		t.Fatalf("expected ephemeral workspace adapter, got %T", runtime.adapter)
-	}
-
 	response, err := runtime.Prepare(context.Background(), PrepareRequest{
 		Source: Source{
 			Type: "platform_authoring",
@@ -106,33 +55,38 @@ func TestPackagingWorkspaceRuntimeUsesEphemeralAdapterWithoutWorkspaceStore(t *t
 	if !filepath.IsAbs(response.WorkspacePath) {
 		t.Fatalf("expected filesystem workspace path, got %q", response.WorkspacePath)
 	}
+	if runtime.impl == nil {
+		t.Fatal("expected runtime to bridge to an internal implementation")
+	}
 }
 
-func TestPackagingWorkspaceRuntimePackDelegatesThroughAdapter(t *testing.T) {
+func TestPackagingWorkspaceRuntimePackProducesBundleForEphemeralWorkspace(t *testing.T) {
 	root := t.TempDir()
 	runtime := newPackagingWorkspaceRuntime(root, nil)
-	spy := &packSpyWorkspaceAdapter{
-		packResponse: PackResponse{
-			WorkspacePath: "workspace-path",
-			PackageName:   "@platform.skill/runtime-pack-adapter",
-			Version:       "1.0.0",
-			BundlePath:    "/tmp/runtime-pack-adapter.tgz",
+
+	prepareResp, err := runtime.Prepare(context.Background(), PrepareRequest{
+		Source: Source{
+			Type: "platform_authoring",
+			Files: map[string]string{
+				"docs/README.md": "# Capability\n",
+			},
 		},
+		Target:   Target{PackageName: "@platform.skill/runtime-pack-adapter", Version: "1.0.0"},
+		Metadata: Metadata{DisplayName: "runtime-pack-adapter", Description: "desc", SourceType: "native"},
+	})
+	if err != nil {
+		t.Fatalf("prepare returned error: %v", err)
 	}
-	runtime.adapter = spy
 
 	response, err := runtime.Pack(context.Background(), PackRequest{
-		WorkspacePath: "workspace-path",
+		WorkspacePath: prepareResp.WorkspacePath,
 		Target:        Target{PackageName: "@platform.skill/runtime-pack-adapter", Version: "1.0.0"},
 	})
 	if err != nil {
 		t.Fatalf("pack returned error: %v", err)
 	}
-	if spy.packCalls != 1 {
-		t.Fatalf("expected pack adapter to be called once, got %d", spy.packCalls)
-	}
-	if !reflect.DeepEqual(spy.packResponse, response) {
-		t.Fatalf("expected adapter pack response %#v, got %#v", spy.packResponse, response)
+	if response.BundlePath == "" {
+		t.Fatalf("expected pack to produce a bundle path, got %#v", response)
 	}
 }
 

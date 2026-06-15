@@ -5,212 +5,49 @@ import (
 	"time"
 
 	"skill_registry/foundation/persist"
+	packagingapplication "skill_registry/internal/packaging/application"
 )
 
 type packagingWorkspaceRuntime struct {
-	workspace   *packagingWorkspaceBacking
-	adapter     workspaceAdapter
-	bundleRules bundleRuleModule
-}
-
-type publishedReleaseMaterial struct {
-	packResponse PackResponse
-	metadata     workspacePackageMetadata
-	tarballPath  string
-	cleanup      func()
+	impl *packagingapplication.WorkspaceService
 }
 
 func newPackagingWorkspaceRuntime(tempRoot string, store persist.WorkspaceStore) *packagingWorkspaceRuntime {
-	return newPackagingWorkspaceRuntimeWithBacking(newPackagingWorkspaceBacking(tempRoot, store))
-}
-
-func newPackagingWorkspaceRuntimeWithBacking(workspace *packagingWorkspaceBacking) *packagingWorkspaceRuntime {
-	return &packagingWorkspaceRuntime{
-		workspace:   workspace,
-		adapter:     newWorkspaceAdapter(workspace),
-		bundleRules: newBundleRuleModule(),
-	}
+	return &packagingWorkspaceRuntime{impl: packagingapplication.NewWorkspaceService(tempRoot, store)}
 }
 
 func (r *packagingWorkspaceRuntime) Prepare(ctx context.Context, input PrepareRequest) (PrepareResponse, error) {
-	if err := validateTarget(input.Target); err != nil {
-		return PrepareResponse{}, err
-	}
-	if err := packagingContextError(ctx); err != nil {
-		return PrepareResponse{}, err
-	}
-
-	return r.adapter.prepare(ctx, input, r.bundleRules)
+	return r.impl.Prepare(ctx, input)
 }
 
 func (r *packagingWorkspaceRuntime) Validate(ctx context.Context, input ValidateRequest) (ValidateResponse, error) {
-	if err := validateTarget(input.Target); err != nil {
-		return ValidateResponse{}, err
-	}
-	if err := packagingContextError(ctx); err != nil {
-		return ValidateResponse{}, err
-	}
-	ctx, unlock, err := r.workspace.lockWorkspace(ctx, input.WorkspacePath)
-	if err != nil {
-		return ValidateResponse{}, err
-	}
-	defer unlock()
-
-	return r.validateLocked(ctx, input)
-}
-
-func (r *packagingWorkspaceRuntime) validateLocked(ctx context.Context, input ValidateRequest) (ValidateResponse, error) {
-	return r.adapter.validateLocked(ctx, input, r.bundleRules)
+	return r.impl.Validate(ctx, input)
 }
 
 func (r *packagingWorkspaceRuntime) Pack(ctx context.Context, input PackRequest) (PackResponse, error) {
-	if err := validateTarget(input.Target); err != nil {
-		return PackResponse{}, err
-	}
-	if err := packagingContextError(ctx); err != nil {
-		return PackResponse{}, err
-	}
-	ctx, unlock, err := r.workspace.lockWorkspace(ctx, input.WorkspacePath)
-	if err != nil {
-		return PackResponse{}, err
-	}
-	defer unlock()
-
-	result, err := r.adapter.packLocked(ctx, input, r.bundleRules)
-	if err != nil {
-		return PackResponse{}, err
-	}
-	defer result.cleanup()
-
-	return result.response, nil
+	return r.impl.Pack(ctx, input)
 }
 
 func (r *packagingWorkspaceRuntime) Cleanup(ctx context.Context, workspacePath string) error {
-	if err := packagingContextError(ctx); err != nil {
-		return err
-	}
-	ctx, unlock, err := r.workspace.lockWorkspace(ctx, workspacePath)
-	if err != nil {
-		return err
-	}
-	defer unlock()
-
-	return r.adapter.cleanupLocked(ctx, workspacePath)
+	return r.impl.Cleanup(ctx, workspacePath)
 }
 
 func (r *packagingWorkspaceRuntime) BundlePath(ctx context.Context, workspacePath string, target Target) (string, error) {
-	if err := validateTarget(target); err != nil {
-		return "", err
-	}
-	if err := packagingContextError(ctx); err != nil {
-		return "", err
-	}
-	ctx, unlock, err := r.workspace.lockWorkspace(ctx, workspacePath)
-	if err != nil {
-		return "", err
-	}
-	defer unlock()
-
-	return r.adapter.bundlePathLocked(ctx, workspacePath, target)
+	return r.impl.BundlePath(ctx, workspacePath, target)
 }
 
 func (r *packagingWorkspaceRuntime) BundleFilePath(ctx context.Context, workspacePath string, target Target) (string, error) {
-	if err := validateTarget(target); err != nil {
-		return "", err
-	}
-	if err := packagingContextError(ctx); err != nil {
-		return "", err
-	}
-	ctx, unlock, err := r.workspace.lockWorkspace(ctx, workspacePath)
-	if err != nil {
-		return "", err
-	}
-	defer unlock()
-
-	bundlePath, err := r.adapter.bundlePathLocked(ctx, workspacePath, target)
-	if err != nil {
-		return "", err
-	}
-	if r.workspace.workspaceStore != nil {
-		return r.workspace.managedBundlePath(workspacePath, target), nil
-	}
-	return bundlePath, nil
+	return r.impl.BundleFilePath(ctx, workspacePath, target)
 }
 
 func (r *packagingWorkspaceRuntime) BundleContent(ctx context.Context, workspacePath string, target Target) ([]byte, error) {
-	if err := validateTarget(target); err != nil {
-		return nil, err
-	}
-	if err := packagingContextError(ctx); err != nil {
-		return nil, err
-	}
-	ctx, unlock, err := r.workspace.lockWorkspace(ctx, workspacePath)
-	if err != nil {
-		return nil, err
-	}
-	defer unlock()
-
-	return r.adapter.bundleContentLocked(ctx, workspacePath, target, r.Pack)
+	return r.impl.BundleContent(ctx, workspacePath, target)
 }
 
 func (r *packagingWorkspaceRuntime) PackageMetadata(ctx context.Context, workspacePath string) (map[string]any, error) {
-	if err := packagingContextError(ctx); err != nil {
-		return nil, err
-	}
-	ctx, unlock, err := r.workspace.lockWorkspace(ctx, workspacePath)
-	if err != nil {
-		return nil, err
-	}
-	defer unlock()
-
-	return r.adapter.packageMetadataLocked(ctx, workspacePath)
-}
-
-func (r *packagingWorkspaceRuntime) preparePublishedRelease(ctx context.Context, input PublishRequest) (publishedReleaseMaterial, error) {
-	if err := validateTarget(input.Target); err != nil {
-		return publishedReleaseMaterial{}, err
-	}
-	if err := packagingContextError(ctx); err != nil {
-		return publishedReleaseMaterial{}, err
-	}
-	ctx, unlock, err := r.workspace.lockWorkspace(ctx, input.WorkspacePath)
-	if err != nil {
-		return publishedReleaseMaterial{}, err
-	}
-
-	packResult, err := r.adapter.packLocked(ctx, PackRequest{
-		WorkspacePath: input.WorkspacePath,
-		Target:        input.Target,
-	}, r.bundleRules)
-	if err != nil {
-		unlock()
-		return publishedReleaseMaterial{}, err
-	}
-
-	material := publishedReleaseMaterial{
-		packResponse: packResult.response,
-		cleanup: func() {
-			packResult.cleanup()
-			unlock()
-		},
-	}
-	if len(packResult.response.Errors) > 0 {
-		return material, nil
-	}
-
-	metadata, err := readWorkspacePackageMetadataFile(input.WorkspacePath, packResult.materializedPath)
-	if err != nil {
-		material.cleanup()
-		return publishedReleaseMaterial{}, err
-	}
-	material.metadata = metadata
-	material.tarballPath = packResult.bundlePath
-	return material, nil
+	return r.impl.PackageMetadata(ctx, workspacePath)
 }
 
 func (r *packagingWorkspaceRuntime) PruneExpiredWorkspaces(ctx context.Context, ttl time.Duration) error {
-	if err := packagingContextError(ctx); err != nil {
-		return err
-	}
-	return r.adapter.pruneExpired(ctx, ttl)
+	return r.impl.PruneExpiredWorkspaces(ctx, ttl)
 }
