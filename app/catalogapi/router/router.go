@@ -1,6 +1,10 @@
 package router
 
-import "github.com/gin-gonic/gin"
+import (
+	"github.com/gin-gonic/gin"
+
+	platformhttp "skill_registry/internal/platform/http"
+)
 
 type Config struct {
 	ServesReadRoutes  bool
@@ -36,15 +40,7 @@ type Config struct {
 }
 
 func New(config Config) *gin.Engine {
-	engine := gin.New()
-	engine.UseRawPath = true
-	engine.UnescapePathValues = false
-	engine.HandleMethodNotAllowed = true
-	engine.RedirectTrailingSlash = false
-	engine.RedirectFixedPath = false
-	if len(config.Middleware) > 0 {
-		engine.Use(config.Middleware...)
-	}
+	engine := platformhttp.NewEngine(config.Middleware)
 
 	registerSystemRoutes(engine, config)
 	registerSessionRoutes(engine, config)

@@ -26,6 +26,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	"skill_registry/app/auth"
 	"skill_registry/app/catalogapi/binding"
 	"skill_registry/app/catalogapi/common"
@@ -127,8 +129,24 @@ func TestServerRoutesEncodedPackageDetailThroughHandler(t *testing.T) {
 }
 
 func TestPlatformEnginePreservesRawPathSettings(t *testing.T) {
-	engine := platformhttp.NewEngine(nil)
+	var seamEngine any
+	platformhttp.TestNewEngineHook = func(engine *gin.Engine) {
+		seamEngine = engine
+	}
+	defer func() {
+		platformhttp.TestNewEngineHook = nil
+	}()
 
+	server := newTestServer()
+	handler := server.Handler()
+
+	engine, ok := handler.(*gin.Engine)
+	if !ok {
+		t.Fatalf("expected *gin.Engine handler, got %T", handler)
+	}
+	if seamEngine != engine {
+		t.Fatal("expected server handler to be constructed through platformhttp.NewEngine")
+	}
 	if !engine.UseRawPath {
 		t.Fatal("expected UseRawPath enabled")
 	}
