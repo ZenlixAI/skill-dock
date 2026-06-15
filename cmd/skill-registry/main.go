@@ -24,12 +24,9 @@ import (
 
 func main() {
 	addr := envOrDefault("SKILL_REGISTRY_ADDR", ":8080")
-	enableSampleData := envBoolOrDefault("SKILL_REGISTRY_ENABLE_SAMPLE_DATA", false)
-	enableMockRegistry := envBoolOrDefault("SKILL_REGISTRY_ENABLE_MOCK_REGISTRY", false)
-	sampleData := configuredSampleData(enableSampleData)
 	sharedWorkspaceRoot := envOrDefault("SKILL_REGISTRY_SHARED_WORKSPACE_ROOT", filepath.Join("data", "packaging-workspaces"))
 
-	artifactSource := configuredArtifactSource(sampleData, enableSampleData)
+	artifactSource := configuredArtifactSource()
 	databaseURL := envOrDefault("SKILL_REGISTRY_DATABASE_URL", "file:"+filepath.Join("data", "skill-registry.db"))
 	driverName := sharedSQLDriverNameForURL(databaseURL)
 	db, err := sql.Open(driverName, databaseURL)
@@ -38,10 +35,7 @@ func main() {
 	}
 	configureDBPool(db)
 
-	repository, err := catalog.NewSQLRepositoryWithDB(context.Background(), db, driverName, sampleData, catalog.SQLRepositoryOptions{
-		ArtifactSource: artifactSource,
-		DisableSeed:    !enableSampleData,
-	})
+	repository, err := catalog.NewSQLRepositoryWithDB(context.Background(), db, driverName, productionSeedData(), productionRepositoryOptions(artifactSource))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -49,6 +43,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	mockRegistry, disableMockRegistry := productionMockRegistry()
 
 	server := catalogapi.NewServer(catalogapi.ServerConfig{
 		Mode:                            catalogapi.ServerMode(os.Getenv("SKILL_REGISTRY_SERVER_MODE")),
@@ -65,8 +60,8 @@ func main() {
 		AuthTokens:                      configuredAuthTokens(),
 		SessionSecret:                   os.Getenv("SKILL_REGISTRY_SESSION_SECRET"),
 		SessionUsers:                    configuredSessionUsers(),
-		MockRegistry:                    configuredMockRegistry(sampleData, enableMockRegistry),
-		DisableMockRegistry:             !enableMockRegistry,
+		MockRegistry:                    mockRegistry,
+		DisableMockRegistry:             disableMockRegistry,
 		Packaging:                       packaging.NewServiceWithWorkspaceStore(sharedWorkspaceRoot, storeSet.Workspace),
 		Repository:                      repository,
 		Idempotency:                     storeSet.Idempotency,
@@ -95,40 +90,29 @@ func envOrDefault(key string, fallback string) string {
 	return value
 }
 
-func defaultArtifactSource(sampleData catalog.SampleCatalogData) catalog.ArtifactSource {
-	defaultPath := filepath.Join("data", "registry-artifacts.sample.json")
-	if _, err := os.Stat(defaultPath); err == nil {
-		return artifactadapter.NewJSONArtifactSource(defaultPath)
-	}
-	return catalog.NewStaticArtifactSource(sampleData.Artifacts)
-}
-
-func configuredArtifactSource(sampleData catalog.SampleCatalogData, enableSampleData bool) catalog.ArtifactSource {
+func configuredArtifactSource() catalog.ArtifactSource {
 	if path := os.Getenv("SKILL_REGISTRY_ARTIFACTS_PATH"); path != "" {
 		return artifactadapter.NewJSONArtifactSource(path)
 	}
 	if registryURL := os.Getenv("SKILL_REGISTRY_NPM_REGISTRY_URL"); registryURL != "" {
 		return artifactadapter.NewNPMRegistryArtifactSource(registryURL, nil)
 	}
-	if !enableSampleData {
-		return catalog.NewStaticArtifactSource(nil)
-	}
-	return defaultArtifactSource(sampleData)
+	return catalog.NewStaticArtifactSource(nil)
 }
 
-func configuredSampleData(enableSampleData bool) catalog.SampleCatalogData {
-	if !enableSampleData {
-		return catalog.SampleCatalogData{}
-	}
-	sampleRegistryBase := envOrDefault("SKILL_REGISTRY_SAMPLE_NPM_BASE_URL", "https://npm.internal.example.com")
-	return catalog.SampleDataWithRegistryBase(sampleRegistryBase)
+func productionSeedData() catalog.SampleCatalogData {
+	return catalog.SampleCatalogData{}
 }
 
-func configuredMockRegistry(sampleData catalog.SampleCatalogData, enableMockRegistry bool) *artifactadapter.MockRegistry {
-	if !enableMockRegistry {
-		return nil
+func productionRepositoryOptions(artifactSource catalog.ArtifactSource) catalog.SQLRepositoryOptions {
+	return catalog.SQLRepositoryOptions{
+		ArtifactSource: artifactSource,
+		DisableSeed:    true,
 	}
-	return artifactadapter.NewMockRegistry(sampleData.Artifacts)
+}
+
+func productionMockRegistry() (*artifactadapter.MockRegistry, bool) {
+	return nil, true
 }
 
 func configuredAuthTokens() map[string]auth.TokenConfig {
@@ -155,22 +139,6 @@ func configuredSessionUsers() map[string]auth.SessionUserConfig {
 		log.Fatalf("parse SKILL_REGISTRY_SESSION_USERS_JSON: %v", err)
 	}
 	return sessionUsers
-}
-
-func envBoolOrDefault(key string, fallback bool) bool {
-	value := os.Getenv(key)
-	if value == "" {
-		return fallback
-	}
-	switch value {
-	case "1", "true", "TRUE", "True", "yes", "YES", "on", "ON":
-		return true
-	case "0", "false", "FALSE", "False", "no", "NO", "off", "OFF":
-		return false
-	default:
-		log.Fatalf("parse %s: expected boolean value, got %q", key, value)
-		return fallback
-	}
 }
 
 func envIntOrDefault(key string, fallback int) int {

@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"os"
 	"testing"
 	"time"
 
 	"skill_registry/app/catalogapi"
 	"skill_registry/business/catalog"
+	artifactadapter "skill_registry/foundation/artifact"
 )
 
 func TestEnvIntOrDefaultUsesFallbackForEmptyValue(t *testing.T) {
@@ -58,5 +61,71 @@ func TestEnvDurationOrDefaultUsesFallbackForEmptyValue(t *testing.T) {
 
 	if got := envDurationOrDefault(key, 12*time.Second); got != 12*time.Second {
 		t.Fatalf("expected fallback 12s, got %v", got)
+	}
+}
+
+func TestConfiguredArtifactSourceUsesConfiguredArtifactsPath(t *testing.T) {
+	t.Setenv("SKILL_REGISTRY_ARTIFACTS_PATH", "testdata/artifacts.json")
+	t.Setenv("SKILL_REGISTRY_NPM_REGISTRY_URL", "https://registry.example.com")
+
+	source := configuredArtifactSource()
+
+	if _, ok := source.(*artifactadapter.JSONArtifactSource); !ok {
+		t.Fatalf("expected JSON artifact source, got %T", source)
+	}
+}
+
+func TestConfiguredArtifactSourceUsesConfiguredNPMRegistry(t *testing.T) {
+	t.Setenv("SKILL_REGISTRY_ARTIFACTS_PATH", "")
+	t.Setenv("SKILL_REGISTRY_NPM_REGISTRY_URL", "https://registry.example.com")
+
+	source := configuredArtifactSource()
+
+	if _, ok := source.(*artifactadapter.NPMRegistryArtifactSource); !ok {
+		t.Fatalf("expected NPM registry artifact source, got %T", source)
+	}
+}
+
+func TestConfiguredArtifactSourceFallsBackToEmptyStaticSource(t *testing.T) {
+	t.Setenv("SKILL_REGISTRY_ARTIFACTS_PATH", "")
+	t.Setenv("SKILL_REGISTRY_NPM_REGISTRY_URL", "")
+
+	source := configuredArtifactSource()
+
+	staticSource, ok := source.(*catalog.StaticArtifactSource)
+	if !ok {
+		t.Fatalf("expected static artifact source, got %T", source)
+	}
+
+	_, err := staticSource.FindReleaseArtifact(context.Background(), "@platform.skill/pdf-skill", "1.2.0")
+	if err == nil {
+		t.Fatal("expected empty fallback artifact source to miss sample artifact")
+	}
+
+	var catalogErr *catalog.Error
+	if !errors.As(err, &catalogErr) {
+		t.Fatalf("expected catalog error, got %T", err)
+	}
+	if catalogErr.Status != 404 {
+		t.Fatalf("expected 404 from empty static artifact source, got %d", catalogErr.Status)
+	}
+}
+
+func TestProductionSeedDataIsAlwaysEmpty(t *testing.T) {
+	data := productionSeedData()
+
+	if len(data.Skills) != 0 || len(data.Governance) != 0 || len(data.Artifacts) != 0 {
+		t.Fatalf("expected empty production seed data, got %+v", data)
+	}
+}
+
+func TestProductionMockRegistryIsAlwaysDisabled(t *testing.T) {
+	registry, disabled := productionMockRegistry()
+
+	if registry != nil {
+		t.Fatalf("expected no mock registry, got %T", registry)
+	}
+	if !disabled {
+		t.Fatal("expected mock registry to stay disabled in production startup")
 	}
 }

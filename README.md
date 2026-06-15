@@ -321,6 +321,7 @@ CLI：
 Catalog：
 
 - `SKILL_REGISTRY_ADDR`
+- `SKILL_REGISTRY_ARTIFACTS_PATH`
 - `SKILL_REGISTRY_DATABASE_URL`
 - `SKILL_REGISTRY_READER_TOKEN`
 - `SKILL_REGISTRY_AUTHORING_TOKEN`
@@ -333,10 +334,11 @@ Catalog：
 
 - 本地开发默认就是 `kind`：Catalog 暴露在 `http://127.0.0.1:18080`，Nexus 暴露在 `http://127.0.0.1:8081`
 - `make dev-bootstrap` 会重新初始化集群内 Nexus 仓，并重写本地 `/private/tmp/skill-registry-nexus/.npmrc`
+- `SKILL_REGISTRY_ARTIFACTS_PATH` 用于显式指定离线 artifact 元数据文件；如果未配置，则 Catalog 只会在 `SKILL_REGISTRY_NPM_REGISTRY_URL` 已配置时从 npm registry 读取元数据，否则回退为空静态 artifact 源
 - `SKILL_REGISTRY_NPM_REGISTRY_URL` 给 Catalog 自己读 registry 元数据；`SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL` 给宿主机 CLI 下载 tarball
 - 如果要让 Web 里的“发布 skill”由 Catalog 直接发到 Nexus，还需要给 Catalog 配 `SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION`（例如 `Bearer NpmToken.xxxxx`）；也可改用 `SKILL_REGISTRY_NPM_PUBLISH_TOKEN`
 - CLI 永远连 Catalog；切换后端 npm registry 时，需要同时确认 Catalog 的内部访问地址和对外下载地址
-- Docker 镜像默认关闭 sample data 与 `/mock-npm`
+- Catalog 运行时不再提供 sample data 或 `/mock-npm` 启动分支
 
 ### `SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION` 怎么取
 
