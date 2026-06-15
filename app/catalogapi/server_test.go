@@ -680,6 +680,25 @@ func TestMockNPMRegistryServesPackageMetadata(t *testing.T) {
 	}
 }
 
+func TestMockNPMRegistryRootRedirectsToTrailingSlash(t *testing.T) {
+	server := NewServer(ServerConfig{
+		Repository:   catalog.NewMemoryRepository(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm")),
+		MockRegistry: artifactadapter.NewMockRegistry(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm").Artifacts),
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/mock-npm", nil)
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusTemporaryRedirect, recorder.Code, recorder.Body.String())
+	}
+	if got := recorder.Header().Get("Location"); got != "/mock-npm/" {
+		t.Fatalf("expected redirect location /mock-npm/, got %q", got)
+	}
+}
+
 func TestMockNPMRegistryCanBeDisabled(t *testing.T) {
 	server := NewServer(ServerConfig{
 		Repository:          catalog.NewMemoryRepository(catalog.SampleDataWithRegistryBase("http://registry.example.com/mock-npm")),
