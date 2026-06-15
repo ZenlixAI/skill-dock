@@ -10,6 +10,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"go/parser"
+	"go/token"
 	"io"
 	"log"
 	"net/http"
@@ -28,17 +30,65 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"skill_registry/app/catalogapi/binding"
 	"skill_registry/app/catalogapi/common"
 	"skill_registry/business/catalog"
 	"skill_registry/business/packaging"
 	internalapp "skill_registry/internal/catalog/application"
 	internaldomain "skill_registry/internal/catalog/domain"
+	internalcataloghttp "skill_registry/internal/catalog/http"
+	internalgovernancehttp "skill_registry/internal/governance/http"
+	internalpackaginghttp "skill_registry/internal/packaging/http"
 	artifactadapter "skill_registry/internal/platform/artifact"
 	"skill_registry/internal/platform/auth"
 	"skill_registry/internal/platform/observability"
 	persist "skill_registry/internal/platform/persistence"
+	internalsystemhttp "skill_registry/internal/system/http"
 )
+
+func TestServerUsesInternalHTTPHandlers(t *testing.T) {
+	server := NewServer(ServerConfig{})
+	if server == nil {
+		t.Fatal("expected server")
+	}
+	var _ internalcataloghttp.Handlers
+	var _ internalgovernancehttp.Handlers
+	var _ internalpackaginghttp.Handlers
+	var _ internalsystemhttp.Handlers
+
+	fileSet := token.NewFileSet()
+	file, err := parser.ParseFile(fileSet, "server.go", nil, parser.ImportsOnly)
+	if err != nil {
+		t.Fatalf("parse server.go imports: %v", err)
+	}
+
+	imports := map[string]bool{}
+	for _, spec := range file.Imports {
+		importPath := strings.Trim(spec.Path.Value, "\"")
+		imports[importPath] = true
+	}
+
+	for _, importPath := range []string{
+		"skill_registry/internal/catalog/http",
+		"skill_registry/internal/governance/http",
+		"skill_registry/internal/packaging/http",
+		"skill_registry/internal/system/http",
+	} {
+		if !imports[importPath] {
+			t.Fatalf("expected server.go to import %s directly", importPath)
+		}
+	}
+
+	for _, importPath := range []string{
+		"skill_registry/app/catalogapi/handlers/catalog",
+		"skill_registry/app/catalogapi/handlers/governance",
+		"skill_registry/app/catalogapi/handlers/packaging",
+		"skill_registry/app/catalogapi/handlers/system",
+	} {
+		if imports[importPath] {
+			t.Fatalf("expected server.go to stop importing facade %s", importPath)
+		}
+	}
+}
 
 func TestSkillsRequiresAuthentication(t *testing.T) {
 	server := newTestServer()
@@ -308,7 +358,7 @@ func TestCatalogReadModuleListsSkillsFromParsedQuery(t *testing.T) {
 		Actor: "reader",
 	}
 
-	response, err := module.listSkills(context.Background(), principal, binding.SkillsQuery{
+	response, err := module.listSkills(context.Background(), principal, internalcataloghttp.SkillsQuery{
 		Query:          "pdf",
 		PackageName:    "@platform.skill/pdf-skill",
 		SourceType:     string(catalog.SourceTypeImported),

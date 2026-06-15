@@ -4,9 +4,9 @@ import (
 	"context"
 	"strings"
 
-	"skill_registry/app/catalogapi/binding"
 	"skill_registry/app/catalogapi/common"
 	"skill_registry/business/catalog"
+	internalcataloghttp "skill_registry/internal/catalog/http"
 	"skill_registry/internal/platform/auth"
 )
 
@@ -20,7 +20,7 @@ type catalogReadService interface {
 }
 
 type catalogReadWorkflow interface {
-	listSkills(ctx context.Context, principal auth.Principal, query binding.SkillsQuery) (catalog.SkillsPage, *catalog.Error)
+	listSkills(ctx context.Context, principal auth.Principal, query internalcataloghttp.SkillsQuery) (catalog.SkillsPage, *catalog.Error)
 	listCuratedSkills(ctx context.Context, principal auth.Principal, pageSize int, cursor int) (catalog.CuratedSkillsPage, *catalog.Error)
 	getSkill(ctx context.Context, packageName string) (catalog.SkillDetail, error)
 	listVersions(ctx context.Context, query catalog.VersionQuery) (catalog.VersionsPage, error)
@@ -32,7 +32,7 @@ type catalogReadModule struct {
 	service catalogReadService
 }
 
-func (m *catalogReadModule) listSkills(ctx context.Context, principal auth.Principal, query binding.SkillsQuery) (catalog.SkillsPage, *catalog.Error) {
+func (m *catalogReadModule) listSkills(ctx context.Context, principal auth.Principal, query internalcataloghttp.SkillsQuery) (catalog.SkillsPage, *catalog.Error) {
 	sourceType, sourceTypeErr := parseSourceTypeFilter(query.SourceType)
 	if sourceTypeErr != nil {
 		return catalog.SkillsPage{}, sourceTypeErr

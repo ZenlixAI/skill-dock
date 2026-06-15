@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"skill_registry/app/catalogapi/audit"
-	"skill_registry/app/catalogapi/binding"
 	"skill_registry/app/catalogapi/common"
 	"skill_registry/business/catalog"
 	"skill_registry/business/packaging"
+	internalcataloghttp "skill_registry/internal/catalog/http"
 	internalpackaginghttp "skill_registry/internal/packaging/http"
 	"skill_registry/internal/platform/auth"
 	persist "skill_registry/internal/platform/persistence"
@@ -39,7 +39,7 @@ func newTestServerWithCatalogReadModule(_ interface{ Helper() }, module catalogR
 	return server
 }
 
-func (m *catalogReadModuleStub) listSkills(context.Context, auth.Principal, binding.SkillsQuery) (catalog.SkillsPage, *catalog.Error) {
+func (m *catalogReadModuleStub) listSkills(context.Context, auth.Principal, internalcataloghttp.SkillsQuery) (catalog.SkillsPage, *catalog.Error) {
 	m.listSkillsCalls.Add(1)
 	return catalog.SkillsPage{}, nil
 }

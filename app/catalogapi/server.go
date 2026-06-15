@@ -15,21 +15,20 @@ import (
 
 	"skill_registry/app/catalogapi/audit"
 	"skill_registry/app/catalogapi/common"
-	cataloghandlers "skill_registry/app/catalogapi/handlers/catalog"
-	governancehandlers "skill_registry/app/catalogapi/handlers/governance"
-	packaginghandlers "skill_registry/app/catalogapi/handlers/packaging"
 	sessionhandlers "skill_registry/app/catalogapi/handlers/session"
-	systemhandlers "skill_registry/app/catalogapi/handlers/system"
 	catalogmiddleware "skill_registry/app/catalogapi/middleware"
 	routerpkg "skill_registry/app/catalogapi/router"
 	"skill_registry/app/catalogapi/system"
 	"skill_registry/business/catalog"
 	"skill_registry/business/packaging"
+	internalcataloghttp "skill_registry/internal/catalog/http"
+	internalgovernancehttp "skill_registry/internal/governance/http"
 	packagingapplication "skill_registry/internal/packaging/application"
 	internalpackaginghttp "skill_registry/internal/packaging/http"
 	"skill_registry/internal/platform/auth"
 	"skill_registry/internal/platform/observability"
 	persist "skill_registry/internal/platform/persistence"
+	internalsystemhttp "skill_registry/internal/system/http"
 )
 
 type packagingApplication interface {
@@ -290,7 +289,7 @@ func (s *Server) logAuditWriteFailure(request *http.Request, action string, err 
 }
 
 func (s *Server) routerConfig() routerpkg.Config {
-	systemHTTPHandlers := systemhandlers.New(s.systemModule.Readyz, s.metrics.RenderPrometheus)
+	systemHTTPHandlers := internalsystemhttp.New(s.systemModule.Readyz, s.metrics.RenderPrometheus)
 	sessionHTTPHandlers := sessionhandlers.New(sessionhandlers.Handlers{
 		Authenticate:    s.authenticateRequest,
 		AuthorizeAction: s.accessWorkflow.authorizeAction,
@@ -316,7 +315,7 @@ func (s *Server) routerConfig() routerpkg.Config {
 			return s.sessionModule != nil && s.sessionModule.enabled()
 		},
 	})
-	catalogHTTPHandlers := cataloghandlers.New(cataloghandlers.Handlers{
+	catalogHTTPHandlers := internalcataloghttp.New(internalcataloghttp.Handlers{
 		AuthorizePackage:     s.authorizePackageAccess,
 		ServeCachedReadJSON:  s.serveCachedReadJSON,
 		ReadListCacheTTL:     s.readListCacheTTL,
@@ -330,7 +329,7 @@ func (s *Server) routerConfig() routerpkg.Config {
 		ResolveInstallTarget: s.catalogReadModule.resolveInstallTarget,
 		PublicInstallTarget:  s.publicInstallTarget,
 	})
-	governanceHTTPHandlers := governancehandlers.New(governancehandlers.Handlers{
+	governanceHTTPHandlers := internalgovernancehttp.New(internalgovernancehttp.Handlers{
 		ServeCachedReadJSON: s.serveCachedReadJSON,
 		ReadListCacheTTL:    s.readListCacheTTL,
 		AuthorizePackage:    s.authorizePackageAccess,
@@ -349,7 +348,7 @@ func (s *Server) routerConfig() routerpkg.Config {
 			return s.applyVersionGovernanceChangeFunc(request.Context(), principal, packageName, versionPath, rawBody)
 		},
 	})
-	packagingHTTPHandlers := packaginghandlers.New(packaginghandlers.Handlers{
+	packagingHTTPHandlers := internalpackaginghttp.New(internalpackaginghttp.Handlers{
 		HasPackaging: func() bool {
 			return s.packaging != nil
 		},
