@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   getPackagingBundleDownloadPath,
@@ -240,6 +240,37 @@ export function ImportPage() {
   const selectedAuthoringFile =
     authoringFiles.find((file) => file.path === selectedAuthoringPath) || authoringFiles[0] || null;
   const advancedInlineFilesValue = rawInlineFilesDirty ? rawInlineFiles : serializeAuthoringFiles(authoringFiles);
+
+  useEffect(() => {
+    setPrepareResult(null);
+    setValidateResult(null);
+    setPackResult(null);
+    setPublishResult(null);
+    setOperationState((current) =>
+      current.loading === false && current.success === null
+        ? current
+        : {
+            loading: false,
+            error: null,
+            errorDetail: null,
+            success: null,
+          }
+    );
+  }, [
+    sourceType,
+    location,
+    sourceRef,
+    authoringFiles,
+    rawInlineFiles,
+    rawInlineFilesDirty,
+    packageName,
+    version,
+    displayName,
+    description,
+    metadataSourceType,
+    publishRegistry,
+    strictMode,
+  ]);
 
   function appendLog(step: ImportLogEntry['step'], outcome: ImportLogEntry['outcome'], summary: string) {
     setActivityLog((current) => [
