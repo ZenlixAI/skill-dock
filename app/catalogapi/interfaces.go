@@ -4,10 +4,10 @@ import (
 	"context"
 	"net/url"
 
-	"skill_registry/app/catalogapi/system"
 	catalog "skill_registry/internal/catalog/domain"
 	"skill_registry/internal/platform/auth"
 	persist "skill_registry/internal/platform/persistence"
+	internalsystemhttp "skill_registry/internal/system/http"
 )
 
 // Consumer-side interfaces the Server depends on. Each cohesive module lives in
@@ -15,7 +15,7 @@ import (
 // lets tests substitute lightweight stubs.
 
 type systemWorkflow interface {
-	Readyz(ctx context.Context) (system.Readyz, int)
+	Readyz(ctx context.Context) (internalsystemhttp.Readyz, int)
 }
 
 type auditQueryWorkflow interface {

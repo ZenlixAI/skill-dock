@@ -9,10 +9,10 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"skill_registry/app/catalogapi/common"
-	"skill_registry/app/catalogapi/response"
 	catalog "skill_registry/internal/catalog/domain"
 	cataloghttp "skill_registry/internal/catalog/http"
 	"skill_registry/internal/platform/auth"
+	platformhttp "skill_registry/internal/platform/http"
 )
 
 type ServeCachedReadJSONFunc func(stdhttp.ResponseWriter, *stdhttp.Request, time.Duration, func() (any, *catalog.Error))
@@ -66,17 +66,17 @@ func RegisterRoutes(engine *gin.Engine, config Config) {
 func (h Handlers) GovernanceChanges(context *gin.Context) {
 	query, err := cataloghttp.BindGovernanceChangesQuery(context)
 	if err != nil {
-		response.WriteCatalogError(context, err)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, err)
 		return
 	}
 	pageSize, pageSizeErr := common.ParsePageSizeValue(query.PageSize)
 	if pageSizeErr != nil {
-		response.WriteCatalogError(context, pageSizeErr)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, pageSizeErr)
 		return
 	}
 	cursor, cursorErr := common.ParseCursorValue(query.Cursor)
 	if cursorErr != nil {
-		response.WriteCatalogError(context, cursorErr)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, cursorErr)
 		return
 	}
 	if query.PackageName != "" && !h.authorizePackage(context, query.PackageName) {
@@ -84,12 +84,12 @@ func (h Handlers) GovernanceChanges(context *gin.Context) {
 	}
 	targetType, targetTypeErr := common.ParseGovernanceTargetTypeFilter(query.TargetType)
 	if targetTypeErr != nil {
-		response.WriteCatalogError(context, targetTypeErr)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, targetTypeErr)
 		return
 	}
 	versionFilter, versionFilterErr := common.ParseExactVersionQueryParam(query.Version, "version")
 	if versionFilterErr != nil {
-		response.WriteCatalogError(context, versionFilterErr)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, versionFilterErr)
 		return
 	}
 
@@ -110,12 +110,12 @@ func (h Handlers) GovernanceChanges(context *gin.Context) {
 func (h Handlers) SkillGovernance(context *gin.Context) {
 	uri, err := cataloghttp.BindPackageURI(context)
 	if err != nil {
-		response.WriteCatalogError(context, err)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, err)
 		return
 	}
 	packageName, packageErr := cataloghttp.DecodePackageName(uri.Package)
 	if packageErr != nil {
-		response.WriteCatalogError(context, packageErr)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, packageErr)
 		return
 	}
 	if !h.authorizePackage(context, packageName) {
@@ -127,7 +127,7 @@ func (h Handlers) SkillGovernance(context *gin.Context) {
 
 	rawBody, readErr := io.ReadAll(context.Request.Body)
 	if readErr != nil {
-		response.WriteCatalogError(context, catalog.NewError(422, "invalid_request", "request body is invalid JSON.", map[string]any{"error": readErr.Error()}))
+		platformhttp.WriteCatalogError(context.Writer, context.Request, catalog.NewError(422, "invalid_request", "request body is invalid JSON.", map[string]any{"error": readErr.Error()}))
 		return
 	}
 	release := h.acquireWriteLimiter(context)
@@ -137,26 +137,26 @@ func (h Handlers) SkillGovernance(context *gin.Context) {
 	defer release()
 
 	if h.ApplySkillGovernanceChange == nil {
-		response.WriteJSON(context, stdhttp.StatusCreated, catalog.GovernanceChangeResponse{})
+		platformhttp.WriteJSON(context.Writer, stdhttp.StatusCreated, catalog.GovernanceChangeResponse{})
 		return
 	}
 	payload, status, handlerErr := h.ApplySkillGovernanceChange(context.Request, auth.PrincipalFromContext(context.Request.Context()), packageName, rawBody)
 	if handlerErr != nil {
-		response.WriteCatalogError(context, handlerErr)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, handlerErr)
 		return
 	}
-	response.WriteJSON(context, status, payload)
+	platformhttp.WriteJSON(context.Writer, status, payload)
 }
 
 func (h Handlers) VersionGovernance(context *gin.Context) {
 	uri, err := cataloghttp.BindVersionURI(context)
 	if err != nil {
-		response.WriteCatalogError(context, err)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, err)
 		return
 	}
 	packageName, packageErr := cataloghttp.DecodePackageName(uri.Package)
 	if packageErr != nil {
-		response.WriteCatalogError(context, packageErr)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, packageErr)
 		return
 	}
 	if !h.authorizePackage(context, packageName) {
@@ -168,7 +168,7 @@ func (h Handlers) VersionGovernance(context *gin.Context) {
 
 	rawBody, readErr := io.ReadAll(context.Request.Body)
 	if readErr != nil {
-		response.WriteCatalogError(context, catalog.NewError(422, "invalid_request", "request body is invalid JSON.", map[string]any{"error": readErr.Error()}))
+		platformhttp.WriteCatalogError(context.Writer, context.Request, catalog.NewError(422, "invalid_request", "request body is invalid JSON.", map[string]any{"error": readErr.Error()}))
 		return
 	}
 	release := h.acquireWriteLimiter(context)
@@ -178,26 +178,26 @@ func (h Handlers) VersionGovernance(context *gin.Context) {
 	defer release()
 
 	if h.ApplyVersionGovernance == nil {
-		response.WriteJSON(context, stdhttp.StatusCreated, catalog.GovernanceChangeResponse{})
+		platformhttp.WriteJSON(context.Writer, stdhttp.StatusCreated, catalog.GovernanceChangeResponse{})
 		return
 	}
 	payload, status, handlerErr := h.ApplyVersionGovernance(context.Request, auth.PrincipalFromContext(context.Request.Context()), packageName, uri.Version, rawBody)
 	if handlerErr != nil {
-		response.WriteCatalogError(context, handlerErr)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, handlerErr)
 		return
 	}
-	response.WriteJSON(context, status, payload)
+	platformhttp.WriteJSON(context.Writer, status, payload)
 }
 
 func (h Handlers) ReleaseRecord(context *gin.Context) {
 	uri, err := cataloghttp.BindVersionURI(context)
 	if err != nil {
-		response.WriteCatalogError(context, err)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, err)
 		return
 	}
 	packageName, packageErr := cataloghttp.DecodePackageName(uri.Package)
 	if packageErr != nil {
-		response.WriteCatalogError(context, packageErr)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, packageErr)
 		return
 	}
 	if !h.authorizePackage(context, packageName) {
@@ -209,7 +209,7 @@ func (h Handlers) ReleaseRecord(context *gin.Context) {
 
 	rawBody, readErr := io.ReadAll(context.Request.Body)
 	if readErr != nil {
-		response.WriteCatalogError(context, catalog.NewError(422, "invalid_request", "request body is invalid JSON.", map[string]any{"error": readErr.Error()}))
+		platformhttp.WriteCatalogError(context.Writer, context.Request, catalog.NewError(422, "invalid_request", "request body is invalid JSON.", map[string]any{"error": readErr.Error()}))
 		return
 	}
 	release := h.acquireWriteLimiter(context)
@@ -219,15 +219,15 @@ func (h Handlers) ReleaseRecord(context *gin.Context) {
 	defer release()
 
 	if h.CreateReleaseRecord == nil {
-		response.WriteJSON(context, stdhttp.StatusCreated, catalog.ReleaseRecordResult{})
+		platformhttp.WriteJSON(context.Writer, stdhttp.StatusCreated, catalog.ReleaseRecordResult{})
 		return
 	}
 	payload, status, handlerErr := h.CreateReleaseRecord(context.Request, auth.PrincipalFromContext(context.Request.Context()), packageName, uri.Version, rawBody)
 	if handlerErr != nil {
-		response.WriteCatalogError(context, handlerErr)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, handlerErr)
 		return
 	}
-	response.WriteJSON(context, status, payload)
+	platformhttp.WriteJSON(context.Writer, status, payload)
 }
 
 func (h Handlers) authorizePackage(context *gin.Context, packageName string) bool {
@@ -250,7 +250,7 @@ func (h Handlers) acquireWriteLimiter(context *gin.Context) func() {
 	}
 	release, err := h.AcquireWriteLimiter()
 	if err != nil {
-		response.WriteCatalogError(context, err)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, err)
 		return nil
 	}
 	return release
@@ -263,10 +263,10 @@ func (h Handlers) serveCachedReadJSON(context *gin.Context, ttl time.Duration, l
 	}
 	payload, err := load()
 	if err != nil {
-		response.WriteCatalogError(context, err)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, err)
 		return
 	}
-	response.WriteJSON(context, stdhttp.StatusOK, payload)
+	platformhttp.WriteJSON(context.Writer, stdhttp.StatusOK, payload)
 }
 
 func registerHeadCompatibleRoute(engine *gin.Engine, path string, handler gin.HandlerFunc) {

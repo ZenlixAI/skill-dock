@@ -6,14 +6,17 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"skill_registry/app/catalogapi/common"
-	"skill_registry/app/catalogapi/response"
-	systemmodule "skill_registry/app/catalogapi/system"
 	"skill_registry/internal/platform/auth"
+	platformhttp "skill_registry/internal/platform/http"
 	"skill_registry/internal/platform/observability"
 )
 
-type ReadyzFunc func(context.Context) (systemmodule.Readyz, int)
+type Readyz struct {
+	Status string            `json:"status"`
+	Checks map[string]string `json:"checks"`
+}
+
+type ReadyzFunc func(context.Context) (Readyz, int)
 type MetricsFunc func() string
 
 type Handlers struct {
@@ -41,19 +44,19 @@ func RegisterRoutes(engine *gin.Engine, config Config) {
 }
 
 func (h Handlers) Healthz(context *gin.Context) {
-	common.SetObservedAction(context.Request, string(auth.ActionReadHealthz))
-	common.SetObservedAuthDecision(context.Request, observability.AuthDecisionAllowed)
-	response.WriteJSON(context, stdhttp.StatusOK, map[string]any{
+	platformhttp.SetObservedAction(context.Request, string(auth.ActionReadHealthz))
+	platformhttp.SetObservedAuthDecision(context.Request, observability.AuthDecisionAllowed)
+	platformhttp.WriteJSON(context.Writer, stdhttp.StatusOK, map[string]any{
 		"status": "ok",
 	})
 }
 
 func (h Handlers) Readyz(context *gin.Context) {
-	common.SetObservedAction(context.Request, string(auth.ActionReadReadyz))
-	common.SetObservedAuthDecision(context.Request, observability.AuthDecisionAllowed)
+	platformhttp.SetObservedAction(context.Request, string(auth.ActionReadReadyz))
+	platformhttp.SetObservedAuthDecision(context.Request, observability.AuthDecisionAllowed)
 
 	if h.ReadyzFunc == nil {
-		response.WriteJSON(context, stdhttp.StatusOK, systemmodule.Readyz{
+		platformhttp.WriteJSON(context.Writer, stdhttp.StatusOK, Readyz{
 			Status: "ready",
 			Checks: map[string]string{},
 		})
@@ -61,12 +64,12 @@ func (h Handlers) Readyz(context *gin.Context) {
 	}
 
 	payload, status := h.ReadyzFunc(context.Request.Context())
-	response.WriteJSON(context, status, payload)
+	platformhttp.WriteJSON(context.Writer, status, payload)
 }
 
 func (h Handlers) Metrics(context *gin.Context) {
-	common.SetObservedAction(context.Request, string(auth.ActionReadMetrics))
-	common.SetObservedAuthDecision(context.Request, observability.AuthDecisionAllowed)
+	platformhttp.SetObservedAction(context.Request, string(auth.ActionReadMetrics))
+	platformhttp.SetObservedAuthDecision(context.Request, observability.AuthDecisionAllowed)
 
 	body := ""
 	if h.MetricsFunc != nil {

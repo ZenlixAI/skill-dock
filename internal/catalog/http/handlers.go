@@ -9,9 +9,9 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"skill_registry/app/catalogapi/common"
-	"skill_registry/app/catalogapi/response"
 	catalog "skill_registry/internal/catalog/domain"
 	"skill_registry/internal/platform/auth"
+	platformhttp "skill_registry/internal/platform/http"
 	persist "skill_registry/internal/platform/persistence"
 )
 
@@ -48,7 +48,7 @@ func New(config Handlers) Handlers {
 func (h Handlers) Skills(context *gin.Context) {
 	query, err := BindSkillsQuery(context)
 	if err != nil {
-		response.WriteCatalogError(context, err)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, err)
 		return
 	}
 	if query.PackageName != "" && !h.authorizePackage(context, query.PackageName) {
@@ -84,17 +84,17 @@ func (h Handlers) SkillsSearch(context *gin.Context) {
 func (h Handlers) CuratedSkills(context *gin.Context) {
 	query, err := BindCuratedSkillsQuery(context)
 	if err != nil {
-		response.WriteCatalogError(context, err)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, err)
 		return
 	}
 	pageSize, pageSizeErr := common.ParsePageSizeValue(query.PageSize)
 	if pageSizeErr != nil {
-		response.WriteCatalogError(context, pageSizeErr)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, pageSizeErr)
 		return
 	}
 	cursor, cursorErr := common.ParseCursorValue(query.Cursor)
 	if cursorErr != nil {
-		response.WriteCatalogError(context, cursorErr)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, cursorErr)
 		return
 	}
 
@@ -109,12 +109,12 @@ func (h Handlers) CuratedSkills(context *gin.Context) {
 func (h Handlers) SkillDetail(context *gin.Context) {
 	uri, err := BindPackageURI(context)
 	if err != nil {
-		response.WriteCatalogError(context, err)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, err)
 		return
 	}
 	packageName, packageErr := DecodePackageName(uri.Package)
 	if packageErr != nil {
-		response.WriteCatalogError(context, packageErr)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, packageErr)
 		return
 	}
 	if !h.authorizePackage(context, packageName) {
@@ -127,7 +127,7 @@ func (h Handlers) SkillDetail(context *gin.Context) {
 		}
 		payload, getErr := h.GetSkillFunc(context.Request.Context(), packageName)
 		if getErr != nil {
-			return nil, common.CatalogErrorFromError(getErr)
+			return nil, platformhttp.CatalogErrorFromError(getErr)
 		}
 		return payload, nil
 	})
@@ -136,17 +136,17 @@ func (h Handlers) SkillDetail(context *gin.Context) {
 func (h Handlers) VersionList(context *gin.Context) {
 	uri, err := BindPackageURI(context)
 	if err != nil {
-		response.WriteCatalogError(context, err)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, err)
 		return
 	}
 	query, queryErr := BindVersionListQuery(context)
 	if queryErr != nil {
-		response.WriteCatalogError(context, queryErr)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, queryErr)
 		return
 	}
 	packageName, packageErr := DecodePackageName(uri.Package)
 	if packageErr != nil {
-		response.WriteCatalogError(context, packageErr)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, packageErr)
 		return
 	}
 	if !h.authorizePackage(context, packageName) {
@@ -155,22 +155,22 @@ func (h Handlers) VersionList(context *gin.Context) {
 
 	includeDeprecated, includeDeprecatedErr := common.ParseBooleanQueryParam(query.IncludeDeprecated, "include_deprecated", true)
 	if includeDeprecatedErr != nil {
-		response.WriteCatalogError(context, includeDeprecatedErr)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, includeDeprecatedErr)
 		return
 	}
 	includeYanked, includeYankedErr := common.ParseBooleanQueryParam(query.IncludeYanked, "include_yanked", false)
 	if includeYankedErr != nil {
-		response.WriteCatalogError(context, includeYankedErr)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, includeYankedErr)
 		return
 	}
 	pageSize, pageSizeErr := common.ParsePageSizeValue(query.PageSize)
 	if pageSizeErr != nil {
-		response.WriteCatalogError(context, pageSizeErr)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, pageSizeErr)
 		return
 	}
 	cursor, cursorErr := common.ParseCursorValue(query.Cursor)
 	if cursorErr != nil {
-		response.WriteCatalogError(context, cursorErr)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, cursorErr)
 		return
 	}
 
@@ -186,7 +186,7 @@ func (h Handlers) VersionList(context *gin.Context) {
 			Cursor:            cursor,
 		})
 		if listErr != nil {
-			return nil, common.CatalogErrorFromError(listErr)
+			return nil, platformhttp.CatalogErrorFromError(listErr)
 		}
 		return payload, nil
 	})
@@ -195,12 +195,12 @@ func (h Handlers) VersionList(context *gin.Context) {
 func (h Handlers) VersionDetail(context *gin.Context) {
 	uri, err := BindVersionURI(context)
 	if err != nil {
-		response.WriteCatalogError(context, err)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, err)
 		return
 	}
 	packageName, packageErr := DecodePackageName(uri.Package)
 	if packageErr != nil {
-		response.WriteCatalogError(context, packageErr)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, packageErr)
 		return
 	}
 	if !h.authorizePackage(context, packageName) {
@@ -208,7 +208,7 @@ func (h Handlers) VersionDetail(context *gin.Context) {
 	}
 	version, versionErr := common.DecodeVersion(uri.Version)
 	if versionErr != nil {
-		response.WriteCatalogError(context, versionErr)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, versionErr)
 		return
 	}
 
@@ -218,7 +218,7 @@ func (h Handlers) VersionDetail(context *gin.Context) {
 		}
 		payload, getErr := h.GetVersionFunc(context.Request.Context(), packageName, version)
 		if getErr != nil {
-			return nil, common.CatalogErrorFromError(getErr)
+			return nil, platformhttp.CatalogErrorFromError(getErr)
 		}
 		return payload, nil
 	})
@@ -227,17 +227,17 @@ func (h Handlers) VersionDetail(context *gin.Context) {
 func (h Handlers) InstallTarget(context *gin.Context) {
 	uri, err := BindPackageURI(context)
 	if err != nil {
-		response.WriteCatalogError(context, err)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, err)
 		return
 	}
 	query, queryErr := BindInstallTargetQuery(context)
 	if queryErr != nil {
-		response.WriteCatalogError(context, queryErr)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, queryErr)
 		return
 	}
 	packageName, packageErr := DecodePackageName(uri.Package)
 	if packageErr != nil {
-		response.WriteCatalogError(context, packageErr)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, packageErr)
 		return
 	}
 	if !h.authorizePackage(context, packageName) {
@@ -250,7 +250,7 @@ func (h Handlers) InstallTarget(context *gin.Context) {
 		}
 		payload, resolveErr := h.ResolveInstallTarget(context.Request.Context(), packageName, query.Version)
 		if resolveErr != nil {
-			return nil, common.CatalogErrorFromError(resolveErr)
+			return nil, platformhttp.CatalogErrorFromError(resolveErr)
 		}
 		if h.PublicInstallTarget != nil {
 			return h.PublicInstallTarget(payload), nil
@@ -273,8 +273,8 @@ func (h Handlers) serveCachedReadJSON(context *gin.Context, ttl time.Duration, l
 	}
 	payload, err := load()
 	if err != nil {
-		response.WriteCatalogError(context, err)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, err)
 		return
 	}
-	response.WriteJSON(context, stdhttp.StatusOK, payload)
+	platformhttp.WriteJSON(context.Writer, stdhttp.StatusOK, payload)
 }

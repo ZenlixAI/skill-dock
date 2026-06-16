@@ -8,11 +8,11 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"skill_registry/app/catalogapi/system"
 	internalapp "skill_registry/internal/catalog/application"
 	cataloginfra "skill_registry/internal/catalog/infra"
 	packagingapplication "skill_registry/internal/packaging/application"
 	packaging "skill_registry/internal/packaging/domain"
+	internalsystemhttp "skill_registry/internal/system/http"
 )
 
 func TestServerRoutesAuditEventsThroughAuditQueryModule(t *testing.T) {
@@ -316,9 +316,9 @@ type systemModuleStub struct {
 	readyzCalls atomic.Int64
 }
 
-func (m *systemModuleStub) Readyz(context.Context) (system.Readyz, int) {
+func (m *systemModuleStub) Readyz(context.Context) (internalsystemhttp.Readyz, int) {
 	m.readyzCalls.Add(1)
-	return system.Readyz{
+	return internalsystemhttp.Readyz{
 		Status: "ready",
 		Checks: map[string]string{
 			"repository":  "ok",

@@ -18,7 +18,6 @@ import (
 	sessionhandlers "skill_registry/app/catalogapi/handlers/session"
 	catalogmiddleware "skill_registry/app/catalogapi/middleware"
 	routerpkg "skill_registry/app/catalogapi/router"
-	"skill_registry/app/catalogapi/system"
 	catalogapp "skill_registry/internal/catalog/application"
 	catalog "skill_registry/internal/catalog/domain"
 	internalcataloghttp "skill_registry/internal/catalog/http"
@@ -184,10 +183,10 @@ func NewServer(config ServerConfig) *Server {
 		authorizer:     authorizer,
 		sessionManager: sessionManager,
 	}
-	server.systemModule = system.NewModule(
-		system.NamedDependency{Name: "repository", Pinger: system.DependencyPinger(config.Repository)},
-		system.NamedDependency{Name: "audit", Pinger: system.DependencyPinger(config.Audit)},
-		system.NamedDependency{Name: "idempotency", Pinger: system.DependencyPinger(config.Idempotency)},
+	server.systemModule = internalsystemhttp.NewModule(
+		internalsystemhttp.NamedDependency{Name: "repository", Pinger: internalsystemhttp.DependencyPinger(config.Repository)},
+		internalsystemhttp.NamedDependency{Name: "audit", Pinger: internalsystemhttp.DependencyPinger(config.Audit)},
+		internalsystemhttp.NamedDependency{Name: "idempotency", Pinger: internalsystemhttp.DependencyPinger(config.Idempotency)},
 	)
 	return server
 }

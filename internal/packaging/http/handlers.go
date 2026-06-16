@@ -10,11 +10,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"skill_registry/app/catalogapi/common"
-	"skill_registry/app/catalogapi/response"
 	catalog "skill_registry/internal/catalog/domain"
 	packaging "skill_registry/internal/packaging/domain"
 	"skill_registry/internal/platform/auth"
+	platformhttp "skill_registry/internal/platform/http"
 )
 
 type AuthorizePackageFunc func(stdhttp.ResponseWriter, *stdhttp.Request, string) bool
@@ -96,9 +95,9 @@ func (h Handlers) PublishHandler(c *gin.Context) {
 	}
 
 	var payload packaging.PublishRequest
-	if err := common.DecodeJSONBody(c.Request, &payload); err != nil {
+	if err := platformhttp.DecodeJSONBody(c.Request, &payload); err != nil {
 		h.recordMutationAudit(c.Request, "packaging.publish", "", "", err.Status, "failed", map[string]any{"errorCode": err.Code})
-		response.WriteCatalogError(c, err)
+		platformhttp.WriteCatalogError(c.Writer, c.Request, err)
 		return
 	}
 	if !h.authorizePackage(c, payload.Target.PackageName) {
@@ -111,14 +110,14 @@ func (h Handlers) PublishHandler(c *gin.Context) {
 	defer release()
 
 	if h.Publish == nil {
-		response.WriteJSON(c, stdhttp.StatusOK, packaging.PublishResponse{})
+		platformhttp.WriteJSON(c.Writer, stdhttp.StatusOK, packaging.PublishResponse{})
 		return
 	}
 	result, err := h.Publish(c.Request.Context(), payload)
 	if err != nil {
-		catalogErr := common.CatalogErrorFromError(err)
+		catalogErr := platformhttp.CatalogErrorFromError(err)
 		h.recordMutationAudit(c.Request, "packaging.publish", payload.Target.PackageName, payload.Target.Version, catalogErr.Status, "failed", map[string]any{"errorCode": catalogErr.Code})
-		response.WriteCatalogError(c, catalogErr)
+		platformhttp.WriteCatalogError(c.Writer, c.Request, catalogErr)
 		return
 	}
 
@@ -131,7 +130,7 @@ func (h Handlers) PublishHandler(c *gin.Context) {
 		"created":             result.Created,
 		"idempotentReplay":    result.IdempotentReplay,
 	})
-	response.WriteJSON(c, status, result)
+	platformhttp.WriteJSON(c.Writer, status, result)
 }
 
 func (h Handlers) CleanupHandler(c *gin.Context) {
@@ -141,22 +140,22 @@ func (h Handlers) CleanupHandler(c *gin.Context) {
 	}
 
 	var payload packaging.CleanupRequest
-	if err := common.DecodeJSONBody(c.Request, &payload); err != nil {
+	if err := platformhttp.DecodeJSONBody(c.Request, &payload); err != nil {
 		h.recordMutationAudit(c.Request, "packaging.cleanup", "", "", err.Status, "failed", map[string]any{"errorCode": err.Code})
-		response.WriteCatalogError(c, err)
+		platformhttp.WriteCatalogError(c.Writer, c.Request, err)
 		return
 	}
 
 	if h.Cleanup == nil {
-		response.WriteJSON(c, stdhttp.StatusOK, packaging.CleanupResponse{})
+		platformhttp.WriteJSON(c.Writer, stdhttp.StatusOK, packaging.CleanupResponse{})
 		return
 	}
 	result, status, err := h.Cleanup(c.Request.Context(), auth.PrincipalFromContext(c.Request.Context()), payload)
 	if err != nil {
-		response.WriteCatalogError(c, err)
+		platformhttp.WriteCatalogError(c.Writer, c.Request, err)
 		return
 	}
-	response.WriteJSON(c, status, result)
+	platformhttp.WriteJSON(c.Writer, status, result)
 }
 
 func (h Handlers) BundleHandler(c *gin.Context) {
@@ -167,7 +166,7 @@ func (h Handlers) BundleHandler(c *gin.Context) {
 
 	query, err := BindBundleDownloadQuery(c)
 	if err != nil {
-		response.WriteCatalogError(c, err)
+		platformhttp.WriteCatalogError(c.Writer, c.Request, err)
 		return
 	}
 	packageName := strings.TrimSpace(query.PackageName)
@@ -176,7 +175,7 @@ func (h Handlers) BundleHandler(c *gin.Context) {
 	}
 
 	if h.DownloadBundle == nil {
-		response.WriteCatalogError(c, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil))
+		platformhttp.WriteCatalogError(c.Writer, c.Request, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil))
 		return
 	}
 	bundlePath, bundleErr := h.DownloadBundle(
@@ -187,20 +186,20 @@ func (h Handlers) BundleHandler(c *gin.Context) {
 		strings.TrimSpace(query.Version),
 	)
 	if bundleErr != nil {
-		response.WriteCatalogError(c, bundleErr)
+		platformhttp.WriteCatalogError(c.Writer, c.Request, bundleErr)
 		return
 	}
 
 	bundleFile, openErr := os.Open(bundlePath)
 	if openErr != nil {
-		response.WriteCatalogError(c, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil))
+		platformhttp.WriteCatalogError(c.Writer, c.Request, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil))
 		return
 	}
 	defer bundleFile.Close()
 
 	info, statErr := bundleFile.Stat()
 	if statErr != nil || info.IsDir() {
-		response.WriteCatalogError(c, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil))
+		platformhttp.WriteCatalogError(c.Writer, c.Request, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil))
 		return
 	}
 
@@ -219,14 +218,14 @@ func handlePackagingWorkflow[T interface {
 
 	rawBody, readErr := io.ReadAll(context.Request.Body)
 	if readErr != nil {
-		response.WriteCatalogError(context, catalog.NewError(422, "invalid_request", "request body is invalid JSON.", map[string]any{"error": readErr.Error()}))
+		platformhttp.WriteCatalogError(context.Writer, context.Request, catalog.NewError(422, "invalid_request", "request body is invalid JSON.", map[string]any{"error": readErr.Error()}))
 		return
 	}
 
 	principal := auth.PrincipalFromContext(context.Request.Context())
 	payload, err := decode(context.Request.Context(), principal, rawBody)
 	if err != nil {
-		response.WriteCatalogError(context, err)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, err)
 		return
 	}
 	if packageName := payload.GetTarget().PackageName; packageName != "" {
@@ -242,10 +241,10 @@ func handlePackagingWorkflow[T interface {
 
 	result, status, execErr := execute(context.Request.Context(), principal, payload)
 	if execErr != nil {
-		response.WriteCatalogError(context, execErr)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, execErr)
 		return
 	}
-	response.WriteJSON(context, status, result)
+	platformhttp.WriteJSON(context.Writer, status, result)
 }
 
 func (h Handlers) packagingAvailable() bool {
@@ -268,7 +267,7 @@ func (h Handlers) acquireWriteLimiter(context *gin.Context) func() {
 	}
 	release, err := h.AcquireWriteLimiter()
 	if err != nil {
-		response.WriteCatalogError(context, err)
+		platformhttp.WriteCatalogError(context.Writer, context.Request, err)
 		return nil
 	}
 	return release

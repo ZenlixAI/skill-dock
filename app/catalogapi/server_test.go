@@ -84,6 +84,7 @@ func TestServerUsesInternalHTTPHandlers(t *testing.T) {
 		"skill_registry/app/catalogapi/handlers/governance",
 		"skill_registry/app/catalogapi/handlers/packaging",
 		"skill_registry/app/catalogapi/handlers/system",
+		"skill_registry/app/catalogapi/system",
 	} {
 		if imports[importPath] {
 			t.Fatalf("expected server.go to stop importing facade %s", importPath)

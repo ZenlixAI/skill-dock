@@ -1,13 +1,12 @@
-package system
+package http
 
 import (
 	"context"
-	"net/http"
+	stdhttp "net/http"
 )
 
-type Readyz struct {
-	Status string            `json:"status"`
-	Checks map[string]string `json:"checks"`
+type Pinger interface {
+	Ping(context.Context) error
 }
 
 type NamedDependency struct {
@@ -31,7 +30,7 @@ func (m *Module) Readyz(ctx context.Context) (Readyz, int) {
 		"audit":       "ok",
 		"idempotency": "ok",
 	}
-	status := http.StatusOK
+	status := stdhttp.StatusOK
 
 	for _, dependency := range []NamedDependency{m.repository, m.audit, m.idempotency} {
 		if dependency.Name == "" || dependency.Pinger == nil {
@@ -39,7 +38,7 @@ func (m *Module) Readyz(ctx context.Context) (Readyz, int) {
 		}
 		if err := dependency.Pinger.Ping(ctx); err != nil {
 			checks[dependency.Name] = err.Error()
-			status = http.StatusServiceUnavailable
+			status = stdhttp.StatusServiceUnavailable
 		}
 	}
 
@@ -47,7 +46,7 @@ func (m *Module) Readyz(ctx context.Context) (Readyz, int) {
 		Status: "ready",
 		Checks: checks,
 	}
-	if status != http.StatusOK {
+	if status != stdhttp.StatusOK {
 		response.Status = "degraded"
 	}
 	return response, status

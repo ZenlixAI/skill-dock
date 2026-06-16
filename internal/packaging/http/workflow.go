@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"skill_registry/app/catalogapi/audit"
-	"skill_registry/app/catalogapi/common"
 	catalog "skill_registry/internal/catalog/domain"
 	packagingapplication "skill_registry/internal/packaging/application"
 	packaging "skill_registry/internal/packaging/domain"
 	"skill_registry/internal/platform/auth"
+	platformhttp "skill_registry/internal/platform/http"
 	persist "skill_registry/internal/platform/persistence"
 )
 
@@ -90,7 +90,7 @@ func (w *Workflow) DecodePackRequest(ctx context.Context, principal auth.Princip
 
 func decodePackagingPayload[T interface{ GetTarget() packaging.Target }](ctx context.Context, workflow *Workflow, principal auth.Principal, endpoint string, rawBody []byte) (T, *catalog.Error) {
 	var payload T
-	if err := common.DecodeJSONBytes(rawBody, &payload); err != nil {
+	if err := platformhttp.DecodeJSONBytes(rawBody, &payload); err != nil {
 		workflow.recordPackagingAudit(ctx, principal, endpoint, packaging.Target{}, err.Status, "failed", map[string]any{
 			"errorCode": err.Code,
 		})
@@ -116,7 +116,7 @@ func executePackagingWorkflow[T interface {
 		}
 	}
 
-	requestHash, err := common.HashRequestPayload(payload)
+	requestHash, err := platformhttp.HashRequestPayload(payload)
 	if err != nil {
 		return nil, 0, catalog.NewError(500, "internal_error", "Internal server error.", nil)
 	}
@@ -143,11 +143,11 @@ func executePackagingWorkflow[T interface {
 
 	response, runErr := run(payload)
 	if runErr != nil {
-		catalogErr := common.CatalogErrorFromError(runErr)
+		catalogErr := platformhttp.CatalogErrorFromError(runErr)
 		workflow.recordPackagingAudit(ctx, principal, endpoint, target, catalogErr.Status, "failed", map[string]any{
 			"errorCode": catalogErr.Code,
 		})
-		return nil, common.StatusFromError(runErr), catalogErr
+		return nil, platformhttp.StatusFromError(runErr), catalogErr
 	}
 
 	if idempotencyKey == "" || !cacheAllowed {

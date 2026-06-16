@@ -1,9 +1,9 @@
-package system
+package http
 
 import (
 	"context"
 	"errors"
-	"net/http"
+	stdhttp "net/http"
 	"reflect"
 	"testing"
 )
@@ -25,8 +25,8 @@ func TestModuleReadyzCollectsDependencyChecks(t *testing.T) {
 
 	payload, status := module.Readyz(context.Background())
 
-	if status != http.StatusServiceUnavailable {
-		t.Fatalf("expected status %d, got %d", http.StatusServiceUnavailable, status)
+	if status != stdhttp.StatusServiceUnavailable {
+		t.Fatalf("expected status %d, got %d", stdhttp.StatusServiceUnavailable, status)
 	}
 
 	wantChecks := map[string]string{
