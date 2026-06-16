@@ -405,10 +405,23 @@ describe('ImportPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: '发布 skill' }));
 
     expect(client.publishSkill).toHaveBeenCalledWith({
-      workspacePath: '/tmp/skill-packaging/workspace',
+      source: {
+        type: 'upload_archive',
+        archiveBase64: 'archive-base64',
+      },
       target: {
         packageName: '@company.skill/zoom-out',
         version: '1.2.0',
+      },
+      metadata: {
+        displayName: 'Zoom Out',
+        description: 'Help me see the bigger picture',
+        sourceType: 'imported',
+      },
+      options: {},
+      review: {
+        manifestDigest: 'sha256:manifest',
+        components: ['commands'],
       },
     });
     expect(await screen.findByText('skill 已发布到 registry，并已写入 release record。')).toBeInTheDocument();

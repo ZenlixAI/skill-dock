@@ -140,6 +140,50 @@ describe('apiClient real-response normalization', () => {
     expect(response.ok).toBe(true);
   });
 
+  it('sends stateless publish requests without workspace fields', async () => {
+    const requestJSON = vi.fn().mockResolvedValue({
+      workspacePath: '/tmp/skill-packaging',
+      packageName: '@platform.skill/zoom-out',
+      version: '1.2.0',
+      manifestDigest: 'sha256:test',
+      components: ['commands'],
+      publishedToRegistry: true,
+      created: true,
+      idempotentReplay: false,
+      versionStatus: 'published',
+      installPolicy: 'resolvable',
+      warnings: [],
+      warningDetails: [],
+      errors: [],
+    });
+
+    const clientModule = await importWithRequestJSON(requestJSON);
+    await clientModule.publishSkill({
+      source: { type: 'upload_archive', archiveBase64: 'ZmFrZQ==' },
+      target: { packageName: '@platform.skill/zoom-out', version: '1.2.0' },
+      metadata: { displayName: 'Zoom Out', description: 'Broader context' },
+      options: {},
+      review: {
+        manifestDigest: 'sha256:test',
+        components: ['commands'],
+      },
+    });
+
+    expect(requestJSON).toHaveBeenCalledWith('/api/v1/skill-packaging/publish', {
+      method: 'POST',
+      body: JSON.stringify({
+        source: { type: 'upload_archive', archiveBase64: 'ZmFrZQ==' },
+        target: { packageName: '@platform.skill/zoom-out', version: '1.2.0' },
+        metadata: { displayName: 'Zoom Out', description: 'Broader context' },
+        options: {},
+        review: {
+          manifestDigest: 'sha256:test',
+          components: ['commands'],
+        },
+      }),
+    });
+  });
+
   it('fills missing bundle metadata with stable defaults', () => {
     expect(normalizeBundleMetadata(null)).toEqual({
       skillManifestDigest: '',

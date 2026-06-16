@@ -23,7 +23,7 @@ func TestPublishServicePublishesWhenArtifactMissing(t *testing.T) {
 	publisher := &capturePackagePublisher{}
 	service.Configure(repo, publisher)
 
-	prepareResp, err := runtime.Prepare(context.Background(), packagingdomain.PrepareRequest{
+	response, err := service.Publish(context.Background(), packagingdomain.PublishRequest{
 		Source: packagingdomain.Source{
 			Type: "platform_authoring",
 			Files: map[string]string{
@@ -32,14 +32,7 @@ func TestPublishServicePublishesWhenArtifactMissing(t *testing.T) {
 		},
 		Target:   packagingdomain.Target{PackageName: "@platform.skill/managed", Version: "1.0.0"},
 		Metadata: packagingdomain.Metadata{DisplayName: "managed", Description: "desc", SourceType: "native"},
-	})
-	if err != nil {
-		t.Fatalf("prepare: %v", err)
-	}
-
-	response, err := service.Publish(context.Background(), packagingdomain.PublishRequest{
-		WorkspacePath: prepareResp.WorkspacePath,
-		Target:        packagingdomain.Target{PackageName: "@platform.skill/managed", Version: "1.0.0"},
+		Options:  packagingdomain.Options{},
 	})
 	if err != nil {
 		t.Fatalf("publish: %v", err)

@@ -179,6 +179,10 @@ type PublishRequest struct {
 	Review          ReviewSummary `json:"review,omitempty"`
 }
 
+func (r PublishRequest) GetIdempotencyKey() string {
+	return r.IdempotencyKey
+}
+
 func (r PublishRequest) GetTarget() Target {
 	return r.Target
 }

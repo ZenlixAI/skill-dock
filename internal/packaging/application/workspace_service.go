@@ -175,13 +175,25 @@ func (r *WorkspaceService) preparePublishedRelease(ctx context.Context, input pa
 	if err := packagingContextError(ctx); err != nil {
 		return publishedReleaseMaterial{}, err
 	}
-	ctx, unlock, err := r.workspace.LockWorkspace(ctx, input.WorkspacePath)
+	prepared, err := r.Prepare(ctx, packagingdomain.PrepareRequest{
+		IdempotencyKey: input.IdempotencyKey,
+		Source:         input.Source,
+		Target:         input.Target,
+		Metadata:       input.Metadata,
+		Options:        input.Options,
+	})
+	if err != nil {
+		return publishedReleaseMaterial{}, err
+	}
+
+	workspacePath := prepared.WorkspacePath
+	ctx, unlock, err := r.workspace.LockWorkspace(ctx, workspacePath)
 	if err != nil {
 		return publishedReleaseMaterial{}, err
 	}
 
 	packResult, err := r.adapter.PackLocked(ctx, packagingdomain.PackRequest{
-		WorkspacePath: input.WorkspacePath,
+		WorkspacePath: workspacePath,
 		Target:        input.Target,
 	}, r.bundleRules)
 	if err != nil {
@@ -200,7 +212,7 @@ func (r *WorkspaceService) preparePublishedRelease(ctx context.Context, input pa
 		return material, nil
 	}
 
-	metadata, err := packaginginfra.ReadWorkspacePackageMetadataFile(input.WorkspacePath, packResult.MaterializedPath())
+	metadata, err := packaginginfra.ReadWorkspacePackageMetadataFile(workspacePath, packResult.MaterializedPath())
 	if err != nil {
 		material.cleanup()
 		return publishedReleaseMaterial{}, err

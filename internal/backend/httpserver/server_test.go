@@ -1278,12 +1278,6 @@ func TestSkillPackagingPublishPublishesAndCreatesReleaseRecord(t *testing.T) {
 	registryClient := registry.client()
 
 	packagingService := packagingapplication.NewService("")
-	workspacePath, _ := prepareManagedWorkspaceForTest(
-		t,
-		packagingService,
-		"@platform.skill/fixture-skill",
-		"0.2.0",
-	)
 	repository := cataloginfra.NewMemoryRepository(cataloginfra.SampleData(), cataloginfra.MemoryRepositoryOptions{
 		ArtifactSource: artifactadapter.NewNPMRegistryArtifactSource(registryBaseURL, registryClient),
 	})
@@ -1300,8 +1294,13 @@ func TestSkillPackagingPublishPublishesAndCreatesReleaseRecord(t *testing.T) {
 	})
 
 	publishRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/publish", `{
-		"workspacePath":"`+workspacePath+`",
-		"target":{"packageName":"@platform.skill/fixture-skill","version":"0.2.0"}
+		"source":{
+			"type":"platform_authoring",
+			"files":{"docs/README.md":"# Capability\n"}
+		},
+		"target":{"packageName":"@platform.skill/fixture-skill","version":"0.2.0"},
+		"metadata":{"displayName":"Fixture Skill","description":"Fixture skill description.","sourceType":"imported"},
+		"options":{}
 	}`)
 	publishRequest.Header.Set("X-Role", "publisher")
 	publishRecorder := httptest.NewRecorder()
@@ -1327,8 +1326,8 @@ func TestSkillPackagingPublishPublishesAndCreatesReleaseRecord(t *testing.T) {
 	if err := json.Unmarshal(publishRecorder.Body.Bytes(), &publishPayload); err != nil {
 		t.Fatalf("decode publish response: %v", err)
 	}
-	if publishPayload.WorkspacePath != workspacePath {
-		t.Fatalf("expected workspacePath %q, got %q", workspacePath, publishPayload.WorkspacePath)
+	if strings.TrimSpace(publishPayload.WorkspacePath) == "" {
+		t.Fatalf("expected publish response workspacePath, got %+v", publishPayload)
 	}
 	if !publishPayload.PublishedToRegistry || !publishPayload.Created || publishPayload.IdempotentReplay {
 		t.Fatalf("unexpected publish result: %+v", publishPayload)
@@ -1344,8 +1343,13 @@ func TestSkillPackagingPublishPublishesAndCreatesReleaseRecord(t *testing.T) {
 	}
 
 	replayRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/publish", `{
-		"workspacePath":"`+workspacePath+`",
-		"target":{"packageName":"@platform.skill/fixture-skill","version":"0.2.0"}
+		"source":{
+			"type":"platform_authoring",
+			"files":{"docs/README.md":"# Capability\n"}
+		},
+		"target":{"packageName":"@platform.skill/fixture-skill","version":"0.2.0"},
+		"metadata":{"displayName":"Fixture Skill","description":"Fixture skill description.","sourceType":"imported"},
+		"options":{}
 	}`)
 	replayRequest.Header.Set("X-Role", "publisher")
 	replayRecorder := httptest.NewRecorder()

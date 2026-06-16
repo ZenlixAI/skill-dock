@@ -651,11 +651,12 @@ export function ImportPage() {
       success: null,
     });
     try {
+      const prepareRequest = await buildPrepareRequest();
       const response = await publishSkill({
-        workspacePath,
-        target: {
-          packageName: packageName.trim(),
-          version: version.trim(),
+        ...prepareRequest,
+        review: {
+          manifestDigest: validateResult.manifestDigest,
+          components: validateResult.components,
         },
       });
       setPublishResult(response);
