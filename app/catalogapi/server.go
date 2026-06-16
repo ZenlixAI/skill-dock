@@ -91,9 +91,9 @@ type Server struct {
 	mode                             ServerMode
 	readListCacheTTL                 time.Duration
 	readDetailCacheTTL               time.Duration
-	readCache                        *readCache
-	readLimiter                      *requestLimiter
-	writeLimiter                     *requestLimiter
+	readCache                        *platformhttp.ReadCache
+	readLimiter                      *platformhttp.RequestLimiter
+	writeLimiter                     *platformhttp.RequestLimiter
 }
 
 func NewServer(config ServerConfig) *Server {
@@ -149,9 +149,9 @@ func NewServer(config ServerConfig) *Server {
 		mode:                 mode,
 		readListCacheTTL:     readListCacheTTL,
 		readDetailCacheTTL:   readDetailCacheTTL,
-		readCache:            newReadCache(),
-		readLimiter:          newRequestLimiter(config.ReadMaxInFlight),
-		writeLimiter:         newRequestLimiter(config.WriteMaxInFlight),
+		readCache:            platformhttp.NewReadCache(),
+		readLimiter:          platformhttp.NewRequestLimiter(config.ReadMaxInFlight),
+		writeLimiter:         platformhttp.NewRequestLimiter(config.WriteMaxInFlight),
 	}
 	server.catalogReadModule = &catalogReadModule{
 		service: catalogReadService,
@@ -219,7 +219,7 @@ func (s *Server) authorizeActionAccess(writer http.ResponseWriter, request *http
 }
 
 func (s *Server) serveCachedReadJSON(writer http.ResponseWriter, request *http.Request, ttl time.Duration, load func() (any, *catalog.Error)) {
-	release, limitErr := s.readLimiter.acquire()
+	release, limitErr := s.readLimiter.Acquire()
 	if limitErr != nil {
 		platformhttp.WriteCatalogError(writer, request, limitErr)
 		return
@@ -227,7 +227,7 @@ func (s *Server) serveCachedReadJSON(writer http.ResponseWriter, request *http.R
 	defer release()
 
 	cacheKey := s.readCacheKey(request, auth.PrincipalFromContext(request.Context()))
-	if cached, ok := s.readCache.lookup(cacheKey); ok {
+	if cached, ok := s.readCache.Lookup(cacheKey); ok {
 		platformhttp.WriteJSONBytes(writer, http.StatusOK, cached)
 		return
 	}
@@ -243,7 +243,7 @@ func (s *Server) serveCachedReadJSON(writer http.ResponseWriter, request *http.R
 		platformhttp.WriteCatalogError(writer, request, marshalErr)
 		return
 	}
-	s.readCache.store(cacheKey, raw, ttl)
+	s.readCache.Store(cacheKey, raw, ttl)
 	platformhttp.WriteJSONBytes(writer, http.StatusOK, raw)
 }
 
@@ -334,7 +334,7 @@ func (s *Server) newEngine() *gin.Engine {
 		AuthorizeAction:     s.accessWorkflow.authorizeAction,
 		ListGovernance:      s.listGovernanceChangesFunc,
 		AcquireWriteLimiter: func() (func(), *catalog.Error) {
-			return s.writeLimiter.acquire()
+			return s.writeLimiter.Acquire()
 		},
 		CreateReleaseRecord: func(request *http.Request, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.ReleaseRecordResult, int, *catalog.Error) {
 			return s.createReleaseRecordFunc(request.Context(), principal, packageName, versionPath, rawBody)
@@ -352,7 +352,7 @@ func (s *Server) newEngine() *gin.Engine {
 		},
 		AuthorizePackage: s.authorizePackageAccess,
 		AcquireWriteLimiter: func() (func(), *catalog.Error) {
-			return s.writeLimiter.acquire()
+			return s.writeLimiter.Acquire()
 		},
 		DecodePrepareRequest: func(ctx context.Context, principal auth.Principal, rawBody []byte) (packaging.PrepareRequest, *catalog.Error) {
 			return s.packagingWorkflow.DecodePrepareRequest(ctx, principal, rawBody)

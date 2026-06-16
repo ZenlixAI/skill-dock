@@ -12,6 +12,7 @@ import (
 	cataloginfra "skill_registry/internal/catalog/infra"
 	packagingapplication "skill_registry/internal/packaging/application"
 	packaging "skill_registry/internal/packaging/domain"
+	platformhttp "skill_registry/internal/platform/http"
 	internalsystemhttp "skill_registry/internal/system/http"
 )
 
@@ -128,6 +129,22 @@ func TestNewServerDoesNotConfigurePackagingPublishWorkflow(t *testing.T) {
 
 	if packagingService.configurePublishWorkflowCalls != 0 {
 		t.Fatalf("expected server construction not to configure packaging publish workflow, got %d calls", packagingService.configurePublishWorkflowCalls)
+	}
+}
+
+func TestNewServerUsesInternalPlatformCacheAndLimiterTypes(t *testing.T) {
+	server := NewServer(ServerConfig{
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+	})
+
+	if _, ok := any(server.readCache).(*platformhttp.ReadCache); !ok {
+		t.Fatalf("expected readCache to use internal platform cache, got %T", server.readCache)
+	}
+	if _, ok := any(server.readLimiter).(*platformhttp.RequestLimiter); !ok {
+		t.Fatalf("expected readLimiter to use internal platform limiter, got %T", server.readLimiter)
+	}
+	if _, ok := any(server.writeLimiter).(*platformhttp.RequestLimiter); !ok {
+		t.Fatalf("expected writeLimiter to use internal platform limiter, got %T", server.writeLimiter)
 	}
 }
 
