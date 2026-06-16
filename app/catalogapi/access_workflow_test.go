@@ -12,8 +12,8 @@ import (
 
 	"skill_registry/app/catalogapi/audit"
 	"skill_registry/app/catalogapi/common"
-	catalogmiddleware "skill_registry/app/catalogapi/middleware"
 	"skill_registry/internal/platform/auth"
+	platformmiddleware "skill_registry/internal/platform/http/middleware"
 	"skill_registry/internal/platform/observability"
 )
 
@@ -64,9 +64,9 @@ func TestAccessWorkflowAuthorizeActionFeedsGinObservability(t *testing.T) {
 
 	engine := gin.New()
 	engine.Use(
-		catalogmiddleware.WithRequestMetadata(nil),
-		catalogmiddleware.WithObservability(nil, log.New(&logBuffer, "", 0)),
-		catalogmiddleware.WithAuthentication(func(request *http.Request) (auth.Principal, bool) {
+		platformmiddleware.WithRequestMetadata(nil),
+		platformmiddleware.WithObservability(nil, log.New(&logBuffer, "", 0)),
+		platformmiddleware.WithAuthentication(func(request *http.Request) (auth.Principal, bool) {
 			return auth.Principal{
 				Role:          "reader",
 				Actor:         "svc-reader",

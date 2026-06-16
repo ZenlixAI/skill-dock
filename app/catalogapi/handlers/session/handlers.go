@@ -6,9 +6,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"skill_registry/app/catalogapi/response"
 	catalog "skill_registry/internal/catalog/domain"
 	"skill_registry/internal/platform/auth"
+	platformhttp "skill_registry/internal/platform/http"
 )
 
 type AuthenticateFunc func(*http.Request) (auth.Principal, bool)
@@ -46,7 +46,7 @@ func (h Handlers) Current(context *gin.Context) {
 		current, _ = h.Authenticate(context.Request)
 	}
 	if !principalPresent(current) {
-		response.WriteJSON(context, http.StatusOK, nil)
+		platformhttp.WriteJSON(context.Writer, http.StatusOK, nil)
 		return
 	}
 
@@ -56,43 +56,43 @@ func (h Handlers) Current(context *gin.Context) {
 	}
 
 	if h.CurrentFunc == nil {
-		response.WriteJSON(context, http.StatusOK, nil)
+		platformhttp.WriteJSON(context.Writer, http.StatusOK, nil)
 		return
 	}
-	response.WriteJSON(context, http.StatusOK, h.CurrentFunc(auth.PrincipalFromContext(context.Request.Context())))
+	platformhttp.WriteJSON(context.Writer, http.StatusOK, h.CurrentFunc(auth.PrincipalFromContext(context.Request.Context())))
 }
 
 func (h Handlers) Login(context *gin.Context) {
 	if h.Enabled == nil || !h.Enabled() {
-		response.WriteCatalogError(context, catalog.NewError(http.StatusNotFound, "session_login_disabled", "Session login is not enabled for this deployment.", nil))
+		platformhttp.WriteCatalogError(context.Writer, context.Request, catalog.NewError(http.StatusNotFound, "session_login_disabled", "Session login is not enabled for this deployment.", nil))
 		return
 	}
 
 	var input loginRequest
 	if err := context.ShouldBindJSON(&input); err != nil {
-		response.WriteCatalogError(context, catalog.NewError(http.StatusBadRequest, "invalid_request", "Request body must be valid JSON.", nil))
+		platformhttp.WriteCatalogError(context.Writer, context.Request, catalog.NewError(http.StatusBadRequest, "invalid_request", "Request body must be valid JSON.", nil))
 		return
 	}
 	if strings.TrimSpace(input.Username) == "" || strings.TrimSpace(input.Password) == "" {
-		response.WriteCatalogError(context, catalog.NewError(http.StatusBadRequest, "invalid_request", "username and password are required.", nil))
+		platformhttp.WriteCatalogError(context.Writer, context.Request, catalog.NewError(http.StatusBadRequest, "invalid_request", "username and password are required.", nil))
 		return
 	}
 
 	if h.LoginFunc == nil || h.CurrentFunc == nil {
-		response.WriteCatalogError(context, catalog.NewError(http.StatusUnauthorized, "unauthorized", "Invalid username or password.", nil))
+		platformhttp.WriteCatalogError(context.Writer, context.Request, catalog.NewError(http.StatusUnauthorized, "unauthorized", "Invalid username or password.", nil))
 		return
 	}
 
 	current, cookie, ok := h.LoginFunc(context.Request, input.Username, input.Password)
 	if !ok {
-		response.WriteCatalogError(context, catalog.NewError(http.StatusUnauthorized, "unauthorized", "Invalid username or password.", nil))
+		platformhttp.WriteCatalogError(context.Writer, context.Request, catalog.NewError(http.StatusUnauthorized, "unauthorized", "Invalid username or password.", nil))
 		return
 	}
 
 	if cookie != nil {
 		http.SetCookie(context.Writer, cookie)
 	}
-	response.WriteJSON(context, http.StatusOK, h.CurrentFunc(current))
+	platformhttp.WriteJSON(context.Writer, http.StatusOK, h.CurrentFunc(current))
 }
 
 func (h Handlers) Logout(context *gin.Context) {
@@ -101,7 +101,7 @@ func (h Handlers) Logout(context *gin.Context) {
 			http.SetCookie(context.Writer, cookie)
 		}
 	}
-	response.WriteJSON(context, http.StatusOK, logoutResponse{OK: true})
+	platformhttp.WriteJSON(context.Writer, http.StatusOK, logoutResponse{OK: true})
 }
 
 func principalPresent(current auth.Principal) bool {

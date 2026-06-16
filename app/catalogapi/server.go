@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -16,8 +15,6 @@ import (
 	"skill_registry/app/catalogapi/audit"
 	"skill_registry/app/catalogapi/common"
 	sessionhandlers "skill_registry/app/catalogapi/handlers/session"
-	catalogmiddleware "skill_registry/app/catalogapi/middleware"
-	routerpkg "skill_registry/app/catalogapi/router"
 	catalogapp "skill_registry/internal/catalog/application"
 	catalog "skill_registry/internal/catalog/domain"
 	internalcataloghttp "skill_registry/internal/catalog/http"
@@ -26,6 +23,8 @@ import (
 	packaging "skill_registry/internal/packaging/domain"
 	internalpackaginghttp "skill_registry/internal/packaging/http"
 	"skill_registry/internal/platform/auth"
+	platformhttp "skill_registry/internal/platform/http"
+	platformmiddleware "skill_registry/internal/platform/http/middleware"
 	"skill_registry/internal/platform/observability"
 	persist "skill_registry/internal/platform/persistence"
 	internalsystemhttp "skill_registry/internal/system/http"
@@ -288,7 +287,7 @@ func (s *Server) logAuditWriteFailure(request *http.Request, action string, err 
 	)
 }
 
-func (s *Server) routerConfig() routerpkg.Config {
+func (s *Server) newEngine() *gin.Engine {
 	systemHTTPHandlers := internalsystemhttp.New(s.systemModule.Readyz, s.metrics.RenderPrometheus)
 	sessionHTTPHandlers := sessionhandlers.New(sessionhandlers.Handlers{
 		Authenticate:    s.authenticateRequest,
@@ -389,64 +388,58 @@ func (s *Server) routerConfig() routerpkg.Config {
 		RecordMutationAudit: s.recordMutationAudit,
 	})
 
-	return routerpkg.Config{
+	engine := platformhttp.NewEngine([]gin.HandlerFunc{
+		platformmiddleware.WithCORS(),
+		platformmiddleware.WithRequestMetadata(&s.requestID),
+		platformmiddleware.WithObservability(s.metrics, s.logger),
+		platformmiddleware.WithCanonicalRedirect(),
+		platformmiddleware.WithAuthentication(s.authenticateRequest),
+	})
+
+	internalsystemhttp.RegisterRoutes(engine, internalsystemhttp.Config{
+		Healthz: systemHTTPHandlers.Healthz,
+		Readyz:  systemHTTPHandlers.Readyz,
+		Metrics: systemHTTPHandlers.Metrics,
+	})
+
+	group := engine.Group("/api/v1/session")
+	group.GET("", sessionHTTPHandlers.Current)
+	group.POST("/login", sessionHTTPHandlers.Login)
+	group.POST("/logout", sessionHTTPHandlers.Logout)
+
+	internalcataloghttp.RegisterRoutes(engine, internalcataloghttp.Config{
 		ServesReadRoutes:  s.mode.servesReadRoutes(),
 		ServesWriteRoutes: s.mode.servesWriteRoutes(),
-		Middleware: []gin.HandlerFunc{
-			catalogmiddleware.WithCORS(),
-			catalogmiddleware.WithRequestMetadata(&s.requestID),
-			catalogmiddleware.WithObservability(s.metrics, s.logger),
-			catalogmiddleware.WithCanonicalRedirect(),
-			catalogmiddleware.WithAuthentication(s.authenticateRequest),
-		},
-		Healthz:           systemHTTPHandlers.Healthz,
-		Readyz:            systemHTTPHandlers.Readyz,
-		Metrics:           systemHTTPHandlers.Metrics,
-		Session:           sessionHTTPHandlers.Current,
-		SessionLogin:      sessionHTTPHandlers.Login,
-		SessionLogout:     sessionHTTPHandlers.Logout,
 		AuditEvents:       s.protectedCatalogHandler(auth.ActionReadAuditEvents, catalogHTTPHandlers.AuditEvents),
 		Skills:            s.protectedCatalogHandler(auth.ActionReadCatalog, catalogHTTPHandlers.Skills),
 		SkillsSearch:      s.protectedCatalogHandler(auth.ActionReadCatalog, catalogHTTPHandlers.SkillsSearch),
 		CuratedSkills:     s.protectedCatalogHandler(auth.ActionReadCatalog, catalogHTTPHandlers.CuratedSkills),
-		GovernanceChanges: s.protectedCatalogHandler(auth.ActionReadCatalog, governanceHTTPHandlers.GovernanceChanges),
 		SkillDetail:       s.protectedCatalogHandler(auth.ActionReadCatalog, catalogHTTPHandlers.SkillDetail),
 		VersionList:       s.protectedCatalogHandler(auth.ActionReadCatalog, catalogHTTPHandlers.VersionList),
 		VersionDetail:     s.protectedCatalogHandler(auth.ActionReadCatalog, catalogHTTPHandlers.VersionDetail),
 		InstallTarget:     s.protectedCatalogHandler(auth.ActionReadCatalog, catalogHTTPHandlers.InstallTarget),
+	})
+
+	internalgovernancehttp.RegisterRoutes(engine, internalgovernancehttp.Config{
+		ServesReadRoutes:  s.mode.servesReadRoutes(),
+		ServesWriteRoutes: s.mode.servesWriteRoutes(),
+		GovernanceChanges: s.protectedCatalogHandler(auth.ActionReadCatalog, governanceHTTPHandlers.GovernanceChanges),
 		SkillGovernance:   s.protectedActionHandler(auth.ActionReadCatalog, governanceHTTPHandlers.SkillGovernance),
 		ReleaseRecord:     s.protectedActionHandler(auth.ActionReadCatalog, governanceHTTPHandlers.ReleaseRecord),
 		VersionGovernance: s.protectedActionHandler(auth.ActionReadCatalog, governanceHTTPHandlers.VersionGovernance),
-		PackagingPrepare:  s.protectedActionHandler(auth.ActionPackagingPrepare, packagingHTTPHandlers.PrepareHandler),
-		PackagingValidate: s.protectedActionHandler(auth.ActionPackagingValidate, packagingHTTPHandlers.ValidateHandler),
-		PackagingPack:     s.protectedActionHandler(auth.ActionPackagingPack, packagingHTTPHandlers.PackHandler),
-		PackagingPublish:  s.protectedActionHandler(auth.ActionPackagingPublish, packagingHTTPHandlers.PublishHandler),
-		PackagingCleanup:  s.protectedActionHandler(auth.ActionPackagingPack, packagingHTTPHandlers.CleanupHandler),
-		PackagingBundle:   s.protectedActionHandler(auth.ActionPackagingPack, packagingHTTPHandlers.BundleHandler),
-	}
-}
+	})
 
-func (s *Server) ginHandler(handler http.Handler, pathParams ...string) gin.HandlerFunc {
-	return func(context *gin.Context) {
-		request := context.Request
-		for _, key := range pathParams {
-			value := context.Param(key)
-			if decoded, err := url.PathUnescape(value); err == nil {
-				value = decoded
-			}
-			request.SetPathValue(key, value)
-		}
-		handler.ServeHTTP(context.Writer, request)
-	}
-}
+	internalpackaginghttp.RegisterRoutes(engine, internalpackaginghttp.Config{
+		ServesWriteRoutes: s.mode.servesWriteRoutes(),
+		Prepare:           s.protectedActionHandler(auth.ActionPackagingPrepare, packagingHTTPHandlers.PrepareHandler),
+		Validate:          s.protectedActionHandler(auth.ActionPackagingValidate, packagingHTTPHandlers.ValidateHandler),
+		Pack:              s.protectedActionHandler(auth.ActionPackagingPack, packagingHTTPHandlers.PackHandler),
+		Publish:           s.protectedActionHandler(auth.ActionPackagingPublish, packagingHTTPHandlers.PublishHandler),
+		Cleanup:           s.protectedActionHandler(auth.ActionPackagingPack, packagingHTTPHandlers.CleanupHandler),
+		Bundle:            s.protectedActionHandler(auth.ActionPackagingPack, packagingHTTPHandlers.BundleHandler),
+	})
 
-func (s *Server) protectedGinHandler(action auth.Action, handler http.Handler, pathParams ...string) gin.HandlerFunc {
-	return catalogmiddleware.RequireAction(
-		s.ginHandler(handler, pathParams...),
-		action,
-		s.accessWorkflow.authorizeAction,
-		s.recordAuthenticationDeniedAudit,
-	)
+	return engine
 }
 
 func (s *Server) protectedCatalogHandler(action auth.Action, handler gin.HandlerFunc) gin.HandlerFunc {
@@ -454,7 +447,7 @@ func (s *Server) protectedCatalogHandler(action auth.Action, handler gin.Handler
 }
 
 func (s *Server) protectedActionHandler(action auth.Action, handler gin.HandlerFunc) gin.HandlerFunc {
-	return catalogmiddleware.RequireAction(
+	return platformmiddleware.RequireAction(
 		handler,
 		action,
 		s.accessWorkflow.authorizeAction,
@@ -465,7 +458,7 @@ func (s *Server) protectedActionHandler(action auth.Action, handler gin.HandlerF
 // Handler builds the HTTP routing tree with a gin engine while preserving the
 // exported http.Handler contract.
 func (s *Server) Handler() http.Handler {
-	return routerpkg.New(s.routerConfig())
+	return s.newEngine()
 }
 
 func (s *Server) authenticateRequest(request *http.Request) (auth.Principal, bool) {

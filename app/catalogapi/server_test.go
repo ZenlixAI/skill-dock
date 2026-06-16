@@ -72,6 +72,8 @@ func TestServerUsesInternalHTTPHandlers(t *testing.T) {
 		"skill_registry/internal/catalog/http",
 		"skill_registry/internal/governance/http",
 		"skill_registry/internal/packaging/http",
+		"skill_registry/internal/platform/http",
+		"skill_registry/internal/platform/http/middleware",
 		"skill_registry/internal/system/http",
 	} {
 		if !imports[importPath] {
@@ -84,6 +86,8 @@ func TestServerUsesInternalHTTPHandlers(t *testing.T) {
 		"skill_registry/app/catalogapi/handlers/governance",
 		"skill_registry/app/catalogapi/handlers/packaging",
 		"skill_registry/app/catalogapi/handlers/system",
+		"skill_registry/app/catalogapi/middleware",
+		"skill_registry/app/catalogapi/router",
 		"skill_registry/app/catalogapi/system",
 	} {
 		if imports[importPath] {
