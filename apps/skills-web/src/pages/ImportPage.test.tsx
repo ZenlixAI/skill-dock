@@ -402,28 +402,34 @@ describe('ImportPage', () => {
     renderImportPage();
 
     fireEvent.click(await screen.findByRole('button', { name: '检查并生成发布预览' }));
+    expect(await screen.findByText('预览已生成，可以继续发布 skill。')).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: '发布 skill' }));
 
-    expect(client.publishSkill).toHaveBeenCalledWith({
-      source: {
-        type: 'upload_archive',
-        archiveBase64: 'archive-base64',
-      },
-      target: {
-        packageName: '@company.skill/zoom-out',
-        version: '1.2.0',
-      },
-      metadata: {
-        displayName: 'Zoom Out',
-        description: 'Help me see the bigger picture',
-        sourceType: 'imported',
-      },
-      options: {},
-      review: {
-        manifestDigest: 'sha256:manifest',
-        components: ['commands'],
-      },
-    });
+    await waitFor(() =>
+      expect(client.publishSkill).toHaveBeenCalledWith({
+        source: {
+          type: 'upload_archive',
+          archiveBase64: 'archive-base64',
+        },
+        target: {
+          packageName: '@company.skill/zoom-out',
+          version: '1.2.0',
+        },
+        metadata: {
+          displayName: 'Zoom Out',
+          description: 'Broader context',
+          sourceType: 'imported',
+        },
+        options: {
+          publishRegistry: 'https://npm.internal.example.com',
+          strict: false,
+        },
+        review: {
+          manifestDigest: 'sha256:manifest',
+          components: ['commands'],
+        },
+      })
+    );
     expect(await screen.findByText('skill 已发布到 registry，并已写入 release record。')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: '下载 bundle' })).not.toBeInTheDocument();
     expect(screen.queryByText('这里还没有替你执行 npm publish，下载 bundle 并发布到目标 registry 后，再进入 release record。')).not.toBeInTheDocument();

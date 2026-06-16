@@ -625,8 +625,7 @@ export function ImportPage() {
   }
 
   async function handlePublish() {
-    const workspacePath = validateResult?.workspacePath || prepareResult?.workspacePath;
-    if (!validateResult?.ok || !workspacePath) {
+    if (!validateResult?.ok) {
       const message = '请先执行“检查并生成发布预览”。';
       setOperationState({
         loading: false,
