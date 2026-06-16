@@ -172,8 +172,9 @@ func NewServer(config ServerConfig) *Server {
 		CacheTTL:            10 * time.Minute,
 		AllowAnonymousCache: false,
 	})
-	server.cleanupPackagingFunc = server.cleanupPackaging
-	server.downloadBundleFunc = server.downloadBundle
+	packagingAccessWorkflow := internalpackaginghttp.NewAccessWorkflow(config.Packaging, auditRecorder)
+	server.cleanupPackagingFunc = packagingAccessWorkflow.Cleanup
+	server.downloadBundleFunc = packagingAccessWorkflow.DownloadBundle
 	server.sessionModule = platformsession.NewModule(authorizer, sessionManager)
 	server.systemModule = internalsystemhttp.NewModule(
 		internalsystemhttp.NamedDependency{Name: "repository", Pinger: internalsystemhttp.DependencyPinger(config.Repository)},

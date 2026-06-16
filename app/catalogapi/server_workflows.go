@@ -8,7 +8,6 @@ import (
 	catalog "skill_registry/internal/catalog/domain"
 	internalcataloghttp "skill_registry/internal/catalog/http"
 	packagingapplication "skill_registry/internal/packaging/application"
-	packaging "skill_registry/internal/packaging/domain"
 	"skill_registry/internal/platform/auth"
 	platformhttp "skill_registry/internal/platform/http"
 )
@@ -119,48 +118,6 @@ func (s *Server) applyVersionGovernanceChange(ctx context.Context, principal aut
 		"action": payload.Action,
 	})
 	return response, http.StatusCreated, nil
-}
-
-func (s *Server) cleanupPackaging(ctx context.Context, principal auth.Principal, payload packaging.CleanupRequest) (packaging.CleanupResponse, int, *catalog.Error) {
-	if strings.TrimSpace(payload.WorkspacePath) == "" {
-		err := catalog.NewError(http.StatusUnprocessableEntity, "invalid_request", "workspacePath is required.", nil)
-		s.recordMutationAuditForEndpoint(ctx, principal, http.MethodPost, "/api/v1/skill-packaging/cleanup", "packaging.cleanup", "", "", err.Status, "failed", map[string]any{"errorCode": err.Code})
-		return packaging.CleanupResponse{}, 0, err
-	}
-	if s.packaging == nil {
-		return packaging.CleanupResponse{}, http.StatusNotFound, nil
-	}
-	if err := s.packaging.CleanupContext(ctx, payload.WorkspacePath); err != nil {
-		catalogErr := platformhttp.CatalogErrorFromError(err)
-		s.recordMutationAuditForEndpoint(ctx, principal, http.MethodPost, "/api/v1/skill-packaging/cleanup", "packaging.cleanup", "", "", catalogErr.Status, "failed", map[string]any{"errorCode": catalogErr.Code})
-		return packaging.CleanupResponse{}, 0, catalogErr
-	}
-	s.recordMutationAuditForEndpoint(ctx, principal, http.MethodPost, "/api/v1/skill-packaging/cleanup", "packaging.cleanup", "", "", http.StatusOK, "succeeded", map[string]any{"workspacePath": payload.WorkspacePath})
-	return packaging.CleanupResponse{WorkspacePath: payload.WorkspacePath, Removed: true}, http.StatusOK, nil
-}
-
-func (s *Server) downloadBundle(ctx context.Context, principal auth.Principal, workspacePath string, packageName string, version string) (string, *catalog.Error) {
-	if strings.TrimSpace(workspacePath) == "" || strings.TrimSpace(packageName) == "" || strings.TrimSpace(version) == "" {
-		err := catalog.NewError(http.StatusUnprocessableEntity, "invalid_request", "workspacePath, packageName, and version are required.", nil)
-		s.recordMutationAuditForEndpoint(ctx, principal, http.MethodGet, "/api/v1/skill-packaging/bundle", "packaging.bundle.download", packageName, version, err.Status, "failed", map[string]any{"errorCode": err.Code})
-		return "", err
-	}
-	if s.packaging == nil {
-		return "", catalog.NewError(http.StatusNotFound, "not_found", "Not found.", nil)
-	}
-
-	bundlePath, err := s.packaging.BundleFilePathContext(ctx, workspacePath, packaging.Target{
-		PackageName: packageName,
-		Version:     version,
-	})
-	if err != nil {
-		catalogErr := platformhttp.CatalogErrorFromError(err)
-		s.recordMutationAuditForEndpoint(ctx, principal, http.MethodGet, "/api/v1/skill-packaging/bundle", "packaging.bundle.download", packageName, version, catalogErr.Status, "failed", map[string]any{"errorCode": catalogErr.Code})
-		return "", catalogErr
-	}
-
-	s.recordMutationAuditForEndpoint(ctx, principal, http.MethodGet, "/api/v1/skill-packaging/bundle", "packaging.bundle.download", packageName, version, http.StatusOK, "succeeded", nil)
-	return bundlePath, nil
 }
 
 func (s *Server) publicInstallTarget(response catalog.InstallResolution) catalog.InstallResolution {
