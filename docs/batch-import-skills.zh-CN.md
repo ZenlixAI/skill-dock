@@ -1,6 +1,6 @@
 # 批量初始化已有 Skills
 
-这个脚本用于把一批已经存在的 skill 源目录或 git 源，一次性导入到当前 Catalog。
+这个脚本用于把一批已经存在的 skill 源目录，一次性导入到当前 Catalog。
 
 它复用现有生产链路：
 
@@ -33,12 +33,11 @@ zarf/tools/batch-import/example.json
 
 - 当 entry 使用本地 `path` 时，脚本会先在调用方本地把目录打成源码归档，再调用 `source.type=upload_archive`
 - 所以 Catalog 不需要直接看到调用方的本地文件系统路径
-- 如果你更希望由服务端自行拉源码，再改用 manifest 里的 `source.type=git`
 
 也就是说：
 
 - 本地 `path` 现在属于**正式可运输输入**
-- 正式 CI / 多机环境可以二选一：`path -> upload_archive`，或 `source.type=git`
+- 正式 CI / 多机环境统一走：`path -> upload_archive`
 
 默认导入行为：
 
@@ -110,7 +109,7 @@ manifest 最小格式：
 支持字段：
 
 - `path`: 本地 skill 目录
-- `source`: 非本地源；当前支持 `git`、`platform_authoring`
+- `source`: 非本地源；当前支持 `platform_authoring`
 - `packageName`
 - `version`
 - `displayName`

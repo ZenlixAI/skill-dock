@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import * as client from '../api/client';
+import * as externalImport from '../features/packaging/externalImport';
 import { RegistryHttpError } from '../api/httpClient';
 import { SessionProvider } from '../session/SessionProvider';
 import { ImportPage } from './ImportPage';
@@ -38,9 +39,14 @@ vi.mock('../api/client', () => ({
   validatePackaging: vi.fn(),
 }));
 
+vi.mock('../features/packaging/externalImport', () => ({
+  buildExternalImportArchive: vi.fn(),
+}));
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 beforeEach(() => {
@@ -56,6 +62,9 @@ beforeEach(() => {
       'packaging.publish',
     ],
     allowedPackages: [],
+  });
+  vi.mocked(externalImport.buildExternalImportArchive).mockResolvedValue({
+    archiveBase64: 'archive-base64',
   });
 });
 
@@ -299,6 +308,59 @@ describe('ImportPage', () => {
         },
       })
     );
+  });
+
+  it('builds an upload_archive payload for external import', async () => {
+    vi.mocked(client.preparePackaging).mockResolvedValue({
+      workspacePath: '/tmp/skill-packaging/workspace',
+      packageName: '@company.skill/zoom-out',
+      version: '1.2.0',
+      warnings: [],
+      warningDetails: [],
+      errors: [],
+    });
+    vi.mocked(client.validatePackaging).mockResolvedValue({
+      ok: true,
+      workspacePath: '/tmp/skill-packaging/workspace',
+      packageName: '@company.skill/zoom-out',
+      version: '1.2.0',
+      manifestDigest: 'sha256:manifest',
+      components: ['commands'],
+      warnings: [],
+      warningDetails: [],
+      errors: [],
+    });
+    renderImportPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: '检查并生成发布预览' }));
+
+    await waitFor(() =>
+      expect(client.preparePackaging).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source: expect.objectContaining({
+            type: 'upload_archive',
+            archiveBase64: expect.any(String),
+          }),
+        })
+      )
+    );
+    expect(externalImport.buildExternalImportArchive).toHaveBeenCalledWith(
+      'https://github.com/mattpocock/skills?path=skills/engineering/zoom-out',
+      undefined
+    );
+  });
+
+  it('does not call preparePackaging when external import acquisition fails', async () => {
+    vi.mocked(externalImport.buildExternalImportArchive).mockRejectedValue(
+      new Error('无法获取外部 skill 源，请检查地址、仓库可见性或浏览器网络限制。')
+    );
+
+    renderImportPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: '检查并生成发布预览' }));
+
+    expect(await screen.findByText('无法获取外部 skill 源，请检查地址、仓库可见性或浏览器网络限制。')).toBeInTheDocument();
+    expect(client.preparePackaging).not.toHaveBeenCalled();
   });
 
   it('publishes through the backend publish api and stops showing manual handoff links', async () => {

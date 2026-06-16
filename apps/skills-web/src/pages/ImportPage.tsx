@@ -30,6 +30,7 @@ import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
 import { WarningStack } from '../components/WarningStack';
 import { buildReleaseHandoffPath } from '../lib/releaseHandoff';
+import { buildExternalImportArchive } from '../features/packaging/externalImport';
 import {
   createAuthoringEditorState,
   getDefaultAuthoringPath,
@@ -51,7 +52,7 @@ import { useRegistrySession } from '../session/SessionProvider';
 const steps = [
   {
     title: '1. 来源',
-    description: 'git / platform_authoring',
+    description: 'upload_archive / platform_authoring',
   },
   {
     title: '2. 目标',
@@ -142,7 +143,7 @@ function describeImportOperationError(error: RegistryRequestError) {
 export function ImportPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { session, getPosture, getPostureLabel } = useRegistrySession();
-  const [sourceType, setSourceType] = useState<PackagingSourceType>('git');
+  const [sourceType, setSourceType] = useState<PackagingSourceType>('upload_archive');
   const [location, setLocation] = useState('https://github.com/mattpocock/skills?path=skills/engineering/zoom-out');
   const [sourceRef, setSourceRef] = useState('');
   const [authoringTemplate, setAuthoringTemplate] = useState<AuthoringTemplateId>('command');
@@ -349,25 +350,44 @@ export function ImportPage() {
     setRawInlineFilesDirty(false);
   }
 
-  function buildPrepareRequest(): PackagingPrepareRequest {
+  async function buildPrepareRequest(): Promise<PackagingPrepareRequest> {
     const platformFiles = resolvePrepareAuthoringFiles({
       authoringFiles,
       rawInlineFiles,
       rawInlineFilesDirty,
     });
 
+    if (sourceType !== 'platform_authoring') {
+      const archive = await buildExternalImportArchive(
+        location.trim(),
+        sourceRef.trim() !== '' ? sourceRef.trim() : undefined
+      );
+      return {
+        source: {
+          type: 'upload_archive',
+          archiveBase64: archive.archiveBase64,
+        },
+        target: {
+          packageName: packageName.trim(),
+          version: version.trim(),
+        },
+        metadata: {
+          displayName: displayName.trim(),
+          description: description.trim(),
+          sourceType: metadataSourceType,
+        },
+        options: {
+          publishRegistry: publishRegistry.trim() || undefined,
+          strict: strictMode,
+        },
+      };
+    }
+
     return {
-      source:
-        sourceType === 'platform_authoring'
-          ? {
-              type: sourceType,
-              files: platformFiles,
-            }
-          : {
-              type: sourceType,
-              location: location.trim(),
-              ref: sourceType === 'git' && sourceRef.trim() !== '' ? sourceRef.trim() : undefined,
-            },
+      source: {
+        type: sourceType,
+        files: platformFiles,
+      },
       target: {
         packageName: packageName.trim(),
         version: version.trim(),
@@ -402,7 +422,7 @@ export function ImportPage() {
       success: null,
     });
     try {
-      const response = await preparePackaging(buildPrepareRequest());
+      const response = await preparePackaging(await buildPrepareRequest());
       setPrepareResult(response);
       setValidateResult(null);
       setPackResult(null);
@@ -799,7 +819,7 @@ export function ImportPage() {
             <label className="field">
               <span>来源类型</span>
               <select value={sourceType} onChange={(event) => setSourceType(event.target.value as PackagingSourceType)}>
-                <option value="git">git</option>
+                <option value="upload_archive">upload_archive</option>
                 <option value="platform_authoring">platform_authoring</option>
               </select>
             </label>
@@ -940,20 +960,18 @@ export function ImportPage() {
                   <span>位置</span>
                   <input
                     onChange={(event) => setLocation(event.target.value)}
-                    placeholder="git 地址"
+                    placeholder="GitHub skill 地址"
                     value={location}
                   />
                 </label>
-                {sourceType === 'git' ? (
-                  <label className="field">
-                    <span>Git 引用</span>
-                    <input
-                      onChange={(event) => setSourceRef(event.target.value)}
-                      placeholder="留空使用默认分支；也可填 release / commit sha"
-                      value={sourceRef}
-                    />
-                  </label>
-                ) : null}
+                <label className="field">
+                  <span>来源引用</span>
+                  <input
+                    onChange={(event) => setSourceRef(event.target.value)}
+                    placeholder="留空使用默认分支；也可填 release / commit sha"
+                    value={sourceRef}
+                  />
+                </label>
               </>
             )}
 

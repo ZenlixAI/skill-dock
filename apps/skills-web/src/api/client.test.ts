@@ -156,8 +156,8 @@ describe('apiClient facade', () => {
     await expect(
       clientModule.preparePackaging({
         source: {
-          type: 'git',
-          location: 'https://github.com/example/skills',
+          type: 'upload_archive',
+          archiveBase64: 'YXJjaGl2ZQ==',
         },
         target: {
           packageName: '@platform.skill/code-review',
@@ -273,8 +273,8 @@ describe('apiClient facade', () => {
     await expect(
       clientModule.preparePackaging({
         source: {
-          type: 'git',
-          location: 'https://github.com/example/skills',
+          type: 'upload_archive',
+          archiveBase64: 'YXJjaGl2ZQ==',
         },
         target: {
           packageName: '@platform.skill/code-review',
@@ -307,8 +307,8 @@ describe('apiClient facade', () => {
       method: 'POST',
       body: JSON.stringify({
         source: {
-          type: 'git',
-          location: 'https://github.com/example/skills',
+          type: 'upload_archive',
+          archiveBase64: 'YXJjaGl2ZQ==',
         },
         target: {
           packageName: '@platform.skill/code-review',
