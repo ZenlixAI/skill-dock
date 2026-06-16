@@ -6,14 +6,8 @@ import type {
   ListSkillsFilters,
   PackagingImportReviewRequest,
   PackagingImportReviewResponse,
-  PackagingPackRequest,
-  PackagingPackResponse,
   PackagingPublishRequest,
   PackagingPublishResponse,
-  PackagingPrepareRequest,
-  PackagingPrepareResponse,
-  PackagingValidateRequest,
-  PackagingValidateResponse,
   RegistryApiClient,
   RegistryClientConfig,
   ReleaseRecordInput,
@@ -68,9 +62,6 @@ export const mockClient: RegistryApiClient = {
         'session.read',
         'catalog.read',
         'audit.read',
-        'packaging.prepare',
-        'packaging.validate',
-        'packaging.pack',
         'packaging.publish',
         'catalog.release_record.create',
         'catalog.governance.skill.apply',
@@ -186,45 +177,6 @@ export const mockClient: RegistryApiClient = {
     );
   },
 
-  async preparePackaging(request: PackagingPrepareRequest) {
-    const warningDetails = request.options.strict ? [] : previewWarningDetails;
-    const warnings = warningDetails.map((item) => item.code);
-    const workspaceHandle = `ws_${request.target.packageName.split('/').pop() || 'skill'}_${request.target.version.replaceAll('.', '_')}`;
-    const response: PackagingPrepareResponse = {
-      workspacePath: workspaceHandle,
-      packageName: request.target.packageName,
-      version: request.target.version,
-      warnings,
-      warningDetails,
-      importReport: {
-        ...previewImportReport,
-        sourceType: request.source.type,
-        strictMode: Boolean(request.options.strict),
-        normalized: !request.options.strict,
-        generatedCapabilityPlaceholder: !request.options.strict,
-        warningCodes: warnings,
-      },
-      errors: [],
-    };
-    recordAudit(state, {
-      action: 'packaging.prepare',
-      actor: 'web-ui',
-      role: 'publisher',
-      authMechanism: 'mock',
-      authDecision: 'allowed',
-      endpoint: '/api/v1/skill-packaging/prepare',
-      method: 'POST',
-      packageName: request.target.packageName,
-      version: request.target.version,
-      outcome: 'succeeded',
-      statusCode: 200,
-      details: {
-        sourceType: request.source.type,
-      },
-    });
-    return delay(response);
-  },
-
   async importReviewPackaging(request: PackagingImportReviewRequest) {
     const warningDetails = request.options.strict ? [] : previewWarningDetails;
     const warnings = warningDetails.map((item) => item.code);
@@ -262,71 +214,6 @@ export const mockClient: RegistryApiClient = {
       details: {
         includeBundleBase64: Boolean(request.includeBundleBase64),
         sourceType: request.source.type,
-      },
-    });
-    return delay(response);
-  },
-
-  async validatePackaging(request: PackagingValidateRequest) {
-    const response: PackagingValidateResponse = {
-      ok: true,
-      workspacePath: request.workspacePath,
-      packageName: request.target.packageName,
-      version: request.target.version,
-      manifestDigest: 'sha256:1c65eab3e1fb04af11c5ff2e7c54a1f0',
-      components: ['docs', 'scripts'],
-      warnings: previewWarningDetails.map((item) => item.code),
-      warningDetails: previewWarningDetails,
-      importReport: previewImportReport,
-      errors: [],
-    };
-    recordAudit(state, {
-      action: 'packaging.validate',
-      actor: 'web-ui',
-      role: 'publisher',
-      authMechanism: 'mock',
-      authDecision: 'allowed',
-      endpoint: '/api/v1/skill-packaging/validate',
-      method: 'POST',
-      packageName: request.target.packageName,
-      version: request.target.version,
-      outcome: 'succeeded',
-      statusCode: 200,
-      details: {
-        workspacePath: request.workspacePath,
-      },
-    });
-    return delay(response);
-  },
-
-  async packSkill(request: PackagingPackRequest) {
-    const response: PackagingPackResponse = {
-      workspacePath: request.workspacePath,
-      bundlePath: `bundle://${request.target.packageName}/${request.target.version}`,
-      bundleBase64: request.includeBundle ? 'c2tpbGwtYnVuZGxl' : undefined,
-      packageName: request.target.packageName,
-      version: request.target.version,
-      manifestDigest: 'sha256:1c65eab3e1fb04af11c5ff2e7c54a1f0',
-      components: ['docs', 'scripts'],
-      warnings: previewWarningDetails.map((item) => item.code),
-      warningDetails: previewWarningDetails,
-      importReport: previewImportReport,
-      errors: [],
-    };
-    recordAudit(state, {
-      action: 'packaging.pack',
-      actor: 'web-ui',
-      role: 'publisher',
-      authMechanism: 'mock',
-      authDecision: 'allowed',
-      endpoint: '/api/v1/skill-packaging/pack',
-      method: 'POST',
-      packageName: request.target.packageName,
-      version: request.target.version,
-      outcome: 'succeeded',
-      statusCode: 200,
-      details: {
-        includeBundle: Boolean(request.includeBundle),
       },
     });
     return delay(response);
@@ -383,28 +270,6 @@ export const mockClient: RegistryApiClient = {
       },
     });
     return delay(result);
-  },
-
-  async cleanupPackagingWorkspace(request) {
-    recordAudit(state, {
-      action: 'packaging.cleanup',
-      actor: 'web-ui',
-      role: 'publisher',
-      authMechanism: 'mock',
-      authDecision: 'allowed',
-      endpoint: '/api/v1/skill-packaging/cleanup',
-      method: 'POST',
-      packageName: '',
-      outcome: 'succeeded',
-      statusCode: 200,
-      details: {
-        workspacePath: request.workspacePath,
-      },
-    });
-    return delay({
-      workspacePath: request.workspacePath,
-      removed: true,
-    });
   },
 
   async createReleaseRecord(packageName: string, version: string, input: ReleaseRecordInput) {

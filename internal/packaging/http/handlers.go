@@ -4,9 +4,6 @@ import (
 	"context"
 	"io"
 	stdhttp "net/http"
-	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -19,16 +16,8 @@ import (
 type AuthorizePackageFunc func(stdhttp.ResponseWriter, *stdhttp.Request, string) bool
 type AcquireWriteLimiterFunc func() (func(), *catalog.Error)
 type DecodeImportReviewRequestFunc func(context.Context, auth.Principal, []byte) (packaging.ImportReviewRequest, *catalog.Error)
-type DecodePrepareRequestFunc func(context.Context, auth.Principal, []byte) (packaging.PrepareRequest, *catalog.Error)
-type DecodeValidateRequestFunc func(context.Context, auth.Principal, []byte) (packaging.ValidateRequest, *catalog.Error)
-type DecodePackRequestFunc func(context.Context, auth.Principal, []byte) (packaging.PackRequest, *catalog.Error)
 type ImportReviewFunc func(context.Context, auth.Principal, packaging.ImportReviewRequest) (any, int, *catalog.Error)
-type PrepareFunc func(context.Context, auth.Principal, packaging.PrepareRequest) (any, int, *catalog.Error)
-type ValidateFunc func(context.Context, auth.Principal, packaging.ValidateRequest) (any, int, *catalog.Error)
-type PackFunc func(context.Context, auth.Principal, packaging.PackRequest) (any, int, *catalog.Error)
 type PublishFunc func(context.Context, packaging.PublishRequest) (packaging.PublishResponse, error)
-type CleanupFunc func(context.Context, auth.Principal, packaging.CleanupRequest) (packaging.CleanupResponse, int, *catalog.Error)
-type DownloadBundleFunc func(context.Context, auth.Principal, string, string, string) (string, *catalog.Error)
 type RecordMutationAuditFunc func(request *stdhttp.Request, action string, packageName string, version string, status int, outcome string, details map[string]any)
 
 type Handlers struct {
@@ -36,34 +25,13 @@ type Handlers struct {
 	AuthorizePackage          AuthorizePackageFunc
 	AcquireWriteLimiter       AcquireWriteLimiterFunc
 	DecodeImportReviewRequest DecodeImportReviewRequestFunc
-	DecodePrepareRequest      DecodePrepareRequestFunc
-	DecodeValidateRequest     DecodeValidateRequestFunc
-	DecodePackRequest         DecodePackRequestFunc
 	ImportReview              ImportReviewFunc
-	Prepare                   PrepareFunc
-	Validate                  ValidateFunc
-	Pack                      PackFunc
 	Publish                   PublishFunc
-	Cleanup                   CleanupFunc
-	DownloadBundle            DownloadBundleFunc
 	RecordMutationAudit       RecordMutationAuditFunc
 }
 
 func New(config Handlers) Handlers {
 	return config
-}
-
-func (h Handlers) PrepareHandler(c *gin.Context) {
-	handlePackagingWorkflow(
-		h,
-		c,
-		func(ctx context.Context, principal auth.Principal, rawBody []byte) (packaging.PrepareRequest, *catalog.Error) {
-			return h.DecodePrepareRequest(ctx, principal, rawBody)
-		},
-		func(ctx context.Context, principal auth.Principal, payload packaging.PrepareRequest) (any, int, *catalog.Error) {
-			return h.Prepare(ctx, principal, payload)
-		},
-	)
 }
 
 func (h Handlers) ImportReviewHandler(c *gin.Context) {
@@ -75,32 +43,6 @@ func (h Handlers) ImportReviewHandler(c *gin.Context) {
 		},
 		func(ctx context.Context, principal auth.Principal, payload packaging.ImportReviewRequest) (any, int, *catalog.Error) {
 			return h.ImportReview(ctx, principal, payload)
-		},
-	)
-}
-
-func (h Handlers) ValidateHandler(c *gin.Context) {
-	handlePackagingWorkflow(
-		h,
-		c,
-		func(ctx context.Context, principal auth.Principal, rawBody []byte) (packaging.ValidateRequest, *catalog.Error) {
-			return h.DecodeValidateRequest(ctx, principal, rawBody)
-		},
-		func(ctx context.Context, principal auth.Principal, payload packaging.ValidateRequest) (any, int, *catalog.Error) {
-			return h.Validate(ctx, principal, payload)
-		},
-	)
-}
-
-func (h Handlers) PackHandler(c *gin.Context) {
-	handlePackagingWorkflow(
-		h,
-		c,
-		func(ctx context.Context, principal auth.Principal, rawBody []byte) (packaging.PackRequest, *catalog.Error) {
-			return h.DecodePackRequest(ctx, principal, rawBody)
-		},
-		func(ctx context.Context, principal auth.Principal, payload packaging.PackRequest) (any, int, *catalog.Error) {
-			return h.Pack(ctx, principal, payload)
 		},
 	)
 }
@@ -148,80 +90,6 @@ func (h Handlers) PublishHandler(c *gin.Context) {
 		"idempotentReplay":    result.IdempotentReplay,
 	})
 	platformhttp.WriteJSON(c.Writer, status, result)
-}
-
-func (h Handlers) CleanupHandler(c *gin.Context) {
-	if !h.packagingAvailable() {
-		c.Status(stdhttp.StatusNotFound)
-		return
-	}
-
-	var payload packaging.CleanupRequest
-	if err := platformhttp.DecodeJSONBody(c.Request, &payload); err != nil {
-		h.recordMutationAudit(c.Request, "packaging.cleanup", "", "", err.Status, "failed", map[string]any{"errorCode": err.Code})
-		platformhttp.WriteCatalogError(c.Writer, c.Request, err)
-		return
-	}
-
-	if h.Cleanup == nil {
-		platformhttp.WriteJSON(c.Writer, stdhttp.StatusOK, packaging.CleanupResponse{})
-		return
-	}
-	result, status, err := h.Cleanup(c.Request.Context(), auth.PrincipalFromContext(c.Request.Context()), payload)
-	if err != nil {
-		platformhttp.WriteCatalogError(c.Writer, c.Request, err)
-		return
-	}
-	platformhttp.WriteJSON(c.Writer, status, result)
-}
-
-func (h Handlers) BundleHandler(c *gin.Context) {
-	if !h.packagingAvailable() {
-		c.Status(stdhttp.StatusNotFound)
-		return
-	}
-
-	query, err := BindBundleDownloadQuery(c)
-	if err != nil {
-		platformhttp.WriteCatalogError(c.Writer, c.Request, err)
-		return
-	}
-	packageName := strings.TrimSpace(query.PackageName)
-	if !h.authorizePackage(c, packageName) {
-		return
-	}
-
-	if h.DownloadBundle == nil {
-		platformhttp.WriteCatalogError(c.Writer, c.Request, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil))
-		return
-	}
-	bundlePath, bundleErr := h.DownloadBundle(
-		c.Request.Context(),
-		auth.PrincipalFromContext(c.Request.Context()),
-		strings.TrimSpace(query.WorkspacePath),
-		packageName,
-		strings.TrimSpace(query.Version),
-	)
-	if bundleErr != nil {
-		platformhttp.WriteCatalogError(c.Writer, c.Request, bundleErr)
-		return
-	}
-
-	bundleFile, openErr := os.Open(bundlePath)
-	if openErr != nil {
-		platformhttp.WriteCatalogError(c.Writer, c.Request, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil))
-		return
-	}
-	defer bundleFile.Close()
-
-	info, statErr := bundleFile.Stat()
-	if statErr != nil || info.IsDir() {
-		platformhttp.WriteCatalogError(c.Writer, c.Request, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil))
-		return
-	}
-
-	c.Writer.Header().Set("Content-Type", "application/octet-stream")
-	stdhttp.ServeContent(c.Writer, c.Request, filepath.Base(bundlePath), info.ModTime(), bundleFile)
 }
 
 func handlePackagingWorkflow[T interface {

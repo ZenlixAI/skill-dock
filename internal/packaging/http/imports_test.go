@@ -42,25 +42,6 @@ func TestWorkflowUsesInternalPlatformHTTPHelpers(t *testing.T) {
 	}
 }
 
-func TestAccessWorkflowUsesInternalPlatformHTTPHelpers(t *testing.T) {
-	imports := parseImports(t, "access_workflow.go")
-
-	if !imports["skill_registry/internal/platform/http"] {
-		t.Fatalf("expected access_workflow.go to import skill_registry/internal/platform/http directly")
-	}
-	if !imports["skill_registry/internal/platform/audit"] {
-		t.Fatalf("expected access_workflow.go to import skill_registry/internal/platform/audit directly")
-	}
-	for _, importPath := range []string{
-		"skill_registry/app/catalogapi/audit",
-		"skill_registry/app/catalogapi/common",
-	} {
-		if imports[importPath] {
-			t.Fatalf("expected access_workflow.go to stop importing %s", importPath)
-		}
-	}
-}
-
 func parseImports(t *testing.T, path string) map[string]bool {
 	t.Helper()
 

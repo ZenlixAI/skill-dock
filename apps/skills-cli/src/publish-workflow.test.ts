@@ -41,6 +41,7 @@ describe('publish workflow', () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     delete process.env.NPM_CONFIG_USERCONFIG;
     delete process.env.npm_config_registry;
     delete process.env.NPM_CONFIG_REGISTRY;
@@ -139,6 +140,7 @@ describe('publish workflow', () => {
   });
 
   it('uses the default catalog registry when no override is provided', async () => {
+    vi.stubEnv('SKILLS_REGISTRY_URL', '');
     vi.mocked(spawnSync).mockReturnValueOnce({
       status: 0,
       stdout: 'published',

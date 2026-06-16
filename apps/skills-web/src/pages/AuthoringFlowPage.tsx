@@ -12,7 +12,7 @@ import { useRegistrySession } from '../session/SessionProvider';
 export function AuthoringFlowPage() {
   const [searchParams] = useSearchParams();
   const handoff = readReleaseHandoff(searchParams);
-  const hasHandoff = Boolean(handoff.manifestDigest || handoff.bundlePath || handoff.workspacePath);
+  const hasHandoff = Boolean(handoff.manifestDigest || handoff.components?.length);
   const config = getRegistryClientConfig();
   const { session, getPosture, getPostureLabel } = useRegistrySession();
 
@@ -44,13 +44,13 @@ export function AuthoringFlowPage() {
       <div className="flow-ribbon">
         <article className={hasHandoff ? 'flow-node flow-node--active' : 'flow-node'}>
           <span>Intake</span>
-          <strong>来源接入到 Prepare</strong>
+          <strong>来源接入到 Review</strong>
           <p>从外部 skill、local 目录或平台 authoring 输入开始。</p>
         </article>
         <article className={hasHandoff ? 'flow-node flow-node--active' : 'flow-node'}>
           <span>Review</span>
-          <strong>Validate 到 Pack 再到 Release</strong>
-          <p>pack 结果变成 handoff，直接进入 release review。</p>
+          <strong>Import Review 到 Release</strong>
+          <p>review 结果变成 handoff，直接进入 release review。</p>
         </article>
         <article className="flow-node">
           <span>Operate</span>
@@ -144,14 +144,6 @@ export function AuthoringFlowPage() {
               <dd>{handoff.version || '—'}</dd>
             </div>
             <div>
-              <dt>workspace handle</dt>
-              <dd>{handoff.workspacePath || '—'}</dd>
-            </div>
-            <div>
-              <dt>bundle path</dt>
-              <dd>{handoff.bundlePath || '—'}</dd>
-            </div>
-            <div>
               <dt>manifest digest</dt>
               <dd>{handoff.manifestDigest || '—'}</dd>
             </div>
@@ -177,7 +169,7 @@ export function AuthoringFlowPage() {
           <div className="list-stack">
             <article className="list-card">
               <strong>外部来源接入</strong>
-              <p>进入 prepare，生成 workspace、warningDetails、importReport。</p>
+              <p>进入 import-review，生成 warningDetails、importReport、manifestDigest。</p>
             </article>
             <article className="list-card">
               <strong>校验审阅</strong>
@@ -188,7 +180,7 @@ export function AuthoringFlowPage() {
 
         <SurfaceCard
           title="2. 发布审阅"
-          description="pack 的产物不直接丢给用户，而是进入一个 release review 承接点。"
+          description="review 的结构化结果不直接散落在页面里，而是进入一个 release review 承接点。"
           variant="console"
           action={
             releaseTarget ? (
@@ -201,12 +193,12 @@ export function AuthoringFlowPage() {
           <div className="stack-column">
             <div className="pill-row">
               <StatusPill tone={hasHandoff ? 'good' : 'warn'}>
-                {hasHandoff ? '交接就绪' : '等待 pack 结果'}
+                {hasHandoff ? '交接就绪' : '等待 review 结果'}
               </StatusPill>
               {handoff.publishRegistry ? <StatusPill tone="accent">{handoff.publishRegistry}</StatusPill> : null}
             </div>
             <p className="support-copy">
-              这里承接 `manifestDigest`、`components`、`publishRegistry`，然后进入 `release-record` 写接口。
+              这里承接 review 产出的 `manifestDigest`、`components`、`publishRegistry`，然后进入 `release-record` 写接口。
             </p>
           </div>
         </SurfaceCard>

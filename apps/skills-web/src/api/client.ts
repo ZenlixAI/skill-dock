@@ -2,17 +2,12 @@ import { registryClientConfig } from './config';
 import { catalogMutationClient } from './catalogMutationClient';
 import { catalogReadClient, normalizeBundleMetadata, normalizeSkillsPage } from './catalogReadClient';
 import { mockClient } from './mockClient';
-import {
-  buildPackagingBundleDownloadPath,
-  normalizePackagingReview,
-  packagingClient,
-} from './packagingClient';
+import { normalizePackagingReview, packagingClient } from './packagingClient';
 import { sessionClient } from './sessionClient';
 import type {
   RegistryApiClient,
 } from './types';
 export {
-  buildPackagingBundleDownloadPath,
   normalizeBundleMetadata,
   normalizePackagingReview,
   normalizeSkillsPage,
@@ -41,12 +36,7 @@ export const getVersionDetail = apiClient.getVersionDetail.bind(apiClient);
 export const listGovernanceChanges = apiClient.listGovernanceChanges.bind(apiClient);
 export const listAuditEvents = apiClient.listAuditEvents.bind(apiClient);
 export const importReviewPackaging = apiClient.importReviewPackaging.bind(apiClient);
-export const preparePackaging = apiClient.preparePackaging.bind(apiClient);
-export const validatePackaging = apiClient.validatePackaging.bind(apiClient);
-export const packSkill = apiClient.packSkill.bind(apiClient);
 export const publishSkill = apiClient.publishSkill.bind(apiClient);
-export const cleanupPackagingWorkspace = apiClient.cleanupPackagingWorkspace.bind(apiClient);
-export const getPackagingBundleDownloadPath = buildPackagingBundleDownloadPath;
 export const createReleaseRecord = apiClient.createReleaseRecord.bind(apiClient);
 export const applySkillGovernanceChange = apiClient.applySkillGovernanceChange.bind(apiClient);
 export const applyVersionGovernanceChange = apiClient.applyVersionGovernanceChange.bind(apiClient);

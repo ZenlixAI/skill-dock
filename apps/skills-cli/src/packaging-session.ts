@@ -1,12 +1,9 @@
 import { resolve } from 'path';
 import { inspectSkillDirectory, type SkillAuthoringInspection } from './authoring.ts';
 import {
+  importReviewPackaging,
   type PackagingImportReport,
-  prepareSkillPackaging,
   type PackagingWarningDetail,
-  type PreparePackagingResponse,
-  validateSkillPackaging,
-  type ValidatePackagingResponse,
 } from './catalog.ts';
 import { createSourceArchiveBase64 } from './source-archive.ts';
 import { validateLocalWorkspace } from './local-packaging.ts';
@@ -27,7 +24,6 @@ export interface LocalPackagingSessionSuccessResult extends SkillAuthoringInspec
 export interface RegistryPackagingSessionSuccessResult extends SkillAuthoringInspection {
   ok: true;
   sessionKind: 'registry';
-  workspacePath: string;
   idempotencyKey: string;
   warnings?: string[];
   warningDetails?: PackagingWarningDetail[];
@@ -43,7 +39,6 @@ export interface LocalPackagingSessionFailureResult extends SkillAuthoringInspec
 export interface RegistryPackagingSessionFailureResult extends SkillAuthoringInspection {
   ok: false;
   sessionKind: 'registry';
-  workspacePath?: string;
   idempotencyKey: string;
 }
 
@@ -71,14 +66,13 @@ function registrySuccessResult(
   inspection: SkillAuthoringInspection,
   fields: Pick<
     RegistryPackagingSessionSuccessResult,
-    'workspacePath' | 'idempotencyKey' | 'warnings' | 'warningDetails' | 'importReport' | 'manifestDigest'
+    'idempotencyKey' | 'warnings' | 'warningDetails' | 'importReport' | 'manifestDigest'
   >
 ): RegistryPackagingSessionSuccessResult {
   return {
     ...inspection,
     ok: true,
     sessionKind: 'registry',
-    workspacePath: fields.workspacePath,
     idempotencyKey: fields.idempotencyKey,
     warnings: fields.warnings,
     warningDetails: fields.warningDetails,
@@ -101,7 +95,7 @@ function localFailureResult(
 
 function registryFailureResult(
   inspection: SkillAuthoringInspection,
-  fields: Pick<RegistryPackagingSessionFailureResult, 'workspacePath' | 'idempotencyKey'> & {
+  fields: Pick<RegistryPackagingSessionFailureResult, 'idempotencyKey'> & {
     errors: string[];
     packageName?: string;
     version?: string;
@@ -120,95 +114,12 @@ function registryFailureResult(
       : {}),
     components: fields.components ?? inspection.components,
     errors: fields.errors,
-    ...(fields.workspacePath ? { workspacePath: fields.workspacePath } : {}),
     idempotencyKey: fields.idempotencyKey,
   };
 }
 
 function externalErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === 'string');
-}
-
-function isWarningDetailsArray(value: unknown): value is PackagingWarningDetail[] {
-  return (
-    Array.isArray(value) &&
-    value.every(
-      (item) =>
-        item &&
-        typeof item === 'object' &&
-        typeof (item as PackagingWarningDetail).code === 'string' &&
-        ((item as PackagingWarningDetail).severity === undefined ||
-          typeof (item as PackagingWarningDetail).severity === 'string') &&
-        typeof (item as PackagingWarningDetail).title === 'string' &&
-        typeof (item as PackagingWarningDetail).message === 'string' &&
-        ((item as PackagingWarningDetail).suggestedAction === undefined ||
-          typeof (item as PackagingWarningDetail).suggestedAction === 'string')
-    )
-  );
-}
-
-function isImportReport(value: unknown): value is PackagingImportReport {
-  return (
-    !!value &&
-    typeof value === 'object' &&
-    ((value as PackagingImportReport).sourceType === undefined ||
-      typeof (value as PackagingImportReport).sourceType === 'string') &&
-    typeof (value as PackagingImportReport).strictMode === 'boolean' &&
-    typeof (value as PackagingImportReport).normalized === 'boolean' &&
-    typeof (value as PackagingImportReport).generatedPackageJson === 'boolean' &&
-    typeof (value as PackagingImportReport).generatedCapabilityPlaceholder === 'boolean' &&
-    typeof (value as PackagingImportReport).rewrotePackageIdentity === 'boolean' &&
-    ((value as PackagingImportReport).generatedPaths === undefined ||
-      isStringArray((value as PackagingImportReport).generatedPaths)) &&
-    ((value as PackagingImportReport).warningCodes === undefined ||
-      isStringArray((value as PackagingImportReport).warningCodes))
-  );
-}
-
-function isPreparePackagingResponse(value: unknown): value is PreparePackagingResponse {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const candidate = value as {
-    workspacePath?: unknown;
-    packageName?: unknown;
-    version?: unknown;
-    warnings?: unknown;
-    warningDetails?: unknown;
-    importReport?: unknown;
-    errors?: unknown;
-  };
-  return (
-    typeof candidate.workspacePath === 'string' &&
-    typeof candidate.packageName === 'string' &&
-    typeof candidate.version === 'string' &&
-    isStringArray(candidate.warnings) &&
-    (candidate.warningDetails === undefined || isWarningDetailsArray(candidate.warningDetails)) &&
-    (candidate.importReport === undefined || isImportReport(candidate.importReport)) &&
-    isStringArray(candidate.errors)
-  );
-}
-
-function isValidatePackagingResponse(value: unknown): value is ValidatePackagingResponse {
-  if (!isPreparePackagingResponse(value)) {
-    return false;
-  }
-
-  const candidate = value as {
-    ok?: unknown;
-    manifestDigest?: unknown;
-    components?: unknown;
-  };
-  return (
-    typeof candidate.ok === 'boolean' &&
-    (candidate.manifestDigest === undefined || typeof candidate.manifestDigest === 'string') &&
-    (candidate.components === undefined || isStringArray(candidate.components))
-  );
 }
 
 export async function runPackagingSession(
@@ -230,9 +141,8 @@ export async function runPackagingSession(
   }
 
   const idempotencyKey = packagingIdempotencyKey();
-  let prepared: PreparePackagingResponse;
   try {
-    prepared = await prepareSkillPackaging({
+    const review = await importReviewPackaging({
       registry: options.registry,
       idempotencyKey,
       source: {
@@ -253,81 +163,38 @@ export async function runPackagingSession(
         ...(options.strict ? { strict: true } : {}),
       },
     });
-  } catch (error) {
-    return registryFailureResult(inspection, {
-      errors: [externalErrorMessage(error)],
-      idempotencyKey,
-    });
-  }
 
-  if (!isPreparePackagingResponse(prepared)) {
-    return registryFailureResult(inspection, {
-      errors: ['catalog prepare returned malformed success payload'],
-      idempotencyKey,
-    });
-  }
-
-  if (prepared.errors.length > 0) {
-    return registryFailureResult(inspection, {
-      errors: prepared.errors,
-      workspacePath: prepared.workspacePath,
-      idempotencyKey,
-    });
-  }
-
-  let validated: ValidatePackagingResponse;
-  try {
-    validated = await validateSkillPackaging({
-      registry: options.registry,
-      idempotencyKey,
-      workspacePath: prepared.workspacePath,
-      target: {
-        packageName: inspection.packageName,
-        version: inspection.version,
-      },
-    });
-  } catch (error) {
-    return registryFailureResult(inspection, {
-      errors: [externalErrorMessage(error)],
-      workspacePath: prepared.workspacePath,
-      idempotencyKey,
-    });
-  }
-
-  if (!isValidatePackagingResponse(validated)) {
-    return registryFailureResult(inspection, {
-      errors: ['catalog validate returned malformed success payload'],
-      workspacePath: prepared.workspacePath,
-      idempotencyKey,
-    });
-  }
-
-  if (!validated.ok || validated.errors.length > 0) {
-    return registryFailureResult(inspection, {
-      packageName: validated.packageName || inspection.packageName,
-      version: validated.version || inspection.version,
-      components: validated.components || inspection.components,
-      errors: validated.errors.length > 0 ? validated.errors : ['packaging validation failed'],
-      workspacePath: validated.workspacePath,
-      idempotencyKey,
-    });
-  }
-
-  return registrySuccessResult(
-    {
-      ...inspection,
-      packageName: validated.packageName || inspection.packageName,
-      version: validated.version || inspection.version,
-      components: validated.components || inspection.components,
-      errors: validated.errors,
-    },
-    {
-      workspacePath: validated.workspacePath,
-      idempotencyKey,
-      warnings: prepared.warnings,
-      warningDetails: prepared.warningDetails,
-      importReport: validated.importReport ?? prepared.importReport,
-      manifestDigest: validated.manifestDigest,
+    const reviewedComponents = review.components ?? inspection.components;
+    if (!review.ok || review.errors.length > 0) {
+      return registryFailureResult(inspection, {
+        packageName: review.packageName || inspection.packageName,
+        version: review.version || inspection.version,
+        components: reviewedComponents,
+        errors: review.errors.length > 0 ? review.errors : ['packaging import review failed'],
+        idempotencyKey,
+      });
     }
-  );
+
+    return registrySuccessResult(
+      {
+        ...inspection,
+        packageName: review.packageName || inspection.packageName,
+        version: review.version || inspection.version,
+        components: reviewedComponents,
+        errors: review.errors,
+      },
+      {
+        idempotencyKey,
+        warnings: review.warnings,
+        warningDetails: review.warningDetails,
+        importReport: review.importReport,
+        manifestDigest: review.manifestDigest,
+      }
+    );
+  } catch (error) {
+    return registryFailureResult(inspection, {
+      errors: [externalErrorMessage(error)],
+      idempotencyKey,
+    });
+  }
 }

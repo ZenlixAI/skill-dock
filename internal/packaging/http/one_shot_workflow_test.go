@@ -12,6 +12,7 @@ import (
 	platformaudit "skill_registry/internal/platform/audit"
 	"skill_registry/internal/platform/auth"
 	platformhttp "skill_registry/internal/platform/http"
+	persist "skill_registry/internal/platform/persistence"
 )
 
 func TestOneShotWorkflowUsesPackagingApplicationReviewContract(t *testing.T) {
@@ -111,4 +112,17 @@ func newOneShotWorkflowWithAuditForTest(auditRecorder *platformaudit.Recorder) *
 
 func (m *testOneShotWorkflow) reviewCallCount() int {
 	return m.service.reviewCalls
+}
+
+type captureAuditStore struct {
+	events []persist.AuditEvent
+}
+
+func (s *captureAuditStore) Append(_ context.Context, event persist.AuditEvent) error {
+	s.events = append(s.events, event)
+	return nil
+}
+
+func (s *captureAuditStore) List(context.Context, persist.AuditQuery) (persist.AuditPage, error) {
+	return persist.AuditPage{}, nil
 }

@@ -3,7 +3,6 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
   applyVersionGovernanceChange,
   createReleaseRecord,
-  getPackagingBundleDownloadPath,
   getVersionDetail,
   listGovernanceChanges,
 } from '../api/client';
@@ -85,11 +84,7 @@ export function VersionDetailPage() {
     .map((item) => item.trim())
     .filter(Boolean);
   const authoringPath = buildReleaseHandoffPath(handoff, '/workbench/authoring');
-  const hasHandoff = Boolean(handoff.manifestDigest || handoff.bundlePath || handoff.workspacePath || handoff.components?.length);
-  const bundleDownloadPath =
-    hasHandoff && handoff.workspacePath
-      ? getPackagingBundleDownloadPath(handoff.workspacePath, decodedPackage, version)
-      : null;
+  const hasHandoff = Boolean(handoff.manifestDigest || handoff.components?.length);
   const currentVersionStatus = detail.data?.versionStatus || 'unknown';
   const versionTone =
     currentVersionStatus === 'published' ? 'good' : currentVersionStatus === 'deprecated' ? 'warn' : 'bad';
@@ -460,14 +455,6 @@ export function VersionDetailPage() {
         >
           <dl className="property-list">
             <div>
-              <dt>工作区路径</dt>
-              <dd>{handoff.workspacePath || '—'}</dd>
-            </div>
-            <div>
-              <dt>打包产物路径</dt>
-              <dd>{handoff.bundlePath || '—'}</dd>
-            </div>
-            <div>
               <dt>清单摘要</dt>
               <dd>{handoff.manifestDigest || '—'}</dd>
             </div>
@@ -552,17 +539,8 @@ export function VersionDetailPage() {
                       {publishConfirmed ? '已确认' : '待确认'}
                     </StatusPill>
                   </div>
-                  <p>先下载打包产物，并在你自己的终端里对目标 npm 仓库执行 `npm publish`。</p>
-                  {bundleDownloadPath ? (
-                    <div className="authoring-actions">
-                      <a className="button button--secondary" href={bundleDownloadPath}>
-                        下载打包产物
-                      </a>
-                      <span className="support-copy">{handoff.bundlePath || '使用当前交接信息里的打包产物结果。'}</span>
-                    </div>
-                  ) : (
-                    <p className="support-copy">如果你不是从发布交接进入这个页面，请先回到导入页重新生成打包产物。</p>
-                  )}
+                  <p>先确认 Catalog 的一次性发布已经完成，再用这里的审阅摘要写入发布记录。</p>
+                  <p className="support-copy">如果你不是从发布交接进入这个页面，请先回到导入页重新生成导入审阅结果。</p>
                 </article>
               </div>
               <label className="checkbox-row">

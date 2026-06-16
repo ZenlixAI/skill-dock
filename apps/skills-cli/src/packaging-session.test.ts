@@ -10,6 +10,13 @@ vi.mock('./source-archive.ts', () => ({
 import { runPackagingSession } from './packaging-session.ts';
 import { createSourceArchiveBase64 } from './source-archive.ts';
 
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
 describe('packaging session', () => {
   let testDir: string;
   let originalFetch: typeof globalThis.fetch;
@@ -32,7 +39,7 @@ describe('packaging session', () => {
     }
   });
 
-  it('runs prepare and validate with a shared idempotency key', async () => {
+  it('runs import-review with a shared idempotency key in registry mode', async () => {
     writeFileSync(
       join(testDir, 'SKILL.md'),
       `---
@@ -47,34 +54,17 @@ description: A valid skill
     );
     mkdirSync(join(testDir, 'commands'));
 
-    fetchMock
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            workspacePath: '/tmp/workspace',
-            packageName: '@platform.skill/my-skill',
-            version: '1.2.0',
-            warnings: [],
-            errors: [],
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } }
-        )
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            ok: true,
-            workspacePath: '/tmp/workspace',
-            packageName: '@platform.skill/my-skill',
-            version: '1.2.0',
-            manifestDigest: 'sha256:test',
-            components: ['commands'],
-            warnings: [],
-            errors: [],
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } }
-        )
-      );
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        ok: true,
+        packageName: '@platform.skill/my-skill',
+        version: '1.2.0',
+        manifestDigest: 'sha256:test',
+        components: ['commands'],
+        warnings: [],
+        errors: [],
+      })
+    );
 
     const result = await runPackagingSession({
       path: testDir,
@@ -86,42 +76,33 @@ description: A valid skill
       sessionKind: 'registry',
       packageName: '@platform.skill/my-skill',
       version: '1.2.0',
-      workspacePath: '/tmp/workspace',
       manifestDigest: 'sha256:test',
       components: ['commands'],
     });
-    expect('idempotencyKey' in result).toBe(true);
+    expect('workspacePath' in result).toBe(false);
     if (result.ok && result.sessionKind === 'registry') {
       expect(typeof result.idempotencyKey).toBe('string');
       expect(result.idempotencyKey.length).toBeGreaterThan(0);
     }
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      1,
-      'https://catalog.example.com/api/v1/skill-packaging/prepare',
-      expect.objectContaining({ method: 'POST' })
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      'https://catalog.example.com/api/v1/skill-packaging/validate',
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://catalog.example.com/api/v1/skill-packaging/import-review',
       expect.objectContaining({ method: 'POST' })
     );
 
-    const preparePayload = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
-    const validatePayload = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
-    expect(preparePayload.idempotencyKey).toBeTruthy();
-    expect(validatePayload.idempotencyKey).toBe(preparePayload.idempotencyKey);
-    expect(preparePayload.source).toEqual({
+    const payload = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(payload.idempotencyKey).toBeTruthy();
+    expect(payload.source).toEqual({
       type: 'upload_archive',
       archiveBase64: 'archive-base64',
     });
-    expect(preparePayload.metadata).toEqual({
+    expect(payload.metadata).toEqual({
       displayName: 'my-skill',
       description: 'A valid skill',
       sourceType: 'native',
     });
   });
 
-  it('preserves prepare warnings returned by the catalog packaging flow', async () => {
+  it('preserves import-review warnings returned by the catalog flow', async () => {
     writeFileSync(
       join(testDir, 'SKILL.md'),
       `---
@@ -136,53 +117,36 @@ description: Broader context
     );
     mkdirSync(join(testDir, 'docs'), { recursive: true });
 
-    fetchMock
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            workspacePath: '/tmp/workspace',
-            packageName: '@platform.skill/zoom-out',
-            version: '1.0.0',
-            warnings: ['normalized_missing_capability_content'],
-            warningDetails: [
-              {
-                code: 'normalized_missing_capability_content',
-                severity: 'warning',
-                title: 'Generated placeholder capability content',
-                message: 'The imported skill did not contain publishable capability content.',
-                suggestedAction: 'Replace the placeholder with real capability content.',
-              },
-            ],
-            importReport: {
-              sourceType: 'imported',
-              strictMode: false,
-              normalized: true,
-              generatedPackageJson: false,
-              generatedCapabilityPlaceholder: true,
-              rewrotePackageIdentity: false,
-              generatedPaths: ['docs/README.md'],
-              warningCodes: ['normalized_missing_capability_content'],
-            },
-            errors: [],
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } }
-        )
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            ok: true,
-            workspacePath: '/tmp/workspace',
-            packageName: '@platform.skill/zoom-out',
-            version: '1.0.0',
-            manifestDigest: 'sha256:test',
-            components: ['docs'],
-            warnings: [],
-            errors: [],
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } }
-        )
-      );
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        ok: true,
+        packageName: '@platform.skill/zoom-out',
+        version: '1.0.0',
+        manifestDigest: 'sha256:test',
+        components: ['docs'],
+        warnings: ['normalized_missing_capability_content'],
+        warningDetails: [
+          {
+            code: 'normalized_missing_capability_content',
+            severity: 'warning',
+            title: 'Generated placeholder capability content',
+            message: 'The imported skill did not contain publishable capability content.',
+            suggestedAction: 'Replace the placeholder with real capability content.',
+          },
+        ],
+        importReport: {
+          sourceType: 'imported',
+          strictMode: false,
+          normalized: true,
+          generatedPackageJson: false,
+          generatedCapabilityPlaceholder: true,
+          rewrotePackageIdentity: false,
+          generatedPaths: ['docs/README.md'],
+          warningCodes: ['normalized_missing_capability_content'],
+        },
+        errors: [],
+      })
+    );
 
     const result = await runPackagingSession({ path: testDir, registry: 'https://catalog.example.com' });
     expect(result.ok).toBe(true);
@@ -246,6 +210,7 @@ description: Missing version
 
   it('returns a full success surface for local-only inspection', async () => {
     mkdirSync(join(testDir, 'commands'));
+    writeFileSync(join(testDir, 'commands', 'run.ts'), 'export const run = true;\n');
     writeFileSync(
       join(testDir, 'SKILL.md'),
       `---
@@ -274,7 +239,7 @@ description: Local-only inspect
       packageName: '@platform.skill/local-skill',
       version: '1.2.0',
       publishRegistry: undefined,
-      components: [],
+      components: ['commands'],
       errors: [],
     });
     expect('workspacePath' in result).toBe(false);
@@ -282,7 +247,7 @@ description: Local-only inspect
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('returns prepare errors without calling validate', async () => {
+  it('returns import-review errors without exposing a workspace path', async () => {
     writeFileSync(
       join(testDir, 'SKILL.md'),
       `---
@@ -297,16 +262,14 @@ description: A valid skill
     );
 
     fetchMock.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          workspacePath: '/tmp/workspace',
-          packageName: '@platform.skill/my-skill',
-          version: '1.2.0',
-          warnings: [],
-          errors: ['nested_skill_md'],
-        }),
-        { status: 200, headers: { 'content-type': 'application/json' } }
-      )
+      jsonResponse({
+        ok: false,
+        packageName: '@platform.skill/my-skill',
+        version: '1.2.0',
+        components: [],
+        warnings: [],
+        errors: ['nested_skill_md'],
+      })
     );
 
     const result = await runPackagingSession({
@@ -327,13 +290,13 @@ description: A valid skill
       publishRegistry: undefined,
       components: [],
       errors: ['nested_skill_md'],
-      workspacePath: '/tmp/workspace',
       idempotencyKey: expect.any(String),
     });
+    expect('workspacePath' in result).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('preserves an explicit package sourceType when preparing registry packaging', async () => {
+  it('preserves an explicit package sourceType when importing for registry review', async () => {
     writeFileSync(
       join(testDir, 'SKILL.md'),
       `---
@@ -358,49 +321,32 @@ description: A valid skill
     );
     mkdirSync(join(testDir, 'commands'));
 
-    fetchMock
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            workspacePath: '/tmp/workspace',
-            packageName: '@platform.skill/my-skill',
-            version: '1.2.0',
-            warnings: [],
-            errors: [],
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } }
-        )
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            ok: true,
-            workspacePath: '/tmp/workspace',
-            packageName: '@platform.skill/my-skill',
-            version: '1.2.0',
-            manifestDigest: 'sha256:test',
-            components: ['commands'],
-            warnings: [],
-            errors: [],
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } }
-        )
-      );
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        ok: true,
+        packageName: '@platform.skill/my-skill',
+        version: '1.2.0',
+        manifestDigest: 'sha256:test',
+        components: ['commands'],
+        warnings: [],
+        errors: [],
+      })
+    );
 
     await runPackagingSession({
       path: testDir,
       registry: 'https://catalog.example.com',
     });
 
-    const preparePayload = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
-    expect(preparePayload.metadata).toEqual({
+    const payload = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(payload.metadata).toEqual({
       displayName: 'my-skill',
       description: 'A valid skill',
       sourceType: 'platform_created',
     });
   });
 
-  it('threads strict packaging options to the prepare request', async () => {
+  it('threads strict packaging options to the import-review request', async () => {
     writeFileSync(
       join(testDir, 'SKILL.md'),
       `---
@@ -415,34 +361,17 @@ description: Strict packaging
     );
     mkdirSync(join(testDir, 'docs'));
 
-    fetchMock
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            workspacePath: '/tmp/workspace',
-            packageName: '@platform.skill/strict-skill',
-            version: '1.2.0',
-            warnings: [],
-            errors: [],
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } }
-        )
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            ok: true,
-            workspacePath: '/tmp/workspace',
-            packageName: '@platform.skill/strict-skill',
-            version: '1.2.0',
-            manifestDigest: 'sha256:test',
-            components: ['docs'],
-            warnings: [],
-            errors: [],
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } }
-        )
-      );
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        ok: true,
+        packageName: '@platform.skill/strict-skill',
+        version: '1.2.0',
+        manifestDigest: 'sha256:test',
+        components: ['docs'],
+        warnings: [],
+        errors: [],
+      })
+    );
 
     await runPackagingSession({
       path: testDir,
@@ -450,282 +379,9 @@ description: Strict packaging
       strict: true,
     });
 
-    const preparePayload = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
-    expect(preparePayload.options).toEqual({
+    const payload = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(payload.options).toEqual({
       strict: true,
     });
-  });
-
-  it('returns validate failures with the session workspace and idempotency key', async () => {
-    writeFileSync(
-      join(testDir, 'SKILL.md'),
-      `---
-name: my-skill
-description: A valid skill
----
-`
-    );
-    writeFileSync(
-      join(testDir, 'package.json'),
-      JSON.stringify({ name: '@platform.skill/my-skill', version: '1.2.0' }, null, 2)
-    );
-
-    fetchMock
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            workspacePath: '/tmp/workspace',
-            packageName: '@platform.skill/my-skill',
-            version: '1.2.0',
-            warnings: [],
-            errors: [],
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } }
-        )
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            ok: false,
-            workspacePath: '/tmp/workspace',
-            packageName: '@platform.skill/my-skill',
-            version: '1.2.0',
-            components: [],
-            warnings: [],
-            errors: ['manifest_digest_mismatch'],
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } }
-        )
-      );
-
-    const result = await runPackagingSession({
-      path: testDir,
-      registry: 'https://catalog.example.com',
-    });
-
-    expect(result).toEqual({
-      ok: false,
-      sessionKind: 'registry',
-      directory: testDir,
-      skillMdPath: join(testDir, 'SKILL.md'),
-      packageJsonPath: join(testDir, 'package.json'),
-      displayName: 'my-skill',
-      description: 'A valid skill',
-      packageName: '@platform.skill/my-skill',
-      version: '1.2.0',
-      publishRegistry: undefined,
-      components: [],
-      errors: ['manifest_digest_mismatch'],
-      workspacePath: '/tmp/workspace',
-      idempotencyKey: expect.any(String),
-    });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
-
-  it('normalizes thrown catalog errors into a failure result', async () => {
-    writeFileSync(
-      join(testDir, 'SKILL.md'),
-      `---
-name: my-skill
-description: A valid skill
----
-`
-    );
-    writeFileSync(
-      join(testDir, 'package.json'),
-      JSON.stringify({ name: '@platform.skill/my-skill', version: '1.2.0' }, null, 2)
-    );
-
-    fetchMock.mockRejectedValueOnce(new Error('network down'));
-
-    const result = await runPackagingSession({
-      path: testDir,
-      registry: 'https://catalog.example.com',
-    });
-
-    expect(result).toEqual({
-      ok: false,
-      sessionKind: 'registry',
-      directory: testDir,
-      skillMdPath: join(testDir, 'SKILL.md'),
-      packageJsonPath: join(testDir, 'package.json'),
-      displayName: 'my-skill',
-      description: 'A valid skill',
-      packageName: '@platform.skill/my-skill',
-      version: '1.2.0',
-      publishRegistry: undefined,
-      components: [],
-      errors: ['network down'],
-      idempotencyKey: expect.any(String),
-    });
-    expect('workspacePath' in result).toBe(false);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it('normalizes malformed prepare success payloads into a failure result', async () => {
-    writeFileSync(
-      join(testDir, 'SKILL.md'),
-      `---
-name: my-skill
-description: A valid skill
----
-`
-    );
-    writeFileSync(
-      join(testDir, 'package.json'),
-      JSON.stringify({ name: '@platform.skill/my-skill', version: '1.2.0' }, null, 2)
-    );
-
-    fetchMock.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          workspacePath: '/tmp/workspace',
-          packageName: '@platform.skill/my-skill',
-          version: '1.2.0',
-          warnings: [],
-        }),
-        { status: 200, headers: { 'content-type': 'application/json' } }
-      )
-    );
-
-    const result = await runPackagingSession({
-      path: testDir,
-      registry: 'https://catalog.example.com',
-    });
-
-    expect(result).toEqual({
-      ok: false,
-      sessionKind: 'registry',
-      directory: testDir,
-      skillMdPath: join(testDir, 'SKILL.md'),
-      packageJsonPath: join(testDir, 'package.json'),
-      displayName: 'my-skill',
-      description: 'A valid skill',
-      packageName: '@platform.skill/my-skill',
-      version: '1.2.0',
-      publishRegistry: undefined,
-      components: [],
-      errors: ['catalog prepare returned malformed success payload'],
-      idempotencyKey: expect.any(String),
-    });
-    expect('workspacePath' in result).toBe(false);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it('normalizes malformed validate success payloads into a failure result', async () => {
-    writeFileSync(
-      join(testDir, 'SKILL.md'),
-      `---
-name: my-skill
-description: A valid skill
----
-`
-    );
-    writeFileSync(
-      join(testDir, 'package.json'),
-      JSON.stringify({ name: '@platform.skill/my-skill', version: '1.2.0' }, null, 2)
-    );
-
-    fetchMock
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            workspacePath: '/tmp/workspace',
-            packageName: '@platform.skill/my-skill',
-            version: '1.2.0',
-            warnings: [],
-            errors: [],
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } }
-        )
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            ok: true,
-            workspacePath: '/tmp/workspace',
-            packageName: '@platform.skill/my-skill',
-            version: '1.2.0',
-            warnings: [],
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } }
-        )
-      );
-
-    const result = await runPackagingSession({
-      path: testDir,
-      registry: 'https://catalog.example.com',
-    });
-
-    expect(result).toEqual({
-      ok: false,
-      sessionKind: 'registry',
-      directory: testDir,
-      skillMdPath: join(testDir, 'SKILL.md'),
-      packageJsonPath: join(testDir, 'package.json'),
-      displayName: 'my-skill',
-      description: 'A valid skill',
-      packageName: '@platform.skill/my-skill',
-      version: '1.2.0',
-      publishRegistry: undefined,
-      components: [],
-      errors: ['catalog validate returned malformed success payload'],
-      workspacePath: '/tmp/workspace',
-      idempotencyKey: expect.any(String),
-    });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
-
-  it('normalizes thrown validate errors into a failure result', async () => {
-    writeFileSync(
-      join(testDir, 'SKILL.md'),
-      `---
-name: my-skill
-description: A valid skill
----
-`
-    );
-    writeFileSync(
-      join(testDir, 'package.json'),
-      JSON.stringify({ name: '@platform.skill/my-skill', version: '1.2.0' }, null, 2)
-    );
-
-    fetchMock
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            workspacePath: '/tmp/workspace',
-            packageName: '@platform.skill/my-skill',
-            version: '1.2.0',
-            warnings: [],
-            errors: [],
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } }
-        )
-      )
-      .mockRejectedValueOnce(new Error('validation down'));
-
-    const result = await runPackagingSession({
-      path: testDir,
-      registry: 'https://catalog.example.com',
-    });
-
-    expect(result).toEqual({
-      ok: false,
-      sessionKind: 'registry',
-      directory: testDir,
-      skillMdPath: join(testDir, 'SKILL.md'),
-      packageJsonPath: join(testDir, 'package.json'),
-      displayName: 'my-skill',
-      description: 'A valid skill',
-      packageName: '@platform.skill/my-skill',
-      version: '1.2.0',
-      publishRegistry: undefined,
-      components: [],
-      errors: ['validation down'],
-      workspacePath: '/tmp/workspace',
-      idempotencyKey: expect.any(String),
-    });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

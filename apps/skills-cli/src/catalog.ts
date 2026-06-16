@@ -68,22 +68,6 @@ export interface PackagingImportReport {
   warningCodes?: string[];
 }
 
-export interface PreparePackagingResponse {
-  workspacePath: string;
-  packageName: string;
-  version: string;
-  warnings: string[];
-  warningDetails?: PackagingWarningDetail[];
-  importReport?: PackagingImportReport;
-  errors: string[];
-}
-
-export interface ValidatePackagingResponse extends PreparePackagingResponse {
-  ok: boolean;
-  manifestDigest?: string;
-  components?: string[];
-}
-
 export interface ImportReviewPackagingResponse {
   ok: boolean;
   packageName: string;
@@ -97,11 +81,25 @@ export interface ImportReviewPackagingResponse {
   errors: string[];
 }
 
-export interface PackPackagingResponse extends PreparePackagingResponse {
-  bundlePath: string;
-  bundleBase64?: string;
+export interface PackagingPublishResponse {
+  packageName: string;
+  version: string;
   manifestDigest: string;
   components: string[];
+  publishedToRegistry: boolean;
+  created: boolean;
+  idempotentReplay: boolean;
+  versionStatus: string;
+  installPolicy: string;
+  warnings: string[];
+  warningDetails?: PackagingWarningDetail[];
+  importReport?: PackagingImportReport;
+  errors: string[];
+}
+
+export interface PublishReviewSummary {
+  manifestDigest?: string;
+  components?: string[];
 }
 
 interface CatalogErrorBody {
@@ -221,45 +219,6 @@ function normalizeImportReportField(
   return value;
 }
 
-function normalizePreparePackagingResponse(payload: unknown): PreparePackagingResponse {
-  const record = asRecord(payload);
-  if (!record) {
-    throw new Error('catalog prepare response was malformed');
-  }
-
-  return {
-    workspacePath: readRequiredStringField(record, 'workspacePath', 'catalog prepare'),
-    packageName: readRequiredStringField(record, 'packageName', 'catalog prepare'),
-    version: readRequiredStringField(record, 'version', 'catalog prepare'),
-    warnings: normalizeStringArrayField(record, 'warnings', 'catalog prepare'),
-    warningDetails: normalizeWarningDetailsField(record, 'warningDetails', 'catalog prepare'),
-    importReport: normalizeImportReportField(record, 'importReport', 'catalog prepare'),
-    errors: normalizeStringArrayField(record, 'errors', 'catalog prepare'),
-  };
-}
-
-function normalizeValidatePackagingResponse(payload: unknown): ValidatePackagingResponse {
-  const record = asRecord(payload);
-  if (!record) {
-    throw new Error('catalog validate response was malformed');
-  }
-
-  const ok = record.ok;
-  if (typeof ok !== 'boolean') {
-    throw new Error('catalog validate response was malformed: ok must be a boolean');
-  }
-
-  return {
-    ...normalizePreparePackagingResponse(record),
-    ok,
-    manifestDigest: readOptionalStringField(record, 'manifestDigest', 'catalog validate'),
-    components:
-      record.components === undefined || record.components === null
-        ? undefined
-        : normalizeStringArrayField(record, 'components', 'catalog validate'),
-  };
-}
-
 function normalizeImportReviewPackagingResponse(payload: unknown): ImportReviewPackagingResponse {
   const record = asRecord(payload);
   if (!record) {
@@ -288,18 +247,26 @@ function normalizeImportReviewPackagingResponse(payload: unknown): ImportReviewP
   };
 }
 
-function normalizePackPackagingResponse(payload: unknown): PackPackagingResponse {
+function normalizePublishPackagingResponse(payload: unknown): PackagingPublishResponse {
   const record = asRecord(payload);
   if (!record) {
-    throw new Error('catalog pack response was malformed');
+    throw new Error('catalog publish response was malformed');
   }
 
   return {
-    ...normalizePreparePackagingResponse(record),
-    bundlePath: readRequiredStringField(record, 'bundlePath', 'catalog pack'),
-    bundleBase64: readOptionalStringField(record, 'bundleBase64', 'catalog pack'),
-    manifestDigest: readRequiredStringField(record, 'manifestDigest', 'catalog pack'),
-    components: normalizeStringArrayField(record, 'components', 'catalog pack'),
+    packageName: readRequiredStringField(record, 'packageName', 'catalog publish'),
+    version: readRequiredStringField(record, 'version', 'catalog publish'),
+    manifestDigest: readRequiredStringField(record, 'manifestDigest', 'catalog publish'),
+    components: normalizeStringArrayField(record, 'components', 'catalog publish'),
+    publishedToRegistry: Boolean(record.publishedToRegistry),
+    created: Boolean(record.created),
+    idempotentReplay: Boolean(record.idempotentReplay),
+    versionStatus: readRequiredStringField(record, 'versionStatus', 'catalog publish'),
+    installPolicy: readRequiredStringField(record, 'installPolicy', 'catalog publish'),
+    warnings: normalizeStringArrayField(record, 'warnings', 'catalog publish'),
+    warningDetails: normalizeWarningDetailsField(record, 'warningDetails', 'catalog publish'),
+    importReport: normalizeImportReportField(record, 'importReport', 'catalog publish'),
+    errors: normalizeStringArrayField(record, 'errors', 'catalog publish'),
   };
 }
 
@@ -509,38 +476,6 @@ export async function resolveInstallTarget(
   return (await response.json()) as InstallTarget;
 }
 
-export async function prepareSkillPackaging(input: {
-  registry?: string;
-  idempotencyKey?: string;
-  source: PackagingSource;
-  target: PackagingTarget;
-  metadata?: PackagingMetadata;
-  options?: PackagingOptions;
-}): Promise<PreparePackagingResponse> {
-  const url = buildCatalogUrl('/api/v1/skill-packaging/prepare', undefined, input.registry);
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      accept: 'application/json',
-      'content-type': 'application/json',
-      ...getCatalogAuthHeaders(),
-    },
-    body: JSON.stringify({
-      idempotencyKey: input.idempotencyKey,
-      source: input.source,
-      target: input.target,
-      metadata: input.metadata || {},
-      options: input.options || {},
-    }),
-  });
-
-  if (!response.ok) {
-    throw await parseCatalogError(response);
-  }
-
-  return normalizePreparePackagingResponse(await response.json());
-}
-
 export async function importReviewPackaging(input: {
   registry?: string;
   idempotencyKey?: string;
@@ -575,13 +510,16 @@ export async function importReviewPackaging(input: {
   return normalizeImportReviewPackagingResponse(await response.json());
 }
 
-export async function validateSkillPackaging(input: {
+export async function publishSkillPackaging(input: {
   registry?: string;
   idempotencyKey?: string;
-  workspacePath: string;
+  source: PackagingSource;
   target: PackagingTarget;
-}): Promise<ValidatePackagingResponse> {
-  const url = buildCatalogUrl('/api/v1/skill-packaging/validate', undefined, input.registry);
+  metadata?: PackagingMetadata;
+  options?: PackagingOptions;
+  review?: PublishReviewSummary;
+}): Promise<PackagingPublishResponse> {
+  const url = buildCatalogUrl('/api/v1/skill-packaging/publish', undefined, input.registry);
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -591,8 +529,11 @@ export async function validateSkillPackaging(input: {
     },
     body: JSON.stringify({
       idempotencyKey: input.idempotencyKey,
-      workspacePath: input.workspacePath,
+      source: input.source,
       target: input.target,
+      metadata: input.metadata || {},
+      options: input.options || {},
+      review: input.review,
     }),
   });
 
@@ -600,64 +541,5 @@ export async function validateSkillPackaging(input: {
     throw await parseCatalogError(response);
   }
 
-  return normalizeValidatePackagingResponse(await response.json());
-}
-
-export async function packSkillPackaging(input: {
-  registry?: string;
-  idempotencyKey?: string;
-  workspacePath: string;
-  target: PackagingTarget;
-  includeBundle?: boolean;
-}): Promise<PackPackagingResponse> {
-  const url = buildCatalogUrl('/api/v1/skill-packaging/pack', undefined, input.registry);
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      accept: 'application/json',
-      'content-type': 'application/json',
-      ...getCatalogAuthHeaders(),
-    },
-    body: JSON.stringify({
-      idempotencyKey: input.idempotencyKey,
-      workspacePath: input.workspacePath,
-      target: input.target,
-      includeBundle: input.includeBundle,
-    }),
-  });
-
-  if (!response.ok) {
-    throw await parseCatalogError(response);
-  }
-
-  return normalizePackPackagingResponse(await response.json());
-}
-
-export async function downloadPackedBundle(input: {
-  registry?: string;
-  workspacePath: string;
-  target: PackagingTarget;
-}): Promise<Buffer> {
-  const url = buildCatalogUrl(
-    '/api/v1/skill-packaging/bundle',
-    {
-      workspacePath: input.workspacePath,
-      packageName: input.target.packageName,
-      version: input.target.version,
-    },
-    input.registry
-  );
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      accept: 'application/octet-stream',
-      ...getCatalogAuthHeaders(),
-    },
-  });
-
-  if (!response.ok) {
-    throw await parseCatalogError(response);
-  }
-
-  return Buffer.from(await response.arrayBuffer());
+  return normalizePublishPackagingResponse(await response.json());
 }

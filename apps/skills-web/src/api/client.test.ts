@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RegistryApiClient, RegistryClientConfig } from './types';
 import {
-  buildPackagingBundleDownloadPath,
   normalizeBundleMetadata,
   normalizePackagingReview,
   normalizeSkillsPage,
@@ -24,11 +23,7 @@ function createMockApiClient(overrides: Partial<RegistryApiClient>): RegistryApi
     listGovernanceChanges: notUsed,
     listAuditEvents: notUsed,
     importReviewPackaging: notUsed,
-    preparePackaging: notUsed,
-    validatePackaging: notUsed,
-    packSkill: notUsed,
     publishSkill: notUsed,
-    cleanupPackagingWorkspace: notUsed,
     createReleaseRecord: notUsed,
     applySkillGovernanceChange: notUsed,
     applyVersionGovernanceChange: notUsed,
@@ -95,9 +90,8 @@ describe('apiClient real-response normalization', () => {
     });
   });
 
-  it('fills missing prepare warning details with an empty array', async () => {
+  it('fills missing review warning details with an empty array', async () => {
     const result = normalizePackagingReview({
-      workspacePath: '/tmp/skill-packaging',
       packageName: '@platform.skill/e2e-import-smoke',
       version: '0.0.1',
       warnings: [],
@@ -142,7 +136,6 @@ describe('apiClient real-response normalization', () => {
 
   it('sends stateless publish requests without workspace fields', async () => {
     const requestJSON = vi.fn().mockResolvedValue({
-      workspacePath: '/tmp/skill-packaging',
       packageName: '@platform.skill/zoom-out',
       version: '1.2.0',
       manifestDigest: 'sha256:test',
@@ -190,14 +183,6 @@ describe('apiClient real-response normalization', () => {
       components: [],
     });
   });
-
-  it('builds the bundle download path through the public facade helper', () => {
-    expect(
-      buildPackagingBundleDownloadPath('/tmp/skill pack', '@platform.skill/code-review', '1.2.3')
-    ).toBe(
-      '/api/v1/skill-packaging/bundle?workspacePath=%2Ftmp%2Fskill+pack&packageName=%40platform.skill%2Fcode-review&version=1.2.3'
-    );
-  });
 });
 
 describe('apiClient facade', () => {
@@ -222,10 +207,12 @@ describe('apiClient facade', () => {
         curationReason: 'sample',
       },
     ]);
-    const preparePackaging = vi.fn().mockResolvedValue({
-      workspacePath: '/tmp/mock-workspace',
+    const importReviewPackaging = vi.fn().mockResolvedValue({
+      ok: true,
       packageName: '@platform.skill/code-review',
       version: '1.0.0',
+      manifestDigest: 'sha256:test',
+      components: ['commands'],
       warnings: ['normalized_missing_capability_content'],
       warningDetails: [],
       errors: [],
@@ -238,7 +225,7 @@ describe('apiClient facade', () => {
       mockClient: createMockApiClient({
         getConfig: () => mockConfig,
         listCuratedSkills,
-        preparePackaging,
+        importReviewPackaging,
       }),
     }));
     vi.doMock('./httpClient', () => ({
@@ -254,7 +241,7 @@ describe('apiClient facade', () => {
       }),
     ]);
     await expect(
-      clientModule.preparePackaging({
+      clientModule.importReviewPackaging({
         source: {
           type: 'upload_archive',
           archiveBase64: 'YXJjaGl2ZQ==',
@@ -266,163 +253,15 @@ describe('apiClient facade', () => {
         metadata: {
           displayName: 'Code Review',
           description: 'Checklist pack',
-          sourceType: 'platform_created',
         },
-        options: {
-          strict: false,
-        },
+        options: {},
       })
-    ).resolves.toEqual({
-      workspacePath: '/tmp/mock-workspace',
-      packageName: '@platform.skill/code-review',
-      version: '1.0.0',
-      warnings: ['normalized_missing_capability_content'],
-      warningDetails: [],
-      errors: [],
-    });
-
-    expect(listCuratedSkills).toHaveBeenCalledTimes(1);
-    expect(preparePackaging).toHaveBeenCalledTimes(1);
-  });
-
-  it('keeps the real-mode facade exports normalized while using the main client seam', async () => {
-    const mockConfig: RegistryClientConfig = {
-      mode: 'real',
-      baseUrl: null,
-      role: null,
-      actor: null,
-      hasToken: true,
-    };
-    const requestJSON = vi
-      .fn()
-      .mockResolvedValueOnce({
-        items: null,
-        pageInfo: null,
-      })
-      .mockResolvedValueOnce({
+    ).resolves.toEqual(
+      expect.objectContaining({
         packageName: '@platform.skill/code-review',
-        version: '1.0.0',
-        versionStatus: 'published',
-        installPolicy: 'resolvable',
-        publishedAt: '2026-06-02T12:05:00Z',
-        registry: {
-          npmRegistry: 'https://npm.internal.example.com',
-          tarballUrl: 'https://npm.internal.example.com/@platform.skill/code-review/-/code-review-1.0.0.tgz',
-          integrity: 'sha512:abc',
-          shasum: 'abc',
-          publishedAt: '2026-06-02T12:05:00Z',
-          distTags: ['latest'],
-        },
-        bundle: null,
+        manifestDigest: 'sha256:test',
       })
-      .mockResolvedValueOnce({
-        workspacePath: '/tmp/skill-packaging',
-        packageName: '@platform.skill/code-review',
-        version: '1.0.0',
-        warnings: [],
-        errors: null,
-      });
-
-    vi.doMock('./config', () => ({
-      registryClientConfig: mockConfig,
-    }));
-    vi.doMock('./httpClient', () => ({
-      requestJSON,
-      RegistryHttpError: class RegistryHttpError extends Error {},
-    }));
-    vi.doMock('./mockClient', () => ({
-      mockClient: createMockApiClient({
-        getConfig: () => ({
-          mode: 'mock',
-          baseUrl: null,
-          role: null,
-          actor: null,
-          hasToken: false,
-        }),
-      }),
-    }));
-
-    const clientModule = await import('./client');
-
-    await expect(clientModule.listSkills()).resolves.toEqual({
-      items: [],
-      pageInfo: {
-        hasNextPage: false,
-        nextCursor: null,
-      },
-    });
-    await expect(clientModule.getVersionDetail('@platform.skill/code-review', '1.0.0')).resolves.toEqual({
-      packageName: '@platform.skill/code-review',
-      version: '1.0.0',
-      versionStatus: 'published',
-      installPolicy: 'resolvable',
-      publishedAt: '2026-06-02T12:05:00Z',
-      registry: {
-        npmRegistry: 'https://npm.internal.example.com',
-        tarballUrl: 'https://npm.internal.example.com/@platform.skill/code-review/-/code-review-1.0.0.tgz',
-        integrity: 'sha512:abc',
-        shasum: 'abc',
-        publishedAt: '2026-06-02T12:05:00Z',
-        distTags: ['latest'],
-      },
-      bundle: {
-        skillManifestDigest: '',
-        components: [],
-      },
-    });
-    await expect(
-      clientModule.preparePackaging({
-        source: {
-          type: 'upload_archive',
-          archiveBase64: 'YXJjaGl2ZQ==',
-        },
-        target: {
-          packageName: '@platform.skill/code-review',
-          version: '1.0.0',
-        },
-        metadata: {
-          displayName: 'Code Review',
-          description: 'Checklist pack',
-          sourceType: 'platform_created',
-        },
-        options: {
-          strict: false,
-        },
-      })
-    ).resolves.toEqual({
-      workspacePath: '/tmp/skill-packaging',
-      packageName: '@platform.skill/code-review',
-      version: '1.0.0',
-      warnings: [],
-      warningDetails: [],
-      errors: [],
-    });
-
-    expect(requestJSON).toHaveBeenNthCalledWith(1, '/api/v1/skills?pageSize=12');
-    expect(requestJSON).toHaveBeenNthCalledWith(
-      2,
-      '/api/v1/skills/%40platform.skill%2Fcode-review/versions/1.0.0'
     );
-    expect(requestJSON).toHaveBeenNthCalledWith(3, '/api/v1/skill-packaging/prepare', {
-      method: 'POST',
-      body: JSON.stringify({
-        source: {
-          type: 'upload_archive',
-          archiveBase64: 'YXJjaGl2ZQ==',
-        },
-        target: {
-          packageName: '@platform.skill/code-review',
-          version: '1.0.0',
-        },
-        metadata: {
-          displayName: 'Code Review',
-          description: 'Checklist pack',
-          sourceType: 'platform_created',
-        },
-        options: {
-          strict: false,
-        },
-      }),
-    });
+    expect(importReviewPackaging).toHaveBeenCalledTimes(1);
   });
 });

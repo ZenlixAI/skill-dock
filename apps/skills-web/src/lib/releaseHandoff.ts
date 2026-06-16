@@ -4,8 +4,6 @@ export interface ReleaseHandoff {
   publishRegistry?: string;
   manifestDigest?: string;
   components?: string[];
-  workspacePath?: string;
-  bundlePath?: string;
 }
 
 export function buildReleaseHandoffPath(handoff: ReleaseHandoff, basePath?: string) {
@@ -23,13 +21,6 @@ export function buildReleaseHandoffPath(handoff: ReleaseHandoff, basePath?: stri
   if (handoff.components?.length) {
     params.set('components', handoff.components.join(','));
   }
-  if (handoff.workspacePath) {
-    params.set('workspacePath', handoff.workspacePath);
-  }
-  if (handoff.bundlePath) {
-    params.set('bundlePath', handoff.bundlePath);
-  }
-
   const query = params.toString();
   return query ? `${path}?${query}` : path;
 }
@@ -44,7 +35,5 @@ export function readReleaseHandoff(searchParams: URLSearchParams, fallback?: { p
     publishRegistry: searchParams.get('publishRegistry') || undefined,
     manifestDigest: searchParams.get('manifestDigest') || undefined,
     components: searchParams.get('components')?.split(',').map((item) => item.trim()).filter(Boolean) || [],
-    workspacePath: searchParams.get('workspacePath') || undefined,
-    bundlePath: searchParams.get('bundlePath') || undefined,
   };
 }

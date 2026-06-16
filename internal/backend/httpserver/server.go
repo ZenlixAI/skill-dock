@@ -32,13 +32,10 @@ import (
 )
 
 type packagingApplication interface {
-	packagingService
-	packagingapplication.AccessService
+	packagingapplication.ReviewService
 	PublishContext(ctx context.Context, input packaging.PublishRequest) (packaging.PublishResponse, error)
 	ConfigurePublishWorkflow(repo packagingapplication.ReleaseRecordCreator, publisher packagingapplication.PackagePublisher)
 }
-
-type packagingService = packagingapplication.WorkflowService
 type catalogReadService = internalcataloghttp.ReadService
 type catalogMutationService = internalgovernancehttp.MutationService
 type catalogGovernanceService = internalgovernancehttp.QueryService
@@ -82,10 +79,7 @@ type Server struct {
 	createReleaseRecordFunc          func(ctx context.Context, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.ReleaseRecordResult, int, *catalog.Error)
 	applySkillGovernanceChangeFunc   func(ctx context.Context, principal auth.Principal, packageName string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error)
 	applyVersionGovernanceChangeFunc func(ctx context.Context, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error)
-	packagingWorkflow                *internalpackaginghttp.Workflow
 	oneShotPackagingWorkflow         *internalpackaginghttp.OneShotWorkflow
-	cleanupPackagingFunc             func(ctx context.Context, principal auth.Principal, payload packaging.CleanupRequest) (packaging.CleanupResponse, int, *catalog.Error)
-	downloadBundleFunc               func(ctx context.Context, principal auth.Principal, workspacePath string, packageName string, version string) (string, *catalog.Error)
 	sessionModule                    platformsession.Workflow
 	systemModule                     systemWorkflow
 	publicNPMRegistryURL             string
@@ -125,13 +119,9 @@ func NewServer(config ServerConfig) *Server {
 	})
 	sessionManager := auth.NewSessionManager(config.SessionSecret, config.SessionUsers, 12*time.Hour)
 	auditRecorder := platformaudit.NewRecorder(config.Audit)
-	var packagingSvc packagingService
 	var packagingReviewSvc packagingapplication.ReviewService
 	if config.Packaging != nil {
-		packagingSvc = config.Packaging
-		if reviewSvc, ok := any(config.Packaging).(packagingapplication.ReviewService); ok {
-			packagingReviewSvc = reviewSvc
-		}
+		packagingReviewSvc = config.Packaging
 	}
 
 	catalogReadService := config.CatalogReadService
@@ -173,13 +163,6 @@ func NewServer(config ServerConfig) *Server {
 	server.createReleaseRecordFunc = governanceWorkflow.CreateReleaseRecord
 	server.applySkillGovernanceChangeFunc = governanceWorkflow.ApplySkillGovernanceChange
 	server.applyVersionGovernanceChangeFunc = governanceWorkflow.ApplyVersionGovernanceChange
-	server.packagingWorkflow = internalpackaginghttp.NewWorkflow(internalpackaginghttp.WorkflowConfig{
-		Service:             packagingSvc,
-		Idempotency:         config.Idempotency,
-		Audit:               auditRecorder,
-		CacheTTL:            10 * time.Minute,
-		AllowAnonymousCache: false,
-	})
 	server.oneShotPackagingWorkflow = internalpackaginghttp.NewOneShotWorkflow(internalpackaginghttp.OneShotWorkflowConfig{
 		ReviewService:       packagingReviewSvc,
 		Idempotency:         config.Idempotency,
@@ -187,9 +170,6 @@ func NewServer(config ServerConfig) *Server {
 		CacheTTL:            10 * time.Minute,
 		AllowAnonymousCache: false,
 	})
-	packagingAccessWorkflow := internalpackaginghttp.NewAccessWorkflow(config.Packaging, auditRecorder)
-	server.cleanupPackagingFunc = packagingAccessWorkflow.Cleanup
-	server.downloadBundleFunc = packagingAccessWorkflow.DownloadBundle
 	server.sessionModule = platformsession.NewModule(authorizer, sessionManager)
 	server.systemModule = internalsystemhttp.NewModule(
 		internalsystemhttp.NamedDependency{Name: "repository", Pinger: internalsystemhttp.DependencyPinger(config.Repository)},
@@ -369,38 +349,14 @@ func (s *Server) newEngine() *gin.Engine {
 		DecodeImportReviewRequest: func(ctx context.Context, principal auth.Principal, rawBody []byte) (packaging.ImportReviewRequest, *catalog.Error) {
 			return s.oneShotPackagingWorkflow.DecodeImportReviewRequest(ctx, principal, rawBody)
 		},
-		DecodePrepareRequest: func(ctx context.Context, principal auth.Principal, rawBody []byte) (packaging.PrepareRequest, *catalog.Error) {
-			return s.packagingWorkflow.DecodePrepareRequest(ctx, principal, rawBody)
-		},
-		DecodeValidateRequest: func(ctx context.Context, principal auth.Principal, rawBody []byte) (packaging.ValidateRequest, *catalog.Error) {
-			return s.packagingWorkflow.DecodeValidateRequest(ctx, principal, rawBody)
-		},
-		DecodePackRequest: func(ctx context.Context, principal auth.Principal, rawBody []byte) (packaging.PackRequest, *catalog.Error) {
-			return s.packagingWorkflow.DecodePackRequest(ctx, principal, rawBody)
-		},
 		ImportReview: func(ctx context.Context, principal auth.Principal, payload packaging.ImportReviewRequest) (any, int, *catalog.Error) {
 			return s.oneShotPackagingWorkflow.ImportReview(ctx, principal, payload)
-		},
-		Prepare: func(ctx context.Context, principal auth.Principal, payload packaging.PrepareRequest) (any, int, *catalog.Error) {
-			return s.packagingWorkflow.Prepare(ctx, principal, payload)
-		},
-		Validate: func(ctx context.Context, principal auth.Principal, payload packaging.ValidateRequest) (any, int, *catalog.Error) {
-			return s.packagingWorkflow.Validate(ctx, principal, payload)
-		},
-		Pack: func(ctx context.Context, principal auth.Principal, payload packaging.PackRequest) (any, int, *catalog.Error) {
-			return s.packagingWorkflow.Pack(ctx, principal, payload)
 		},
 		Publish: func(ctx context.Context, payload packaging.PublishRequest) (packaging.PublishResponse, error) {
 			if s.packaging == nil {
 				return packaging.PublishResponse{}, catalog.NewError(http.StatusNotFound, "not_found", "Not found.", nil)
 			}
 			return s.packaging.PublishContext(ctx, payload)
-		},
-		Cleanup: func(ctx context.Context, principal auth.Principal, payload packaging.CleanupRequest) (packaging.CleanupResponse, int, *catalog.Error) {
-			return s.cleanupPackagingFunc(ctx, principal, payload)
-		},
-		DownloadBundle: func(ctx context.Context, principal auth.Principal, workspacePath string, packageName string, version string) (string, *catalog.Error) {
-			return s.downloadBundleFunc(ctx, principal, workspacePath, packageName, version)
 		},
 		RecordMutationAudit: s.recordMutationAudit,
 	})
@@ -449,12 +405,7 @@ func (s *Server) newEngine() *gin.Engine {
 	internalpackaginghttp.RegisterRoutes(engine, internalpackaginghttp.Config{
 		ServesWriteRoutes: s.mode.servesWriteRoutes(),
 		ImportReview:      s.protectedActionHandler(auth.ActionPackagingPack, packagingHTTPHandlers.ImportReviewHandler),
-		Prepare:           s.protectedActionHandler(auth.ActionPackagingPrepare, packagingHTTPHandlers.PrepareHandler),
-		Validate:          s.protectedActionHandler(auth.ActionPackagingValidate, packagingHTTPHandlers.ValidateHandler),
-		Pack:              s.protectedActionHandler(auth.ActionPackagingPack, packagingHTTPHandlers.PackHandler),
 		Publish:           s.protectedActionHandler(auth.ActionPackagingPublish, packagingHTTPHandlers.PublishHandler),
-		Cleanup:           s.protectedActionHandler(auth.ActionPackagingPack, packagingHTTPHandlers.CleanupHandler),
-		Bundle:            s.protectedActionHandler(auth.ActionPackagingPack, packagingHTTPHandlers.BundleHandler),
 	})
 
 	return engine

@@ -1152,126 +1152,6 @@ func TestServerCanonicalRedirectIncludesMetadataAndLocalCORS(t *testing.T) {
 	}
 }
 
-func TestSkillPackagingPrepareValidateAndPack(t *testing.T) {
-	server := newTestServer()
-	fixtureDir := createPackagingFixture(t)
-
-	prepareRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
-		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
-		"target":{"packageName":"@platform.skill/fixture-skill","version":"0.2.0"},
-		"metadata":{"displayName":"Fixture Skill","description":"Fixture packaging flow","sourceType":"imported"},
-		"options":{"publishRegistry":"https://registry.example.com"}
-	}`)
-	prepareRequest.Header.Set("X-Role", "publisher")
-	prepareRecorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(prepareRecorder, prepareRequest)
-
-	if prepareRecorder.Code != http.StatusOK {
-		t.Fatalf("expected prepare status %d, got %d body=%s", http.StatusOK, prepareRecorder.Code, prepareRecorder.Body.String())
-	}
-
-	var preparePayload struct {
-		WorkspacePath string   `json:"workspacePath"`
-		PackageName   string   `json:"packageName"`
-		Version       string   `json:"version"`
-		Warnings      []string `json:"warnings"`
-		Errors        []string `json:"errors"`
-	}
-	if err := json.Unmarshal(prepareRecorder.Body.Bytes(), &preparePayload); err != nil {
-		t.Fatalf("decode prepare response: %v", err)
-	}
-	if preparePayload.WorkspacePath == "" {
-		t.Fatal("expected workspacePath to be returned")
-	}
-
-	validateRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/validate", `{
-		"workspacePath":"`+preparePayload.WorkspacePath+`",
-		"target":{"packageName":"@platform.skill/fixture-skill","version":"0.2.0"}
-	}`)
-	validateRequest.Header.Set("X-Role", "publisher")
-	validateRecorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(validateRecorder, validateRequest)
-
-	if validateRecorder.Code != http.StatusOK {
-		t.Fatalf("expected validate status %d, got %d body=%s", http.StatusOK, validateRecorder.Code, validateRecorder.Body.String())
-	}
-
-	var validatePayload struct {
-		OK         bool     `json:"ok"`
-		Components []string `json:"components"`
-		Errors     []string `json:"errors"`
-	}
-	if err := json.Unmarshal(validateRecorder.Body.Bytes(), &validatePayload); err != nil {
-		t.Fatalf("decode validate response: %v", err)
-	}
-	if !validatePayload.OK {
-		t.Fatalf("expected validate ok response, got %+v", validatePayload)
-	}
-
-	packRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/pack", `{
-		"workspacePath":"`+preparePayload.WorkspacePath+`",
-		"target":{"packageName":"@platform.skill/fixture-skill","version":"0.2.0"},
-		"includeBundle":true
-	}`)
-	packRequest.Header.Set("X-Role", "publisher")
-	packRecorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(packRecorder, packRequest)
-
-	if packRecorder.Code != http.StatusOK {
-		t.Fatalf("expected pack status %d, got %d body=%s", http.StatusOK, packRecorder.Code, packRecorder.Body.String())
-	}
-
-	var packPayload struct {
-		WorkspacePath  string   `json:"workspacePath"`
-		BundlePath     string   `json:"bundlePath"`
-		BundleBase64   string   `json:"bundleBase64"`
-		PackageName    string   `json:"packageName"`
-		Version        string   `json:"version"`
-		ManifestDigest string   `json:"manifestDigest"`
-		Components     []string `json:"components"`
-		Errors         []string `json:"errors"`
-	}
-	if err := json.Unmarshal(packRecorder.Body.Bytes(), &packPayload); err != nil {
-		t.Fatalf("decode pack response: %v", err)
-	}
-	if packPayload.BundlePath == "" {
-		t.Fatal("expected bundlePath to be returned")
-	}
-	if packPayload.BundleBase64 == "" {
-		t.Fatal("expected bundleBase64 to be returned")
-	}
-	content, err := os.ReadFile(packPayload.BundlePath)
-	if err != nil {
-		t.Fatalf("read packed bundle: %v", err)
-	}
-	scanResult, validationError := artifactadapter.ScanNPMPackageTarballForTest(bytes.NewReader(content), "@platform.skill/fixture-skill", "0.2.0")
-	if validationError != "" {
-		t.Fatalf("expected packed bundle to validate, got %s", validationError)
-	}
-	if scanResult.DisplayName != "Fixture Skill" {
-		t.Fatalf("unexpected packed display name: %s", scanResult.DisplayName)
-	}
-	packagedManifest := readTarballFile(t, content, "package/package.json")
-	var packagedPackageJSON struct {
-		Skill struct {
-			DisplayName string `json:"displayName"`
-			SourceType  string `json:"sourceType"`
-		} `json:"skill"`
-	}
-	if err := json.Unmarshal(packagedManifest, &packagedPackageJSON); err != nil {
-		t.Fatalf("decode packed package.json: %v", err)
-	}
-	if packagedPackageJSON.Skill.SourceType != "imported" {
-		t.Fatalf("expected packed sourceType imported, got %q", packagedPackageJSON.Skill.SourceType)
-	}
-	if packagedPackageJSON.Skill.DisplayName != "Fixture Skill" {
-		t.Fatalf("expected packed displayName Fixture Skill, got %q", packagedPackageJSON.Skill.DisplayName)
-	}
-}
-
 func TestSkillPackagingImportReviewReturnsReviewDataWithoutWorkspacePath(t *testing.T) {
 	server := newTestServer()
 	fixtureDir := createPackagingFixture(t)
@@ -1530,9 +1410,9 @@ func TestSkillPackagingPublishPublishesAndCreatesReleaseRecord(t *testing.T) {
 	}
 }
 
-func TestPackagingPrepareRejectsInvalidJSON(t *testing.T) {
+func TestPackagingImportReviewRejectsInvalidJSON(t *testing.T) {
 	server := newTestServer()
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", strings.NewReader("{"))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/skill-packaging/import-review", strings.NewReader("{"))
 	request.Header.Set("X-Role", "authoring")
 	request.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
@@ -1545,9 +1425,9 @@ func TestPackagingPrepareRejectsInvalidJSON(t *testing.T) {
 	assertErrorCode(t, recorder, "invalid_request")
 }
 
-func TestPackagingPrepareRejectsGetMethod(t *testing.T) {
+func TestPackagingImportReviewRejectsGetMethod(t *testing.T) {
 	server := newTestServer()
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/skill-packaging/prepare", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/skill-packaging/import-review", nil)
 	request.Header.Set("X-Role", "authoring")
 	recorder := httptest.NewRecorder()
 
@@ -1558,76 +1438,10 @@ func TestPackagingPrepareRejectsGetMethod(t *testing.T) {
 	}
 }
 
-func TestSkillPackagingPackMetadataAndBundleDownload(t *testing.T) {
-	server := newTestServer()
-	fixtureDir := createPackagingFixture(t)
-
-	prepareRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
-		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
-		"target":{"packageName":"@platform.skill/fixture-skill","version":"0.2.0"},
-		"metadata":{"displayName":"Fixture Skill","description":"Fixture packaging flow","sourceType":"imported"}
-	}`)
-	prepareRequest.Header.Set("X-Role", "publisher")
-	prepareRecorder := httptest.NewRecorder()
-	server.Handler().ServeHTTP(prepareRecorder, prepareRequest)
-	if prepareRecorder.Code != http.StatusOK {
-		t.Fatalf("expected prepare status %d, got %d body=%s", http.StatusOK, prepareRecorder.Code, prepareRecorder.Body.String())
-	}
-
-	var preparePayload struct {
-		WorkspacePath string `json:"workspacePath"`
-	}
-	if err := json.Unmarshal(prepareRecorder.Body.Bytes(), &preparePayload); err != nil {
-		t.Fatalf("decode prepare response: %v", err)
-	}
-
-	packRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/pack", `{
-		"workspacePath":"`+preparePayload.WorkspacePath+`",
-		"target":{"packageName":"@platform.skill/fixture-skill","version":"0.2.0"},
-		"includeBundle":false
-	}`)
-	packRequest.Header.Set("X-Role", "publisher")
-	packRecorder := httptest.NewRecorder()
-	server.Handler().ServeHTTP(packRecorder, packRequest)
-	if packRecorder.Code != http.StatusOK {
-		t.Fatalf("expected pack status %d, got %d body=%s", http.StatusOK, packRecorder.Code, packRecorder.Body.String())
-	}
-
-	var packPayload struct {
-		BundleBase64 string `json:"bundleBase64"`
-	}
-	if err := json.Unmarshal(packRecorder.Body.Bytes(), &packPayload); err != nil {
-		t.Fatalf("decode pack response: %v", err)
-	}
-	if packPayload.BundleBase64 != "" {
-		t.Fatalf("expected metadata-only pack response, got bundleBase64=%q", packPayload.BundleBase64)
-	}
-
-	downloadRequest := httptest.NewRequest(
-		http.MethodGet,
-		"/api/v1/skill-packaging/bundle?workspacePath="+url.QueryEscape(preparePayload.WorkspacePath)+"&packageName="+url.QueryEscape("@platform.skill/fixture-skill")+"&version=0.2.0",
-		nil,
-	)
-	downloadRequest.Header.Set("X-Role", "publisher")
-	downloadRecorder := httptest.NewRecorder()
-	server.Handler().ServeHTTP(downloadRecorder, downloadRequest)
-
-	if downloadRecorder.Code != http.StatusOK {
-		t.Fatalf("expected download status %d, got %d body=%s", http.StatusOK, downloadRecorder.Code, downloadRecorder.Body.String())
-	}
-	scanResult, validationError := artifactadapter.ScanNPMPackageTarballForTest(bytes.NewReader(downloadRecorder.Body.Bytes()), "@platform.skill/fixture-skill", "0.2.0")
-	if validationError != "" {
-		t.Fatalf("expected downloaded bundle to validate, got %s", validationError)
-	}
-	if scanResult.DisplayName != "Fixture Skill" {
-		t.Fatalf("unexpected downloaded packed display name: %s", scanResult.DisplayName)
-	}
-}
-
-func TestSkillPackagingSupportsPlatformAuthoringSource(t *testing.T) {
+func TestSkillPackagingImportReviewSupportsPlatformAuthoringSource(t *testing.T) {
 	server := newTestServer()
 
-	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
+	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/import-review", `{
 		"source":{
 			"type":"platform_authoring",
 			"files":{
@@ -1648,24 +1462,31 @@ func TestSkillPackagingSupportsPlatformAuthoringSource(t *testing.T) {
 	}
 
 	var payload struct {
-		WorkspacePath string `json:"workspacePath"`
+		OK             bool     `json:"ok"`
+		PackageName    string   `json:"packageName"`
+		Version        string   `json:"version"`
+		ManifestDigest string   `json:"manifestDigest"`
+		Components     []string `json:"components"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	content, err := os.ReadFile(filepath.Join(payload.WorkspacePath, "SKILL.md"))
-	if err != nil {
-		t.Fatalf("read generated SKILL.md: %v", err)
+	if !payload.OK {
+		t.Fatalf("expected import-review success, got %+v", payload)
 	}
-	if !strings.Contains(string(content), "Platform Authored") {
-		t.Fatalf("expected generated SKILL.md to contain display name, got %s", string(content))
+	if payload.PackageName != "@platform.skill/platform-authored" || payload.Version != "0.3.0" {
+		t.Fatalf("unexpected review identity: %+v", payload)
 	}
+	if payload.ManifestDigest == "" || len(payload.Components) == 0 {
+		t.Fatalf("expected manifest digest and components, got %+v", payload)
+	}
+	assertJSONBodyNotContains(t, recorder, "workspacePath")
 }
 
-func TestSkillPackagingRejectsGitSource(t *testing.T) {
+func TestSkillPackagingImportReviewRejectsGitSource(t *testing.T) {
 	server := newTestServer()
 
-	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
+	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/import-review", `{
 		"source":{"type":"git","location":"https://github.com/example/skills?path=skills/pdf"},
 		"target":{"packageName":"@platform.skill/rejected-git","version":"0.4.0"},
 		"metadata":{"displayName":"Rejected Git","description":"Old import contract","sourceType":"imported"}
@@ -1682,11 +1503,11 @@ func TestSkillPackagingRejectsGitSource(t *testing.T) {
 	assertErrorDetailContains(t, recorder, "suggestedAction", "upload_archive")
 }
 
-func TestSkillPackagingStillSupportsUploadArchiveSource(t *testing.T) {
+func TestSkillPackagingImportReviewSupportsUploadArchiveSource(t *testing.T) {
 	server := newTestServer()
 	fixtureDir := createPackagingFixture(t)
 
-	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
+	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/import-review", `{
 		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
 		"target":{"packageName":"@platform.skill/upload-fixture","version":"0.4.0"},
 		"metadata":{"displayName":"Upload Fixture","description":"Uploaded archive","sourceType":"imported"},
@@ -1701,23 +1522,27 @@ func TestSkillPackagingStillSupportsUploadArchiveSource(t *testing.T) {
 		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
 	}
 	var payload struct {
-		WorkspacePath string `json:"workspacePath"`
+		ManifestDigest string   `json:"manifestDigest"`
+		Components     []string `json:"components"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(payload.WorkspacePath, "commands", "run.txt")); err != nil {
-		t.Fatalf("expected copied command file: %v", err)
+	if payload.ManifestDigest == "" || len(payload.Components) == 0 {
+		t.Fatalf("expected review summary, got %+v", payload)
 	}
+	assertJSONBodyNotContains(t, recorder, "workspacePath")
 }
 
-func TestSkillPackagingAllowsAuthoringRole(t *testing.T) {
+func TestSkillPackagingImportReviewAllowsAuthoringRole(t *testing.T) {
 	server := newTestServer()
-	fixtureDir := createPackagingFixture(t)
-
-	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
-		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
-		"target":{"packageName":"@platform.skill/authoring-fixture","version":"0.6.0"}
+	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/import-review", `{
+		"source":{
+			"type":"platform_authoring",
+			"files":{"docs/README.md":"# Capability\n"}
+		},
+		"target":{"packageName":"@platform.skill/authoring-fixture","version":"0.6.0"},
+		"metadata":{"displayName":"Authoring Fixture","description":"Structured payload"}
 	}`)
 	request.Header.Set("X-Role", "authoring")
 	recorder := httptest.NewRecorder()
@@ -1729,7 +1554,7 @@ func TestSkillPackagingAllowsAuthoringRole(t *testing.T) {
 	}
 }
 
-func TestSkillPackagingPrepareNormalizesImportedLocalSkill(t *testing.T) {
+func TestSkillPackagingImportReviewNormalizesImportedLocalSkill(t *testing.T) {
 	server := newTestServer()
 	sourceDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(sourceDir, "SKILL.md"), []byte(`---
@@ -1742,7 +1567,7 @@ Prompt body.
 		t.Fatal(err)
 	}
 
-	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
+	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/import-review", `{
 		"source":`+uploadArchiveSourceJSON(t, sourceDir)+`,
 		"target":{"packageName":"@platform.skill/zoom-out","version":"1.0.0"},
 		"metadata":{"displayName":"Zoom Out","description":"Broader context","sourceType":"imported"}
@@ -1756,7 +1581,6 @@ Prompt body.
 	}
 
 	var payload struct {
-		WorkspacePath  string   `json:"workspacePath"`
 		Warnings       []string `json:"warnings"`
 		WarningDetails []struct {
 			Code string `json:"code"`
@@ -1782,74 +1606,10 @@ Prompt body.
 	if !payload.ImportReport.Normalized || !payload.ImportReport.GeneratedPackageJSON || payload.ImportReport.GeneratedCapabilityPlaceholder {
 		t.Fatalf("unexpected importReport: %#v", payload.ImportReport)
 	}
+	assertJSONBodyNotContains(t, recorder, "workspacePath")
 }
 
-func TestSkillPackagingPrepareStrictModePreservesMissingCapabilityFailure(t *testing.T) {
-	server := newTestServer()
-	sourceDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(sourceDir, "SKILL.md"), []byte(`---
-name: zoom-out
-description: Broader context
----
-
-Prompt body.
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	prepareRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
-		"source":`+uploadArchiveSourceJSON(t, sourceDir)+`,
-		"target":{"packageName":"@platform.skill/zoom-out","version":"1.0.0"},
-		"metadata":{"displayName":"Zoom Out","description":"Broader context","sourceType":"imported"},
-		"options":{"strict":true}
-	}`)
-	prepareRequest.Header.Set("X-Role", "publisher")
-	prepareRecorder := httptest.NewRecorder()
-	server.Handler().ServeHTTP(prepareRecorder, prepareRequest)
-
-	if prepareRecorder.Code != http.StatusOK {
-		t.Fatalf("expected prepare success, got %d body=%s", prepareRecorder.Code, prepareRecorder.Body.String())
-	}
-
-	var preparePayload struct {
-		WorkspacePath string   `json:"workspacePath"`
-		Warnings      []string `json:"warnings"`
-	}
-	if err := json.Unmarshal(prepareRecorder.Body.Bytes(), &preparePayload); err != nil {
-		t.Fatalf("decode prepare response: %v", err)
-	}
-	if len(preparePayload.Warnings) != 0 {
-		t.Fatalf("expected no normalization warnings in strict mode, got %#v", preparePayload.Warnings)
-	}
-
-	validateRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/validate", `{
-		"workspacePath":"`+preparePayload.WorkspacePath+`",
-		"target":{"packageName":"@platform.skill/zoom-out","version":"1.0.0"}
-	}`)
-	validateRequest.Header.Set("X-Role", "publisher")
-	validateRecorder := httptest.NewRecorder()
-	server.Handler().ServeHTTP(validateRecorder, validateRequest)
-
-	if validateRecorder.Code != http.StatusOK {
-		t.Fatalf("expected validate response, got %d body=%s", validateRecorder.Code, validateRecorder.Body.String())
-	}
-
-	var validatePayload struct {
-		OK     bool     `json:"ok"`
-		Errors []string `json:"errors"`
-	}
-	if err := json.Unmarshal(validateRecorder.Body.Bytes(), &validatePayload); err != nil {
-		t.Fatalf("decode validate response: %v", err)
-	}
-	if !validatePayload.OK {
-		t.Fatalf("expected validate to succeed in strict mode, got errors %#v", validatePayload.Errors)
-	}
-	if len(validatePayload.Errors) != 0 {
-		t.Fatalf("expected no validate errors in strict mode, got %#v", validatePayload.Errors)
-	}
-}
-
-func TestSkillPackagingPrepareReturnsIdentityRewriteWarningDetails(t *testing.T) {
+func TestSkillPackagingImportReviewReturnsIdentityRewriteWarningDetails(t *testing.T) {
 	server := newTestServer()
 	sourceDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(sourceDir, "SKILL.md"), []byte(`---
@@ -1871,7 +1631,7 @@ Prompt body.
 		t.Fatal(err)
 	}
 
-	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
+	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/import-review", `{
 		"source":`+uploadArchiveSourceJSON(t, sourceDir)+`,
 		"target":{"packageName":"@platform.skill/zoom-out","version":"1.0.0"},
 		"metadata":{"displayName":"Zoom Out","description":"Broader context","sourceType":"imported"},
@@ -1910,12 +1670,13 @@ Prompt body.
 	if !payload.ImportReport.Normalized || !payload.ImportReport.RewrotePackageIdentity {
 		t.Fatalf("unexpected importReport: %#v", payload.ImportReport)
 	}
+	assertJSONBodyNotContains(t, recorder, "workspacePath")
 }
 
-func TestSkillPackagingRejectsEscapingPlatformAuthoringPaths(t *testing.T) {
+func TestSkillPackagingImportReviewRejectsEscapingPlatformAuthoringPaths(t *testing.T) {
 	server := newTestServer()
 
-	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
+	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/import-review", `{
 		"source":{
 			"type":"platform_authoring",
 			"files":{
@@ -1936,11 +1697,11 @@ func TestSkillPackagingRejectsEscapingPlatformAuthoringPaths(t *testing.T) {
 	assertErrorCode(t, recorder, "unsafe_path_entry")
 }
 
-func TestSkillPackagingRejectsUnreservedPackageScope(t *testing.T) {
+func TestSkillPackagingImportReviewRejectsUnreservedPackageScope(t *testing.T) {
 	server := newTestServer()
 	fixtureDir := createPackagingFixture(t)
 
-	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
+	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/import-review", `{
 		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
 		"target":{"packageName":"@other.scope/fixture-skill","version":"0.8.0"}
 	}`)
@@ -1955,22 +1716,22 @@ func TestSkillPackagingRejectsUnreservedPackageScope(t *testing.T) {
 	assertErrorCode(t, recorder, "invalid_package_name")
 }
 
-func TestSkillPackagingPrepareIsIdempotentByKey(t *testing.T) {
+func TestSkillPackagingImportReviewIsIdempotentByKey(t *testing.T) {
 	server := newTestServer()
 	fixtureDir := createPackagingFixture(t)
 
 	requestBody := `{
-		"idempotencyKey":"prepare-same-request",
+		"idempotencyKey":"import-review-same-request",
 		"source":` + uploadArchiveSourceJSON(t, fixtureDir) + `,
 		"target":{"packageName":"@platform.skill/idempotent-fixture","version":"0.9.0"}
 	}`
 
-	firstRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", requestBody)
+	firstRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/import-review", requestBody)
 	firstRequest.Header.Set("X-Role", "publisher")
 	firstRecorder := httptest.NewRecorder()
 	server.Handler().ServeHTTP(firstRecorder, firstRequest)
 
-	secondRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", requestBody)
+	secondRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/import-review", requestBody)
 	secondRequest.Header.Set("X-Role", "publisher")
 	secondRecorder := httptest.NewRecorder()
 	server.Handler().ServeHTTP(secondRecorder, secondRequest)
@@ -1978,30 +1739,18 @@ func TestSkillPackagingPrepareIsIdempotentByKey(t *testing.T) {
 	if firstRecorder.Code != http.StatusOK || secondRecorder.Code != http.StatusOK {
 		t.Fatalf("expected both requests to succeed, got %d and %d", firstRecorder.Code, secondRecorder.Code)
 	}
-
-	var firstPayload struct {
-		WorkspacePath string `json:"workspacePath"`
+	if firstRecorder.Body.String() != secondRecorder.Body.String() {
+		t.Fatalf("expected idempotent response body, got %s and %s", firstRecorder.Body.String(), secondRecorder.Body.String())
 	}
-	if err := json.Unmarshal(firstRecorder.Body.Bytes(), &firstPayload); err != nil {
-		t.Fatalf("decode first response: %v", err)
-	}
-	var secondPayload struct {
-		WorkspacePath string `json:"workspacePath"`
-	}
-	if err := json.Unmarshal(secondRecorder.Body.Bytes(), &secondPayload); err != nil {
-		t.Fatalf("decode second response: %v", err)
-	}
-	if firstPayload.WorkspacePath != secondPayload.WorkspacePath {
-		t.Fatalf("expected idempotent workspacePath, got %q and %q", firstPayload.WorkspacePath, secondPayload.WorkspacePath)
-	}
+	assertJSONBodyNotContains(t, firstRecorder, "workspacePath")
 }
 
-func TestSkillPackagingPrepareRejectsIdempotencyKeyReuseWithDifferentBody(t *testing.T) {
+func TestSkillPackagingImportReviewRejectsIdempotencyKeyReuseWithDifferentBody(t *testing.T) {
 	server := newTestServer()
 	fixtureDir := createPackagingFixture(t)
 
-	firstRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
-		"idempotencyKey":"prepare-conflict",
+	firstRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/import-review", `{
+		"idempotencyKey":"import-review-conflict",
 		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
 		"target":{"packageName":"@platform.skill/idempotent-fixture","version":"0.9.0"}
 	}`)
@@ -2009,8 +1758,8 @@ func TestSkillPackagingPrepareRejectsIdempotencyKeyReuseWithDifferentBody(t *tes
 	firstRecorder := httptest.NewRecorder()
 	server.Handler().ServeHTTP(firstRecorder, firstRequest)
 
-	secondRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
-		"idempotencyKey":"prepare-conflict",
+	secondRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/import-review", `{
+		"idempotencyKey":"import-review-conflict",
 		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
 		"target":{"packageName":"@platform.skill/idempotent-fixture","version":"1.0.0"}
 	}`)
@@ -2027,12 +1776,12 @@ func TestSkillPackagingPrepareRejectsIdempotencyKeyReuseWithDifferentBody(t *tes
 	assertErrorCode(t, secondRecorder, "idempotency_key_conflict")
 }
 
-func TestSkillPackagingPrepareIdempotencyIgnoresJSONFieldOrder(t *testing.T) {
+func TestSkillPackagingImportReviewIdempotencyIgnoresJSONFieldOrder(t *testing.T) {
 	server := newTestServer()
 	fixtureDir := createPackagingFixture(t)
 
-	firstRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
-		"idempotencyKey":"prepare-field-order",
+	firstRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/import-review", `{
+		"idempotencyKey":"import-review-field-order",
 		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
 		"target":{"packageName":"@platform.skill/idempotent-fixture","version":"0.9.0"}
 	}`)
@@ -2040,10 +1789,10 @@ func TestSkillPackagingPrepareIdempotencyIgnoresJSONFieldOrder(t *testing.T) {
 	firstRecorder := httptest.NewRecorder()
 	server.Handler().ServeHTTP(firstRecorder, firstRequest)
 
-	secondRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
+	secondRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/import-review", `{
 		"target":{"version":"0.9.0","packageName":"@platform.skill/idempotent-fixture"},
 		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
-		"idempotencyKey":"prepare-field-order"
+		"idempotencyKey":"import-review-field-order"
 	}`)
 	secondRequest.Header.Set("X-Role", "publisher")
 	secondRecorder := httptest.NewRecorder()
@@ -2052,25 +1801,12 @@ func TestSkillPackagingPrepareIdempotencyIgnoresJSONFieldOrder(t *testing.T) {
 	if firstRecorder.Code != http.StatusOK || secondRecorder.Code != http.StatusOK {
 		t.Fatalf("expected both requests to succeed, got %d and %d", firstRecorder.Code, secondRecorder.Code)
 	}
-
-	var firstPayload struct {
-		WorkspacePath string `json:"workspacePath"`
-	}
-	if err := json.Unmarshal(firstRecorder.Body.Bytes(), &firstPayload); err != nil {
-		t.Fatalf("decode first response: %v", err)
-	}
-	var secondPayload struct {
-		WorkspacePath string `json:"workspacePath"`
-	}
-	if err := json.Unmarshal(secondRecorder.Body.Bytes(), &secondPayload); err != nil {
-		t.Fatalf("decode second response: %v", err)
-	}
-	if firstPayload.WorkspacePath != secondPayload.WorkspacePath {
-		t.Fatalf("expected same workspacePath for reordered JSON, got %q and %q", firstPayload.WorkspacePath, secondPayload.WorkspacePath)
+	if firstRecorder.Body.String() != secondRecorder.Body.String() {
+		t.Fatalf("expected same response body for reordered JSON, got %s and %s", firstRecorder.Body.String(), secondRecorder.Body.String())
 	}
 }
 
-func TestSkillPackagingPrepareIdempotencyPersistsAcrossServerInstances(t *testing.T) {
+func TestSkillPackagingImportReviewIdempotencyPersistsAcrossServerInstances(t *testing.T) {
 	fixtureDir := createPackagingFixture(t)
 	databaseURL := "file:" + filepath.Join(t.TempDir(), "idempotency.db")
 	store, err := persist.NewSQLIdempotencyStore(context.Background(), databaseURL, time.Hour)
@@ -2085,11 +1821,11 @@ func TestSkillPackagingPrepareIdempotencyPersistsAcrossServerInstances(t *testin
 	})
 
 	requestBody := `{
-		"idempotencyKey":"prepare-persisted",
+		"idempotencyKey":"import-review-persisted",
 		"source":` + uploadArchiveSourceJSON(t, fixtureDir) + `,
 		"target":{"packageName":"@platform.skill/persisted-fixture","version":"0.9.1"}
 	}`
-	firstRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", requestBody)
+	firstRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/import-review", requestBody)
 	firstRequest.Header.Set("X-Role", "publisher")
 	firstRecorder := httptest.NewRecorder()
 	serverOne.Handler().ServeHTTP(firstRecorder, firstRequest)
@@ -2107,281 +1843,21 @@ func TestSkillPackagingPrepareIdempotencyPersistsAcrossServerInstances(t *testin
 		Idempotency: storeReloaded,
 	})
 
-	secondRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", requestBody)
+	secondRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/import-review", requestBody)
 	secondRequest.Header.Set("X-Role", "publisher")
 	secondRecorder := httptest.NewRecorder()
 	serverTwo.Handler().ServeHTTP(secondRecorder, secondRequest)
 	if secondRecorder.Code != http.StatusOK {
 		t.Fatalf("expected second request to succeed, got %d body=%s", secondRecorder.Code, secondRecorder.Body.String())
 	}
-
-	var firstPayload struct {
-		WorkspacePath string `json:"workspacePath"`
-	}
-	if err := json.Unmarshal(firstRecorder.Body.Bytes(), &firstPayload); err != nil {
-		t.Fatalf("decode first response: %v", err)
-	}
-	var secondPayload struct {
-		WorkspacePath string `json:"workspacePath"`
-	}
-	if err := json.Unmarshal(secondRecorder.Body.Bytes(), &secondPayload); err != nil {
-		t.Fatalf("decode second response: %v", err)
-	}
-	if firstPayload.WorkspacePath != secondPayload.WorkspacePath {
-		t.Fatalf("expected persistent workspacePath, got %q and %q", firstPayload.WorkspacePath, secondPayload.WorkspacePath)
+	if firstRecorder.Body.String() != secondRecorder.Body.String() {
+		t.Fatalf("expected persistent idempotent response body, got %s and %s", firstRecorder.Body.String(), secondRecorder.Body.String())
 	}
 }
 
-func TestSkillPackagingWorkspacePersistsAcrossServerInstances(t *testing.T) {
-	fixtureDir := createPackagingFixture(t)
-	databaseURL := "file:" + filepath.Join(t.TempDir(), "packaging-workspaces.db")
-	workspaceStoreOne, err := persist.NewSQLWorkspaceStore(context.Background(), databaseURL)
-	if err != nil {
-		t.Fatalf("create workspace store one: %v", err)
-	}
-	workspaceStoreTwo, err := persist.NewSQLWorkspaceStore(context.Background(), databaseURL)
-	if err != nil {
-		t.Fatalf("create workspace store two: %v", err)
-	}
-
-	serverOne := NewServer(ServerConfig{
-		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		Packaging:  packagingapplication.NewServiceWithWorkspaceStore("", workspaceStoreOne),
-	})
-	serverTwo := NewServer(ServerConfig{
-		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		Packaging:  packagingapplication.NewServiceWithWorkspaceStore("", workspaceStoreTwo),
-	})
-
-	prepareRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
-		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
-		"target":{"packageName":"@platform.skill/shared-workspace","version":"0.9.3"},
-		"metadata":{"displayName":"Shared Workspace","description":"Cross replica packaging flow","sourceType":"imported"}
-	}`)
-	prepareRequest.Header.Set("X-Role", "publisher")
-	prepareRecorder := httptest.NewRecorder()
-	serverOne.Handler().ServeHTTP(prepareRecorder, prepareRequest)
-	if prepareRecorder.Code != http.StatusOK {
-		t.Fatalf("expected prepare status %d, got %d body=%s", http.StatusOK, prepareRecorder.Code, prepareRecorder.Body.String())
-	}
-
-	var preparePayload struct {
-		WorkspacePath string `json:"workspacePath"`
-	}
-	if err := json.Unmarshal(prepareRecorder.Body.Bytes(), &preparePayload); err != nil {
-		t.Fatalf("decode prepare response: %v", err)
-	}
-	if strings.TrimSpace(preparePayload.WorkspacePath) == "" {
-		t.Fatal("expected non-empty workspacePath")
-	}
-	if _, statErr := os.Stat(preparePayload.WorkspacePath); !os.IsNotExist(statErr) {
-		t.Fatalf("expected persistent workspace handle instead of local directory path, stat err=%v", statErr)
-	}
-
-	validateRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/validate", `{
-		"workspacePath":"`+preparePayload.WorkspacePath+`",
-		"target":{"packageName":"@platform.skill/shared-workspace","version":"0.9.3"}
-	}`)
-	validateRequest.Header.Set("X-Role", "publisher")
-	validateRecorder := httptest.NewRecorder()
-	serverTwo.Handler().ServeHTTP(validateRecorder, validateRequest)
-	if validateRecorder.Code != http.StatusOK {
-		t.Fatalf("expected validate status %d, got %d body=%s", http.StatusOK, validateRecorder.Code, validateRecorder.Body.String())
-	}
-
-	var validatePayload struct {
-		OK bool `json:"ok"`
-	}
-	if err := json.Unmarshal(validateRecorder.Body.Bytes(), &validatePayload); err != nil {
-		t.Fatalf("decode validate response: %v", err)
-	}
-	if !validatePayload.OK {
-		t.Fatalf("expected cross-server validate to succeed, got body=%s", validateRecorder.Body.String())
-	}
-
-	packRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/pack", `{
-		"workspacePath":"`+preparePayload.WorkspacePath+`",
-		"target":{"packageName":"@platform.skill/shared-workspace","version":"0.9.3"},
-		"includeBundle":false
-	}`)
-	packRequest.Header.Set("X-Role", "publisher")
-	packRecorder := httptest.NewRecorder()
-	serverTwo.Handler().ServeHTTP(packRecorder, packRequest)
-	if packRecorder.Code != http.StatusOK {
-		t.Fatalf("expected pack status %d, got %d body=%s", http.StatusOK, packRecorder.Code, packRecorder.Body.String())
-	}
-
-	var packPayload struct {
-		BundlePath string `json:"bundlePath"`
-	}
-	if err := json.Unmarshal(packRecorder.Body.Bytes(), &packPayload); err != nil {
-		t.Fatalf("decode pack response: %v", err)
-	}
-	if !strings.HasPrefix(packPayload.BundlePath, "workspace://") {
-		t.Fatalf("expected persisted bundle handle, got %q", packPayload.BundlePath)
-	}
-
-	downloadRequest := httptest.NewRequest(
-		http.MethodGet,
-		"/api/v1/skill-packaging/bundle?workspacePath="+url.QueryEscape(preparePayload.WorkspacePath)+"&packageName="+url.QueryEscape("@platform.skill/shared-workspace")+"&version=0.9.3",
-		nil,
-	)
-	downloadRequest.Header.Set("X-Role", "publisher")
-	downloadRecorder := httptest.NewRecorder()
-	serverOne.Handler().ServeHTTP(downloadRecorder, downloadRequest)
-	if downloadRecorder.Code != http.StatusOK {
-		t.Fatalf("expected bundle download status %d, got %d body=%s", http.StatusOK, downloadRecorder.Code, downloadRecorder.Body.String())
-	}
-	scanResult, validationError := artifactadapter.ScanNPMPackageTarballForTest(bytes.NewReader(downloadRecorder.Body.Bytes()), "@platform.skill/shared-workspace", "0.9.3")
-	if validationError != "" {
-		t.Fatalf("expected downloaded bundle to validate, got %s", validationError)
-	}
-	if scanResult.ManifestDigest == "" {
-		t.Fatal("expected downloaded bundle to include a manifest digest")
-	}
-
-	cleanupRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/cleanup", `{
-		"workspacePath":"`+preparePayload.WorkspacePath+`"
-	}`)
-	cleanupRequest.Header.Set("X-Role", "publisher")
-	cleanupRecorder := httptest.NewRecorder()
-	serverOne.Handler().ServeHTTP(cleanupRecorder, cleanupRequest)
-	if cleanupRecorder.Code != http.StatusOK {
-		t.Fatalf("expected cleanup status %d, got %d body=%s", http.StatusOK, cleanupRecorder.Code, cleanupRecorder.Body.String())
-	}
-
-	validateAfterCleanupRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/validate", `{
-		"workspacePath":"`+preparePayload.WorkspacePath+`",
-		"target":{"packageName":"@platform.skill/shared-workspace","version":"0.9.3"}
-	}`)
-	validateAfterCleanupRequest.Header.Set("X-Role", "publisher")
-	validateAfterCleanupRecorder := httptest.NewRecorder()
-	serverTwo.Handler().ServeHTTP(validateAfterCleanupRecorder, validateAfterCleanupRequest)
-	if validateAfterCleanupRecorder.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("expected post-cleanup validate status %d, got %d body=%s", http.StatusUnprocessableEntity, validateAfterCleanupRecorder.Code, validateAfterCleanupRecorder.Body.String())
-	}
-	assertErrorCode(t, validateAfterCleanupRecorder, "invalid_request")
-}
-
-func TestSkillPackagingPackWithInlineBundleSkipsIdempotencyPersistence(t *testing.T) {
-	fixtureDir := createPackagingFixture(t)
-	databaseURL := "file:" + filepath.Join(t.TempDir(), "idempotency.db")
-	store, err := persist.NewSQLIdempotencyStore(context.Background(), databaseURL, time.Hour)
-	if err != nil {
-		t.Fatalf("create idempotency store: %v", err)
-	}
-
-	server := NewServer(ServerConfig{
-		Repository:  cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		Packaging:   packagingapplication.NewService(""),
-		Idempotency: store,
-	})
-
-	prepareRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
-		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
-		"target":{"packageName":"@platform.skill/inline-bundle","version":"0.9.2"}
-	}`)
-	prepareRequest.Header.Set("X-Role", "publisher")
-	prepareRecorder := httptest.NewRecorder()
-	server.Handler().ServeHTTP(prepareRecorder, prepareRequest)
-	if prepareRecorder.Code != http.StatusOK {
-		t.Fatalf("expected prepare status %d, got %d body=%s", http.StatusOK, prepareRecorder.Code, prepareRecorder.Body.String())
-	}
-
-	var preparePayload struct {
-		WorkspacePath string `json:"workspacePath"`
-	}
-	if err := json.Unmarshal(prepareRecorder.Body.Bytes(), &preparePayload); err != nil {
-		t.Fatalf("decode prepare response: %v", err)
-	}
-
-	packRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/pack", `{
-		"idempotencyKey":"inline-bundle-pack",
-		"workspacePath":"`+preparePayload.WorkspacePath+`",
-		"target":{"packageName":"@platform.skill/inline-bundle","version":"0.9.2"},
-		"includeBundle":true
-	}`)
-	packRequest.Header.Set("X-Role", "publisher")
-	packRecorder := httptest.NewRecorder()
-	server.Handler().ServeHTTP(packRecorder, packRequest)
-	if packRecorder.Code != http.StatusOK {
-		t.Fatalf("expected pack status %d, got %d body=%s", http.StatusOK, packRecorder.Code, packRecorder.Body.String())
-	}
-
-	if _, err := store.Lookup(context.Background(), "pack", "publisher", "inline-bundle-pack"); !errors.Is(err, persist.ErrIdempotencyRecordNotFound) {
-		t.Fatalf("expected no persisted idempotency record for inline bundle response, got err=%v", err)
-	}
-
-	if err := os.RemoveAll(preparePayload.WorkspacePath); err != nil {
-		t.Fatalf("remove workspace: %v", err)
-	}
-
-	secondPackRecorder := httptest.NewRecorder()
-	secondPackRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/pack", `{
-		"idempotencyKey":"inline-bundle-pack",
-		"workspacePath":"`+preparePayload.WorkspacePath+`",
-		"target":{"packageName":"@platform.skill/inline-bundle","version":"0.9.2"},
-		"includeBundle":true
-	}`)
-	secondPackRequest.Header.Set("X-Role", "publisher")
-	server.Handler().ServeHTTP(secondPackRecorder, secondPackRequest)
-
-	if secondPackRecorder.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("expected uncached inline bundle pack to fail after workspace removal, got %d body=%s", secondPackRecorder.Code, secondPackRecorder.Body.String())
-	}
-}
-
-func TestSkillPackagingPrepareWritesAuditEvent(t *testing.T) {
-	fixtureDir := createPackagingFixture(t)
-	databaseURL := "file:" + filepath.Join(t.TempDir(), "audit.db")
-	auditStore, err := persist.NewSQLAuditStore(context.Background(), databaseURL)
-	if err != nil {
-		t.Fatalf("create audit store: %v", err)
-	}
-
-	server := NewServer(ServerConfig{
-		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		Packaging:  packagingapplication.NewService(""),
-		Audit:      auditStore,
-		AuthTokens: map[string]auth.TokenConfig{
-			"publisher-secret": {
-				Role:  "publisher",
-				Actor: "svc-publisher",
-			},
-		},
-	})
-
-	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
-		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
-		"target":{"packageName":"@platform.skill/audited-fixture","version":"0.9.0"}
-	}`)
-	request.Header.Set("Authorization", "Bearer publisher-secret")
-	recorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
-	}
-
-	record := latestAuditRecord(t, auditStore, "packaging.prepare")
-	if record.Actor != "svc-publisher" || record.Role != "publisher" {
-		t.Fatalf("unexpected audit actor/role: %+v", record)
-	}
-	if record.PackageName != "@platform.skill/audited-fixture" || record.Version != "0.9.0" {
-		t.Fatalf("unexpected audit package coordinates: %+v", record)
-	}
-	if record.Outcome != "succeeded" {
-		t.Fatalf("expected succeeded audit outcome, got %+v", record)
-	}
-	if record.AuthDecision != string(observability.AuthDecisionAllowed) {
-		t.Fatalf("expected allowed auth decision, got %+v", record)
-	}
-}
-
-func TestSkillPackagingRequiresPublisherRole(t *testing.T) {
+func TestSkillPackagingImportReviewRejectsReaderRole(t *testing.T) {
 	server := newTestServer()
-	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{"source":{"type":"local","location":"/tmp"},"target":{"packageName":"@platform.skill/test","version":"0.1.0"}}`)
+	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/import-review", `{"source":{"type":"platform_authoring","files":{"docs/README.md":"# Capability\n"}},"target":{"packageName":"@platform.skill/test","version":"0.1.0"}}`)
 	request.Header.Set("X-Role", "reader")
 	recorder := httptest.NewRecorder()
 
@@ -2393,10 +1869,10 @@ func TestSkillPackagingRequiresPublisherRole(t *testing.T) {
 	assertErrorCode(t, recorder, "forbidden")
 }
 
-func TestSkillPackagingPrepareRejectsUnknownJSONFields(t *testing.T) {
+func TestSkillPackagingImportReviewRejectsUnknownJSONFields(t *testing.T) {
 	server := newTestServer()
-	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
-		"source":{"type":"local","location":"/tmp"},
+	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/import-review", `{
+		"source":{"type":"platform_authoring","files":{"docs/README.md":"# Capability\n"}},
 		"target":{"packageName":"@platform.skill/test","version":"0.1.0"},
 		"unexpected":true
 	}`)
@@ -2412,9 +1888,9 @@ func TestSkillPackagingPrepareRejectsUnknownJSONFields(t *testing.T) {
 	assertErrorDetailContains(t, recorder, "error", `unknown field "unexpected"`)
 }
 
-func TestSkillPackagingPrepareRejectsMultipleJSONObjects(t *testing.T) {
+func TestSkillPackagingImportReviewRejectsMultipleJSONObjects(t *testing.T) {
 	server := newTestServer()
-	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{"source":{"type":"local","location":"/tmp"},"target":{"packageName":"@platform.skill/test","version":"0.1.0"}}{"source":{"type":"local","location":"/tmp"}}`)
+	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/import-review", `{"source":{"type":"platform_authoring","files":{"docs/README.md":"# Capability\n"}},"target":{"packageName":"@platform.skill/test","version":"0.1.0"}}{"source":{"type":"platform_authoring","files":{"docs/README.md":"# Capability\n"}}}`)
 	request.Header.Set("X-Role", "publisher")
 	recorder := httptest.NewRecorder()
 
@@ -2427,12 +1903,12 @@ func TestSkillPackagingPrepareRejectsMultipleJSONObjects(t *testing.T) {
 	assertErrorMessage(t, recorder, "request body must contain a single JSON object.")
 }
 
-func TestSkillPackagingPrepareRejectsRemovedLocalSourceType(t *testing.T) {
+func TestSkillPackagingImportReviewRejectsRemovedLocalSourceType(t *testing.T) {
 	server := NewServer(ServerConfig{
 		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 		Packaging:  packagingapplication.NewService(""),
 	})
-	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
+	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/import-review", `{
 		"source":{"type":"local","location":"/tmp"},
 		"target":{"packageName":"@platform.skill/test","version":"0.1.0"}
 	}`)
@@ -2445,18 +1921,18 @@ func TestSkillPackagingPrepareRejectsRemovedLocalSourceType(t *testing.T) {
 		t.Fatalf("expected status %d, got %d body=%s", http.StatusUnprocessableEntity, recorder.Code, recorder.Body.String())
 	}
 	assertErrorCode(t, recorder, "unsupported_source_type")
-	assertErrorDetailContains(t, recorder, "suggestedAction", "upload_archive")
+	assertErrorDetailContains(t, recorder, "sourceType", "local")
 }
 
-func TestSkillPackagingPrepareReturnsInternalErrorWhenIdempotencyLookupFails(t *testing.T) {
+func TestSkillPackagingImportReviewReturnsInternalErrorWhenIdempotencyLookupFails(t *testing.T) {
 	fixtureDir := createPackagingFixture(t)
 	server := NewServer(ServerConfig{
 		Repository:  cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 		Packaging:   packagingapplication.NewService(""),
 		Idempotency: stubIdempotencyStore{lookupErr: errors.New("lookup failed")},
 	})
-	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
-		"idempotencyKey":"prepare-error",
+	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/import-review", `{
+		"idempotencyKey":"import-review-error",
 		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
 		"target":{"packageName":"@platform.skill/test","version":"0.1.0"}
 	}`)
@@ -2469,21 +1945,6 @@ func TestSkillPackagingPrepareReturnsInternalErrorWhenIdempotencyLookupFails(t *
 		t.Fatalf("expected status %d, got %d body=%s", http.StatusInternalServerError, recorder.Code, recorder.Body.String())
 	}
 	assertErrorCode(t, recorder, "internal_error")
-}
-
-func TestSkillPackagingPackReturnsNotFoundWithoutPackagingService(t *testing.T) {
-	server := NewServer(ServerConfig{
-		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-	})
-	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/pack", `{"workspacePath":"/tmp","target":{"packageName":"@platform.skill/test","version":"0.1.0"}}`)
-	request.Header.Set("X-Role", "publisher")
-	recorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusNotFound {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusNotFound, recorder.Code, recorder.Body.String())
-	}
 }
 
 func TestPublishedPackageCanBeReleasedAndResolvedThroughCatalog(t *testing.T) {

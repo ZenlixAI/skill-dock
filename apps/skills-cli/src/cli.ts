@@ -282,7 +282,7 @@ ${BOLD}Arguments:${RESET}
 
 ${BOLD}Options:${RESET}
   --registry <url>  Catalog base URL override for packaging and release-record calls
-  --strict          Disable imported workspace normalization during prepare
+  --strict          Disable imported workspace normalization during import review
 
 ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} skills publish
@@ -297,7 +297,7 @@ function showImportLocalHelp(): void {
 ${BOLD}Usage:${RESET} skills import-local [path] [options]
 
 ${BOLD}Description:${RESET}
-  Upload a local source directory to Catalog for normalization/import, then publish it.
+  Upload a local source directory to Catalog for import review and one-shot publish.
 
 ${BOLD}Arguments:${RESET}
   path                   Optional path to a local source directory (default: current directory)
@@ -306,9 +306,8 @@ ${BOLD}Options:${RESET}
   --registry <url>       Catalog base URL override
   --package-name <name>  Override/inject package_name when package.json is missing
   --version <version>    Override/inject version when package.json is missing
-  --publish-registry     Registry recorded into package metadata and release-record
-  --npm-registry         Registry passed to npm publish
-  --strict               Disable imported workspace normalization during prepare
+  --publish-registry     Registry recorded into package metadata for publish
+  --strict               Disable imported workspace normalization during import
 
 ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} skills import-local ./legacy-skill --package-name @company.skill/legacy-skill --version 0.1.0

@@ -2,13 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   getRegistryBaseUrl,
   importReviewPackaging,
-  packSkillPackaging,
-  prepareSkillPackaging,
+  publishSkillPackaging,
   putReleaseRecord,
   resolveInstallTarget,
   searchCatalogSkillsPage,
   searchCatalogSkills,
-  validateSkillPackaging,
 } from './catalog.ts';
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -44,6 +42,7 @@ describe('catalog client', () => {
   });
 
   it('does not fall back to the removed SKILLS_API_URL alias', () => {
+    vi.stubEnv('SKILLS_REGISTRY_URL', '');
     vi.stubEnv('SKILLS_API_URL', 'https://legacy.example.com/');
     expect(getRegistryBaseUrl()).toBe('https://skills.sh');
   });
@@ -174,77 +173,7 @@ describe('catalog client', () => {
     );
   });
 
-  it('calls prepare/validate/pack packaging endpoints', async () => {
-    fetchMock
-      .mockResolvedValueOnce(
-        jsonResponse({
-          workspacePath: '/tmp/workspace',
-          packageName: '@platform.skill/pdf-skill',
-          version: '1.2.0',
-          warnings: [],
-          errors: [],
-        })
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          ok: true,
-          workspacePath: '/tmp/workspace',
-          packageName: '@platform.skill/pdf-skill',
-          version: '1.2.0',
-          manifestDigest: 'sha256:manifest',
-          components: ['commands'],
-          warnings: [],
-          errors: [],
-        })
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          workspacePath: '/tmp/workspace',
-          bundlePath: '/tmp/workspace/pdf-skill-1.2.0.tgz',
-          packageName: '@platform.skill/pdf-skill',
-          version: '1.2.0',
-          manifestDigest: 'sha256:manifest',
-          components: ['commands'],
-          warnings: [],
-          errors: [],
-        })
-      );
-
-    await prepareSkillPackaging({
-      registry: 'https://catalog.example.com',
-      source: { type: 'upload_archive', archiveBase64: 'archive-base64' },
-      target: { packageName: '@platform.skill/pdf-skill', version: '1.2.0' },
-    });
-    await validateSkillPackaging({
-      registry: 'https://catalog.example.com',
-      workspacePath: '/tmp/workspace',
-      target: { packageName: '@platform.skill/pdf-skill', version: '1.2.0' },
-    });
-    await packSkillPackaging({
-      registry: 'https://catalog.example.com',
-      workspacePath: '/tmp/workspace',
-      target: { packageName: '@platform.skill/pdf-skill', version: '1.2.0' },
-      includeBundle: true,
-    });
-
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      1,
-      'https://catalog.example.com/api/v1/skill-packaging/prepare',
-      expect.objectContaining({ method: 'POST' })
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      'https://catalog.example.com/api/v1/skill-packaging/validate',
-      expect.objectContaining({ method: 'POST' })
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      3,
-      'https://catalog.example.com/api/v1/skill-packaging/pack',
-      expect.objectContaining({ method: 'POST' })
-    );
-  });
-
-  it('parses one-shot import-review responses without workspacePath', async () => {
+  it('calls the import-review endpoint and normalizes responses without workspacePath', async () => {
     queueFetchJson({
       ok: true,
       packageName: '@platform.skill/zoom-out',
@@ -257,105 +186,141 @@ describe('catalog client', () => {
 
     const response = await importReviewPackaging({
       registry: 'https://catalog.example.com',
+      idempotencyKey: 'idem-1',
       source: { type: 'upload_archive', archiveBase64: 'ZmFrZQ==' },
       target: { packageName: '@platform.skill/zoom-out', version: '1.2.0' },
       metadata: { displayName: 'Zoom Out', description: 'Broader context' },
       options: {},
     });
 
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://catalog.example.com/api/v1/skill-packaging/import-review',
+      expect.objectContaining({ method: 'POST' })
+    );
     expect('workspacePath' in response).toBe(false);
-    expect(response.manifestDigest).toBe('sha256:test');
+    expect(response).toEqual({
+      ok: true,
+      packageName: '@platform.skill/zoom-out',
+      version: '1.2.0',
+      manifestDigest: 'sha256:test',
+      components: ['commands'],
+      bundleBase64: undefined,
+      warnings: [],
+      warningDetails: undefined,
+      importReport: undefined,
+      errors: [],
+    });
   });
 
-  it('normalizes null packaging arrays from catalog success payloads', async () => {
-    fetchMock
-      .mockResolvedValueOnce(
-        jsonResponse({
-          workspacePath: '/tmp/workspace',
-          packageName: '@platform.skill/pdf-skill',
-          version: '1.2.0',
-          warnings: null,
-          warningDetails: null,
-          importReport: null,
-          errors: null,
-        })
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          ok: true,
-          workspacePath: '/tmp/workspace',
-          packageName: '@platform.skill/pdf-skill',
-          version: '1.2.0',
-          manifestDigest: 'sha256:manifest',
-          components: null,
-          warnings: null,
-          warningDetails: null,
-          importReport: null,
-          errors: null,
-        })
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          workspacePath: '/tmp/workspace',
-          bundlePath: '/tmp/workspace/pdf-skill-1.2.0.tgz',
-          packageName: '@platform.skill/pdf-skill',
-          version: '1.2.0',
-          bundleBase64: 'bundle-base64',
-          manifestDigest: 'sha256:manifest',
-          components: null,
-          warnings: null,
-          warningDetails: null,
-          importReport: null,
-          errors: null,
-        })
-      );
+  it('calls the publish endpoint and passes through review metadata', async () => {
+    queueFetchJson({
+      packageName: '@platform.skill/zoom-out',
+      version: '1.2.0',
+      manifestDigest: 'sha256:test',
+      components: ['commands'],
+      publishedToRegistry: true,
+      created: true,
+      idempotentReplay: false,
+      versionStatus: 'published',
+      installPolicy: 'resolvable',
+      warnings: [],
+      errors: [],
+    });
+
+    const response = await publishSkillPackaging({
+      registry: 'https://catalog.example.com',
+      idempotencyKey: 'idem-2',
+      source: { type: 'upload_archive', archiveBase64: 'ZmFrZQ==' },
+      target: { packageName: '@platform.skill/zoom-out', version: '1.2.0' },
+      metadata: { displayName: 'Zoom Out', description: 'Broader context' },
+      options: { publishRegistry: 'https://npm.example.com' },
+      review: {
+        manifestDigest: 'sha256:test',
+        components: ['commands'],
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://catalog.example.com/api/v1/skill-packaging/publish',
+      expect.objectContaining({ method: 'POST' })
+    );
+
+    const payload = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(payload.review).toEqual({
+      manifestDigest: 'sha256:test',
+      components: ['commands'],
+    });
+    expect(response.manifestDigest).toBe('sha256:test');
+    expect(response.versionStatus).toBe('published');
+    expect(response.installPolicy).toBe('resolvable');
+  });
+
+  it('normalizes null arrays from one-shot catalog payloads', async () => {
+    queueFetchJson({
+      ok: true,
+      packageName: '@platform.skill/pdf-skill',
+      version: '1.2.0',
+      manifestDigest: 'sha256:manifest',
+      components: null,
+      warnings: null,
+      warningDetails: null,
+      importReport: null,
+      errors: null,
+    });
+    queueFetchJson({
+      packageName: '@platform.skill/pdf-skill',
+      version: '1.2.0',
+      manifestDigest: 'sha256:manifest',
+      components: null,
+      publishedToRegistry: true,
+      created: true,
+      idempotentReplay: false,
+      versionStatus: 'published',
+      installPolicy: 'resolvable',
+      warnings: null,
+      warningDetails: null,
+      importReport: null,
+      errors: null,
+    });
 
     await expect(
-      prepareSkillPackaging({
+      importReviewPackaging({
         registry: 'https://catalog.example.com',
         source: { type: 'upload_archive', archiveBase64: 'archive-base64' },
         target: { packageName: '@platform.skill/pdf-skill', version: '1.2.0' },
       })
     ).resolves.toEqual({
-      workspacePath: '/tmp/workspace',
-      packageName: '@platform.skill/pdf-skill',
-      version: '1.2.0',
-      warnings: [],
-      errors: [],
-    });
-
-    await expect(
-      validateSkillPackaging({
-        registry: 'https://catalog.example.com',
-        workspacePath: '/tmp/workspace',
-        target: { packageName: '@platform.skill/pdf-skill', version: '1.2.0' },
-      })
-    ).resolves.toEqual({
       ok: true,
-      workspacePath: '/tmp/workspace',
       packageName: '@platform.skill/pdf-skill',
       version: '1.2.0',
       manifestDigest: 'sha256:manifest',
+      components: undefined,
+      bundleBase64: undefined,
       warnings: [],
+      warningDetails: undefined,
+      importReport: undefined,
       errors: [],
     });
 
     await expect(
-      packSkillPackaging({
+      publishSkillPackaging({
         registry: 'https://catalog.example.com',
-        workspacePath: '/tmp/workspace',
+        source: { type: 'upload_archive', archiveBase64: 'archive-base64' },
         target: { packageName: '@platform.skill/pdf-skill', version: '1.2.0' },
-        includeBundle: true,
       })
     ).resolves.toEqual({
-      workspacePath: '/tmp/workspace',
-      bundlePath: '/tmp/workspace/pdf-skill-1.2.0.tgz',
-      bundleBase64: 'bundle-base64',
       packageName: '@platform.skill/pdf-skill',
       version: '1.2.0',
       manifestDigest: 'sha256:manifest',
       components: [],
+      publishedToRegistry: true,
+      created: true,
+      idempotentReplay: false,
+      versionStatus: 'published',
+      installPolicy: 'resolvable',
       warnings: [],
+      warningDetails: undefined,
+      importReport: undefined,
       errors: [],
     });
   });

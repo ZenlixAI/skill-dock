@@ -8,7 +8,6 @@ interface ImportLocalOptions {
   packageName?: string;
   version?: string;
   publishRegistry?: string;
-  npmRegistry?: string;
 }
 
 export function parseImportLocalOptions(args: string[]): ImportLocalOptions {
@@ -35,9 +34,6 @@ export function parseImportLocalOptions(args: string[]): ImportLocalOptions {
         break;
       case '--publish-registry':
         options.publishRegistry = args[++i];
-        break;
-      case '--npm-registry':
-        options.npmRegistry = args[++i];
         break;
       default:
         if (!arg.startsWith('-')) {
@@ -73,7 +69,8 @@ export async function runImportLocal(args: string[] = []): Promise<void> {
   console.log();
   console.log(`package_name: ${result.packageName}`);
   console.log(`version: ${result.version}`);
-  console.log(`bundle: ${result.bundlePath}`);
+  console.log(`manifest_digest: ${result.manifestDigest}`);
+  console.log(`components: ${result.components.join(', ')}`);
 
   const importSummary = formatImportReportSummary(result.importReport);
   if (importSummary.length > 0) {

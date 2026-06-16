@@ -8,10 +8,6 @@ import { VersionDetailPage } from './VersionDetailPage';
 vi.mock('../api/client', () => ({
   applyVersionGovernanceChange: vi.fn(),
   createReleaseRecord: vi.fn(),
-  getPackagingBundleDownloadPath: vi.fn(
-    (workspacePath: string, packageName: string, version: string) =>
-      `/api/v1/skill-packaging/bundle?workspacePath=${encodeURIComponent(workspacePath)}&packageName=${encodeURIComponent(packageName)}&version=${encodeURIComponent(version)}`
-  ),
   getRegistryClientConfig: vi.fn(() => ({
     mode: 'real',
     baseUrl: null,
@@ -359,7 +355,7 @@ describe('VersionDetailPage', () => {
     expect(submitButton).not.toBeDisabled();
   });
 
-  it('shows bundle handoff instructions when release handoff data is present', async () => {
+  it('shows review handoff data without workspace or bundle paths', async () => {
     vi.mocked(client.getSession).mockResolvedValue({
       role: 'operator',
       actor: 'operator',
@@ -398,7 +394,7 @@ describe('VersionDetailPage', () => {
       <SessionProvider>
         <MemoryRouter
           initialEntries={[
-            '/skills/%40platform.skill%2Fagent-notes/versions/1.0.0?workspacePath=%2Ftmp%2Fskill-packaging%2Fworkspace&bundlePath=%2Ftmp%2Fskill-packaging%2Fworkspace%2F.dist%2Fagent-notes-1.0.0.tgz&manifestDigest=sha256%3Atest&components=commands&publishRegistry=https%3A%2F%2Fnpm.internal.example.com',
+            '/skills/%40platform.skill%2Fagent-notes/versions/1.0.0?manifestDigest=sha256%3Atest&components=commands&publishRegistry=https%3A%2F%2Fnpm.internal.example.com',
           ]}
         >
           <Routes>
@@ -408,13 +404,12 @@ describe('VersionDetailPage', () => {
       </SessionProvider>
     );
 
-    expect(await screen.findByText('发布前检查清单')).toBeInTheDocument();
-    expect(screen.getByText('工作区路径')).toBeInTheDocument();
-    expect(screen.getByText('打包产物路径')).toBeInTheDocument();
-    expect(
-      screen.getByText('先下载打包产物，并在你自己的终端里对目标 npm 仓库执行 `npm publish`。')
-    ).toBeInTheDocument();
-    expect(screen.queryByText('workspace handle')).not.toBeInTheDocument();
-    expect(screen.queryByText('bundle')).not.toBeInTheDocument();
+    expect(await screen.findByText('发布交接')).toBeInTheDocument();
+    expect(screen.getAllByText('清单摘要').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('组件清单').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('sha256:test').length).toBeGreaterThan(0);
+    expect(screen.queryByText('工作区路径')).not.toBeInTheDocument();
+    expect(screen.queryByText('打包产物路径')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '下载打包产物' })).not.toBeInTheDocument();
   });
 });

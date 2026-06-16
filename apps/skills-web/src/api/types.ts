@@ -168,14 +168,6 @@ export interface PackagingOptions {
   strict?: boolean;
 }
 
-export interface PackagingPrepareRequest {
-  source: PackagingSource;
-  target: PackagingTarget;
-  metadata: PackagingMetadata;
-  options: PackagingOptions;
-  idempotencyKey?: string;
-}
-
 export interface PackagingImportReviewRequest {
   source: PackagingSource;
   target: PackagingTarget;
@@ -196,56 +188,6 @@ export interface PackagingImportReviewResponse {
   warningDetails: WarningDetail[];
   importReport?: ImportReport;
   errors: string[];
-}
-
-export interface PackagingPrepareResponse {
-  workspacePath: string;
-  packageName: string;
-  version: string;
-  warnings: string[];
-  warningDetails: WarningDetail[];
-  importReport?: ImportReport;
-  errors: string[];
-}
-
-export interface PackagingValidateRequest {
-  workspacePath: string;
-  target: PackagingTarget;
-  idempotencyKey?: string;
-}
-
-export interface PackagingValidateResponse {
-  ok: boolean;
-  workspacePath: string;
-  packageName: string;
-  version: string;
-  manifestDigest?: string;
-  components: string[];
-  warnings: string[];
-  warningDetails: WarningDetail[];
-  importReport?: ImportReport;
-  errors: string[];
-}
-
-export interface PackagingPackRequest {
-  workspacePath: string;
-  target: PackagingTarget;
-  includeBundle?: boolean;
-  idempotencyKey?: string;
-}
-
-export interface PackagingPackResponse {
-	workspacePath: string;
-	bundlePath: string;
-  bundleBase64?: string;
-  packageName: string;
-  version: string;
-  manifestDigest: string;
-  components: string[];
-  warnings: string[];
-  warningDetails: WarningDetail[];
-	importReport?: ImportReport;
-	errors: string[];
 }
 
 export interface PackagingPublishRequest {
@@ -274,15 +216,6 @@ export interface PackagingPublishResponse {
   warningDetails: WarningDetail[];
   importReport?: ImportReport;
   errors: string[];
-}
-
-export interface PackagingCleanupRequest {
-  workspacePath: string;
-}
-
-export interface PackagingCleanupResponse {
-  workspacePath: string;
-  removed: boolean;
 }
 
 export interface ReleaseRecordInput {
@@ -375,11 +308,7 @@ export interface RegistryApiClient {
   listGovernanceChanges(filters?: ListGovernanceFilters): Promise<SkillsPage<GovernanceRecord>>;
   listAuditEvents(filters?: ListAuditFilters): Promise<SkillsPage<AuditEventRecord>>;
   importReviewPackaging(request: PackagingImportReviewRequest): Promise<PackagingImportReviewResponse>;
-  preparePackaging(request: PackagingPrepareRequest): Promise<PackagingPrepareResponse>;
-  validatePackaging(request: PackagingValidateRequest): Promise<PackagingValidateResponse>;
-  packSkill(request: PackagingPackRequest): Promise<PackagingPackResponse>;
   publishSkill(request: PackagingPublishRequest): Promise<PackagingPublishResponse>;
-  cleanupPackagingWorkspace(request: PackagingCleanupRequest): Promise<PackagingCleanupResponse>;
   createReleaseRecord(packageName: string, version: string, input: ReleaseRecordInput): Promise<ReleaseRecordResult>;
   applySkillGovernanceChange(packageName: string, input: SkillGovernanceChangeInput): Promise<GovernanceChangeResponse>;
   applyVersionGovernanceChange(

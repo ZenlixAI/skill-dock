@@ -240,42 +240,33 @@ func TestServerRoutesVersionGovernanceThroughCatalogMutationWorkflow(t *testing.
 	}
 }
 
-func TestServerRoutesBundleDownloadThroughPackagingAccessWorkflow(t *testing.T) {
-	module := newPackagingAccessWorkflowStubForTest(t)
+func TestServerLegacyPackagingWorkspaceRoutesReturnNotFound(t *testing.T) {
 	server := newTestServer()
-	server.downloadBundleFunc = module.downloadBundle
 
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/skill-packaging/bundle?workspacePath=/tmp/workspace&packageName=%40platform.skill%2Fpdf-skill&version=1.2.0", nil)
-	request.Header.Set("X-Role", "publisher")
-	recorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
+	requests := []struct {
+		method string
+		path   string
+		body   string
+	}{
+		{method: http.MethodPost, path: "/api/v1/skill-packaging/prepare", body: `{}`},
+		{method: http.MethodPost, path: "/api/v1/skill-packaging/validate", body: `{}`},
+		{method: http.MethodPost, path: "/api/v1/skill-packaging/pack", body: `{}`},
+		{method: http.MethodPost, path: "/api/v1/skill-packaging/cleanup", body: `{}`},
+		{method: http.MethodGet, path: "/api/v1/skill-packaging/bundle?workspacePath=/tmp/workspace&packageName=%40platform.skill%2Fpdf-skill&version=1.2.0"},
 	}
-	if got := module.downloadBundleCallCount(); got != 1 {
-		t.Fatalf("expected packaging access module to be called once, got %d", got)
-	}
-}
 
-func TestServerRoutesPackagingCleanupThroughPackagingAccessWorkflow(t *testing.T) {
-	module := newPackagingAccessWorkflowStubForTest(t)
-	server := newTestServer()
-	server.cleanupPackagingFunc = module.cleanup
+	for _, tc := range requests {
+		request := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+		request.Header.Set("X-Role", "publisher")
+		if tc.method == http.MethodPost {
+			request.Header.Set("Content-Type", "application/json")
+		}
+		recorder := httptest.NewRecorder()
+		server.Handler().ServeHTTP(recorder, request)
 
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/skill-packaging/cleanup", strings.NewReader(`{"workspacePath":"/tmp/workspace"}`))
-	request.Header.Set("X-Role", "publisher")
-	request.Header.Set("Content-Type", "application/json")
-	recorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
-	}
-	if got := module.cleanupCallCount(); got != 1 {
-		t.Fatalf("expected cleanup workflow to be called once, got %d", got)
+		if recorder.Code != http.StatusNotFound {
+			t.Fatalf("expected %s %s to return 404, got %d body=%s", tc.method, tc.path, recorder.Code, recorder.Body.String())
+		}
 	}
 }
 
@@ -300,6 +291,10 @@ func TestServerSessionDeniedPathUsesSharedAccessWorkflow(t *testing.T) {
 
 type packagingApplicationStub struct {
 	configurePublishWorkflowCalls int
+}
+
+func (s *packagingApplicationStub) ReviewContext(context.Context, packaging.ImportReviewRequest) (packaging.ImportReviewResponse, error) {
+	return packaging.ImportReviewResponse{}, nil
 }
 
 func (s *packagingApplicationStub) PrepareContext(context.Context, packaging.PrepareRequest) (packaging.PrepareResponse, error) {

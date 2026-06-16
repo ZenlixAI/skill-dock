@@ -1,8 +1,6 @@
 import type {
-  PackagingPackResponse,
+  PackagingImportReviewResponse,
   PackagingPublishResponse,
-  PackagingPrepareResponse,
-  PackagingValidateResponse,
   RegistryRequestError,
 } from '../../api/types';
 import {
@@ -12,9 +10,7 @@ import {
 import { buildReleaseHandoffPath } from '../../lib/releaseHandoff';
 
 type WorkflowInputs = {
-  prepareResult: PackagingPrepareResponse | null;
-  validateResult: PackagingValidateResponse | null;
-  packResult: PackagingPackResponse | null;
+  reviewResult: PackagingImportReviewResponse | null;
   publishResult: PackagingPublishResponse | null;
   publishRegistry: string;
 };
@@ -26,51 +22,55 @@ type WorkflowReadiness = {
 };
 
 export function derivePackagingViewState({
-  prepareResult,
-  validateResult,
-  packResult,
+  reviewResult,
   publishResult,
   publishRegistry,
 }: WorkflowInputs) {
   const currentStage = publishResult
     ? 'published'
-    : packResult
-      ? 'pack_complete'
-    : validateResult
-      ? 'validated'
-      : prepareResult
-        ? 'prepared'
+    : reviewResult
+      ? 'reviewed'
         : 'draft';
-  const releaseHandoffPath = packResult
+  const releaseHandoffPath = reviewResult
     ? buildReleaseHandoffPath({
-        packageName: packResult.packageName,
-        version: packResult.version,
+        packageName: reviewResult.packageName,
+        version: reviewResult.version,
         publishRegistry: publishRegistry.trim() || undefined,
-        manifestDigest: packResult.manifestDigest,
-        components: packResult.components,
-        workspacePath: packResult.workspacePath,
-        bundlePath: packResult.bundlePath,
+        manifestDigest: reviewResult.manifestDigest,
+        components: reviewResult.components,
       })
     : null;
-  const prepareReadiness: WorkflowReadiness = prepareResult?.workspacePath
+  const reviewReadiness: WorkflowReadiness = reviewResult
     ? {
-        detail: prepareResult.workspacePath,
+        detail: 'manifest digest 和 components 已准备好交接到发布审阅',
         tone: 'good',
         label: '就绪',
       }
     : {
-        detail: '等待 workspace handle',
+        detail: '等待生成导入审阅结果',
         tone: 'warn',
         label: '等待中',
       };
-  const validateReadiness: WorkflowReadiness = validateResult?.ok
+  const publishReadiness: WorkflowReadiness = publishResult
     ? {
-        detail: '可以进入 pack',
+        detail: 'registry publish 和 release record 都已完成',
         tone: 'good',
-        label: '已通过',
+        label: '已完成',
       }
+    : reviewResult?.ok
+      ? {
+          detail: '审阅结果已确认，可以执行发布',
+          tone: 'good',
+          label: '可发布',
+        }
+      : reviewResult
+        ? {
+            detail: '先处理 errors，再继续发布',
+            tone: 'warn',
+            label: '待处理',
+          }
     : {
-        detail: '必须先通过再 pack',
+        detail: '还没有审阅结果',
         tone: 'warn',
         label: '等待中',
       };
@@ -82,12 +82,12 @@ export function derivePackagingViewState({
       }
     : releaseHandoffPath
       ? {
-          detail: 'bundle 下载与 release handoff 已就绪',
+          detail: 'manifest digest 和 components 已准备好交接到发布审阅',
           tone: 'good',
           label: '已就绪',
         }
       : {
-          detail: 'pack 还没完成',
+          detail: '导入审阅还没完成',
           tone: 'warn',
           label: '空闲',
         };
@@ -97,28 +97,20 @@ export function derivePackagingViewState({
     currentStageSummary:
       currentStage === 'published'
         ? 'registry publish 和 release record 都已完成。'
-        : currentStage === 'pack_complete'
-        ? 'bundle 已可交接到 release review。'
-        : currentStage === 'validated'
-          ? '校验完成，等待打包。'
-          : currentStage === 'prepared'
-            ? 'workspace handle 已准备，建议继续 validate。'
+        : currentStage === 'reviewed'
+          ? '导入审阅已完成，可以继续发布。'
             : '先填写 source 和 target。',
-    activeStepIndex: publishResult || packResult ? 3 : validateResult ? 2 : prepareResult ? 1 : 0,
-    canValidate: Boolean(prepareResult?.workspacePath),
-    canPack: Boolean(validateResult?.ok),
-    canPublish: Boolean(validateResult?.ok),
-    canCleanup: Boolean(prepareResult?.workspacePath),
+    activeStepIndex: publishResult ? 2 : reviewResult ? 1 : 0,
+    canPublish: Boolean(reviewResult?.ok),
     releaseHandoffPath,
-    workspaceStatus: prepareResult?.workspacePath ? 'ready' : 'pending',
     releaseStatus: publishResult ? 'published' : releaseHandoffPath ? 'armed' : 'idle',
     releaseSummary: publishResult
       ? '后端已经完成 registry publish 和 release record。'
       : releaseHandoffPath
-      ? 'pack 结果已就绪，下一步是下载 bundle、发布到 registry，再写 release record。'
-      : '完成 pack 后才会开放下游 handoff。',
-    prepareReadiness,
-    validateReadiness,
+      ? '导入审阅结果已就绪，下一步是确认后执行一次性发布。'
+      : '完成导入审阅后才会开放下游 handoff。',
+    reviewReadiness,
+    publishReadiness,
     releaseReadiness,
   };
 }

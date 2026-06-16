@@ -110,7 +110,7 @@ describe('normalizeRegistryError', () => {
     ).toEqual({
       kind: 'unknown',
       message:
-        'Packaging workspace is no longer available. If Catalog is running with multiple replicas, scale `catalog` down to 1 replica for prepare/validate/pack flows, then retry.',
+        'Catalog returned a legacy workspace-path error. One-shot packaging should be stateless; retry after upgrading Catalog to the latest packaging API.',
       requestId: 'req-789',
       code: undefined,
       status: 422,

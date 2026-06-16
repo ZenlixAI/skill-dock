@@ -35,8 +35,6 @@ describe('import-local command', () => {
         '0.1.0',
         '--publish-registry',
         'https://npm.example.com',
-        '--npm-registry',
-        'https://npm.example.com',
         '--strict',
       ])
     ).toEqual({
@@ -45,7 +43,6 @@ describe('import-local command', () => {
       packageName: '@acme.skill/legacy-skill',
       version: '0.1.0',
       publishRegistry: 'https://npm.example.com',
-      npmRegistry: 'https://npm.example.com',
       strict: true,
     });
   });
@@ -55,7 +52,13 @@ describe('import-local command', () => {
       ok: true,
       packageName: '@acme.skill/legacy-skill',
       version: '0.1.0',
-      bundlePath: '/tmp/bundle.tgz',
+      manifestDigest: 'sha256:test',
+      components: ['docs'],
+      publishedToRegistry: true,
+      created: true,
+      idempotentReplay: false,
+      versionStatus: 'published',
+      installPolicy: 'resolvable',
     });
 
     await runImportLocal(['./legacy-skill', '--package-name', '@acme.skill/legacy-skill', '--version', '0.1.0']);
@@ -68,6 +71,8 @@ describe('import-local command', () => {
     expect(logSpy).toHaveBeenCalledWith('Import OK');
     expect(logSpy).toHaveBeenCalledWith('package_name: @acme.skill/legacy-skill');
     expect(logSpy).toHaveBeenCalledWith('version: 0.1.0');
+    expect(logSpy).toHaveBeenCalledWith('manifest_digest: sha256:test');
+    expect(logSpy).toHaveBeenCalledWith('components: docs');
   });
 
   it('prints failure output from the import-local workflow result', async () => {
@@ -88,7 +93,7 @@ describe('import-local command', () => {
   it('shows dedicated import-local help output', () => {
     const output = stripLogo(runCliOutput(['import-local', '--help']));
     expect(output).toContain('Usage: skills import-local [path] [options]');
-    expect(output).toContain('Upload a local source directory to Catalog for normalization/import, then publish it.');
+    expect(output).toContain('Upload a local source directory to Catalog for import review and one-shot publish.');
     expect(output).toContain('--package-name <name>');
     expect(output).toContain('--version <version>');
   });

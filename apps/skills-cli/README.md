@@ -15,7 +15,7 @@ This README describes the generic CLI surface. In the current private-registry d
 - `--registry` / `SKILLS_REGISTRY_URL` points to the Catalog / Web public base URL
 - npm package install and tarball access use the npm-compatible registry URL separately
 - `publish` still means `local pack -> npm publish -> Catalog release-record`
-- `import-local` means `local source archive -> Catalog prepare/validate/pack -> npm publish -> Catalog release-record`
+- `import-local` means `local source archive -> Catalog stateless publish`
 
 <!-- agent-list:start -->
 
@@ -76,6 +76,7 @@ When talking to a private Catalog, the CLI can attach auth headers from env:
 - `SKILLS_REGISTRY_TOKEN` -> `Authorization: Bearer <token>`
 - `SKILLS_REGISTRY_ROLE` -> `X-Role: <role>` for local/dev registries such as the current Go prototype
 - `skills publish` still requires publisher-capable credentials because it ends with `release-record`
+- `skills import-local` also requires publisher-capable credentials because Catalog performs the publish server-side
 
 ### npm Registry Auth
 
@@ -256,11 +257,10 @@ npx skills publish ./my-skill --registry https://catalog.example.com --strict
 
 The publish command follows the registry-first flow:
 
-1. `POST /api/v1/skill-packaging/prepare`
-2. `POST /api/v1/skill-packaging/validate`
-3. `POST /api/v1/skill-packaging/pack`
-4. `npm publish <bundle>`
-5. `PUT /api/v1/skills/{packageName}/versions/{version}/release-record`
+1. `POST /api/v1/skill-packaging/import-review`
+2. local `npm pack`
+3. `npm publish <bundle>`
+4. `PUT /api/v1/skills/{packageName}/versions/{version}/release-record`
 
 When the imported source had to be normalized, `publish` prints the same `Import summary`
 and human-readable `Warnings` blocks before returning the published bundle path.
@@ -268,7 +268,20 @@ and human-readable `Warnings` blocks before returning the published bundle path.
 | Option             | Description                                                   |
 | ------------------ | ------------------------------------------------------------- |
 | `--registry <url>` | Catalog base URL override for packaging and release-record    |
-| `--strict`         | Disable imported workspace normalization during prepare       |
+| `--strict`         | Disable imported workspace normalization during import review |
+
+### `skills import-local`
+
+`import-local` is the registry-first path for onboarding an existing source tree. It uploads
+an archive of the local directory to Catalog, lets Catalog normalize it if needed, and asks
+Catalog to perform a one-shot publish.
+
+Flow:
+
+1. `POST /api/v1/skill-packaging/publish`
+
+Success output reports the published package identity plus review metadata such as
+`manifest_digest`, `components`, warning details, and the import summary when normalization happened.
 
 ### `skills remove`
 
