@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	catalogapi "skill_registry/internal/backend/httpserver"
+	"skill_registry/internal/backend/httpserver"
 	cataloginfra "skill_registry/internal/catalog/infra"
 	packagingapplication "skill_registry/internal/packaging/application"
 )
@@ -21,10 +21,10 @@ func TestNewRuntimeBuildsCatalogReadServiceAndHTTPServer(t *testing.T) {
 		DatabaseURL:         "file:" + filepath.Join(root, "runtime.db"),
 		SharedWorkspaceRoot: filepath.Join(root, "workspaces"),
 		ArtifactSource:      cataloginfra.NewStaticArtifactSource(nil),
-		Server: catalogapi.ServerConfig{
+		Server: httpserver.ServerConfig{
 			ReaderToken: "reader-secret",
 		},
-		HTTPServer: catalogapi.HTTPServerConfig{
+		HTTPServer: httpserver.HTTPServerConfig{
 			WriteTimeout: 7 * time.Second,
 		},
 	})

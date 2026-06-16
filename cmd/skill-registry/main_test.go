@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"skill_registry/internal/backend"
-	catalogapi "skill_registry/internal/backend/httpserver"
+	"skill_registry/internal/backend/httpserver"
 	catalogdomain "skill_registry/internal/catalog/domain"
 	cataloginfra "skill_registry/internal/catalog/infra"
 	platformartifact "skill_registry/internal/platform/artifact"
@@ -32,10 +32,10 @@ func TestEnvDurationOrDefaultParsesConfiguredDuration(t *testing.T) {
 }
 
 func TestConfiguredHTTPServerBuildsTimeouts(t *testing.T) {
-	server := catalogapi.NewServer(catalogapi.ServerConfig{
+	server := httpserver.NewServer(httpserver.ServerConfig{
 		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 	})
-	httpServer := catalogapi.NewHTTPServer(":8080", server.Handler(), catalogapi.HTTPServerConfig{
+	httpServer := httpserver.NewHTTPServer(":8080", server.Handler(), httpserver.HTTPServerConfig{
 		ReadHeaderTimeout: 2 * time.Second,
 		ReadTimeout:       5 * time.Second,
 		WriteTimeout:      10 * time.Second,

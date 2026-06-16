@@ -1,4 +1,4 @@
-package catalogapi
+package httpserver
 
 import (
 	"net/http"

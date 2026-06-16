@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	catalogapi "skill_registry/internal/backend/httpserver"
+	"skill_registry/internal/backend/httpserver"
 	catalogapp "skill_registry/internal/catalog/application"
 	catalog "skill_registry/internal/catalog/domain"
 	cataloginfra "skill_registry/internal/catalog/infra"
@@ -30,8 +30,8 @@ type Config struct {
 	SharedWorkspaceRoot string
 	ArtifactSource      catalog.ArtifactSource
 	RepositoryOptions   cataloginfra.SQLRepositoryOptions
-	Server              catalogapi.ServerConfig
-	HTTPServer          catalogapi.HTTPServerConfig
+	Server              httpserver.ServerConfig
+	HTTPServer          httpserver.HTTPServerConfig
 	DBPool              DBPoolConfig
 	IdempotencyTTL      time.Duration
 }
@@ -42,7 +42,7 @@ type Runtime struct {
 	StoreSet     *platformpersist.SQLStoreSet
 	CatalogRead  *catalogapp.ReadService
 	CatalogWrite *catalogapp.WriteService
-	Server       *catalogapi.Server
+	Server       *httpserver.Server
 	Handler      http.Handler
 	HTTPServer   *http.Server
 }
@@ -114,9 +114,9 @@ func NewRuntime(ctx context.Context, config Config) (*Runtime, error) {
 	serverConfig.Idempotency = storeSet.Idempotency
 	serverConfig.Audit = storeSet.Audit
 
-	server := catalogapi.NewServer(serverConfig)
+	server := httpserver.NewServer(serverConfig)
 	handler := server.Handler()
-	httpServer := catalogapi.NewHTTPServer(config.Addr, handler, config.HTTPServer)
+	httpServer := httpserver.NewHTTPServer(config.Addr, handler, config.HTTPServer)
 
 	return &Runtime{
 		DB:           db,

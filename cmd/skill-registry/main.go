@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"skill_registry/internal/backend"
-	catalogapi "skill_registry/internal/backend/httpserver"
+	"skill_registry/internal/backend/httpserver"
 	catalog "skill_registry/internal/catalog/domain"
 	cataloginfra "skill_registry/internal/catalog/infra"
 	artifactadapter "skill_registry/internal/platform/artifact"
@@ -67,8 +67,8 @@ func configuredRuntimeConfig() backend.Config {
 		SharedWorkspaceRoot: envOrDefault("SKILL_REGISTRY_SHARED_WORKSPACE_ROOT", filepath.Join("data", "packaging-workspaces")),
 		ArtifactSource:      artifactSource,
 		RepositoryOptions:   configuredRepositoryOptions(artifactSource),
-		Server: catalogapi.ServerConfig{
-			Mode:                            catalogapi.ServerMode(os.Getenv("SKILL_REGISTRY_SERVER_MODE")),
+		Server: httpserver.ServerConfig{
+			Mode:                            httpserver.ServerMode(os.Getenv("SKILL_REGISTRY_SERVER_MODE")),
 			ReadListCacheTTL:                envDurationOrDefault("SKILL_REGISTRY_READ_CACHE_LIST_TTL", 2*time.Second),
 			ReadDetailCacheTTL:              envDurationOrDefault("SKILL_REGISTRY_READ_CACHE_DETAIL_TTL", 5*time.Second),
 			ReadMaxInFlight:                 envIntOrDefault("SKILL_REGISTRY_READ_MAX_IN_FLIGHT", 64),
@@ -84,7 +84,7 @@ func configuredRuntimeConfig() backend.Config {
 			SessionUsers:                    configuredSessionUsers(),
 			Logger:                          log.New(os.Stderr, "", 0),
 		},
-		HTTPServer: catalogapi.HTTPServerConfig{
+		HTTPServer: httpserver.HTTPServerConfig{
 			ReadHeaderTimeout: envDurationOrDefault("SKILL_REGISTRY_HTTP_READ_HEADER_TIMEOUT", 2*time.Second),
 			ReadTimeout:       envDurationOrDefault("SKILL_REGISTRY_HTTP_READ_TIMEOUT", 15*time.Second),
 			WriteTimeout:      envDurationOrDefault("SKILL_REGISTRY_HTTP_WRITE_TIMEOUT", 60*time.Second),
