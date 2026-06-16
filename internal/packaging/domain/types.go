@@ -171,7 +171,6 @@ type PackResponse struct {
 }
 
 type PublishRequest struct {
-	WorkspacePath   string        `json:"workspacePath,omitempty"`
 	IdempotencyKey  string        `json:"idempotencyKey,omitempty"`
 	Source          Source        `json:"source"`
 	Target          Target        `json:"target"`
