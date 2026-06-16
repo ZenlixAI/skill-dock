@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"skill_registry/app/catalogapi"
-	"skill_registry/business/catalog"
 	catalogapp "skill_registry/internal/catalog/application"
+	catalog "skill_registry/internal/catalog/domain"
 	cataloginfra "skill_registry/internal/catalog/infra"
 	packagingapplication "skill_registry/internal/packaging/application"
 	platformartifact "skill_registry/internal/platform/artifact"
@@ -29,7 +29,7 @@ type Config struct {
 	DatabaseURL         string
 	SharedWorkspaceRoot string
 	ArtifactSource      catalog.ArtifactSource
-	RepositoryOptions   catalog.SQLRepositoryOptions
+	RepositoryOptions   cataloginfra.SQLRepositoryOptions
 	Server              catalogapi.ServerConfig
 	HTTPServer          catalogapi.HTTPServerConfig
 	DBPool              DBPoolConfig
@@ -69,7 +69,7 @@ func NewRuntime(ctx context.Context, config Config) (*Runtime, error) {
 		repositoryOptions.ArtifactSource = config.ArtifactSource
 	}
 	if repositoryOptions.ArtifactSource == nil {
-		repositoryOptions.ArtifactSource = catalog.NewStaticArtifactSource(nil)
+		repositoryOptions.ArtifactSource = cataloginfra.NewStaticArtifactSource(nil)
 	}
 
 	internalStateStore, err := cataloginfra.PrepareSQLStateStore(ctx, db, driverName)
@@ -79,9 +79,8 @@ func NewRuntime(ctx context.Context, config Config) (*Runtime, error) {
 	}
 	catalogRead := catalogapp.NewReadService(internalStateStore)
 	catalogWrite := catalogapp.NewWriteService(internalStateStore, repositoryOptions.ArtifactSource)
-	repositoryStateStore := catalog.NewSQLStateStore(db, driverName)
-	repository := catalog.NewCatalogRepository(catalog.CatalogRepositoryConfig{
-		StateStore:     repositoryStateStore,
+	repository := cataloginfra.NewRepository(cataloginfra.RepositoryConfig{
+		StateStore:     internalStateStore,
 		ArtifactSource: repositoryOptions.ArtifactSource,
 	})
 	runtimeRepository := catalog.Repository(repository)

@@ -9,8 +9,8 @@ import (
 
 	"skill_registry/app/catalogapi/audit"
 	"skill_registry/app/catalogapi/common"
-	"skill_registry/business/packaging"
 	packagingapplication "skill_registry/internal/packaging/application"
+	packaging "skill_registry/internal/packaging/domain"
 	internalpackaginghttp "skill_registry/internal/packaging/http"
 	"skill_registry/internal/platform/auth"
 )

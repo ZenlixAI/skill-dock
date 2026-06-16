@@ -12,8 +12,8 @@ import (
 
 	"skill_registry/app/catalogapi/common"
 	"skill_registry/app/catalogapi/response"
-	"skill_registry/business/catalog"
-	"skill_registry/business/packaging"
+	catalog "skill_registry/internal/catalog/domain"
+	packaging "skill_registry/internal/packaging/domain"
 	"skill_registry/internal/platform/auth"
 )
 

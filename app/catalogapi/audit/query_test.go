@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"skill_registry/business/catalog"
+	catalog "skill_registry/internal/catalog/domain"
 	"skill_registry/internal/platform/auth"
 	"skill_registry/internal/platform/observability"
 	persist "skill_registry/internal/platform/persistence"

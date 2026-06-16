@@ -14,8 +14,9 @@ import (
 	"time"
 
 	"skill_registry/app/catalogapi"
-	"skill_registry/business/catalog"
 	"skill_registry/internal/backend"
+	catalog "skill_registry/internal/catalog/domain"
+	cataloginfra "skill_registry/internal/catalog/infra"
 	artifactadapter "skill_registry/internal/platform/artifact"
 	"skill_registry/internal/platform/auth"
 )
@@ -47,11 +48,11 @@ func configuredArtifactSource() catalog.ArtifactSource {
 	if registryURL := os.Getenv("SKILL_REGISTRY_NPM_REGISTRY_URL"); registryURL != "" {
 		return artifactadapter.NewNPMRegistryArtifactSource(registryURL, nil)
 	}
-	return catalog.NewStaticArtifactSource(nil)
+	return cataloginfra.NewStaticArtifactSource(nil)
 }
 
-func configuredRepositoryOptions(artifactSource catalog.ArtifactSource) catalog.SQLRepositoryOptions {
-	return catalog.SQLRepositoryOptions{
+func configuredRepositoryOptions(artifactSource catalog.ArtifactSource) cataloginfra.SQLRepositoryOptions {
+	return cataloginfra.SQLRepositoryOptions{
 		ArtifactSource: artifactSource,
 		DisableSeed:    true,
 	}

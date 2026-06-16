@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"skill_registry/business/catalog"
+	catalog "skill_registry/internal/catalog/domain"
 	packagingdomain "skill_registry/internal/packaging/domain"
 )
 

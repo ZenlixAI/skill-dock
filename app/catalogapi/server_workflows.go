@@ -6,17 +6,16 @@ import (
 	"strings"
 
 	"skill_registry/app/catalogapi/common"
-	"skill_registry/business/catalog"
-	"skill_registry/business/packaging"
-	internaldomain "skill_registry/internal/catalog/domain"
+	catalog "skill_registry/internal/catalog/domain"
 	packagingapplication "skill_registry/internal/packaging/application"
+	packaging "skill_registry/internal/packaging/domain"
 	"skill_registry/internal/platform/auth"
 )
 
 type catalogMutationService interface {
-	CreateReleaseRecord(ctx context.Context, packageName string, version string, input internaldomain.ReleaseRecordInput) (internaldomain.ReleaseRecordResult, error)
-	ApplySkillGovernanceChange(ctx context.Context, packageName string, input internaldomain.SkillGovernanceChangeInput, actor string) (internaldomain.GovernanceChangeResponse, error)
-	ApplyVersionGovernanceChange(ctx context.Context, packageName string, version string, input internaldomain.VersionGovernanceChangeInput, actor string) (internaldomain.GovernanceChangeResponse, error)
+	CreateReleaseRecord(ctx context.Context, packageName string, version string, input catalog.ReleaseRecordInput) (catalog.ReleaseRecordResult, error)
+	ApplySkillGovernanceChange(ctx context.Context, packageName string, input catalog.SkillGovernanceChangeInput, actor string) (catalog.GovernanceChangeResponse, error)
+	ApplyVersionGovernanceChange(ctx context.Context, packageName string, version string, input catalog.VersionGovernanceChangeInput, actor string) (catalog.GovernanceChangeResponse, error)
 }
 
 type catalogGovernanceService interface {

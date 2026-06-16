@@ -19,11 +19,12 @@ import (
 	catalogmiddleware "skill_registry/app/catalogapi/middleware"
 	routerpkg "skill_registry/app/catalogapi/router"
 	"skill_registry/app/catalogapi/system"
-	"skill_registry/business/catalog"
-	"skill_registry/business/packaging"
+	catalogapp "skill_registry/internal/catalog/application"
+	catalog "skill_registry/internal/catalog/domain"
 	internalcataloghttp "skill_registry/internal/catalog/http"
 	internalgovernancehttp "skill_registry/internal/governance/http"
 	packagingapplication "skill_registry/internal/packaging/application"
+	packaging "skill_registry/internal/packaging/domain"
 	internalpackaginghttp "skill_registry/internal/packaging/http"
 	"skill_registry/internal/platform/auth"
 	"skill_registry/internal/platform/observability"
@@ -192,21 +193,21 @@ func NewServer(config ServerConfig) *Server {
 }
 
 func resolveCatalogReadService(repository catalog.Repository) catalogReadService {
-	if provider, ok := repository.(catalog.ApplicationServiceProvider); ok && provider.CatalogReadService() != nil {
+	if provider, ok := repository.(catalogapp.ServiceProvider); ok && provider.CatalogReadService() != nil {
 		return provider.CatalogReadService()
 	}
 	return repository
 }
 
 func resolveCatalogWriteService(repository catalog.Repository) catalogMutationService {
-	if provider, ok := repository.(catalog.ApplicationServiceProvider); ok && provider.CatalogWriteService() != nil {
+	if provider, ok := repository.(catalogapp.ServiceProvider); ok && provider.CatalogWriteService() != nil {
 		return provider.CatalogWriteService()
 	}
 	return repository
 }
 
 func resolveCatalogGovernanceService(repository catalog.Repository) catalogGovernanceService {
-	if provider, ok := repository.(catalog.ApplicationServiceProvider); ok && provider.CatalogReadService() != nil {
+	if provider, ok := repository.(catalogapp.ServiceProvider); ok && provider.CatalogReadService() != nil {
 		return provider.CatalogReadService()
 	}
 	return repository

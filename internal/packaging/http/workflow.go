@@ -11,9 +11,9 @@ import (
 
 	"skill_registry/app/catalogapi/audit"
 	"skill_registry/app/catalogapi/common"
-	"skill_registry/business/catalog"
-	"skill_registry/business/packaging"
+	catalog "skill_registry/internal/catalog/domain"
 	packagingapplication "skill_registry/internal/packaging/application"
+	packaging "skill_registry/internal/packaging/domain"
 	"skill_registry/internal/platform/auth"
 	persist "skill_registry/internal/platform/persistence"
 )

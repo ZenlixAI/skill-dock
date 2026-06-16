@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"skill_registry/business/catalog"
+	catalog "skill_registry/internal/catalog/domain"
 )
 
 type JSONArtifactSource struct {

@@ -12,9 +12,10 @@ import (
 
 	"skill_registry/app/catalogapi/audit"
 	"skill_registry/app/catalogapi/common"
-	"skill_registry/business/catalog"
-	"skill_registry/business/packaging"
+	catalog "skill_registry/internal/catalog/domain"
 	internalcataloghttp "skill_registry/internal/catalog/http"
+	packagingapplication "skill_registry/internal/packaging/application"
+	packaging "skill_registry/internal/packaging/domain"
 	internalpackaginghttp "skill_registry/internal/packaging/http"
 	"skill_registry/internal/platform/auth"
 	persist "skill_registry/internal/platform/persistence"
@@ -198,7 +199,7 @@ func (m *testPackagingWorkflow) prepareCallCount() int {
 	return int(m.service.prepareCalls.Load())
 }
 
-func prepareManagedWorkspaceForTest(t *testing.T, service *packaging.Service, packageName string, version string) (string, string) {
+func prepareManagedWorkspaceForTest(t *testing.T, service *packagingapplication.Service, packageName string, version string) (string, string) {
 	t.Helper()
 
 	fixtureDir := createPackagingFixture(t)

@@ -3,7 +3,7 @@ package http
 import (
 	stdhttp "net/http"
 
-	"skill_registry/business/catalog"
+	catalog "skill_registry/internal/catalog/domain"
 )
 
 type RequestLimiter struct {

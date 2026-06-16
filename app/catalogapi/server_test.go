@@ -31,12 +31,13 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"skill_registry/app/catalogapi/common"
-	"skill_registry/business/catalog"
-	"skill_registry/business/packaging"
 	internalapp "skill_registry/internal/catalog/application"
-	internaldomain "skill_registry/internal/catalog/domain"
+	catalog "skill_registry/internal/catalog/domain"
 	internalcataloghttp "skill_registry/internal/catalog/http"
+	cataloginfra "skill_registry/internal/catalog/infra"
 	internalgovernancehttp "skill_registry/internal/governance/http"
+	packagingapplication "skill_registry/internal/packaging/application"
+	packaging "skill_registry/internal/packaging/domain"
 	internalpackaginghttp "skill_registry/internal/packaging/http"
 	artifactadapter "skill_registry/internal/platform/artifact"
 	"skill_registry/internal/platform/auth"
@@ -148,7 +149,7 @@ func TestServerRoutesHeadSkillsThroughCatalogReadModule(t *testing.T) {
 
 func TestNewServerPrefersCatalogApplicationServicesFromRepositoryProvider(t *testing.T) {
 	provider := &repositoryApplicationProviderStub{
-		Repository:   catalog.NewMemoryRepository(catalog.SampleData()),
+		Repository:   cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 		readService:  internalapp.NewReadService(serverQueryStoreStub{}),
 		writeService: internalapp.NewWriteService(serverAggregateStateStoreStub{}, serverArtifactSourceStub{}),
 	}
@@ -179,7 +180,7 @@ func TestNewServerPrefersCatalogApplicationServicesFromRepositoryProvider(t *tes
 func TestServerRoutesCatalogDetailReadsThroughCatalogApplicationService(t *testing.T) {
 	store := &serverDetailReadServiceStoreStub{}
 	provider := &repositoryApplicationProviderStub{
-		Repository:   catalog.NewMemoryRepository(catalog.SampleData()),
+		Repository:   cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 		readService:  internalapp.NewReadService(store),
 		writeService: internalapp.NewWriteService(serverAggregateStateStoreStub{}, serverArtifactSourceStub{}),
 	}
@@ -278,7 +279,7 @@ func TestServerRoutesCatalogDetailReadsThroughCatalogApplicationService(t *testi
 
 func TestServerRoutesEncodedPackageDetailThroughHandler(t *testing.T) {
 	server := NewServer(ServerConfig{
-		Repository:  catalog.NewMemoryRepository(catalog.SampleData()),
+		Repository:  cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 		ReaderToken: "reader-secret",
 	})
 
@@ -411,39 +412,39 @@ func (s *repositoryApplicationProviderStub) CatalogWriteService() *internalapp.W
 
 type serverQueryStoreStub struct{}
 
-func (serverQueryStoreStub) ListSkills(context.Context, internaldomain.SkillQuery) (internaldomain.SkillsPage, error) {
-	return internaldomain.SkillsPage{}, nil
+func (serverQueryStoreStub) ListSkills(context.Context, catalog.SkillQuery) (catalog.SkillsPage, error) {
+	return catalog.SkillsPage{}, nil
 }
 
-func (serverQueryStoreStub) ListCuratedSkills(context.Context, internaldomain.CuratedSkillQuery) (internaldomain.CuratedSkillsPage, error) {
-	return internaldomain.CuratedSkillsPage{}, nil
+func (serverQueryStoreStub) ListCuratedSkills(context.Context, catalog.CuratedSkillQuery) (catalog.CuratedSkillsPage, error) {
+	return catalog.CuratedSkillsPage{}, nil
 }
 
-func (serverQueryStoreStub) GetSkill(context.Context, string) (internaldomain.SkillDetail, error) {
-	return internaldomain.SkillDetail{}, nil
+func (serverQueryStoreStub) GetSkill(context.Context, string) (catalog.SkillDetail, error) {
+	return catalog.SkillDetail{}, nil
 }
 
-func (serverQueryStoreStub) ListVersions(context.Context, internaldomain.VersionQuery) (internaldomain.VersionsPage, error) {
-	return internaldomain.VersionsPage{}, nil
+func (serverQueryStoreStub) ListVersions(context.Context, catalog.VersionQuery) (catalog.VersionsPage, error) {
+	return catalog.VersionsPage{}, nil
 }
 
-func (serverQueryStoreStub) GetVersion(context.Context, string, string) (internaldomain.SkillVersionDetail, error) {
-	return internaldomain.SkillVersionDetail{}, nil
+func (serverQueryStoreStub) GetVersion(context.Context, string, string) (catalog.SkillVersionDetail, error) {
+	return catalog.SkillVersionDetail{}, nil
 }
 
-func (serverQueryStoreStub) GetLatestResolvableVersion(context.Context, string) (internaldomain.SkillVersionDetail, error) {
-	return internaldomain.SkillVersionDetail{}, nil
+func (serverQueryStoreStub) GetLatestResolvableVersion(context.Context, string) (catalog.SkillVersionDetail, error) {
+	return catalog.SkillVersionDetail{}, nil
 }
 
-func (serverQueryStoreStub) ListGovernanceChanges(context.Context, internaldomain.GovernanceQuery) (internaldomain.GovernancePage, error) {
-	return internaldomain.GovernancePage{}, nil
+func (serverQueryStoreStub) ListGovernanceChanges(context.Context, catalog.GovernanceQuery) (catalog.GovernancePage, error) {
+	return catalog.GovernancePage{}, nil
 }
 
-func (serverQueryStoreStub) ListPackageVersions(context.Context, string) ([]internaldomain.SkillVersionDetail, error) {
+func (serverQueryStoreStub) ListPackageVersions(context.Context, string) ([]catalog.SkillVersionDetail, error) {
 	return nil, nil
 }
 
-func (serverQueryStoreStub) ListPackageGovernance(context.Context, string, internaldomain.GovernanceTargetType, *string) ([]internaldomain.GovernanceRecord, error) {
+func (serverQueryStoreStub) ListPackageGovernance(context.Context, string, catalog.GovernanceTargetType, *string) ([]catalog.GovernanceRecord, error) {
 	return nil, nil
 }
 
@@ -454,84 +455,84 @@ type serverDetailReadServiceStoreStub struct {
 	getLatestResolvableVersionCalls int
 }
 
-func (s *serverDetailReadServiceStoreStub) ListSkills(context.Context, internaldomain.SkillQuery) (internaldomain.SkillsPage, error) {
-	return internaldomain.SkillsPage{}, nil
+func (s *serverDetailReadServiceStoreStub) ListSkills(context.Context, catalog.SkillQuery) (catalog.SkillsPage, error) {
+	return catalog.SkillsPage{}, nil
 }
 
-func (s *serverDetailReadServiceStoreStub) ListCuratedSkills(context.Context, internaldomain.CuratedSkillQuery) (internaldomain.CuratedSkillsPage, error) {
-	return internaldomain.CuratedSkillsPage{}, nil
+func (s *serverDetailReadServiceStoreStub) ListCuratedSkills(context.Context, catalog.CuratedSkillQuery) (catalog.CuratedSkillsPage, error) {
+	return catalog.CuratedSkillsPage{}, nil
 }
 
-func (s *serverDetailReadServiceStoreStub) GetSkill(context.Context, string) (internaldomain.SkillDetail, error) {
+func (s *serverDetailReadServiceStoreStub) GetSkill(context.Context, string) (catalog.SkillDetail, error) {
 	s.getSkillCalls++
 	latestVersion := "9.9.9"
-	return internaldomain.SkillDetail{
-		SkillSummary: internaldomain.SkillSummary{
+	return catalog.SkillDetail{
+		SkillSummary: catalog.SkillSummary{
 			PackageName:   "@service/only-skill",
 			DisplayName:   "Service Only Skill",
 			Description:   "served by the read service",
-			SourceType:    internaldomain.SourceTypeImported,
-			Status:        internaldomain.SkillStatusActive,
+			SourceType:    catalog.SourceTypeImported,
+			Status:        catalog.SkillStatusActive,
 			LatestVersion: &latestVersion,
 		},
 		CreatedAt: time.Unix(1, 0).UTC(),
 	}, nil
 }
 
-func (s *serverDetailReadServiceStoreStub) ListVersions(context.Context, internaldomain.VersionQuery) (internaldomain.VersionsPage, error) {
+func (s *serverDetailReadServiceStoreStub) ListVersions(context.Context, catalog.VersionQuery) (catalog.VersionsPage, error) {
 	s.listVersionsCalls++
-	return internaldomain.VersionsPage{
-		Items: []internaldomain.SkillVersionSummary{
+	return catalog.VersionsPage{
+		Items: []catalog.SkillVersionSummary{
 			{
 				PackageName:   "@service/only-skill",
 				Version:       "9.9.9",
-				VersionStatus: internaldomain.VersionStatusPublished,
-				InstallPolicy: internaldomain.InstallPolicyResolvable,
+				VersionStatus: catalog.VersionStatusPublished,
+				InstallPolicy: catalog.InstallPolicyResolvable,
 				PublishedAt:   time.Unix(2, 0).UTC(),
 			},
 		},
 	}, nil
 }
 
-func (s *serverDetailReadServiceStoreStub) GetVersion(context.Context, string, string) (internaldomain.SkillVersionDetail, error) {
+func (s *serverDetailReadServiceStoreStub) GetVersion(context.Context, string, string) (catalog.SkillVersionDetail, error) {
 	s.getVersionCalls++
 	return serverDetailReadServiceVersion(), nil
 }
 
-func (s *serverDetailReadServiceStoreStub) GetLatestResolvableVersion(context.Context, string) (internaldomain.SkillVersionDetail, error) {
+func (s *serverDetailReadServiceStoreStub) GetLatestResolvableVersion(context.Context, string) (catalog.SkillVersionDetail, error) {
 	s.getLatestResolvableVersionCalls++
 	return serverDetailReadServiceVersion(), nil
 }
 
-func (s *serverDetailReadServiceStoreStub) ListGovernanceChanges(context.Context, internaldomain.GovernanceQuery) (internaldomain.GovernancePage, error) {
-	return internaldomain.GovernancePage{}, nil
+func (s *serverDetailReadServiceStoreStub) ListGovernanceChanges(context.Context, catalog.GovernanceQuery) (catalog.GovernancePage, error) {
+	return catalog.GovernancePage{}, nil
 }
 
-func (s *serverDetailReadServiceStoreStub) ListPackageVersions(context.Context, string) ([]internaldomain.SkillVersionDetail, error) {
+func (s *serverDetailReadServiceStoreStub) ListPackageVersions(context.Context, string) ([]catalog.SkillVersionDetail, error) {
 	return nil, nil
 }
 
-func (s *serverDetailReadServiceStoreStub) ListPackageGovernance(context.Context, string, internaldomain.GovernanceTargetType, *string) ([]internaldomain.GovernanceRecord, error) {
+func (s *serverDetailReadServiceStoreStub) ListPackageGovernance(context.Context, string, catalog.GovernanceTargetType, *string) ([]catalog.GovernanceRecord, error) {
 	return nil, nil
 }
 
-func serverDetailReadServiceVersion() internaldomain.SkillVersionDetail {
-	return internaldomain.SkillVersionDetail{
-		SkillVersionSummary: internaldomain.SkillVersionSummary{
+func serverDetailReadServiceVersion() catalog.SkillVersionDetail {
+	return catalog.SkillVersionDetail{
+		SkillVersionSummary: catalog.SkillVersionSummary{
 			PackageName:   "@service/only-skill",
 			Version:       "9.9.9",
-			VersionStatus: internaldomain.VersionStatusPublished,
-			InstallPolicy: internaldomain.InstallPolicyResolvable,
+			VersionStatus: catalog.VersionStatusPublished,
+			InstallPolicy: catalog.InstallPolicyResolvable,
 			PublishedAt:   time.Unix(2, 0).UTC(),
 		},
-		Registry: internaldomain.RegistryMetadata{
+		Registry: catalog.RegistryMetadata{
 			NPMRegistry: "https://registry.example.com",
 			TarballURL:  "https://registry.example.com/service-only-skill-9.9.9.tgz",
 			Integrity:   "sha512-service",
 			Shasum:      "service",
 			PublishedAt: time.Unix(2, 0).UTC(),
 		},
-		Bundle: internaldomain.BundleMetadata{
+		Bundle: catalog.BundleMetadata{
 			SkillManifestDigest: "sha256:service",
 		},
 	}
@@ -543,11 +544,11 @@ func (serverAggregateStateStoreStub) IsEmpty(context.Context) (bool, error) {
 	return true, nil
 }
 
-func (serverAggregateStateStoreStub) GetAggregate(context.Context, string) (internaldomain.AgentSkillAggregate, error) {
-	return internaldomain.AgentSkillAggregate{}, nil
+func (serverAggregateStateStoreStub) GetAggregate(context.Context, string) (catalog.AgentSkillAggregate, error) {
+	return catalog.AgentSkillAggregate{}, nil
 }
 
-func (serverAggregateStateStoreStub) PutAggregate(context.Context, internaldomain.AgentSkillAggregate, uint64) error {
+func (serverAggregateStateStoreStub) PutAggregate(context.Context, catalog.AgentSkillAggregate, uint64) error {
 	return nil
 }
 
@@ -557,13 +558,13 @@ func (serverAggregateStateStoreStub) Ping(context.Context) error {
 
 type serverArtifactSourceStub struct{}
 
-func (serverArtifactSourceStub) FindReleaseArtifact(context.Context, string, string) (internaldomain.ReleaseArtifact, error) {
-	return internaldomain.ReleaseArtifact{}, nil
+func (serverArtifactSourceStub) FindReleaseArtifact(context.Context, string, string) (catalog.ReleaseArtifact, error) {
+	return catalog.ReleaseArtifact{}, nil
 }
 
 func TestBearerTokenAuthUsesConfiguredRoleMapping(t *testing.T) {
 	server := NewServer(ServerConfig{
-		Repository:     catalog.NewMemoryRepository(catalog.SampleData()),
+		Repository:     cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 		ReaderToken:    "reader-secret",
 		PublisherToken: "publisher-secret",
 	})
@@ -581,7 +582,7 @@ func TestBearerTokenAuthUsesConfiguredRoleMapping(t *testing.T) {
 
 func TestBearerTokenAuthRejectsUnknownTokenWhenMappingConfigured(t *testing.T) {
 	server := NewServer(ServerConfig{
-		Repository:     catalog.NewMemoryRepository(catalog.SampleData()),
+		Repository:     cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 		ReaderToken:    "reader-secret",
 		PublisherToken: "publisher-secret",
 	})
@@ -601,7 +602,7 @@ func TestBearerTokenAuthRejectsUnknownTokenWhenMappingConfigured(t *testing.T) {
 
 func TestBearerTokenAuthRejectsXRoleOverrideWhenMappingConfigured(t *testing.T) {
 	server := NewServer(ServerConfig{
-		Repository:     catalog.NewMemoryRepository(catalog.SampleData()),
+		Repository:     cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 		ReaderToken:    "reader-secret",
 		PublisherToken: "publisher-secret",
 	})
@@ -622,7 +623,7 @@ func TestBearerTokenAuthRejectsXRoleOverrideWhenMappingConfigured(t *testing.T) 
 
 func TestSessionEndpointReturnsCurrentPrincipal(t *testing.T) {
 	server := NewServer(ServerConfig{
-		Repository:     catalog.NewMemoryRepository(catalog.SampleData()),
+		Repository:     cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 		ReaderToken:    "reader-secret",
 		PublisherToken: "publisher-secret",
 	})
@@ -683,7 +684,7 @@ func TestSessionEndpointReturnsCurrentPrincipal(t *testing.T) {
 
 func TestSessionEndpointRequiresAuthentication(t *testing.T) {
 	server := NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 	})
 
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/session", nil)
@@ -701,7 +702,7 @@ func TestSessionEndpointRequiresAuthentication(t *testing.T) {
 
 func TestSessionEndpointAllowsAuthoringPrincipal(t *testing.T) {
 	server := NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 		AuthTokens: map[string]auth.TokenConfig{
 			"authoring-secret": {
 				Role:  "authoring",
@@ -738,7 +739,7 @@ func TestSessionEndpointAllowsAuthoringPrincipal(t *testing.T) {
 
 func TestSessionEndpointHandlesLocalOperatorPreflight(t *testing.T) {
 	server := NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 	})
 
 	request := httptest.NewRequest(http.MethodOptions, "/api/v1/session", nil)
@@ -761,7 +762,7 @@ func TestSessionEndpointHandlesLocalOperatorPreflight(t *testing.T) {
 
 func TestSkillsEndpointHandlesLocalOperatorPreflight(t *testing.T) {
 	server := NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 	})
 
 	request := httptest.NewRequest(http.MethodOptions, "/api/v1/skills", nil)
@@ -784,7 +785,7 @@ func TestSkillsEndpointHandlesLocalOperatorPreflight(t *testing.T) {
 
 func TestSessionEndpointAddsCORSHeadersForLocalOperatorOrigin(t *testing.T) {
 	server := NewServer(ServerConfig{
-		Repository:     catalog.NewMemoryRepository(catalog.SampleData()),
+		Repository:     cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 		PublisherToken: "publisher-secret",
 	})
 
@@ -805,7 +806,7 @@ func TestSessionEndpointAddsCORSHeadersForLocalOperatorOrigin(t *testing.T) {
 
 func TestSessionEndpointReturnsAllowedPackagesForScopedPrincipal(t *testing.T) {
 	server := NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 		AuthTokens: map[string]auth.TokenConfig{
 			"publisher-secret": {
 				Role:            "publisher",
@@ -839,7 +840,7 @@ func TestSessionEndpointReturnsAllowedPackagesForScopedPrincipal(t *testing.T) {
 
 func TestSessionLoginSetsCookieAndReturnsOperatorSession(t *testing.T) {
 	server := NewServer(ServerConfig{
-		Repository:    catalog.NewMemoryRepository(catalog.SampleData()),
+		Repository:    cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 		SessionSecret: "session-secret",
 		SessionUsers: map[string]auth.SessionUserConfig{
 			"operator": {
@@ -876,7 +877,7 @@ func TestSessionLoginSetsCookieAndReturnsOperatorSession(t *testing.T) {
 
 func TestSessionLoginRejectsInvalidJSON(t *testing.T) {
 	server := NewServer(ServerConfig{
-		Repository:    catalog.NewMemoryRepository(catalog.SampleData()),
+		Repository:    cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 		SessionSecret: "session-secret",
 		SessionUsers: map[string]auth.SessionUserConfig{
 			"operator": {
@@ -900,7 +901,7 @@ func TestSessionLoginRejectsInvalidJSON(t *testing.T) {
 
 func TestSessionEndpointAcceptsCookieAuthentication(t *testing.T) {
 	server := NewServer(ServerConfig{
-		Repository:    catalog.NewMemoryRepository(catalog.SampleData()),
+		Repository:    cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 		SessionSecret: "session-secret",
 		SessionUsers: map[string]auth.SessionUserConfig{
 			"reader": {
@@ -952,7 +953,7 @@ func TestSessionEndpointAcceptsCookieAuthentication(t *testing.T) {
 
 func TestSessionLogoutClearsCookie(t *testing.T) {
 	server := NewServer(ServerConfig{
-		Repository:    catalog.NewMemoryRepository(catalog.SampleData()),
+		Repository:    cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 		SessionSecret: "session-secret",
 		SessionUsers: map[string]auth.SessionUserConfig{
 			"reader": {
@@ -981,7 +982,7 @@ func TestSessionLogoutClearsCookie(t *testing.T) {
 
 func TestPackageLevelAuthzRejectsUnauthorizedReleaseRecord(t *testing.T) {
 	server := NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 		AuthTokens: map[string]auth.TokenConfig{
 			"publisher-secret": {
 				Role:            "publisher",
@@ -1006,7 +1007,7 @@ func TestPackageLevelAuthzRejectsUnauthorizedReleaseRecord(t *testing.T) {
 
 func TestPackageLevelAuthzAllowsAuthorizedPackageReadAndWrite(t *testing.T) {
 	server := NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 		AuthTokens: map[string]auth.TokenConfig{
 			"publisher-secret": {
 				Role:            "publisher",
@@ -1035,7 +1036,7 @@ func TestPackageLevelAuthzAllowsAuthorizedPackageReadAndWrite(t *testing.T) {
 
 func TestPackageScopedSkillsListReturnsAuthorizedPageWindow(t *testing.T) {
 	server := NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 		AuthTokens: map[string]auth.TokenConfig{
 			"reader-secret": {
 				Role:            "reader",
@@ -1075,7 +1076,7 @@ func TestPackageScopedSkillsListReturnsAuthorizedPageWindow(t *testing.T) {
 
 func TestGovernanceUsesConfiguredActorInsteadOfSpoofableHeader(t *testing.T) {
 	server := NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 		AuthTokens: map[string]auth.TokenConfig{
 			"publisher-secret": {
 				Role:  "publisher",
@@ -1144,8 +1145,8 @@ func TestServerCanonicalizesRepeatedSlashesBeforeRouting(t *testing.T) {
 func TestServerCanonicalRedirectIncludesMetadataAndLocalCORS(t *testing.T) {
 	var logBuffer bytes.Buffer
 	server := NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
-		Packaging:  packaging.NewService(""),
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		Packaging:  packagingapplication.NewService(""),
 		Logger:     log.New(&logBuffer, "", 0),
 	})
 
@@ -1319,14 +1320,14 @@ func TestSkillPackagingPublishPublishesAndCreatesReleaseRecord(t *testing.T) {
 	registryBaseURL := registry.baseURL()
 	registryClient := registry.client()
 
-	packagingService := packaging.NewService("")
+	packagingService := packagingapplication.NewService("")
 	workspacePath, _ := prepareManagedWorkspaceForTest(
 		t,
 		packagingService,
 		"@platform.skill/fixture-skill",
 		"0.2.0",
 	)
-	repository := catalog.NewMemoryRepository(catalog.SampleData(), catalog.MemoryRepositoryOptions{
+	repository := cataloginfra.NewMemoryRepository(cataloginfra.SampleData(), cataloginfra.MemoryRepositoryOptions{
 		ArtifactSource: artifactadapter.NewNPMRegistryArtifactSource(registryBaseURL, registryClient),
 	})
 	packagingService.ConfigurePublishWorkflow(
@@ -1997,8 +1998,8 @@ func TestSkillPackagingPrepareIdempotencyPersistsAcrossServerInstances(t *testin
 	}
 
 	serverOne := NewServer(ServerConfig{
-		Repository:  catalog.NewMemoryRepository(catalog.SampleData()),
-		Packaging:   packaging.NewService(""),
+		Repository:  cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		Packaging:   packagingapplication.NewService(""),
 		Idempotency: store,
 	})
 
@@ -2020,8 +2021,8 @@ func TestSkillPackagingPrepareIdempotencyPersistsAcrossServerInstances(t *testin
 		t.Fatalf("reopen idempotency store: %v", err)
 	}
 	serverTwo := NewServer(ServerConfig{
-		Repository:  catalog.NewMemoryRepository(catalog.SampleData()),
-		Packaging:   packaging.NewService(""),
+		Repository:  cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		Packaging:   packagingapplication.NewService(""),
 		Idempotency: storeReloaded,
 	})
 
@@ -2063,12 +2064,12 @@ func TestSkillPackagingWorkspacePersistsAcrossServerInstances(t *testing.T) {
 	}
 
 	serverOne := NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
-		Packaging:  packaging.NewServiceWithWorkspaceStore("", workspaceStoreOne),
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		Packaging:  packagingapplication.NewServiceWithWorkspaceStore("", workspaceStoreOne),
 	})
 	serverTwo := NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
-		Packaging:  packaging.NewServiceWithWorkspaceStore("", workspaceStoreTwo),
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		Packaging:  packagingapplication.NewServiceWithWorkspaceStore("", workspaceStoreTwo),
 	})
 
 	prepareRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
@@ -2190,8 +2191,8 @@ func TestSkillPackagingPackWithInlineBundleSkipsIdempotencyPersistence(t *testin
 	}
 
 	server := NewServer(ServerConfig{
-		Repository:  catalog.NewMemoryRepository(catalog.SampleData()),
-		Packaging:   packaging.NewService(""),
+		Repository:  cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		Packaging:   packagingapplication.NewService(""),
 		Idempotency: store,
 	})
 
@@ -2258,8 +2259,8 @@ func TestSkillPackagingPrepareWritesAuditEvent(t *testing.T) {
 	}
 
 	server := NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
-		Packaging:  packaging.NewService(""),
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		Packaging:  packagingapplication.NewService(""),
 		Audit:      auditStore,
 		AuthTokens: map[string]auth.TokenConfig{
 			"publisher-secret": {
@@ -2347,8 +2348,8 @@ func TestSkillPackagingPrepareRejectsMultipleJSONObjects(t *testing.T) {
 
 func TestSkillPackagingPrepareRejectsRemovedLocalSourceType(t *testing.T) {
 	server := NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
-		Packaging:  packaging.NewService(""),
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		Packaging:  packagingapplication.NewService(""),
 	})
 	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
 		"source":{"type":"local","location":"/tmp"},
@@ -2369,8 +2370,8 @@ func TestSkillPackagingPrepareRejectsRemovedLocalSourceType(t *testing.T) {
 func TestSkillPackagingPrepareReturnsInternalErrorWhenIdempotencyLookupFails(t *testing.T) {
 	fixtureDir := createPackagingFixture(t)
 	server := NewServer(ServerConfig{
-		Repository:  catalog.NewMemoryRepository(catalog.SampleData()),
-		Packaging:   packaging.NewService(""),
+		Repository:  cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		Packaging:   packagingapplication.NewService(""),
 		Idempotency: stubIdempotencyStore{lookupErr: errors.New("lookup failed")},
 	})
 	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
@@ -2391,7 +2392,7 @@ func TestSkillPackagingPrepareReturnsInternalErrorWhenIdempotencyLookupFails(t *
 
 func TestSkillPackagingPackReturnsNotFoundWithoutPackagingService(t *testing.T) {
 	server := NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 	})
 	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/pack", `{"workspacePath":"/tmp","target":{"packageName":"@platform.skill/test","version":"0.1.0"}}`)
 	request.Header.Set("X-Role", "publisher")
@@ -2410,7 +2411,7 @@ func TestPublishedPackageCanBeReleasedAndResolvedThroughCatalog(t *testing.T) {
 	registryClient := registry.client()
 
 	catalogServer := NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData(), catalog.MemoryRepositoryOptions{
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData(), cataloginfra.MemoryRepositoryOptions{
 			ArtifactSource: artifactadapter.NewNPMRegistryArtifactSource(registryBaseURL, registryClient),
 		}),
 	})
@@ -2496,8 +2497,8 @@ func TestPublishedPackageCanBeReleasedAndResolvedThroughCatalog(t *testing.T) {
 func TestSQLRepositoryBackedServerSupportsCatalogFlows(t *testing.T) {
 	ctx := context.Background()
 	databaseURL := "file:" + filepath.Join(t.TempDir(), "catalog.db")
-	repository, err := catalog.NewSQLRepository(ctx, databaseURL, catalog.SampleData(), catalog.SQLRepositoryOptions{
-		ArtifactSource: catalog.NewStaticArtifactSource(catalog.SampleData().Artifacts),
+	repository, err := cataloginfra.NewSQLRepository(ctx, databaseURL, cataloginfra.SampleData(), cataloginfra.SQLRepositoryOptions{
+		ArtifactSource: cataloginfra.NewStaticArtifactSource(cataloginfra.SampleData().Artifacts),
 	})
 	if err != nil {
 		t.Fatalf("create sql repository: %v", err)
@@ -2505,7 +2506,7 @@ func TestSQLRepositoryBackedServerSupportsCatalogFlows(t *testing.T) {
 
 	server := NewServer(ServerConfig{
 		Repository: repository,
-		Packaging:  packaging.NewService(""),
+		Packaging:  packagingapplication.NewService(""),
 	})
 
 	listRequest := httptest.NewRequest(http.MethodGet, "/api/v1/skills?q=pdf", nil)
@@ -2848,8 +2849,8 @@ func TestInstallTargetUsesPublicRegistryURLWhenConfigured(t *testing.T) {
 	internalRegistry := "http://nexus.skill-registry.svc.cluster.local:8081/repository/skills-npm"
 	publicRegistry := "https://skills.example.com/repository/skills-npm"
 	server := NewServer(ServerConfig{
-		Repository:           catalog.NewMemoryRepository(catalog.SampleDataWithRegistryBase(internalRegistry)),
-		Packaging:            packaging.NewService(""),
+		Repository:           cataloginfra.NewMemoryRepository(cataloginfra.SampleDataWithRegistryBase(internalRegistry)),
+		Packaging:            packagingapplication.NewService(""),
 		PublicNPMRegistryURL: publicRegistry,
 	})
 
@@ -3158,9 +3159,9 @@ func TestReleaseRecordWithNPMRegistryArtifactSourcePersistsAndReloads(t *testing
 	}
 
 	server := NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData(), catalog.MemoryRepositoryOptions{
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData(), cataloginfra.MemoryRepositoryOptions{
 			ArtifactSource: artifactadapter.NewNPMRegistryArtifactSource("https://registry.example.com", client),
-			AggregateStore: catalog.NewJSONAggregateStore(statePath),
+			AggregateStore: cataloginfra.NewJSONAggregateStore(statePath),
 		}),
 	})
 
@@ -3191,9 +3192,9 @@ func TestReleaseRecordWithNPMRegistryArtifactSourcePersistsAndReloads(t *testing
 		t.Fatalf("expected display name from tarball scan, got %s", detail.DisplayName)
 	}
 	expectedDigest := manifestDigest(skillContent)
-	reloaded := catalog.NewMemoryRepository(catalog.SampleData(), catalog.MemoryRepositoryOptions{
-		ArtifactSource: catalog.NewStaticArtifactSource(nil),
-		AggregateStore: catalog.NewJSONAggregateStore(statePath),
+	reloaded := cataloginfra.NewMemoryRepository(cataloginfra.SampleData(), cataloginfra.MemoryRepositoryOptions{
+		ArtifactSource: cataloginfra.NewStaticArtifactSource(nil),
+		AggregateStore: cataloginfra.NewJSONAggregateStore(statePath),
 	})
 	versionDetail, err := reloaded.GetVersion(request.Context(), "@platform.skill/agent-notes", "0.1.0")
 	if err != nil {
@@ -3213,7 +3214,7 @@ func TestPublishedPackagePreservesSkillSourceTypeInReleaseRecord(t *testing.T) {
 	registryClient := registry.client()
 
 	catalogServer := NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData(), catalog.MemoryRepositoryOptions{
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData(), cataloginfra.MemoryRepositoryOptions{
 			ArtifactSource: artifactadapter.NewNPMRegistryArtifactSource(registryBaseURL, registryClient),
 		}),
 	})
@@ -3396,8 +3397,8 @@ func TestVersionGovernanceRejectsNonSemverVersionPath(t *testing.T) {
 func TestRequestLoggingIncludesRequestMetadata(t *testing.T) {
 	var logBuffer bytes.Buffer
 	server := NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
-		Packaging:  packaging.NewService(""),
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		Packaging:  packagingapplication.NewService(""),
 		Logger:     log.New(&logBuffer, "", 0),
 	})
 
@@ -3447,8 +3448,8 @@ func TestRequestLoggingIncludesRequestMetadata(t *testing.T) {
 func TestRequestLoggingIncludesTraceIDAndResponseHeader(t *testing.T) {
 	var logBuffer bytes.Buffer
 	server := NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
-		Packaging:  packaging.NewService(""),
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		Packaging:  packagingapplication.NewService(""),
 		Logger:     log.New(&logBuffer, "", 0),
 	})
 
@@ -3479,8 +3480,8 @@ func TestRequestLoggingIncludesTraceIDAndResponseHeader(t *testing.T) {
 func TestRequestMetadataMiddlewareGeneratesTraceIDAndLogsHeaders(t *testing.T) {
 	var logBuffer bytes.Buffer
 	server := NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
-		Packaging:  packaging.NewService(""),
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		Packaging:  packagingapplication.NewService(""),
 		Logger:     log.New(&logBuffer, "", 0),
 	})
 
@@ -3520,8 +3521,8 @@ func TestRequestMetadataMiddlewareGeneratesTraceIDAndLogsHeaders(t *testing.T) {
 
 func TestMetricsEndpointReportsRequests(t *testing.T) {
 	server := NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
-		Packaging:  packaging.NewService(""),
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		Packaging:  packagingapplication.NewService(""),
 	})
 
 	okRequest := httptest.NewRequest(http.MethodGet, "/api/v1/skills", nil)
@@ -3562,8 +3563,8 @@ func TestMetricsEndpointReportsRequests(t *testing.T) {
 
 func TestHealthAndReadinessEndpointsReturnOK(t *testing.T) {
 	server := NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
-		Packaging:  packaging.NewService(""),
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		Packaging:  packagingapplication.NewService(""),
 	})
 
 	for _, path := range []string{"/healthz", "/readyz"} {
@@ -3588,10 +3589,10 @@ func TestHealthAndReadinessEndpointsReturnOK(t *testing.T) {
 func TestReadyzReturnsDegradedWhenDependenciesFail(t *testing.T) {
 	server := NewServer(ServerConfig{
 		Repository: pingingRepository{
-			Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+			Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 			err:        errors.New("repository unavailable"),
 		},
-		Packaging: packaging.NewService(""),
+		Packaging: packagingapplication.NewService(""),
 		Audit: stubAuditStore{
 			pingErr: errors.New("audit unavailable"),
 		},
@@ -3721,8 +3722,8 @@ func TestReleaseRecordRejectsMultipleJSONObjects(t *testing.T) {
 func TestRecordMutationAuditLogsWriteFailure(t *testing.T) {
 	var logBuffer bytes.Buffer
 	server := NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
-		Packaging:  packaging.NewService(""),
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		Packaging:  packagingapplication.NewService(""),
 		Audit: stubAuditStore{
 			appendErr: errors.New("append failed"),
 		},
@@ -3757,8 +3758,8 @@ func TestRecordMutationAuditLogsWriteFailure(t *testing.T) {
 func TestAuthenticationDeniedAuditLogsWriteFailure(t *testing.T) {
 	var logBuffer bytes.Buffer
 	server := NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
-		Packaging:  packaging.NewService(""),
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		Packaging:  packagingapplication.NewService(""),
 		Audit: stubAuditStore{
 			appendErr: errors.New("append failed"),
 		},
@@ -3792,8 +3793,8 @@ func TestAuthenticationDeniedAuditLogsWriteFailure(t *testing.T) {
 func TestLogAuditWriteFailureIgnoresNilError(t *testing.T) {
 	var logBuffer bytes.Buffer
 	server := NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
-		Packaging:  packaging.NewService(""),
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		Packaging:  packagingapplication.NewService(""),
 		Logger:     log.New(&logBuffer, "", 0),
 	})
 
@@ -3809,8 +3810,8 @@ func TestLogAuditWriteFailureIgnoresNilError(t *testing.T) {
 
 func newTestServer() *Server {
 	return NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
-		Packaging:  packaging.NewService(""),
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		Packaging:  packagingapplication.NewService(""),
 	})
 }
 

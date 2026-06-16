@@ -1,7 +1,7 @@
 package catalogapi
 
 import (
-	"skill_registry/business/catalog"
+	catalog "skill_registry/internal/catalog/domain"
 	platformhttp "skill_registry/internal/platform/http"
 )
 

@@ -9,10 +9,10 @@ import (
 	"testing"
 
 	"skill_registry/app/catalogapi/system"
-	"skill_registry/business/catalog"
-	"skill_registry/business/packaging"
 	internalapp "skill_registry/internal/catalog/application"
+	cataloginfra "skill_registry/internal/catalog/infra"
 	packagingapplication "skill_registry/internal/packaging/application"
+	packaging "skill_registry/internal/packaging/domain"
 )
 
 func TestServerRoutesAuditEventsThroughAuditQueryModule(t *testing.T) {
@@ -89,7 +89,7 @@ func TestNewServerUsesExplicitWorkflowServicesWhenProvided(t *testing.T) {
 	explicitRead := internalapp.NewReadService(serverQueryStoreStub{})
 	explicitWrite := internalapp.NewWriteService(serverAggregateStateStoreStub{}, serverArtifactSourceStub{})
 	provider := &repositoryApplicationProviderStub{
-		Repository:   catalog.NewMemoryRepository(catalog.SampleData()),
+		Repository:   cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 		readService:  providerRead,
 		writeService: providerWrite,
 	}
@@ -122,7 +122,7 @@ func TestNewServerDoesNotConfigurePackagingPublishWorkflow(t *testing.T) {
 	packagingService := &packagingApplicationStub{}
 
 	NewServer(ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 		Packaging:  packagingService,
 	})
 

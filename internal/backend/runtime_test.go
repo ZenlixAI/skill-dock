@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"skill_registry/app/catalogapi"
-	"skill_registry/business/catalog"
+	cataloginfra "skill_registry/internal/catalog/infra"
 	packagingapplication "skill_registry/internal/packaging/application"
 )
 
@@ -20,7 +20,7 @@ func TestNewRuntimeBuildsCatalogReadServiceAndHTTPServer(t *testing.T) {
 		Addr:                ":8080",
 		DatabaseURL:         "file:" + filepath.Join(root, "runtime.db"),
 		SharedWorkspaceRoot: filepath.Join(root, "workspaces"),
-		ArtifactSource:      catalog.NewStaticArtifactSource(nil),
+		ArtifactSource:      cataloginfra.NewStaticArtifactSource(nil),
 		Server: catalogapi.ServerConfig{
 			ReaderToken: "reader-secret",
 		},
@@ -70,21 +70,21 @@ func TestNewRuntimeBuildsExplicitCatalogServicesInsteadOfReusingRepositoryProvid
 	runtime, err := NewRuntime(context.Background(), Config{
 		DatabaseURL:         "file:" + filepath.Join(root, "runtime.db"),
 		SharedWorkspaceRoot: filepath.Join(root, "workspaces"),
-		ArtifactSource:      catalog.NewStaticArtifactSource(nil),
+		ArtifactSource:      cataloginfra.NewStaticArtifactSource(nil),
 	})
 	if err != nil {
 		t.Fatalf("new runtime: %v", err)
 	}
 
-	provider, ok := any(runtime.Repository).(catalog.ApplicationServiceProvider)
+	repository, ok := any(runtime.Repository).(*cataloginfra.CatalogRepository)
 	if !ok {
-		t.Fatalf("expected runtime repository to expose compatibility provider, got %T", runtime.Repository)
+		t.Fatalf("expected runtime repository to use internal catalog infra seam, got %T", runtime.Repository)
 	}
 
-	if runtime.CatalogRead == provider.CatalogReadService() {
+	if runtime.CatalogRead == repository.CatalogReadService() {
 		t.Fatal("expected runtime to construct explicit read service instead of reusing repository provider")
 	}
-	if runtime.CatalogWrite == provider.CatalogWriteService() {
+	if runtime.CatalogWrite == repository.CatalogWriteService() {
 		t.Fatal("expected runtime to construct explicit write service instead of reusing repository provider")
 	}
 }

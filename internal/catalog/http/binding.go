@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"skill_registry/business/catalog"
+	catalog "skill_registry/internal/catalog/domain"
 )
 
 type SkillsQuery struct {

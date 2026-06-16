@@ -8,8 +8,9 @@ import (
 	"time"
 
 	"skill_registry/app/catalogapi"
-	"skill_registry/business/catalog"
 	"skill_registry/internal/backend"
+	catalogdomain "skill_registry/internal/catalog/domain"
+	cataloginfra "skill_registry/internal/catalog/infra"
 	platformartifact "skill_registry/internal/platform/artifact"
 	platformauth "skill_registry/internal/platform/auth"
 )
@@ -32,7 +33,7 @@ func TestEnvDurationOrDefaultParsesConfiguredDuration(t *testing.T) {
 
 func TestConfiguredHTTPServerBuildsTimeouts(t *testing.T) {
 	server := catalogapi.NewServer(catalogapi.ServerConfig{
-		Repository: catalog.NewMemoryRepository(catalog.SampleData()),
+		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 	})
 	httpServer := catalogapi.NewHTTPServer(":8080", server.Handler(), catalogapi.HTTPServerConfig{
 		ReadHeaderTimeout: 2 * time.Second,
@@ -113,7 +114,7 @@ func TestConfiguredArtifactSourceFallsBackToEmptyStaticSource(t *testing.T) {
 
 	source := configuredArtifactSource()
 
-	staticSource, ok := source.(*catalog.StaticArtifactSource)
+	staticSource, ok := source.(*cataloginfra.StaticArtifactSource)
 	if !ok {
 		t.Fatalf("expected static artifact source, got %T", source)
 	}
@@ -123,7 +124,7 @@ func TestConfiguredArtifactSourceFallsBackToEmptyStaticSource(t *testing.T) {
 		t.Fatal("expected empty fallback artifact source to miss sample artifact")
 	}
 
-	var catalogErr *catalog.Error
+	var catalogErr *catalogdomain.Error
 	if !errors.As(err, &catalogErr) {
 		t.Fatalf("expected catalog error, got %T", err)
 	}
@@ -133,7 +134,7 @@ func TestConfiguredArtifactSourceFallsBackToEmptyStaticSource(t *testing.T) {
 }
 
 func TestConfiguredRepositoryOptionsDisableSeedAndPreserveArtifactSource(t *testing.T) {
-	artifactSource := catalog.NewStaticArtifactSource(nil)
+	artifactSource := cataloginfra.NewStaticArtifactSource(nil)
 
 	options := configuredRepositoryOptions(artifactSource)
 

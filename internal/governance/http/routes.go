@@ -10,7 +10,7 @@ import (
 
 	"skill_registry/app/catalogapi/common"
 	"skill_registry/app/catalogapi/response"
-	"skill_registry/business/catalog"
+	catalog "skill_registry/internal/catalog/domain"
 	cataloghttp "skill_registry/internal/catalog/http"
 	"skill_registry/internal/platform/auth"
 )

@@ -14,7 +14,7 @@ import (
 	"os"
 	"strings"
 
-	"skill_registry/business/catalog"
+	catalog "skill_registry/internal/catalog/domain"
 )
 
 type NPMPublisher struct {

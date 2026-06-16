@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	"skill_registry/app/catalogapi/audit"
-	"skill_registry/business/catalog"
-	"skill_registry/business/packaging"
+	catalog "skill_registry/internal/catalog/domain"
 	packagingapplication "skill_registry/internal/packaging/application"
+	packaging "skill_registry/internal/packaging/domain"
 	"skill_registry/internal/platform/auth"
 )
 
@@ -97,7 +97,7 @@ func TestServerReturnsBundleLoadError(t *testing.T) {
 }
 
 func TestServerCleanupRemovesWorkspaceAndBundle(t *testing.T) {
-	service := packaging.NewService(t.TempDir())
+	service := packagingapplication.NewService(t.TempDir())
 	workspacePath, bundlePath := prepareManagedWorkspaceForTest(t, service, "@platform.skill/fixture-skill", "0.2.0")
 	store := &captureAuditStore{}
 	server := &Server{

@@ -11,7 +11,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	_ "modernc.org/sqlite"
-	"skill_registry/business/catalog"
+	catalog "skill_registry/internal/catalog/domain"
 	platformobservability "skill_registry/internal/platform/observability"
 )
 

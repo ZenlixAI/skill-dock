@@ -1,6 +1,6 @@
 package domain
 
-import "skill_registry/business/catalog"
+import catalog "skill_registry/internal/catalog/domain"
 
 type Source struct {
 	Type          string            `json:"type"`

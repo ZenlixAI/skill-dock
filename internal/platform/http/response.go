@@ -8,7 +8,7 @@ import (
 	"io"
 	stdhttp "net/http"
 
-	"skill_registry/business/catalog"
+	catalog "skill_registry/internal/catalog/domain"
 	"skill_registry/internal/platform/auth"
 )
 
