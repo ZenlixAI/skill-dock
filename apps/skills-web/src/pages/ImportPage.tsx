@@ -671,6 +671,7 @@ export function ImportPage() {
   }
 
   async function handlePreview() {
+    const inputRevision = inputRevisionRef.current;
     let prepareRequest: PackagingPrepareRequest;
     try {
       prepareRequest = await buildPrepareRequest();
@@ -693,6 +694,9 @@ export function ImportPage() {
           message,
         })
       );
+      return;
+    }
+    if (inputRevision !== inputRevisionRef.current) {
       return;
     }
 

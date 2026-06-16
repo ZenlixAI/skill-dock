@@ -500,6 +500,30 @@ describe('ImportPage', () => {
     expect(screen.queryByText('预览已生成，可以继续发布 skill。')).not.toBeInTheDocument();
   });
 
+  it('does not start prepare when preview inputs change during archive assembly', async () => {
+    let resolveArchive!: (value: { archiveBase64: string }) => void;
+    vi.mocked(externalImport.buildExternalImportArchive).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveArchive = resolve;
+        })
+    );
+
+    renderImportPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: '检查并生成发布预览' }));
+    await waitFor(() => expect(externalImport.buildExternalImportArchive).toHaveBeenCalledTimes(1));
+    fireEvent.change(screen.getByLabelText('显示名'), {
+      target: { value: 'Zoom Out v2' },
+    });
+
+    resolveArchive({ archiveBase64: 'archive-base64' });
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '发布 skill' })).toBeDisabled());
+    expect(client.preparePackaging).not.toHaveBeenCalled();
+    expect(client.validatePackaging).not.toHaveBeenCalled();
+  });
+
   it('shows the validated stage after preview succeeds', async () => {
     vi.mocked(client.preparePackaging).mockResolvedValue({
       workspacePath: '/tmp/skill-packaging/workspace',
