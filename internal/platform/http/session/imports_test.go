@@ -1,4 +1,4 @@
-package sessionhandlers
+package session
 
 import (
 	"go/parser"

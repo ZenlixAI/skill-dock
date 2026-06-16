@@ -12,7 +12,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	sessionhandlers "skill_registry/app/catalogapi/handlers/session"
 	catalogapp "skill_registry/internal/catalog/application"
 	catalog "skill_registry/internal/catalog/domain"
 	internalcataloghttp "skill_registry/internal/catalog/http"
@@ -24,8 +23,10 @@ import (
 	"skill_registry/internal/platform/auth"
 	platformhttp "skill_registry/internal/platform/http"
 	platformmiddleware "skill_registry/internal/platform/http/middleware"
+	platformsessionhttp "skill_registry/internal/platform/http/session"
 	"skill_registry/internal/platform/observability"
 	persist "skill_registry/internal/platform/persistence"
+	platformsession "skill_registry/internal/platform/session"
 	internalsystemhttp "skill_registry/internal/system/http"
 )
 
@@ -80,7 +81,7 @@ type Server struct {
 	packagingWorkflow                *internalpackaginghttp.Workflow
 	cleanupPackagingFunc             func(ctx context.Context, principal auth.Principal, payload packaging.CleanupRequest) (packaging.CleanupResponse, int, *catalog.Error)
 	downloadBundleFunc               func(ctx context.Context, principal auth.Principal, workspacePath string, packageName string, version string) (string, *catalog.Error)
-	sessionModule                    sessionWorkflow
+	sessionModule                    platformsession.Workflow
 	systemModule                     systemWorkflow
 	publicNPMRegistryURL             string
 	packaging                        packagingApplication
@@ -177,10 +178,7 @@ func NewServer(config ServerConfig) *Server {
 	})
 	server.cleanupPackagingFunc = server.cleanupPackaging
 	server.downloadBundleFunc = server.downloadBundle
-	server.sessionModule = &sessionModule{
-		authorizer:     authorizer,
-		sessionManager: sessionManager,
-	}
+	server.sessionModule = platformsession.NewModule(authorizer, sessionManager)
 	server.systemModule = internalsystemhttp.NewModule(
 		internalsystemhttp.NamedDependency{Name: "repository", Pinger: internalsystemhttp.DependencyPinger(config.Repository)},
 		internalsystemhttp.NamedDependency{Name: "audit", Pinger: internalsystemhttp.DependencyPinger(config.Audit)},
@@ -288,29 +286,29 @@ func (s *Server) logAuditWriteFailure(request *http.Request, action string, err 
 
 func (s *Server) newEngine() *gin.Engine {
 	systemHTTPHandlers := internalsystemhttp.New(s.systemModule.Readyz, s.metrics.RenderPrometheus)
-	sessionHTTPHandlers := sessionhandlers.New(sessionhandlers.Handlers{
+	sessionHTTPHandlers := platformsessionhttp.New(platformsessionhttp.Handlers{
 		Authenticate:    s.authenticateRequest,
 		AuthorizeAction: s.accessWorkflow.authorizeAction,
 		CurrentFunc: func(principal auth.Principal) any {
 			if s.sessionModule == nil {
 				return nil
 			}
-			return s.sessionModule.current(principal)
+			return s.sessionModule.Current(principal)
 		},
 		LoginFunc: func(request *http.Request, username string, password string) (auth.Principal, *http.Cookie, bool) {
 			if s.sessionModule == nil {
 				return auth.Principal{}, nil, false
 			}
-			return s.sessionModule.login(request, username, password)
+			return s.sessionModule.Login(request, username, password)
 		},
 		LogoutCookie: func(request *http.Request) *http.Cookie {
 			if s.sessionModule == nil {
 				return nil
 			}
-			return s.sessionModule.logoutCookie(request)
+			return s.sessionModule.LogoutCookie(request)
 		},
 		Enabled: func() bool {
-			return s.sessionModule != nil && s.sessionModule.enabled()
+			return s.sessionModule != nil && s.sessionModule.Enabled()
 		},
 	})
 	catalogHTTPHandlers := internalcataloghttp.New(internalcataloghttp.Handlers{

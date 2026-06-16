@@ -19,6 +19,7 @@ import (
 	"skill_registry/internal/platform/auth"
 	platformhttp "skill_registry/internal/platform/http"
 	persist "skill_registry/internal/platform/persistence"
+	platformsession "skill_registry/internal/platform/session"
 )
 
 func contextWithRequestMetadataForTest(ctx context.Context, requestID string, traceID string) context.Context {
@@ -69,14 +70,6 @@ func (m *catalogReadModuleStub) listSkillsCallCount() int {
 	return int(m.listSkillsCalls.Load())
 }
 
-func newSessionModuleForTest(_ interface{ Helper() }) *sessionModule {
-	return &sessionModule{
-		authorizer: auth.NewAuthorizer(auth.Config{
-			PublisherToken: "publisher-secret",
-		}),
-	}
-}
-
 type sessionModuleStub struct {
 	currentCalls atomic.Int64
 	loginCalls   atomic.Int64
@@ -87,15 +80,15 @@ func newSessionModuleStubForTest(_ interface{ Helper() }) *sessionModuleStub {
 	return &sessionModuleStub{}
 }
 
-func newTestServerWithSessionModule(_ interface{ Helper() }, module sessionWorkflow) *Server {
+func newTestServerWithSessionModule(_ interface{ Helper() }, module platformsession.Workflow) *Server {
 	server := newTestServer()
 	server.sessionModule = module
 	return server
 }
 
-func (m *sessionModuleStub) current(auth.Principal) sessionResponse {
+func (m *sessionModuleStub) Current(auth.Principal) platformsession.Response {
 	m.currentCalls.Add(1)
-	return sessionResponse{
+	return platformsession.Response{
 		Role:            "publisher",
 		Actor:           "delegated",
 		AuthMechanism:   "delegated_session",
@@ -104,7 +97,7 @@ func (m *sessionModuleStub) current(auth.Principal) sessionResponse {
 	}
 }
 
-func (m *sessionModuleStub) login(_ *http.Request, _, _ string) (auth.Principal, *http.Cookie, bool) {
+func (m *sessionModuleStub) Login(_ *http.Request, _, _ string) (auth.Principal, *http.Cookie, bool) {
 	m.loginCalls.Add(1)
 	return auth.Principal{
 		Role:          "publisher",
@@ -113,12 +106,12 @@ func (m *sessionModuleStub) login(_ *http.Request, _, _ string) (auth.Principal,
 	}, &http.Cookie{Name: auth.SessionCookieName, Value: "delegated-cookie", Path: "/"}, true
 }
 
-func (m *sessionModuleStub) logoutCookie(_ *http.Request) *http.Cookie {
+func (m *sessionModuleStub) LogoutCookie(_ *http.Request) *http.Cookie {
 	m.logoutCalls.Add(1)
 	return &http.Cookie{Name: auth.SessionCookieName, Value: "", Path: "/", MaxAge: -1}
 }
 
-func (m *sessionModuleStub) enabled() bool {
+func (m *sessionModuleStub) Enabled() bool {
 	return true
 }
 
