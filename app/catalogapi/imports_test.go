@@ -26,15 +26,6 @@ func TestServerUsesPlatformAccessOwnerDirectly(t *testing.T) {
 	}
 }
 
-func TestCatalogCallersStopImportingCommon(t *testing.T) {
-	for _, path := range []string{"server_workflows.go"} {
-		imports := parseImports(t, path)
-		if imports["skill_registry/app/catalogapi/common"] {
-			t.Fatalf("expected %s to stop importing skill_registry/app/catalogapi/common", path)
-		}
-	}
-}
-
 func parseImports(t *testing.T, path string) map[string]bool {
 	t.Helper()
 

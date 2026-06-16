@@ -1,4 +1,4 @@
-package catalogapi
+package http
 
 import (
 	"strings"
@@ -6,14 +6,15 @@ import (
 	catalog "skill_registry/internal/catalog/domain"
 )
 
-func (s *Server) publicInstallTarget(response catalog.InstallResolution) catalog.InstallResolution {
-	if s.publicNPMRegistryURL == "" {
+func RewritePublicInstallTarget(response catalog.InstallResolution, publicRegistryURL string) catalog.InstallResolution {
+	if strings.TrimSpace(publicRegistryURL) == "" {
 		return response
 	}
 
 	internalRegistry := strings.TrimRight(strings.TrimSpace(response.NPMRegistry), "/")
-	response.NPMRegistry = s.publicNPMRegistryURL
-	response.TarballURL = rewriteRegistryBaseURL(response.TarballURL, internalRegistry, s.publicNPMRegistryURL)
+	publicRegistry := strings.TrimRight(strings.TrimSpace(publicRegistryURL), "/")
+	response.NPMRegistry = publicRegistry
+	response.TarballURL = rewriteRegistryBaseURL(response.TarballURL, internalRegistry, publicRegistry)
 	return response
 }
 

@@ -323,7 +323,9 @@ func (s *Server) newEngine() *gin.Engine {
 		ListVersionsFunc:     s.catalogReadModule.ListVersions,
 		GetVersionFunc:       s.catalogReadModule.GetVersion,
 		ResolveInstallTarget: s.catalogReadModule.ResolveInstallTarget,
-		PublicInstallTarget:  s.publicInstallTarget,
+		PublicInstallTarget: func(response catalog.InstallResolution) catalog.InstallResolution {
+			return internalcataloghttp.RewritePublicInstallTarget(response, s.publicNPMRegistryURL)
+		},
 	})
 	governanceHTTPHandlers := internalgovernancehttp.New(internalgovernancehttp.Handlers{
 		ServeCachedReadJSON: s.serveCachedReadJSON,

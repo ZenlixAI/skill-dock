@@ -39,6 +39,19 @@ func TestReadWorkflowUsesInternalPlatformHTTPHelpers(t *testing.T) {
 	}
 }
 
+func TestInstallTargetHelpersDoNotImportAppWrappers(t *testing.T) {
+	imports := parseImports(t, "install_target.go")
+
+	for _, importPath := range []string{
+		"skill_registry/app/catalogapi/common",
+		"skill_registry/app/catalogapi/response",
+	} {
+		if imports[importPath] {
+			t.Fatalf("expected install_target.go to stop importing %s", importPath)
+		}
+	}
+}
+
 func parseImports(t *testing.T, path string) map[string]bool {
 	t.Helper()
 
