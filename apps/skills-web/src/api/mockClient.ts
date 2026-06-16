@@ -4,6 +4,8 @@ import type {
   ListAuditFilters,
   ListGovernanceFilters,
   ListSkillsFilters,
+  PackagingImportReviewRequest,
+  PackagingImportReviewResponse,
   PackagingPackRequest,
   PackagingPackResponse,
   PackagingPublishRequest,
@@ -223,6 +225,48 @@ export const mockClient: RegistryApiClient = {
     return delay(response);
   },
 
+  async importReviewPackaging(request: PackagingImportReviewRequest) {
+    const warningDetails = request.options.strict ? [] : previewWarningDetails;
+    const warnings = warningDetails.map((item) => item.code);
+    const response: PackagingImportReviewResponse = {
+      ok: true,
+      packageName: request.target.packageName,
+      version: request.target.version,
+      manifestDigest: 'sha256:1c65eab3e1fb04af11c5ff2e7c54a1f0',
+      components: ['docs', 'scripts'],
+      bundleBase64: request.includeBundleBase64 ? 'c2tpbGwtYnVuZGxl' : undefined,
+      warnings,
+      warningDetails,
+      importReport: {
+        ...previewImportReport,
+        sourceType: request.source.type,
+        strictMode: Boolean(request.options.strict),
+        normalized: !request.options.strict,
+        generatedCapabilityPlaceholder: !request.options.strict,
+        warningCodes: warnings,
+      },
+      errors: [],
+    };
+    recordAudit(state, {
+      action: 'packaging.import_review',
+      actor: 'web-ui',
+      role: 'publisher',
+      authMechanism: 'mock',
+      authDecision: 'allowed',
+      endpoint: '/api/v1/skill-packaging/import-review',
+      method: 'POST',
+      packageName: request.target.packageName,
+      version: request.target.version,
+      outcome: 'succeeded',
+      statusCode: 200,
+      details: {
+        includeBundleBase64: Boolean(request.includeBundleBase64),
+        sourceType: request.source.type,
+      },
+    });
+    return delay(response);
+  },
+
   async validatePackaging(request: PackagingValidateRequest) {
     const response: PackagingValidateResponse = {
       ok: true,
@@ -293,7 +337,7 @@ export const mockClient: RegistryApiClient = {
       (item) => item.version === request.target.version
     );
     const result: PackagingPublishResponse = {
-      workspacePath: request.workspacePath,
+      workspacePath: '',
       packageName: request.target.packageName,
       version: request.target.version,
       manifestDigest: 'sha256:1c65eab3e1fb04af11c5ff2e7c54a1f0',
@@ -335,7 +379,6 @@ export const mockClient: RegistryApiClient = {
       outcome: 'succeeded',
       statusCode: existing ? 200 : 201,
       details: {
-        workspacePath: request.workspacePath,
         publishedToRegistry: result.publishedToRegistry,
         created: result.created,
       },

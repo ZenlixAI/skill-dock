@@ -84,6 +84,19 @@ export interface ValidatePackagingResponse extends PreparePackagingResponse {
   components?: string[];
 }
 
+export interface ImportReviewPackagingResponse {
+  ok: boolean;
+  packageName: string;
+  version: string;
+  manifestDigest?: string;
+  components?: string[];
+  bundleBase64?: string;
+  warnings: string[];
+  warningDetails?: PackagingWarningDetail[];
+  importReport?: PackagingImportReport;
+  errors: string[];
+}
+
 export interface PackPackagingResponse extends PreparePackagingResponse {
   bundlePath: string;
   bundleBase64?: string;
@@ -244,6 +257,34 @@ function normalizeValidatePackagingResponse(payload: unknown): ValidatePackaging
       record.components === undefined || record.components === null
         ? undefined
         : normalizeStringArrayField(record, 'components', 'catalog validate'),
+  };
+}
+
+function normalizeImportReviewPackagingResponse(payload: unknown): ImportReviewPackagingResponse {
+  const record = asRecord(payload);
+  if (!record) {
+    throw new Error('catalog import-review response was malformed');
+  }
+
+  const ok = record.ok;
+  if (typeof ok !== 'boolean') {
+    throw new Error('catalog import-review response was malformed: ok must be a boolean');
+  }
+
+  return {
+    ok,
+    packageName: readRequiredStringField(record, 'packageName', 'catalog import-review'),
+    version: readRequiredStringField(record, 'version', 'catalog import-review'),
+    manifestDigest: readOptionalStringField(record, 'manifestDigest', 'catalog import-review'),
+    components:
+      record.components === undefined || record.components === null
+        ? undefined
+        : normalizeStringArrayField(record, 'components', 'catalog import-review'),
+    bundleBase64: readOptionalStringField(record, 'bundleBase64', 'catalog import-review'),
+    warnings: normalizeStringArrayField(record, 'warnings', 'catalog import-review'),
+    warningDetails: normalizeWarningDetailsField(record, 'warningDetails', 'catalog import-review'),
+    importReport: normalizeImportReportField(record, 'importReport', 'catalog import-review'),
+    errors: normalizeStringArrayField(record, 'errors', 'catalog import-review'),
   };
 }
 
@@ -498,6 +539,40 @@ export async function prepareSkillPackaging(input: {
   }
 
   return normalizePreparePackagingResponse(await response.json());
+}
+
+export async function importReviewPackaging(input: {
+  registry?: string;
+  idempotencyKey?: string;
+  source: PackagingSource;
+  target: PackagingTarget;
+  metadata?: PackagingMetadata;
+  options?: PackagingOptions;
+  includeBundleBase64?: boolean;
+}): Promise<ImportReviewPackagingResponse> {
+  const url = buildCatalogUrl('/api/v1/skill-packaging/import-review', undefined, input.registry);
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+      ...getCatalogAuthHeaders(),
+    },
+    body: JSON.stringify({
+      idempotencyKey: input.idempotencyKey,
+      source: input.source,
+      target: input.target,
+      metadata: input.metadata || {},
+      options: input.options || {},
+      includeBundleBase64: input.includeBundleBase64,
+    }),
+  });
+
+  if (!response.ok) {
+    throw await parseCatalogError(response);
+  }
+
+  return normalizeImportReviewPackagingResponse(await response.json());
 }
 
 export async function validateSkillPackaging(input: {

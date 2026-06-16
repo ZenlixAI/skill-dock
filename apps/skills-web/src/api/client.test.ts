@@ -23,6 +23,7 @@ function createMockApiClient(overrides: Partial<RegistryApiClient>): RegistryApi
     getVersionDetail: notUsed,
     listGovernanceChanges: notUsed,
     listAuditEvents: notUsed,
+    importReviewPackaging: notUsed,
     preparePackaging: notUsed,
     validatePackaging: notUsed,
     packSkill: notUsed,
@@ -33,6 +34,37 @@ function createMockApiClient(overrides: Partial<RegistryApiClient>): RegistryApi
     applyVersionGovernanceChange: notUsed,
     ...overrides,
   } as unknown as RegistryApiClient;
+}
+
+async function importWithRequestJSON(requestJSON: ReturnType<typeof vi.fn>) {
+  const mockConfig: RegistryClientConfig = {
+    mode: 'real',
+    baseUrl: null,
+    role: null,
+    actor: null,
+    hasToken: true,
+  };
+
+  vi.doMock('./config', () => ({
+    registryClientConfig: mockConfig,
+  }));
+  vi.doMock('./httpClient', () => ({
+    requestJSON,
+    RegistryHttpError: class RegistryHttpError extends Error {},
+  }));
+  vi.doMock('./mockClient', () => ({
+    mockClient: createMockApiClient({
+      getConfig: () => ({
+        mode: 'mock',
+        baseUrl: null,
+        role: null,
+        actor: null,
+        hasToken: false,
+      }),
+    }),
+  }));
+
+  return import('./client');
 }
 
 afterEach(() => {
@@ -82,6 +114,30 @@ describe('apiClient real-response normalization', () => {
 
     expect(result.warningDetails).toEqual([]);
     expect(result.errors).toEqual([]);
+  });
+
+  it('normalizes import-review responses without workspace fields', async () => {
+    const requestJSON = vi.fn().mockResolvedValue({
+      ok: true,
+      packageName: '@platform.skill/zoom-out',
+      version: '1.2.0',
+      manifestDigest: 'sha256:test',
+      components: ['commands'],
+      warnings: [],
+      warningDetails: [],
+      errors: [],
+    });
+
+    const clientModule = await importWithRequestJSON(requestJSON);
+    const response = await clientModule.importReviewPackaging({
+      source: { type: 'upload_archive', archiveBase64: 'ZmFrZQ==' },
+      target: { packageName: '@platform.skill/zoom-out', version: '1.2.0' },
+      metadata: { displayName: 'Zoom Out', description: 'Broader context' },
+      options: {},
+    });
+
+    expect('workspacePath' in response).toBe(false);
+    expect(response.ok).toBe(true);
   });
 
   it('fills missing bundle metadata with stable defaults', () => {

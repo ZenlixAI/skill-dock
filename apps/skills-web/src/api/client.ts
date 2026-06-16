@@ -40,6 +40,7 @@ export const getInstallTarget = apiClient.getInstallTarget.bind(apiClient);
 export const getVersionDetail = apiClient.getVersionDetail.bind(apiClient);
 export const listGovernanceChanges = apiClient.listGovernanceChanges.bind(apiClient);
 export const listAuditEvents = apiClient.listAuditEvents.bind(apiClient);
+export const importReviewPackaging = apiClient.importReviewPackaging.bind(apiClient);
 export const preparePackaging = apiClient.preparePackaging.bind(apiClient);
 export const validatePackaging = apiClient.validatePackaging.bind(apiClient);
 export const packSkill = apiClient.packSkill.bind(apiClient);

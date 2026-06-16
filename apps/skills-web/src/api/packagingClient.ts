@@ -1,5 +1,7 @@
 import { requestJSON } from './httpClient';
 import type {
+  PackagingImportReviewRequest,
+  PackagingImportReviewResponse,
   PackagingCleanupRequest,
   PackagingCleanupResponse,
   PackagingPackRequest,
@@ -49,8 +51,27 @@ export function normalizePackagingReview<
 
 export const packagingClient: Pick<
   RegistryApiClient,
-  'preparePackaging' | 'validatePackaging' | 'packSkill' | 'publishSkill' | 'cleanupPackagingWorkspace'
+  | 'importReviewPackaging'
+  | 'preparePackaging'
+  | 'validatePackaging'
+  | 'packSkill'
+  | 'publishSkill'
+  | 'cleanupPackagingWorkspace'
 > = {
+  async importReviewPackaging(request: PackagingImportReviewRequest) {
+    const response = await requestJSON<PackagingImportReviewResponse>(
+      '/api/v1/skill-packaging/import-review',
+      {
+        method: 'POST',
+        body: JSON.stringify(request),
+      }
+    );
+    return {
+      ...normalizePackagingReview(response),
+      components: Array.isArray(response.components) ? response.components : [],
+    };
+  },
+
   async preparePackaging(request: PackagingPrepareRequest) {
     const response = await requestJSON<PackagingPrepareResponse>('/api/v1/skill-packaging/prepare', {
       method: 'POST',

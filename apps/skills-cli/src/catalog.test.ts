@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   getRegistryBaseUrl,
+  importReviewPackaging,
   packSkillPackaging,
   prepareSkillPackaging,
   putReleaseRecord,
@@ -17,8 +18,13 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+let fetchMock: ReturnType<typeof vi.fn>;
+
+function queueFetchJson(body: unknown, status = 200) {
+  fetchMock.mockResolvedValueOnce(jsonResponse(body, status));
+}
+
 describe('catalog client', () => {
-  let fetchMock: ReturnType<typeof vi.fn>;
   let originalFetch: typeof globalThis.fetch;
 
   beforeEach(() => {
@@ -236,6 +242,29 @@ describe('catalog client', () => {
       'https://catalog.example.com/api/v1/skill-packaging/pack',
       expect.objectContaining({ method: 'POST' })
     );
+  });
+
+  it('parses one-shot import-review responses without workspacePath', async () => {
+    queueFetchJson({
+      ok: true,
+      packageName: '@platform.skill/zoom-out',
+      version: '1.2.0',
+      manifestDigest: 'sha256:test',
+      components: ['commands'],
+      warnings: [],
+      errors: [],
+    });
+
+    const response = await importReviewPackaging({
+      registry: 'https://catalog.example.com',
+      source: { type: 'upload_archive', archiveBase64: 'ZmFrZQ==' },
+      target: { packageName: '@platform.skill/zoom-out', version: '1.2.0' },
+      metadata: { displayName: 'Zoom Out', description: 'Broader context' },
+      options: {},
+    });
+
+    expect('workspacePath' in response).toBe(false);
+    expect(response.manifestDigest).toBe('sha256:test');
   });
 
   it('normalizes null packaging arrays from catalog success payloads', async () => {

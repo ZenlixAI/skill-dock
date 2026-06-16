@@ -176,6 +176,28 @@ export interface PackagingPrepareRequest {
   idempotencyKey?: string;
 }
 
+export interface PackagingImportReviewRequest {
+  source: PackagingSource;
+  target: PackagingTarget;
+  metadata: PackagingMetadata;
+  options: PackagingOptions;
+  idempotencyKey?: string;
+  includeBundleBase64?: boolean;
+}
+
+export interface PackagingImportReviewResponse {
+  ok: boolean;
+  packageName: string;
+  version: string;
+  manifestDigest?: string;
+  components: string[];
+  bundleBase64?: string;
+  warnings: string[];
+  warningDetails: WarningDetail[];
+  importReport?: ImportReport;
+  errors: string[];
+}
+
 export interface PackagingPrepareResponse {
   workspacePath: string;
   packageName: string;
@@ -227,8 +249,15 @@ export interface PackagingPackResponse {
 }
 
 export interface PackagingPublishRequest {
-  workspacePath: string;
+  source: PackagingSource;
   target: PackagingTarget;
+  metadata: PackagingMetadata;
+  options: PackagingOptions;
+  review?: {
+    manifestDigest?: string;
+    components?: string[];
+  };
+  idempotencyKey?: string;
 }
 
 export interface PackagingPublishResponse {
@@ -346,6 +375,7 @@ export interface RegistryApiClient {
   getVersionDetail(packageName: string, version: string): Promise<SkillVersionDetail>;
   listGovernanceChanges(filters?: ListGovernanceFilters): Promise<SkillsPage<GovernanceRecord>>;
   listAuditEvents(filters?: ListAuditFilters): Promise<SkillsPage<AuditEventRecord>>;
+  importReviewPackaging(request: PackagingImportReviewRequest): Promise<PackagingImportReviewResponse>;
   preparePackaging(request: PackagingPrepareRequest): Promise<PackagingPrepareResponse>;
   validatePackaging(request: PackagingValidateRequest): Promise<PackagingValidateResponse>;
   packSkill(request: PackagingPackRequest): Promise<PackagingPackResponse>;

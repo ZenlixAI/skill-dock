@@ -45,6 +45,45 @@ type ImportReport struct {
 	WarningCodes                   []string `json:"warningCodes,omitempty"`
 }
 
+type ReviewSummary struct {
+	ManifestDigest string   `json:"manifestDigest,omitempty"`
+	Components     []string `json:"components,omitempty"`
+}
+
+type ImportReviewRequest struct {
+	IdempotencyKey      string   `json:"idempotencyKey,omitempty"`
+	Source              Source   `json:"source"`
+	Target              Target   `json:"target"`
+	Metadata            Metadata `json:"metadata"`
+	Options             Options  `json:"options"`
+	IncludeBundleBase64 bool     `json:"includeBundleBase64,omitempty"`
+}
+
+func (r ImportReviewRequest) GetIdempotencyKey() string {
+	return r.IdempotencyKey
+}
+
+func (r ImportReviewRequest) GetSource() Source {
+	return r.Source
+}
+
+func (r ImportReviewRequest) GetTarget() Target {
+	return r.Target
+}
+
+type ImportReviewResponse struct {
+	OK             bool            `json:"ok"`
+	PackageName    string          `json:"packageName"`
+	Version        string          `json:"version"`
+	ManifestDigest string          `json:"manifestDigest,omitempty"`
+	Components     []string        `json:"components,omitempty"`
+	BundleBase64   string          `json:"bundleBase64,omitempty"`
+	Warnings       []string        `json:"warnings"`
+	WarningDetails []WarningDetail `json:"warningDetails,omitempty"`
+	ImportReport   *ImportReport   `json:"importReport,omitempty"`
+	Errors         []string        `json:"errors"`
+}
+
 type PrepareRequest struct {
 	IdempotencyKey string   `json:"idempotencyKey,omitempty"`
 	Source         Source   `json:"source"`
@@ -132,8 +171,13 @@ type PackResponse struct {
 }
 
 type PublishRequest struct {
-	WorkspacePath string `json:"workspacePath"`
-	Target        Target `json:"target"`
+	WorkspacePath   string        `json:"workspacePath,omitempty"`
+	IdempotencyKey  string        `json:"idempotencyKey,omitempty"`
+	Source          Source        `json:"source"`
+	Target          Target        `json:"target"`
+	Metadata        Metadata      `json:"metadata"`
+	Options         Options       `json:"options"`
+	Review          ReviewSummary `json:"review,omitempty"`
 }
 
 func (r PublishRequest) GetTarget() Target {
