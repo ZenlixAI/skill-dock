@@ -1,124 +1,10 @@
 package catalogapi
 
 import (
-	"context"
-	"net/http"
 	"strings"
 
 	catalog "skill_registry/internal/catalog/domain"
-	internalcataloghttp "skill_registry/internal/catalog/http"
-	packagingapplication "skill_registry/internal/packaging/application"
-	"skill_registry/internal/platform/auth"
-	platformhttp "skill_registry/internal/platform/http"
 )
-
-type catalogMutationService interface {
-	CreateReleaseRecord(ctx context.Context, packageName string, version string, input catalog.ReleaseRecordInput) (catalog.ReleaseRecordResult, error)
-	ApplySkillGovernanceChange(ctx context.Context, packageName string, input catalog.SkillGovernanceChangeInput, actor string) (catalog.GovernanceChangeResponse, error)
-	ApplyVersionGovernanceChange(ctx context.Context, packageName string, version string, input catalog.VersionGovernanceChangeInput, actor string) (catalog.GovernanceChangeResponse, error)
-}
-
-type catalogGovernanceService interface {
-	ListGovernanceChanges(ctx context.Context, query catalog.GovernanceQuery) (catalog.GovernancePage, error)
-}
-
-type packagingAccessService = packagingapplication.AccessService
-
-func (s *Server) listGovernanceChanges(ctx context.Context, principal auth.Principal, query catalog.GovernanceQuery) (catalog.GovernancePage, *catalog.Error) {
-	if authErr := s.authorizer.RequirePackageFilter(principal, query.PackageName); authErr != nil {
-		return catalog.GovernancePage{}, authErr.CatalogError()
-	}
-
-	response, err := s.catalogGovernanceService.ListGovernanceChanges(ctx, query)
-	if err != nil {
-		return catalog.GovernancePage{}, platformhttp.CatalogErrorFromError(err)
-	}
-	response.Items = auth.FilterGovernanceRecordsByPrincipal(response.Items, principal)
-	return response, nil
-}
-
-func (s *Server) createReleaseRecord(ctx context.Context, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.ReleaseRecordResult, int, *catalog.Error) {
-	version, err := internalcataloghttp.DecodeVersion(versionPath)
-	if err != nil {
-		return catalog.ReleaseRecordResult{}, 0, err
-	}
-
-	input, decodeErr := platformhttp.DecodeOptionalReleaseRecordInputBytes(rawBody)
-	if decodeErr != nil {
-		s.recordMutationAuditForEndpoint(ctx, principal, http.MethodPut, "/api/v1/skills/"+packageName+"/versions/"+version+"/release-record", "release.record", packageName, version, decodeErr.Status, "failed", map[string]any{
-			"errorCode": decodeErr.Code,
-		})
-		return catalog.ReleaseRecordResult{}, 0, decodeErr
-	}
-
-	response, repoErr := s.catalogMutationService.CreateReleaseRecord(ctx, packageName, version, input)
-	if repoErr != nil {
-		catalogErr := platformhttp.CatalogErrorFromError(repoErr)
-		s.recordMutationAuditForEndpoint(ctx, principal, http.MethodPut, "/api/v1/skills/"+packageName+"/versions/"+version+"/release-record", "release.record", packageName, version, catalogErr.Status, "failed", map[string]any{
-			"errorCode": catalogErr.Code,
-		})
-		return catalog.ReleaseRecordResult{}, 0, catalogErr
-	}
-
-	status := http.StatusOK
-	if response.Created {
-		status = http.StatusCreated
-	}
-	s.recordMutationAuditForEndpoint(ctx, principal, http.MethodPut, "/api/v1/skills/"+packageName+"/versions/"+version+"/release-record", "release.record", packageName, version, status, "succeeded", map[string]any{
-		"created":          response.Created,
-		"idempotentReplay": response.IdempotentReplay,
-	})
-	return response, status, nil
-}
-
-func (s *Server) applySkillGovernanceChange(ctx context.Context, principal auth.Principal, packageName string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error) {
-	var payload catalog.SkillGovernanceChangeInput
-	if err := platformhttp.DecodeJSONBytes(rawBody, &payload); err != nil {
-		return catalog.GovernanceChangeResponse{}, 0, err
-	}
-
-	response, repoErr := s.catalogMutationService.ApplySkillGovernanceChange(ctx, packageName, payload, principal.Actor)
-	if repoErr != nil {
-		catalogErr := platformhttp.CatalogErrorFromError(repoErr)
-		s.recordMutationAuditForEndpoint(ctx, principal, http.MethodPost, "/api/v1/skills/"+packageName+"/governance-changes", "governance.skill", packageName, "", catalogErr.Status, "failed", map[string]any{
-			"action":    payload.Action,
-			"errorCode": catalogErr.Code,
-		})
-		return catalog.GovernanceChangeResponse{}, 0, catalogErr
-	}
-
-	s.recordMutationAuditForEndpoint(ctx, principal, http.MethodPost, "/api/v1/skills/"+packageName+"/governance-changes", "governance.skill", packageName, "", http.StatusCreated, "succeeded", map[string]any{
-		"action": payload.Action,
-	})
-	return response, http.StatusCreated, nil
-}
-
-func (s *Server) applyVersionGovernanceChange(ctx context.Context, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error) {
-	version, err := internalcataloghttp.DecodeVersion(versionPath)
-	if err != nil {
-		return catalog.GovernanceChangeResponse{}, 0, err
-	}
-
-	var payload catalog.VersionGovernanceChangeInput
-	if err := platformhttp.DecodeJSONBytes(rawBody, &payload); err != nil {
-		return catalog.GovernanceChangeResponse{}, 0, err
-	}
-
-	response, repoErr := s.catalogMutationService.ApplyVersionGovernanceChange(ctx, packageName, version, payload, principal.Actor)
-	if repoErr != nil {
-		catalogErr := platformhttp.CatalogErrorFromError(repoErr)
-		s.recordMutationAuditForEndpoint(ctx, principal, http.MethodPost, "/api/v1/skills/"+packageName+"/versions/"+version+"/governance-changes", "governance.version", packageName, version, catalogErr.Status, "failed", map[string]any{
-			"action":    payload.Action,
-			"errorCode": catalogErr.Code,
-		})
-		return catalog.GovernanceChangeResponse{}, 0, catalogErr
-	}
-
-	s.recordMutationAuditForEndpoint(ctx, principal, http.MethodPost, "/api/v1/skills/"+packageName+"/versions/"+version+"/governance-changes", "governance.version", packageName, version, http.StatusCreated, "succeeded", map[string]any{
-		"action": payload.Action,
-	})
-	return response, http.StatusCreated, nil
-}
 
 func (s *Server) publicInstallTarget(response catalog.InstallResolution) catalog.InstallResolution {
 	if s.publicNPMRegistryURL == "" {
@@ -148,11 +34,4 @@ func rewriteRegistryBaseURL(rawURL string, fromBase string, toBase string) strin
 	default:
 		return trimmedURL
 	}
-}
-
-func (s *Server) recordMutationAuditForEndpoint(ctx context.Context, principal auth.Principal, method string, endpoint string, action string, packageName string, version string, status int, outcome string, details map[string]any) {
-	if s == nil || s.auditRecorder == nil {
-		return
-	}
-	_ = s.auditRecorder.RecordMutationForEndpoint(ctx, principal, method, endpoint, action, packageName, version, status, outcome, details)
 }

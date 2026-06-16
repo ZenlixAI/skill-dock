@@ -1,22 +1,25 @@
-package catalogapi
+package http
 
 import (
 	"context"
 	"net/http"
 	"testing"
 
-	catalog "skill_registry/internal/catalog/domain"
 	cataloginfra "skill_registry/internal/catalog/infra"
 	platformaudit "skill_registry/internal/platform/audit"
 	"skill_registry/internal/platform/auth"
+	platformhttp "skill_registry/internal/platform/http"
+	persist "skill_registry/internal/platform/persistence"
 )
 
-func TestServerCreatesReleaseRecordAndRecordsCreatedAudit(t *testing.T) {
+func TestWorkflowCreatesReleaseRecordAndRecordsCreatedAudit(t *testing.T) {
 	store := &captureAuditStore{}
-	server := &Server{
-		catalogMutationService: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		auditRecorder:          platformaudit.NewRecorder(store),
-	}
+	workflow := NewWorkflow(
+		auth.NewAuthorizer(auth.Config{}),
+		cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		platformaudit.NewRecorder(store),
+	)
 	principal := auth.Principal{
 		Role:          "publisher",
 		Actor:         "svc-publisher",
@@ -24,7 +27,7 @@ func TestServerCreatesReleaseRecordAndRecordsCreatedAudit(t *testing.T) {
 	}
 	ctx := contextWithRequestMetadataForTest(context.Background(), "req_release", "trace_release")
 
-	response, status, err := server.createReleaseRecord(ctx, principal, "@platform.skill/agent-notes", "0.1.0", nil)
+	response, status, err := workflow.CreateReleaseRecord(ctx, principal, "@platform.skill/agent-notes", "0.1.0", nil)
 	if err != nil {
 		t.Fatalf("create release record: %v", err)
 	}
@@ -42,12 +45,14 @@ func TestServerCreatesReleaseRecordAndRecordsCreatedAudit(t *testing.T) {
 	}
 }
 
-func TestServerAppliesSkillGovernanceAndRecordsAudit(t *testing.T) {
+func TestWorkflowAppliesSkillGovernanceAndRecordsAudit(t *testing.T) {
 	store := &captureAuditStore{}
-	server := &Server{
-		catalogMutationService: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		auditRecorder:          platformaudit.NewRecorder(store),
-	}
+	workflow := NewWorkflow(
+		auth.NewAuthorizer(auth.Config{}),
+		cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		platformaudit.NewRecorder(store),
+	)
 	principal := auth.Principal{
 		Role:          "publisher",
 		Actor:         "user_789",
@@ -55,7 +60,7 @@ func TestServerAppliesSkillGovernanceAndRecordsAudit(t *testing.T) {
 	}
 	ctx := contextWithRequestMetadataForTest(context.Background(), "req_skill_governance", "trace_skill_governance")
 
-	response, status, err := server.applySkillGovernanceChange(ctx, principal, "@platform.skill/code-review", []byte(`{"action":"retire","reason":"merged into new pack"}`))
+	response, status, err := workflow.ApplySkillGovernanceChange(ctx, principal, "@platform.skill/code-review", []byte(`{"action":"retire","reason":"merged into new pack"}`))
 	if err != nil {
 		t.Fatalf("apply skill governance: %v", err)
 	}
@@ -70,12 +75,14 @@ func TestServerAppliesSkillGovernanceAndRecordsAudit(t *testing.T) {
 	}
 }
 
-func TestServerAppliesVersionGovernanceAndRecordsAudit(t *testing.T) {
+func TestWorkflowAppliesVersionGovernanceAndRecordsAudit(t *testing.T) {
 	store := &captureAuditStore{}
-	server := &Server{
-		catalogMutationService: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		auditRecorder:          platformaudit.NewRecorder(store),
-	}
+	workflow := NewWorkflow(
+		auth.NewAuthorizer(auth.Config{}),
+		cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		platformaudit.NewRecorder(store),
+	)
 	principal := auth.Principal{
 		Role:          "publisher",
 		Actor:         "user_123",
@@ -83,7 +90,7 @@ func TestServerAppliesVersionGovernanceAndRecordsAudit(t *testing.T) {
 	}
 	ctx := contextWithRequestMetadataForTest(context.Background(), "req_version_governance", "trace_version_governance")
 
-	response, status, err := server.applyVersionGovernanceChange(ctx, principal, "@platform.skill/pdf-skill", "1.2.0", []byte(`{"action":"yank","reason":"security issue","replacementRecommendation":"1.1.0"}`))
+	response, status, err := workflow.ApplyVersionGovernanceChange(ctx, principal, "@platform.skill/pdf-skill", "1.2.0", []byte(`{"action":"yank","reason":"security issue","replacementRecommendation":"1.1.0"}`))
 	if err != nil {
 		t.Fatalf("apply version governance: %v", err)
 	}
@@ -98,25 +105,19 @@ func TestServerAppliesVersionGovernanceAndRecordsAudit(t *testing.T) {
 	}
 }
 
-type catalogMutationServiceStub struct{}
-
-func (catalogMutationServiceStub) CreateReleaseRecord(context.Context, string, string, catalog.ReleaseRecordInput) (catalog.ReleaseRecordResult, error) {
-	return catalog.ReleaseRecordResult{Created: true}, nil
+type captureAuditStore struct {
+	events []persist.AuditEvent
 }
 
-func (catalogMutationServiceStub) ApplySkillGovernanceChange(context.Context, string, catalog.SkillGovernanceChangeInput, string) (catalog.GovernanceChangeResponse, error) {
-	return catalog.GovernanceChangeResponse{}, nil
+func (s *captureAuditStore) Append(_ context.Context, event persist.AuditEvent) error {
+	s.events = append(s.events, event)
+	return nil
 }
 
-func (catalogMutationServiceStub) ApplyVersionGovernanceChange(context.Context, string, string, catalog.VersionGovernanceChangeInput, string) (catalog.GovernanceChangeResponse, error) {
-	return catalog.GovernanceChangeResponse{}, nil
+func (s *captureAuditStore) List(context.Context, persist.AuditQuery) (persist.AuditPage, error) {
+	return persist.AuditPage{}, nil
 }
 
-func TestServerAcceptsCatalogWriteServiceSeam(t *testing.T) {
-	server := &Server{
-		catalogMutationService: catalogMutationServiceStub{},
-	}
-	if server.catalogMutationService == nil {
-		t.Fatal("expected server to keep a catalog write service seam")
-	}
+func contextWithRequestMetadataForTest(ctx context.Context, requestID string, traceID string) context.Context {
+	return platformhttp.ContextWithRequestMetadata(ctx, requestID, traceID)
 }

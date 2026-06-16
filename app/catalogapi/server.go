@@ -40,6 +40,8 @@ type packagingApplication interface {
 
 type packagingService = packagingapplication.WorkflowService
 type catalogReadService = internalcataloghttp.ReadService
+type catalogMutationService = internalgovernancehttp.MutationService
+type catalogGovernanceService = internalgovernancehttp.QueryService
 
 type ServerConfig struct {
 	Repository                      catalog.Repository
@@ -161,10 +163,11 @@ func NewServer(config ServerConfig) *Server {
 	server.catalogGovernanceService = catalogGovernanceService
 	server.accessWorkflow = platformaccess.New(authorizer, auditRecorder, logger)
 	server.auditQueryModule = platformaudit.NewQueryModule(config.Audit, authorizer)
-	server.listGovernanceChangesFunc = server.listGovernanceChanges
-	server.createReleaseRecordFunc = server.createReleaseRecord
-	server.applySkillGovernanceChangeFunc = server.applySkillGovernanceChange
-	server.applyVersionGovernanceChangeFunc = server.applyVersionGovernanceChange
+	governanceWorkflow := internalgovernancehttp.NewWorkflow(authorizer, catalogMutationService, catalogGovernanceService, auditRecorder)
+	server.listGovernanceChangesFunc = governanceWorkflow.ListGovernanceChanges
+	server.createReleaseRecordFunc = governanceWorkflow.CreateReleaseRecord
+	server.applySkillGovernanceChangeFunc = governanceWorkflow.ApplySkillGovernanceChange
+	server.applyVersionGovernanceChangeFunc = governanceWorkflow.ApplyVersionGovernanceChange
 	server.packagingWorkflow = internalpackaginghttp.NewWorkflow(internalpackaginghttp.WorkflowConfig{
 		Service:             packagingSvc,
 		Idempotency:         config.Idempotency,
