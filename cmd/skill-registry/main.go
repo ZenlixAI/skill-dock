@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"skill_registry/app/catalogapi"
 	"skill_registry/internal/backend"
+	catalogapi "skill_registry/internal/backend/httpserver"
 	catalog "skill_registry/internal/catalog/domain"
 	cataloginfra "skill_registry/internal/catalog/infra"
 	artifactadapter "skill_registry/internal/platform/artifact"

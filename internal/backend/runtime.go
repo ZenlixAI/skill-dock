@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"skill_registry/app/catalogapi"
+	catalogapi "skill_registry/internal/backend/httpserver"
 	catalogapp "skill_registry/internal/catalog/application"
 	catalog "skill_registry/internal/catalog/domain"
 	cataloginfra "skill_registry/internal/catalog/infra"

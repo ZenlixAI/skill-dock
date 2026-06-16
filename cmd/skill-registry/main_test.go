@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"skill_registry/app/catalogapi"
 	"skill_registry/internal/backend"
+	catalogapi "skill_registry/internal/backend/httpserver"
 	catalogdomain "skill_registry/internal/catalog/domain"
 	cataloginfra "skill_registry/internal/catalog/infra"
 	platformartifact "skill_registry/internal/platform/artifact"
