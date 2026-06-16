@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"slices"
 
 	catalog "skill_registry/internal/catalog/domain"
 	packagingdomain "skill_registry/internal/packaging/domain"
@@ -85,6 +86,9 @@ func (w *PublishService) Publish(ctx context.Context, input packagingdomain.Publ
 			"version":     input.Target.Version,
 			"errors":      packResponse.Errors,
 		})
+	}
+	if err := verifyReviewSummary(input.Review, packResponse); err != nil {
+		return packagingdomain.PublishResponse{}, err
 	}
 
 	releaseInput := catalog.ReleaseRecordInput{
@@ -185,4 +189,14 @@ func PackageArtifactAlreadyExistsCatalogError(err error) *catalog.Error {
 		return catalogErr
 	}
 	return catalog.NewError(409, "registry_version_conflict", "Registry already contains this package version or rejected an overwrite.", nil)
+}
+
+func verifyReviewSummary(review packagingdomain.ReviewSummary, packResponse packagingdomain.PackResponse) error {
+	if review.ManifestDigest != "" && review.ManifestDigest != packResponse.ManifestDigest {
+		return catalog.NewError(409, "review_summary_mismatch", "review manifest digest does not match publish-time package output.", nil)
+	}
+	if len(review.Components) > 0 && !slices.Equal(review.Components, packResponse.Components) {
+		return catalog.NewError(409, "review_summary_mismatch", "review component list does not match publish-time package output.", nil)
+	}
+	return nil
 }

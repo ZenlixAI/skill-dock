@@ -83,6 +83,7 @@ type Server struct {
 	applySkillGovernanceChangeFunc   func(ctx context.Context, principal auth.Principal, packageName string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error)
 	applyVersionGovernanceChangeFunc func(ctx context.Context, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error)
 	packagingWorkflow                *internalpackaginghttp.Workflow
+	oneShotPackagingWorkflow         *internalpackaginghttp.OneShotWorkflow
 	cleanupPackagingFunc             func(ctx context.Context, principal auth.Principal, payload packaging.CleanupRequest) (packaging.CleanupResponse, int, *catalog.Error)
 	downloadBundleFunc               func(ctx context.Context, principal auth.Principal, workspacePath string, packageName string, version string) (string, *catalog.Error)
 	sessionModule                    platformsession.Workflow
@@ -125,8 +126,12 @@ func NewServer(config ServerConfig) *Server {
 	sessionManager := auth.NewSessionManager(config.SessionSecret, config.SessionUsers, 12*time.Hour)
 	auditRecorder := platformaudit.NewRecorder(config.Audit)
 	var packagingSvc packagingService
+	var packagingReviewSvc packagingapplication.ReviewService
 	if config.Packaging != nil {
 		packagingSvc = config.Packaging
+		if reviewSvc, ok := any(config.Packaging).(packagingapplication.ReviewService); ok {
+			packagingReviewSvc = reviewSvc
+		}
 	}
 
 	catalogReadService := config.CatalogReadService
@@ -170,6 +175,13 @@ func NewServer(config ServerConfig) *Server {
 	server.applyVersionGovernanceChangeFunc = governanceWorkflow.ApplyVersionGovernanceChange
 	server.packagingWorkflow = internalpackaginghttp.NewWorkflow(internalpackaginghttp.WorkflowConfig{
 		Service:             packagingSvc,
+		Idempotency:         config.Idempotency,
+		Audit:               auditRecorder,
+		CacheTTL:            10 * time.Minute,
+		AllowAnonymousCache: false,
+	})
+	server.oneShotPackagingWorkflow = internalpackaginghttp.NewOneShotWorkflow(internalpackaginghttp.OneShotWorkflowConfig{
+		ReviewService:       packagingReviewSvc,
 		Idempotency:         config.Idempotency,
 		Audit:               auditRecorder,
 		CacheTTL:            10 * time.Minute,
@@ -354,6 +366,9 @@ func (s *Server) newEngine() *gin.Engine {
 		AcquireWriteLimiter: func() (func(), *catalog.Error) {
 			return s.writeLimiter.Acquire()
 		},
+		DecodeImportReviewRequest: func(ctx context.Context, principal auth.Principal, rawBody []byte) (packaging.ImportReviewRequest, *catalog.Error) {
+			return s.oneShotPackagingWorkflow.DecodeImportReviewRequest(ctx, principal, rawBody)
+		},
 		DecodePrepareRequest: func(ctx context.Context, principal auth.Principal, rawBody []byte) (packaging.PrepareRequest, *catalog.Error) {
 			return s.packagingWorkflow.DecodePrepareRequest(ctx, principal, rawBody)
 		},
@@ -362,6 +377,9 @@ func (s *Server) newEngine() *gin.Engine {
 		},
 		DecodePackRequest: func(ctx context.Context, principal auth.Principal, rawBody []byte) (packaging.PackRequest, *catalog.Error) {
 			return s.packagingWorkflow.DecodePackRequest(ctx, principal, rawBody)
+		},
+		ImportReview: func(ctx context.Context, principal auth.Principal, payload packaging.ImportReviewRequest) (any, int, *catalog.Error) {
+			return s.oneShotPackagingWorkflow.ImportReview(ctx, principal, payload)
 		},
 		Prepare: func(ctx context.Context, principal auth.Principal, payload packaging.PrepareRequest) (any, int, *catalog.Error) {
 			return s.packagingWorkflow.Prepare(ctx, principal, payload)
@@ -430,6 +448,7 @@ func (s *Server) newEngine() *gin.Engine {
 
 	internalpackaginghttp.RegisterRoutes(engine, internalpackaginghttp.Config{
 		ServesWriteRoutes: s.mode.servesWriteRoutes(),
+		ImportReview:      s.protectedActionHandler(auth.ActionPackagingPack, packagingHTTPHandlers.ImportReviewHandler),
 		Prepare:           s.protectedActionHandler(auth.ActionPackagingPrepare, packagingHTTPHandlers.PrepareHandler),
 		Validate:          s.protectedActionHandler(auth.ActionPackagingValidate, packagingHTTPHandlers.ValidateHandler),
 		Pack:              s.protectedActionHandler(auth.ActionPackagingPack, packagingHTTPHandlers.PackHandler),

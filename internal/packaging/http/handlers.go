@@ -18,9 +18,11 @@ import (
 
 type AuthorizePackageFunc func(stdhttp.ResponseWriter, *stdhttp.Request, string) bool
 type AcquireWriteLimiterFunc func() (func(), *catalog.Error)
+type DecodeImportReviewRequestFunc func(context.Context, auth.Principal, []byte) (packaging.ImportReviewRequest, *catalog.Error)
 type DecodePrepareRequestFunc func(context.Context, auth.Principal, []byte) (packaging.PrepareRequest, *catalog.Error)
 type DecodeValidateRequestFunc func(context.Context, auth.Principal, []byte) (packaging.ValidateRequest, *catalog.Error)
 type DecodePackRequestFunc func(context.Context, auth.Principal, []byte) (packaging.PackRequest, *catalog.Error)
+type ImportReviewFunc func(context.Context, auth.Principal, packaging.ImportReviewRequest) (any, int, *catalog.Error)
 type PrepareFunc func(context.Context, auth.Principal, packaging.PrepareRequest) (any, int, *catalog.Error)
 type ValidateFunc func(context.Context, auth.Principal, packaging.ValidateRequest) (any, int, *catalog.Error)
 type PackFunc func(context.Context, auth.Principal, packaging.PackRequest) (any, int, *catalog.Error)
@@ -30,19 +32,21 @@ type DownloadBundleFunc func(context.Context, auth.Principal, string, string, st
 type RecordMutationAuditFunc func(request *stdhttp.Request, action string, packageName string, version string, status int, outcome string, details map[string]any)
 
 type Handlers struct {
-	HasPackaging          func() bool
-	AuthorizePackage      AuthorizePackageFunc
-	AcquireWriteLimiter   AcquireWriteLimiterFunc
-	DecodePrepareRequest  DecodePrepareRequestFunc
-	DecodeValidateRequest DecodeValidateRequestFunc
-	DecodePackRequest     DecodePackRequestFunc
-	Prepare               PrepareFunc
-	Validate              ValidateFunc
-	Pack                  PackFunc
-	Publish               PublishFunc
-	Cleanup               CleanupFunc
-	DownloadBundle        DownloadBundleFunc
-	RecordMutationAudit   RecordMutationAuditFunc
+	HasPackaging              func() bool
+	AuthorizePackage          AuthorizePackageFunc
+	AcquireWriteLimiter       AcquireWriteLimiterFunc
+	DecodeImportReviewRequest DecodeImportReviewRequestFunc
+	DecodePrepareRequest      DecodePrepareRequestFunc
+	DecodeValidateRequest     DecodeValidateRequestFunc
+	DecodePackRequest         DecodePackRequestFunc
+	ImportReview              ImportReviewFunc
+	Prepare                   PrepareFunc
+	Validate                  ValidateFunc
+	Pack                      PackFunc
+	Publish                   PublishFunc
+	Cleanup                   CleanupFunc
+	DownloadBundle            DownloadBundleFunc
+	RecordMutationAudit       RecordMutationAuditFunc
 }
 
 func New(config Handlers) Handlers {
@@ -58,6 +62,19 @@ func (h Handlers) PrepareHandler(c *gin.Context) {
 		},
 		func(ctx context.Context, principal auth.Principal, payload packaging.PrepareRequest) (any, int, *catalog.Error) {
 			return h.Prepare(ctx, principal, payload)
+		},
+	)
+}
+
+func (h Handlers) ImportReviewHandler(c *gin.Context) {
+	handlePackagingWorkflow(
+		h,
+		c,
+		func(ctx context.Context, principal auth.Principal, rawBody []byte) (packaging.ImportReviewRequest, *catalog.Error) {
+			return h.DecodeImportReviewRequest(ctx, principal, rawBody)
+		},
+		func(ctx context.Context, principal auth.Principal, payload packaging.ImportReviewRequest) (any, int, *catalog.Error) {
+			return h.ImportReview(ctx, principal, payload)
 		},
 	)
 }

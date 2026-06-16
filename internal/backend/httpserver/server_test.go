@@ -1272,6 +1272,151 @@ func TestSkillPackagingPrepareValidateAndPack(t *testing.T) {
 	}
 }
 
+func TestSkillPackagingImportReviewReturnsReviewDataWithoutWorkspacePath(t *testing.T) {
+	server := newTestServer()
+	fixtureDir := createPackagingFixture(t)
+
+	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/import-review", `{
+		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
+		"target":{"packageName":"@platform.skill/review-fixture","version":"0.4.0"},
+		"metadata":{"displayName":"Review Fixture","description":"Uploaded archive","sourceType":"imported"},
+		"options":{}
+	}`)
+	request.Header.Set("X-Role", "publisher")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		OK             bool     `json:"ok"`
+		PackageName    string   `json:"packageName"`
+		Version        string   `json:"version"`
+		ManifestDigest string   `json:"manifestDigest"`
+		Components     []string `json:"components"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode import-review response: %v", err)
+	}
+	if !payload.OK {
+		t.Fatalf("expected import-review ok response, got %+v", payload)
+	}
+	if payload.PackageName != "@platform.skill/review-fixture" || payload.Version != "0.4.0" {
+		t.Fatalf("unexpected review identity: %+v", payload)
+	}
+	if payload.ManifestDigest == "" || len(payload.Components) == 0 {
+		t.Fatalf("expected manifest digest and components, got %+v", payload)
+	}
+	assertJSONBodyNotContains(t, recorder, "workspacePath")
+}
+
+func TestSkillPackagingPublishUsesStatelessInput(t *testing.T) {
+	registry := newTestNPMRegistry(t)
+	registryBaseURL := registry.baseURL()
+	registryClient := registry.client()
+
+	packagingService := packagingapplication.NewService("")
+	repository := cataloginfra.NewMemoryRepository(cataloginfra.SampleData(), cataloginfra.MemoryRepositoryOptions{
+		ArtifactSource: artifactadapter.NewNPMRegistryArtifactSource(registryBaseURL, registryClient),
+	})
+	packagingService.ConfigurePublishWorkflow(
+		repository,
+		artifactadapter.NewNPMPublisher(registryBaseURL, "", registryClient),
+	)
+
+	catalogServer := NewServer(ServerConfig{
+		Repository:               repository,
+		Packaging:                packagingService,
+		NPMRegistryURL:           registryBaseURL,
+		NPMRegistryPublishClient: registryClient,
+	})
+
+	fixtureDir := createPackagingFixture(t)
+	reviewRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/import-review", `{
+		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
+		"target":{"packageName":"@platform.skill/review-fixture","version":"0.4.0"},
+		"metadata":{"displayName":"Review Fixture","description":"Uploaded archive","sourceType":"imported"},
+		"options":{}
+	}`)
+	reviewRequest.Header.Set("X-Role", "publisher")
+	reviewRecorder := httptest.NewRecorder()
+	catalogServer.Handler().ServeHTTP(reviewRecorder, reviewRequest)
+	if reviewRecorder.Code != http.StatusOK {
+		t.Fatalf("expected review status %d, got %d body=%s", http.StatusOK, reviewRecorder.Code, reviewRecorder.Body.String())
+	}
+
+	var reviewPayload struct {
+		ManifestDigest string   `json:"manifestDigest"`
+		Components     []string `json:"components"`
+	}
+	if err := json.Unmarshal(reviewRecorder.Body.Bytes(), &reviewPayload); err != nil {
+		t.Fatalf("decode review response: %v", err)
+	}
+	if reviewPayload.ManifestDigest == "" || len(reviewPayload.Components) == 0 {
+		t.Fatalf("expected review summary, got %+v", reviewPayload)
+	}
+
+	publishRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/publish", `{
+		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
+		"target":{"packageName":"@platform.skill/review-fixture","version":"0.4.0"},
+		"metadata":{"displayName":"Review Fixture","description":"Uploaded archive","sourceType":"imported"},
+		"options":{"publishRegistry":"`+registryBaseURL+`"},
+		"review":{"manifestDigest":"`+reviewPayload.ManifestDigest+`","components":["`+strings.Join(reviewPayload.Components, `","`)+`"]}
+	}`)
+	publishRequest.Header.Set("X-Role", "publisher")
+	publishRecorder := httptest.NewRecorder()
+
+	catalogServer.Handler().ServeHTTP(publishRecorder, publishRequest)
+
+	if publishRecorder.Code != http.StatusCreated && publishRecorder.Code != http.StatusOK {
+		t.Fatalf("expected publish success, got %d body=%s", publishRecorder.Code, publishRecorder.Body.String())
+	}
+	assertJSONBodyNotContains(t, publishRecorder, "workspacePath")
+}
+
+func TestSkillPackagingPublishRejectsMismatchedReviewSummary(t *testing.T) {
+	registry := newTestNPMRegistry(t)
+	registryBaseURL := registry.baseURL()
+	registryClient := registry.client()
+
+	packagingService := packagingapplication.NewService("")
+	repository := cataloginfra.NewMemoryRepository(cataloginfra.SampleData(), cataloginfra.MemoryRepositoryOptions{
+		ArtifactSource: artifactadapter.NewNPMRegistryArtifactSource(registryBaseURL, registryClient),
+	})
+	packagingService.ConfigurePublishWorkflow(
+		repository,
+		artifactadapter.NewNPMPublisher(registryBaseURL, "", registryClient),
+	)
+
+	catalogServer := NewServer(ServerConfig{
+		Repository:               repository,
+		Packaging:                packagingService,
+		NPMRegistryURL:           registryBaseURL,
+		NPMRegistryPublishClient: registryClient,
+	})
+
+	fixtureDir := createPackagingFixture(t)
+	publishRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/publish", `{
+		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
+		"target":{"packageName":"@platform.skill/review-fixture","version":"0.4.0"},
+		"metadata":{"displayName":"Review Fixture","description":"Uploaded archive","sourceType":"imported"},
+		"options":{"publishRegistry":"`+registryBaseURL+`"},
+		"review":{"manifestDigest":"sha256:mismatch","components":["commands"]}
+	}`)
+	publishRequest.Header.Set("X-Role", "publisher")
+	publishRecorder := httptest.NewRecorder()
+
+	catalogServer.Handler().ServeHTTP(publishRecorder, publishRequest)
+
+	if publishRecorder.Code != http.StatusConflict {
+		t.Fatalf("expected publish mismatch conflict, got %d body=%s", publishRecorder.Code, publishRecorder.Body.String())
+	}
+	assertErrorCode(t, publishRecorder, "review_summary_mismatch")
+}
+
 func TestSkillPackagingPublishPublishesAndCreatesReleaseRecord(t *testing.T) {
 	registry := newTestNPMRegistry(t)
 	registryBaseURL := registry.baseURL()
@@ -3767,6 +3912,14 @@ func assertErrorCode(t *testing.T, recorder *httptest.ResponseRecorder, want str
 
 	if payload["error"]["code"] != want {
 		t.Fatalf("expected error code %s, got %#v", want, payload["error"]["code"])
+	}
+}
+
+func assertJSONBodyNotContains(t *testing.T, recorder *httptest.ResponseRecorder, unexpected string) {
+	t.Helper()
+
+	if strings.Contains(recorder.Body.String(), unexpected) {
+		t.Fatalf("expected response body not to contain %q, got %s", unexpected, recorder.Body.String())
 	}
 }
 

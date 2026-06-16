@@ -19,6 +19,10 @@ func TestPackagingWorkflowUsesPackagingApplicationWorkflowContract(t *testing.T)
 	var _ internalpackaginghttp.WorkflowService = (*packagingapplication.Service)(nil)
 }
 
+func TestOneShotPackagingWorkflowUsesPackagingApplicationReviewContract(t *testing.T) {
+	var _ internalpackaginghttp.ReviewService = (*packagingapplication.Service)(nil)
+}
+
 func TestPackagingWorkflowReplaysCachedPrepareResponse(t *testing.T) {
 	workflow := newPackagingWorkflowForTest(t)
 	payload := packaging.PrepareRequest{

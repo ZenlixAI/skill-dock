@@ -24,6 +24,7 @@ type AccessService interface {
 
 type Service struct {
 	workspaceService *WorkspaceService
+	importReview     *ImportReviewService
 	publishService   *PublishService
 }
 
@@ -35,6 +36,7 @@ func NewServiceWithWorkspaceStore(tempRoot string, store persist.WorkspaceStore)
 	workspaceService := NewWorkspaceService(tempRoot, store)
 	return &Service{
 		workspaceService: workspaceService,
+		importReview:     NewImportReviewService(workspaceService),
 		publishService:   NewPublishService(workspaceService),
 	}
 }
@@ -108,6 +110,17 @@ func (s *Service) PackageMetadata(workspacePath string) (map[string]any, error) 
 
 func (s *Service) PackageMetadataContext(ctx context.Context, workspacePath string) (map[string]any, error) {
 	return s.workspaceService.PackageMetadata(ctx, workspacePath)
+}
+
+func (s *Service) Review(input packagingdomain.ImportReviewRequest) (packagingdomain.ImportReviewResponse, error) {
+	return s.ReviewContext(context.Background(), input)
+}
+
+func (s *Service) ReviewContext(ctx context.Context, input packagingdomain.ImportReviewRequest) (packagingdomain.ImportReviewResponse, error) {
+	if s.importReview == nil {
+		s.importReview = NewImportReviewService(s.workspaceService)
+	}
+	return s.importReview.ReviewContext(ctx, input)
 }
 
 func (s *Service) Publish(input packagingdomain.PublishRequest) (packagingdomain.PublishResponse, error) {
