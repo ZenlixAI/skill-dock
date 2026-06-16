@@ -13,17 +13,18 @@ import (
 	platformaudit "skill_registry/internal/platform/audit"
 	"skill_registry/internal/platform/auth"
 	platformhttp "skill_registry/internal/platform/http"
+	platformaccess "skill_registry/internal/platform/http/access"
 	platformmiddleware "skill_registry/internal/platform/http/middleware"
 	"skill_registry/internal/platform/observability"
 )
 
 func TestAccessWorkflowDeniesPackageAccessAndRecordsAudit(t *testing.T) {
 	store := &captureAuditStore{}
-	workflow := &accessWorkflow{
-		authorizer: auth.NewAuthorizer(auth.Config{}),
-		audit:      platformaudit.NewRecorder(store),
-		logger:     log.New(io.Discard, "", 0),
-	}
+	workflow := platformaccess.New(
+		auth.NewAuthorizer(auth.Config{}),
+		platformaudit.NewRecorder(store),
+		log.New(io.Discard, "", 0),
+	)
 
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills?package_name=%40platform.skill%2Fprivate-skill", nil)
 	ctx := auth.ContextWithPrincipal(request.Context(), auth.Principal{
@@ -35,7 +36,7 @@ func TestAccessWorkflowDeniesPackageAccessAndRecordsAudit(t *testing.T) {
 	request = request.WithContext(contextWithRequestMetadataForTest(ctx, "req_denied", "trace_denied"))
 	recorder := httptest.NewRecorder()
 
-	ok := workflow.authorizePackage(recorder, request, "@platform.skill/private-skill")
+	ok := workflow.AuthorizePackage(recorder, request, "@platform.skill/private-skill")
 
 	if ok {
 		t.Fatal("expected package access to be denied")
@@ -56,11 +57,11 @@ func TestAccessWorkflowDeniesPackageAccessAndRecordsAudit(t *testing.T) {
 
 func TestAccessWorkflowAuthorizeActionFeedsGinObservability(t *testing.T) {
 	var logBuffer bytes.Buffer
-	workflow := &accessWorkflow{
-		authorizer: auth.NewAuthorizer(auth.Config{}),
-		audit:      platformaudit.NewRecorder(&captureAuditStore{}),
-		logger:     log.New(io.Discard, "", 0),
-	}
+	workflow := platformaccess.New(
+		auth.NewAuthorizer(auth.Config{}),
+		platformaudit.NewRecorder(&captureAuditStore{}),
+		log.New(io.Discard, "", 0),
+	)
 
 	engine := gin.New()
 	engine.Use(
@@ -75,7 +76,7 @@ func TestAccessWorkflowAuthorizeActionFeedsGinObservability(t *testing.T) {
 		}),
 	)
 	engine.GET("/authorized", func(context *gin.Context) {
-		if !workflow.authorizeAction(context.Writer, context.Request, auth.ActionReadCatalog, "", "") {
+		if !workflow.AuthorizeAction(context.Writer, context.Request, auth.ActionReadCatalog, "", "") {
 			return
 		}
 		context.Status(http.StatusNoContent)
@@ -106,11 +107,11 @@ func TestAccessWorkflowAuthorizeActionFeedsGinObservability(t *testing.T) {
 }
 
 func TestAccessWorkflowAuthorizeActionSetsNeutralObservedState(t *testing.T) {
-	workflow := &accessWorkflow{
-		authorizer: auth.NewAuthorizer(auth.Config{}),
-		audit:      platformaudit.NewRecorder(&captureAuditStore{}),
-		logger:     log.New(io.Discard, "", 0),
-	}
+	workflow := platformaccess.New(
+		auth.NewAuthorizer(auth.Config{}),
+		platformaudit.NewRecorder(&captureAuditStore{}),
+		log.New(io.Discard, "", 0),
+	)
 
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills", nil)
 	request = platformhttp.EnsureObservedState(request)
@@ -121,7 +122,7 @@ func TestAccessWorkflowAuthorizeActionSetsNeutralObservedState(t *testing.T) {
 	}))
 	recorder := httptest.NewRecorder()
 
-	ok := workflow.authorizeAction(recorder, request, auth.ActionReadCatalog, "", "")
+	ok := workflow.AuthorizeAction(recorder, request, auth.ActionReadCatalog, "", "")
 	if !ok {
 		t.Fatal("expected action to be authorized")
 	}

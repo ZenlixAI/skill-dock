@@ -18,6 +18,7 @@ import (
 	platformaudit "skill_registry/internal/platform/audit"
 	"skill_registry/internal/platform/auth"
 	platformhttp "skill_registry/internal/platform/http"
+	platformaccess "skill_registry/internal/platform/http/access"
 	persist "skill_registry/internal/platform/persistence"
 	platformsession "skill_registry/internal/platform/session"
 )
@@ -240,25 +241,25 @@ func newAccessWorkflowStubForTest(_ interface{ Helper() }, allow bool) *accessWo
 	return &accessWorkflowStub{allow: allow}
 }
 
-func (w *accessWorkflowStub) authorizeAction(writer http.ResponseWriter, request *http.Request, action auth.Action, packageName string, version string) bool {
+func (w *accessWorkflowStub) AuthorizeAction(writer http.ResponseWriter, request *http.Request, action auth.Action, packageName string, version string) bool {
 	w.authorizeActionCalls.Add(1)
 	if w.allow {
 		return true
 	}
-	w.deny(writer, request, auth.PrincipalFromContext(request.Context()), (&auth.Authorizer{}).AuthorizeAction(auth.Principal{Role: "reader"}, action), packageName, version)
+	w.Deny(writer, request, auth.PrincipalFromContext(request.Context()), (&auth.Authorizer{}).AuthorizeAction(auth.Principal{Role: "reader"}, action), packageName, version)
 	return false
 }
 
-func (w *accessWorkflowStub) authorizePackage(writer http.ResponseWriter, request *http.Request, packageName string) bool {
+func (w *accessWorkflowStub) AuthorizePackage(writer http.ResponseWriter, request *http.Request, packageName string) bool {
 	w.authorizePackageCalls.Add(1)
 	if w.allow {
 		return true
 	}
-	w.deny(writer, request, auth.PrincipalFromContext(request.Context()), (&auth.Authorizer{}).AuthorizePackage(auth.Principal{}, packageName), packageName, "")
+	w.Deny(writer, request, auth.PrincipalFromContext(request.Context()), (&auth.Authorizer{}).AuthorizePackage(auth.Principal{}, packageName), packageName, "")
 	return false
 }
 
-func (w *accessWorkflowStub) deny(writer http.ResponseWriter, request *http.Request, _ auth.Principal, authErr *auth.AuthorizationError, _ string, _ string) {
+func (w *accessWorkflowStub) Deny(writer http.ResponseWriter, request *http.Request, _ auth.Principal, authErr *auth.AuthorizationError, _ string, _ string) {
 	w.denyCalls.Add(1)
 	if authErr == nil {
 		authErr = (&auth.AuthorizationError{
@@ -273,6 +274,8 @@ func (w *accessWorkflowStub) deny(writer http.ResponseWriter, request *http.Requ
 func (w *accessWorkflowStub) denyCallCount() int {
 	return int(w.denyCalls.Load())
 }
+
+var _ platformaccess.Gate = (*accessWorkflowStub)(nil)
 
 type auditQueryModuleStub struct {
 	listEventsCalls atomic.Int64

@@ -1,4 +1,4 @@
-package catalogapi
+package access
 
 import (
 	"log"
@@ -10,39 +10,47 @@ import (
 	"skill_registry/internal/platform/observability"
 )
 
-type accessWorkflow struct {
+type Gate interface {
+	AuthorizeAction(writer http.ResponseWriter, request *http.Request, action auth.Action, packageName string, version string) bool
+	AuthorizePackage(writer http.ResponseWriter, request *http.Request, packageName string) bool
+	Deny(writer http.ResponseWriter, request *http.Request, current auth.Principal, authErr *auth.AuthorizationError, packageName string, version string)
+}
+
+type Workflow struct {
 	authorizer *auth.Authorizer
 	audit      *platformaudit.Recorder
 	logger     *log.Logger
 }
 
-type accessWorkflowHandler interface {
-	authorizeAction(writer http.ResponseWriter, request *http.Request, action auth.Action, packageName string, version string) bool
-	authorizePackage(writer http.ResponseWriter, request *http.Request, packageName string) bool
-	deny(writer http.ResponseWriter, request *http.Request, current auth.Principal, authErr *auth.AuthorizationError, packageName string, version string)
+func New(authorizer *auth.Authorizer, audit *platformaudit.Recorder, logger *log.Logger) *Workflow {
+	return &Workflow{
+		authorizer: authorizer,
+		audit:      audit,
+		logger:     logger,
+	}
 }
 
-func (w *accessWorkflow) authorizeAction(writer http.ResponseWriter, request *http.Request, action auth.Action, packageName string, version string) bool {
+func (w *Workflow) AuthorizeAction(writer http.ResponseWriter, request *http.Request, action auth.Action, packageName string, version string) bool {
 	current := auth.PrincipalFromContext(request.Context())
 	platformhttp.SetObservedAction(request, string(action))
 	platformhttp.SetObservedAuthDecision(request, observability.AuthDecisionAllowed)
 	if authErr := w.authorizer.AuthorizeAction(current, action); authErr != nil {
-		w.deny(writer, request, current, authErr, packageName, version)
+		w.Deny(writer, request, current, authErr, packageName, version)
 		return false
 	}
 	return true
 }
 
-func (w *accessWorkflow) authorizePackage(writer http.ResponseWriter, request *http.Request, packageName string) bool {
+func (w *Workflow) AuthorizePackage(writer http.ResponseWriter, request *http.Request, packageName string) bool {
 	current := auth.PrincipalFromContext(request.Context())
 	if authErr := w.authorizer.AuthorizePackage(current, packageName); authErr != nil {
-		w.deny(writer, request, current, authErr, packageName, "")
+		w.Deny(writer, request, current, authErr, packageName, "")
 		return false
 	}
 	return true
 }
 
-func (w *accessWorkflow) deny(writer http.ResponseWriter, request *http.Request, current auth.Principal, authErr *auth.AuthorizationError, packageName string, version string) {
+func (w *Workflow) Deny(writer http.ResponseWriter, request *http.Request, current auth.Principal, authErr *auth.AuthorizationError, packageName string, version string) {
 	platformhttp.SetObservedAuthDecision(request, observability.AuthDecisionDenied)
 	platformhttp.SetObservedOutcome(request, authErr.Code)
 	if w.audit != nil {

@@ -22,6 +22,7 @@ import (
 	platformaudit "skill_registry/internal/platform/audit"
 	"skill_registry/internal/platform/auth"
 	platformhttp "skill_registry/internal/platform/http"
+	platformaccess "skill_registry/internal/platform/http/access"
 	platformmiddleware "skill_registry/internal/platform/http/middleware"
 	platformsessionhttp "skill_registry/internal/platform/http/session"
 	"skill_registry/internal/platform/observability"
@@ -69,7 +70,7 @@ type Server struct {
 	repo                             catalog.Repository
 	authorizer                       *auth.Authorizer
 	sessionManager                   *auth.SessionManager
-	accessWorkflow                   accessWorkflowHandler
+	accessWorkflow                   platformaccess.Gate
 	catalogReadModule                catalogReadWorkflow
 	auditQueryModule                 auditQueryWorkflow
 	catalogMutationService           catalogMutationService
@@ -159,11 +160,7 @@ func NewServer(config ServerConfig) *Server {
 	}
 	server.catalogMutationService = catalogMutationService
 	server.catalogGovernanceService = catalogGovernanceService
-	server.accessWorkflow = &accessWorkflow{
-		authorizer: authorizer,
-		audit:      auditRecorder,
-		logger:     logger,
-	}
+	server.accessWorkflow = platformaccess.New(authorizer, auditRecorder, logger)
 	server.auditQueryModule = platformaudit.NewQueryModule(config.Audit, authorizer)
 	server.listGovernanceChangesFunc = server.listGovernanceChanges
 	server.createReleaseRecordFunc = server.createReleaseRecord
@@ -209,11 +206,11 @@ func resolveCatalogGovernanceService(repository catalog.Repository) catalogGover
 }
 
 func (s *Server) authorizePackageAccess(writer http.ResponseWriter, request *http.Request, packageName string) bool {
-	return s.accessWorkflow.authorizePackage(writer, request, packageName)
+	return s.accessWorkflow.AuthorizePackage(writer, request, packageName)
 }
 
 func (s *Server) authorizeActionAccess(writer http.ResponseWriter, request *http.Request, action auth.Action, packageName string, version string) bool {
-	return s.accessWorkflow.authorizeAction(writer, request, action, packageName, version)
+	return s.accessWorkflow.AuthorizeAction(writer, request, action, packageName, version)
 }
 
 func (s *Server) serveCachedReadJSON(writer http.ResponseWriter, request *http.Request, ttl time.Duration, load func() (any, *catalog.Error)) {
@@ -288,7 +285,7 @@ func (s *Server) newEngine() *gin.Engine {
 	systemHTTPHandlers := internalsystemhttp.New(s.systemModule.Readyz, s.metrics.RenderPrometheus)
 	sessionHTTPHandlers := platformsessionhttp.New(platformsessionhttp.Handlers{
 		Authenticate:    s.authenticateRequest,
-		AuthorizeAction: s.accessWorkflow.authorizeAction,
+		AuthorizeAction: s.accessWorkflow.AuthorizeAction,
 		CurrentFunc: func(principal auth.Principal) any {
 			if s.sessionModule == nil {
 				return nil
@@ -329,7 +326,7 @@ func (s *Server) newEngine() *gin.Engine {
 		ServeCachedReadJSON: s.serveCachedReadJSON,
 		ReadListCacheTTL:    s.readListCacheTTL,
 		AuthorizePackage:    s.authorizePackageAccess,
-		AuthorizeAction:     s.accessWorkflow.authorizeAction,
+		AuthorizeAction:     s.accessWorkflow.AuthorizeAction,
 		ListGovernance:      s.listGovernanceChangesFunc,
 		AcquireWriteLimiter: func() (func(), *catalog.Error) {
 			return s.writeLimiter.Acquire()
@@ -447,7 +444,7 @@ func (s *Server) protectedActionHandler(action auth.Action, handler gin.HandlerF
 	return platformmiddleware.RequireAction(
 		handler,
 		action,
-		s.accessWorkflow.authorizeAction,
+		s.accessWorkflow.AuthorizeAction,
 		s.recordAuthenticationDeniedAudit,
 	)
 }

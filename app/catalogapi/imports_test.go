@@ -8,7 +8,7 @@ import (
 )
 
 func TestPlatformHTTPAliasCallersUseInternalPlatformHTTPDirectly(t *testing.T) {
-	for _, path := range []string{"access_workflow.go", "server.go"} {
+	for _, path := range []string{"server.go"} {
 		imports := parseImports(t, path)
 		if !imports["skill_registry/internal/platform/http"] {
 			t.Fatalf("expected %s to import skill_registry/internal/platform/http directly", path)
@@ -16,6 +16,13 @@ func TestPlatformHTTPAliasCallersUseInternalPlatformHTTPDirectly(t *testing.T) {
 		if imports["skill_registry/app/catalogapi/common"] {
 			t.Fatalf("expected %s to stop importing skill_registry/app/catalogapi/common", path)
 		}
+	}
+}
+
+func TestServerUsesPlatformAccessOwnerDirectly(t *testing.T) {
+	imports := parseImports(t, "server.go")
+	if !imports["skill_registry/internal/platform/http/access"] {
+		t.Fatal("expected server.go to import skill_registry/internal/platform/http/access directly")
 	}
 }
 
