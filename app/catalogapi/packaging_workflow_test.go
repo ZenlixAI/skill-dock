@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"skill_registry/app/catalogapi/audit"
 	packagingapplication "skill_registry/internal/packaging/application"
 	packaging "skill_registry/internal/packaging/domain"
 	internalpackaginghttp "skill_registry/internal/packaging/http"
+	platformaudit "skill_registry/internal/platform/audit"
 	"skill_registry/internal/platform/auth"
 	platformhttp "skill_registry/internal/platform/http"
 )
@@ -44,7 +44,7 @@ func TestPackagingWorkflowReplaysCachedPrepareResponse(t *testing.T) {
 
 func TestPackagingWorkflowPrepareRecordsSuccessAudit(t *testing.T) {
 	store := &captureAuditStore{}
-	workflow := newPackagingWorkflowWithAuditForTest(audit.NewRecorder(store))
+	workflow := newPackagingWorkflowWithAuditForTest(platformaudit.NewRecorder(store))
 	principal := auth.Principal{Role: "authoring", Actor: "svc-authoring", AuthMechanism: "configured_token"}
 	ctx := platformhttp.ContextWithRequestMetadata(context.Background(), "req_packaging_success", "trace_packaging_success")
 
@@ -65,7 +65,7 @@ func TestPackagingWorkflowPrepareRecordsSuccessAudit(t *testing.T) {
 
 func TestPackagingWorkflowPrepareRecordsFailureAudit(t *testing.T) {
 	store := &captureAuditStore{}
-	workflow := newPackagingWorkflowWithAuditForTest(audit.NewRecorder(store))
+	workflow := newPackagingWorkflowWithAuditForTest(platformaudit.NewRecorder(store))
 	principal := auth.Principal{Role: "authoring", Actor: "svc-authoring", AuthMechanism: "configured_token"}
 	ctx := platformhttp.ContextWithRequestMetadata(context.Background(), "req_packaging_failure", "trace_packaging_failure")
 
@@ -87,7 +87,7 @@ func TestPackagingWorkflowPrepareRecordsFailureAudit(t *testing.T) {
 
 func TestPackagingWorkflowDecodePrepareRequestRecordsFailureAudit(t *testing.T) {
 	store := &captureAuditStore{}
-	workflow := newPackagingWorkflowWithAuditForTest(audit.NewRecorder(store))
+	workflow := newPackagingWorkflowWithAuditForTest(platformaudit.NewRecorder(store))
 	principal := auth.Principal{Role: "authoring", Actor: "svc-authoring", AuthMechanism: "configured_token"}
 	ctx := platformhttp.ContextWithRequestMetadata(context.Background(), "req_packaging_decode_failure", "trace_packaging_decode_failure")
 

@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"skill_registry/app/catalogapi/audit"
 	catalog "skill_registry/internal/catalog/domain"
 	packagingapplication "skill_registry/internal/packaging/application"
 	packaging "skill_registry/internal/packaging/domain"
 	"skill_registry/internal/platform/auth"
+	platformaudit "skill_registry/internal/platform/audit"
 )
 
 func TestPackagingAccessModuleUsesPackagingApplicationAccessContract(t *testing.T) {
@@ -58,7 +58,7 @@ func TestServerResolvesBundlePathAndRecordsAudit(t *testing.T) {
 	store := &captureAuditStore{}
 	server := &Server{
 		packaging:     &bundlePathOnlyPackagingService{bundlePath: bundlePath},
-		auditRecorder: audit.NewRecorder(store),
+		auditRecorder: platformaudit.NewRecorder(store),
 	}
 	principal := auth.Principal{
 		Role:          "publisher",
@@ -102,7 +102,7 @@ func TestServerCleanupRemovesWorkspaceAndBundle(t *testing.T) {
 	store := &captureAuditStore{}
 	server := &Server{
 		packaging:     service,
-		auditRecorder: audit.NewRecorder(store),
+		auditRecorder: platformaudit.NewRecorder(store),
 	}
 	principal := auth.Principal{
 		Role:          "publisher",

@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"skill_registry/app/catalogapi/audit"
 	catalog "skill_registry/internal/catalog/domain"
 	packagingapplication "skill_registry/internal/packaging/application"
 	packaging "skill_registry/internal/packaging/domain"
+	platformaudit "skill_registry/internal/platform/audit"
 	"skill_registry/internal/platform/auth"
 	platformhttp "skill_registry/internal/platform/http"
 	persist "skill_registry/internal/platform/persistence"
@@ -23,7 +23,7 @@ type WorkflowService = packagingapplication.WorkflowService
 type WorkflowConfig struct {
 	Service             WorkflowService
 	Idempotency         persist.IdempotencyStore
-	Audit               *audit.Recorder
+	Audit               *platformaudit.Recorder
 	CacheTTL            time.Duration
 	AllowAnonymousCache bool
 }
@@ -31,7 +31,7 @@ type WorkflowConfig struct {
 type Workflow struct {
 	service             WorkflowService
 	idempotency         persist.IdempotencyStore
-	audit               *audit.Recorder
+	audit               *platformaudit.Recorder
 	cache               *responseCache
 	allowAnonymousCache bool
 }

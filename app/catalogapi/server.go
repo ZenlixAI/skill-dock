@@ -12,7 +12,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"skill_registry/app/catalogapi/audit"
 	sessionhandlers "skill_registry/app/catalogapi/handlers/session"
 	catalogapp "skill_registry/internal/catalog/application"
 	catalog "skill_registry/internal/catalog/domain"
@@ -21,6 +20,7 @@ import (
 	packagingapplication "skill_registry/internal/packaging/application"
 	packaging "skill_registry/internal/packaging/domain"
 	internalpackaginghttp "skill_registry/internal/packaging/http"
+	platformaudit "skill_registry/internal/platform/audit"
 	"skill_registry/internal/platform/auth"
 	platformhttp "skill_registry/internal/platform/http"
 	platformmiddleware "skill_registry/internal/platform/http/middleware"
@@ -84,7 +84,7 @@ type Server struct {
 	systemModule                     systemWorkflow
 	publicNPMRegistryURL             string
 	packaging                        packagingApplication
-	auditRecorder                    *audit.Recorder
+	auditRecorder                    *platformaudit.Recorder
 	logger                           *log.Logger
 	metrics                          *observability.Collector
 	requestID                        atomic.Uint64
@@ -118,7 +118,7 @@ func NewServer(config ServerConfig) *Server {
 		Tokens:         config.AuthTokens,
 	})
 	sessionManager := auth.NewSessionManager(config.SessionSecret, config.SessionUsers, 12*time.Hour)
-	auditRecorder := audit.NewRecorder(config.Audit)
+	auditRecorder := platformaudit.NewRecorder(config.Audit)
 	var packagingSvc packagingService
 	if config.Packaging != nil {
 		packagingSvc = config.Packaging
@@ -163,7 +163,7 @@ func NewServer(config ServerConfig) *Server {
 		audit:      auditRecorder,
 		logger:     logger,
 	}
-	server.auditQueryModule = audit.NewQueryModule(config.Audit, authorizer)
+	server.auditQueryModule = platformaudit.NewQueryModule(config.Audit, authorizer)
 	server.listGovernanceChangesFunc = server.listGovernanceChanges
 	server.createReleaseRecordFunc = server.createReleaseRecord
 	server.applySkillGovernanceChangeFunc = server.applySkillGovernanceChange

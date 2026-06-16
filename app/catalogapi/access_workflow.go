@@ -4,7 +4,7 @@ import (
 	"log"
 	"net/http"
 
-	"skill_registry/app/catalogapi/audit"
+	platformaudit "skill_registry/internal/platform/audit"
 	"skill_registry/internal/platform/auth"
 	platformhttp "skill_registry/internal/platform/http"
 	"skill_registry/internal/platform/observability"
@@ -12,7 +12,7 @@ import (
 
 type accessWorkflow struct {
 	authorizer *auth.Authorizer
-	audit      *audit.Recorder
+	audit      *platformaudit.Recorder
 	logger     *log.Logger
 }
 

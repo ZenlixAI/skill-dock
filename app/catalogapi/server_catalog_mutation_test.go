@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"testing"
 
-	"skill_registry/app/catalogapi/audit"
 	catalog "skill_registry/internal/catalog/domain"
 	cataloginfra "skill_registry/internal/catalog/infra"
+	platformaudit "skill_registry/internal/platform/audit"
 	"skill_registry/internal/platform/auth"
 )
 
@@ -15,7 +15,7 @@ func TestServerCreatesReleaseRecordAndRecordsCreatedAudit(t *testing.T) {
 	store := &captureAuditStore{}
 	server := &Server{
 		catalogMutationService: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		auditRecorder:          audit.NewRecorder(store),
+		auditRecorder:          platformaudit.NewRecorder(store),
 	}
 	principal := auth.Principal{
 		Role:          "publisher",
@@ -46,7 +46,7 @@ func TestServerAppliesSkillGovernanceAndRecordsAudit(t *testing.T) {
 	store := &captureAuditStore{}
 	server := &Server{
 		catalogMutationService: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		auditRecorder:          audit.NewRecorder(store),
+		auditRecorder:          platformaudit.NewRecorder(store),
 	}
 	principal := auth.Principal{
 		Role:          "publisher",
@@ -74,7 +74,7 @@ func TestServerAppliesVersionGovernanceAndRecordsAudit(t *testing.T) {
 	store := &captureAuditStore{}
 	server := &Server{
 		catalogMutationService: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		auditRecorder:          audit.NewRecorder(store),
+		auditRecorder:          platformaudit.NewRecorder(store),
 	}
 	principal := auth.Principal{
 		Role:          "publisher",

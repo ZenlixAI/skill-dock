@@ -10,7 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"skill_registry/app/catalogapi/audit"
+	platformaudit "skill_registry/internal/platform/audit"
 	"skill_registry/internal/platform/auth"
 	platformhttp "skill_registry/internal/platform/http"
 	platformmiddleware "skill_registry/internal/platform/http/middleware"
@@ -21,7 +21,7 @@ func TestAccessWorkflowDeniesPackageAccessAndRecordsAudit(t *testing.T) {
 	store := &captureAuditStore{}
 	workflow := &accessWorkflow{
 		authorizer: auth.NewAuthorizer(auth.Config{}),
-		audit:      audit.NewRecorder(store),
+		audit:      platformaudit.NewRecorder(store),
 		logger:     log.New(io.Discard, "", 0),
 	}
 
@@ -58,7 +58,7 @@ func TestAccessWorkflowAuthorizeActionFeedsGinObservability(t *testing.T) {
 	var logBuffer bytes.Buffer
 	workflow := &accessWorkflow{
 		authorizer: auth.NewAuthorizer(auth.Config{}),
-		audit:      audit.NewRecorder(&captureAuditStore{}),
+		audit:      platformaudit.NewRecorder(&captureAuditStore{}),
 		logger:     log.New(io.Discard, "", 0),
 	}
 
@@ -108,7 +108,7 @@ func TestAccessWorkflowAuthorizeActionFeedsGinObservability(t *testing.T) {
 func TestAccessWorkflowAuthorizeActionSetsNeutralObservedState(t *testing.T) {
 	workflow := &accessWorkflow{
 		authorizer: auth.NewAuthorizer(auth.Config{}),
-		audit:      audit.NewRecorder(&captureAuditStore{}),
+		audit:      platformaudit.NewRecorder(&captureAuditStore{}),
 		logger:     log.New(io.Discard, "", 0),
 	}
 

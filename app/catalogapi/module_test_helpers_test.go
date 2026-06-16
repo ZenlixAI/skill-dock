@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"skill_registry/app/catalogapi/audit"
 	catalog "skill_registry/internal/catalog/domain"
 	internalcataloghttp "skill_registry/internal/catalog/http"
 	packagingapplication "skill_registry/internal/packaging/application"
 	packaging "skill_registry/internal/packaging/domain"
 	internalpackaginghttp "skill_registry/internal/packaging/http"
+	platformaudit "skill_registry/internal/platform/audit"
 	"skill_registry/internal/platform/auth"
 	platformhttp "skill_registry/internal/platform/http"
 	persist "skill_registry/internal/platform/persistence"
@@ -172,7 +172,7 @@ func newPackagingWorkflowForTest(_ interface{ Helper() }) *testPackagingWorkflow
 	return newPackagingWorkflowWithAuditForTest(nil)
 }
 
-func newPackagingWorkflowWithAuditForTest(auditRecorder *audit.Recorder) *testPackagingWorkflow {
+func newPackagingWorkflowWithAuditForTest(auditRecorder *platformaudit.Recorder) *testPackagingWorkflow {
 	service := &stubPackagingService{
 		prepareFunc: func(_ context.Context, input packaging.PrepareRequest) (packaging.PrepareResponse, error) {
 			return packaging.PrepareResponse{
