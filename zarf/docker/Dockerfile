@@ -11,9 +11,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download
 
 COPY app ./app
-COPY business ./business
 COPY cmd ./cmd
-COPY foundation ./foundation
 COPY internal ./internal
 
 RUN --mount=type=cache,target=/go/pkg/mod \

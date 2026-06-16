@@ -2,10 +2,6 @@ import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
   applySkillGovernanceChange,
-  getInstallTarget,
-  getSkillDetail,
-  getSkillVersions,
-  listGovernanceChanges,
 } from '../api/client';
 import { normalizeThrownRegistryError } from '../api/httpClient';
 import {
@@ -23,7 +19,7 @@ import {
   type CatalogMutationState,
   persistCatalogMutation,
 } from '../features/catalog-mutations/useCatalogMutation';
-import { useAsyncData } from '../lib/useAsyncData';
+import { useSkillDetailSnapshot } from '../features/skill-detail/useSkillDetailSnapshot';
 import { formatDate } from '../lib/format';
 import {
   getGovernanceActionLabel,
@@ -63,21 +59,20 @@ export function SkillDetailPage() {
   const [activityLog, setActivityLog] = useState<SkillLogEntry[]>([]);
   const [submitState, setSubmitState] = useState<CatalogMutationState>(createMutationState());
 
-  const detail = useAsyncData(() => getSkillDetail(decodedPackage), [decodedPackage, refreshKey]);
-  const versionList = useAsyncData(() => getSkillVersions(decodedPackage), [decodedPackage, refreshKey]);
-  const installTarget = useAsyncData(() => getInstallTarget(decodedPackage), [decodedPackage, refreshKey]);
-  const governance = useAsyncData(
-    () => listGovernanceChanges({ packageName: decodedPackage }),
-    [decodedPackage, refreshKey]
-  );
-  const latestVersionItem = versionList.data?.items[0];
-  const installTargetVersionItem =
-    installTarget.data && versionList.data?.items
-      ? versionList.data.items.find((item) => item.version === installTarget.data?.version) || null
-      : null;
-  const statusTone = detail.data?.status === 'active' ? 'good' : 'bad';
-  const hasInstallTarget = Boolean(installTarget.data);
-  const installVersion = installTargetVersionItem?.version || installTarget.data?.version || '待确认版本';
+  const {
+    detail,
+    versionList,
+    installTarget,
+    governance,
+    latestVersionItem,
+    installTargetVersionItem,
+    statusTone,
+    hasInstallTarget,
+    installVersion,
+  } = useSkillDetailSnapshot({
+    packageName: decodedPackage,
+    refreshKey,
+  });
   const installRegistryHost = getInstallHostLabel(installTarget.data?.npmRegistry);
   const installTarballUrl = rewriteInstallTarballUrl(
     installTarget.data?.tarballUrl,

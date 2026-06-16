@@ -4,18 +4,10 @@ import (
 	"context"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"sync/atomic"
-	"testing"
-	"time"
 
 	catalog "skill_registry/internal/catalog/domain"
 	internalcataloghttp "skill_registry/internal/catalog/http"
-	packagingapplication "skill_registry/internal/packaging/application"
-	packaging "skill_registry/internal/packaging/domain"
-	internalpackaginghttp "skill_registry/internal/packaging/http"
-	platformaudit "skill_registry/internal/platform/audit"
 	"skill_registry/internal/platform/auth"
 	platformhttp "skill_registry/internal/platform/http"
 	platformaccess "skill_registry/internal/platform/http/access"
@@ -128,108 +120,6 @@ func (m *sessionModuleStub) logoutCallCount() int {
 	return int(m.logoutCalls.Load())
 }
 
-type testPackagingWorkflow struct {
-	*internalpackaginghttp.Workflow
-	service *stubPackagingService
-}
-
-type stubPackagingService struct {
-	prepareCalls atomic.Int64
-	prepareFunc  func(context.Context, packaging.PrepareRequest) (packaging.PrepareResponse, error)
-	validateFunc func(context.Context, packaging.ValidateRequest) (packaging.ValidateResponse, error)
-	packFunc     func(context.Context, packaging.PackRequest) (packaging.PackResponse, error)
-}
-
-func (s *stubPackagingService) PrepareContext(ctx context.Context, input packaging.PrepareRequest) (packaging.PrepareResponse, error) {
-	s.prepareCalls.Add(1)
-	if s.prepareFunc != nil {
-		return s.prepareFunc(ctx, input)
-	}
-	return packaging.PrepareResponse{}, nil
-}
-
-func (s *stubPackagingService) ValidateContext(ctx context.Context, input packaging.ValidateRequest) (packaging.ValidateResponse, error) {
-	if s.validateFunc != nil {
-		return s.validateFunc(ctx, input)
-	}
-	return packaging.ValidateResponse{}, nil
-}
-
-func (s *stubPackagingService) PackContext(ctx context.Context, input packaging.PackRequest) (packaging.PackResponse, error) {
-	if s.packFunc != nil {
-		return s.packFunc(ctx, input)
-	}
-	return packaging.PackResponse{}, nil
-}
-
-func newPackagingWorkflowForTest(_ interface{ Helper() }) *testPackagingWorkflow {
-	return newPackagingWorkflowWithAuditForTest(nil)
-}
-
-func newPackagingWorkflowWithAuditForTest(auditRecorder *platformaudit.Recorder) *testPackagingWorkflow {
-	service := &stubPackagingService{
-		prepareFunc: func(_ context.Context, input packaging.PrepareRequest) (packaging.PrepareResponse, error) {
-			return packaging.PrepareResponse{
-				WorkspacePath: "cached-workspace",
-				PackageName:   input.Target.PackageName,
-				Version:       input.Target.Version,
-				Warnings:      []string{},
-				Errors:        []string{},
-			}, nil
-		},
-	}
-	return &testPackagingWorkflow{
-		Workflow: internalpackaginghttp.NewWorkflow(internalpackaginghttp.WorkflowConfig{
-			Service:             service,
-			Audit:               auditRecorder,
-			CacheTTL:            10 * time.Minute,
-			AllowAnonymousCache: true,
-		}),
-		service: service,
-	}
-}
-
-func (m *testPackagingWorkflow) prepareCallCount() int {
-	return int(m.service.prepareCalls.Load())
-}
-
-func prepareManagedWorkspaceForTest(t *testing.T, service *packagingapplication.Service, packageName string, version string) (string, string) {
-	t.Helper()
-
-	fixtureDir := createPackagingFixture(t)
-	prepareResponse, err := service.PrepareContext(context.Background(), packaging.PrepareRequest{
-		Source: packaging.Source{
-			Type:          "upload_archive",
-			ArchiveBase64: buildSourceArchiveBase64FromDirectory(t, fixtureDir),
-		},
-		Target: packaging.Target{
-			PackageName: packageName,
-			Version:     version,
-		},
-		Metadata: packaging.Metadata{
-			DisplayName: "Fixture Skill",
-			Description: "Fixture packaging flow",
-			SourceType:  "imported",
-		},
-	})
-	if err != nil {
-		t.Fatalf("prepare workspace: %v", err)
-	}
-
-	packResponse, err := service.PackContext(context.Background(), packaging.PackRequest{
-		WorkspacePath: prepareResponse.WorkspacePath,
-		Target: packaging.Target{
-			PackageName: packageName,
-			Version:     version,
-		},
-	})
-	if err != nil {
-		t.Fatalf("pack workspace: %v", err)
-	}
-
-	return prepareResponse.WorkspacePath, packResponse.BundlePath
-}
-
 type accessWorkflowStub struct {
 	allow                 bool
 	authorizeActionCalls  atomic.Int64
@@ -304,6 +194,10 @@ func newCatalogMutationWorkflowStubForTest(_ interface{ Helper() }) *catalogMuta
 	return &catalogMutationWorkflowStub{}
 }
 
+func (m *catalogMutationWorkflowStub) ListGovernanceChanges(context.Context, auth.Principal, catalog.GovernanceQuery) (catalog.GovernancePage, *catalog.Error) {
+	return catalog.GovernancePage{}, nil
+}
+
 func (m *catalogMutationWorkflowStub) createReleaseRecord(context.Context, auth.Principal, string, string, []byte) (catalog.ReleaseRecordResult, int, *catalog.Error) {
 	m.createReleaseRecordCalls.Add(1)
 	return catalog.ReleaseRecordResult{Created: true}, http.StatusCreated, nil
@@ -329,42 +223,6 @@ func (m *catalogMutationWorkflowStub) applySkillGovernanceCallCount() int {
 
 func (m *catalogMutationWorkflowStub) applyVersionGovernanceCallCount() int {
 	return int(m.applyVersionGovernanceCalls.Load())
-}
-
-type packagingAccessWorkflowStub struct {
-	cleanupCalls        atomic.Int64
-	downloadBundleCalls atomic.Int64
-	bundlePath          string
-}
-
-func newPackagingAccessWorkflowStubForTest(t interface {
-	Helper()
-	TempDir() string
-}) *packagingAccessWorkflowStub {
-	t.Helper()
-	bundlePath := filepath.Join(t.TempDir(), "bundle.tgz")
-	if err := os.WriteFile(bundlePath, []byte("bundle"), 0o644); err != nil {
-		panic(err)
-	}
-	return &packagingAccessWorkflowStub{bundlePath: bundlePath}
-}
-
-func (m *packagingAccessWorkflowStub) cleanup(context.Context, auth.Principal, packaging.CleanupRequest) (packaging.CleanupResponse, int, *catalog.Error) {
-	m.cleanupCalls.Add(1)
-	return packaging.CleanupResponse{Removed: true}, http.StatusOK, nil
-}
-
-func (m *packagingAccessWorkflowStub) downloadBundle(context.Context, auth.Principal, string, string, string) (string, *catalog.Error) {
-	m.downloadBundleCalls.Add(1)
-	return m.bundlePath, nil
-}
-
-func (m *packagingAccessWorkflowStub) downloadBundleCallCount() int {
-	return int(m.downloadBundleCalls.Load())
-}
-
-func (m *packagingAccessWorkflowStub) cleanupCallCount() int {
-	return int(m.cleanupCalls.Load())
 }
 
 type captureAuditStore struct {

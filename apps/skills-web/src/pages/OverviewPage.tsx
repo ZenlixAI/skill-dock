@@ -1,22 +1,21 @@
 import { startTransition, type FormEvent, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { listAuditEvents, listCuratedSkills, listGovernanceChanges, listSkills } from '../api/client';
+import { listCuratedSkills } from '../api/client';
 import type { RegistryRequestError } from '../api/types';
 import { SectionHeading } from '../components/SectionHeading';
 import { SkillSummaryCard } from '../components/SkillSummaryCard';
 import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
 import { TimelineList } from '../components/TimelineList';
+import { useWorkbenchSnapshot } from '../features/workbench/useWorkbenchSnapshot';
 import { formatDate } from '../lib/format';
 import { useAsyncData } from '../lib/useAsyncData';
 
 export function OverviewPage() {
   const [query, setQuery] = useState('');
   const navigate = useNavigate();
-  const skills = useAsyncData(() => listSkills({ includeRetired: true, pageSize: 8 }), []);
+  const { skills, governance, audit } = useWorkbenchSnapshot({ pageSize: 5 });
   const curated = useAsyncData(() => listCuratedSkills(), []);
-  const governance = useAsyncData(() => listGovernanceChanges({ pageSize: 5 }), []);
-  const audit = useAsyncData(() => listAuditEvents({ pageSize: 5 }), []);
   const shownSkills = skills.data?.items.length || 0;
   const recentSkills = [...(skills.data?.items || [])]
     .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))

@@ -1,16 +1,11 @@
 import { Link } from 'react-router-dom';
-import { listAuditEvents, listGovernanceChanges, listSkills } from '../api/client';
 import { SectionHeading } from '../components/SectionHeading';
 import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
-import { useAsyncData } from '../lib/useAsyncData';
+import { useWorkbenchSnapshot } from '../features/workbench/useWorkbenchSnapshot';
 
 export function WorkbenchHomePage() {
-  const skills = useAsyncData(() => listSkills({ includeRetired: true, pageSize: 8 }), []);
-  const governance = useAsyncData(() => listGovernanceChanges({ pageSize: 8 }), []);
-  const audit = useAsyncData(() => listAuditEvents({ pageSize: 8 }), []);
-  const packagingEvents = audit.data?.items.filter((item) => item.action.startsWith('packaging.')) || [];
-  const releaseEvents = audit.data?.items.filter((item) => item.action === 'release.record') || [];
+  const { skills, governance, audit, packagingEvents, releaseEvents } = useWorkbenchSnapshot();
   const isLoading = skills.loading || governance.loading || audit.loading;
 
   return (

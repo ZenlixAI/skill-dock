@@ -1,10 +1,10 @@
 import { Link, useSearchParams } from 'react-router-dom';
-import { getRegistryClientConfig, listAuditEvents, listGovernanceChanges, listSkills } from '../api/client';
+import { getRegistryClientConfig } from '../api/client';
 import { describeSessionScope } from '../api/session';
 import { SectionHeading } from '../components/SectionHeading';
 import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
-import { useAsyncData } from '../lib/useAsyncData';
+import { useWorkbenchSnapshot } from '../features/workbench/useWorkbenchSnapshot';
 import { buildAuditLink } from '../lib/auditLink';
 import { buildReleaseHandoffPath, readReleaseHandoff } from '../lib/releaseHandoff';
 import { useRegistrySession } from '../session/SessionProvider';
@@ -15,10 +15,7 @@ export function AuthoringFlowPage() {
   const hasHandoff = Boolean(handoff.manifestDigest || handoff.components?.length);
   const config = getRegistryClientConfig();
   const { session, getPosture, getPostureLabel } = useRegistrySession();
-
-  const skills = useAsyncData(() => listSkills({ includeRetired: true, pageSize: 8 }), []);
-  const governance = useAsyncData(() => listGovernanceChanges({ pageSize: 8 }), []);
-  const audit = useAsyncData(() => listAuditEvents({ pageSize: 8 }), []);
+  const { skills, governance, audit } = useWorkbenchSnapshot();
 
   const releaseTarget =
     handoff.packageName && handoff.version

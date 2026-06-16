@@ -1,8 +1,7 @@
 package http
 
 import (
-	"context"
-	"io"
+	stdctx "context"
 	stdhttp "net/http"
 
 	"github.com/gin-gonic/gin"
@@ -15,9 +14,9 @@ import (
 
 type AuthorizePackageFunc func(stdhttp.ResponseWriter, *stdhttp.Request, string) bool
 type AcquireWriteLimiterFunc func() (func(), *catalog.Error)
-type DecodeImportReviewRequestFunc func(context.Context, auth.Principal, []byte) (packaging.ImportReviewRequest, *catalog.Error)
-type ImportReviewFunc func(context.Context, auth.Principal, packaging.ImportReviewRequest) (any, int, *catalog.Error)
-type PublishFunc func(context.Context, packaging.PublishRequest) (packaging.PublishResponse, error)
+type DecodeImportReviewRequestFunc func(stdctx.Context, auth.Principal, []byte) (packaging.ImportReviewRequest, *catalog.Error)
+type ImportReviewFunc func(stdctx.Context, auth.Principal, packaging.ImportReviewRequest) (any, int, *catalog.Error)
+type PublishFunc func(stdctx.Context, packaging.PublishRequest) (packaging.PublishResponse, error)
 type RecordMutationAuditFunc func(request *stdhttp.Request, action string, packageName string, version string, status int, outcome string, details map[string]any)
 
 type Handlers struct {
@@ -38,10 +37,10 @@ func (h Handlers) ImportReviewHandler(c *gin.Context) {
 	handlePackagingWorkflow(
 		h,
 		c,
-		func(ctx context.Context, principal auth.Principal, rawBody []byte) (packaging.ImportReviewRequest, *catalog.Error) {
+		func(ctx stdctx.Context, principal auth.Principal, rawBody []byte) (packaging.ImportReviewRequest, *catalog.Error) {
 			return h.DecodeImportReviewRequest(ctx, principal, rawBody)
 		},
-		func(ctx context.Context, principal auth.Principal, payload packaging.ImportReviewRequest) (any, int, *catalog.Error) {
+		func(ctx stdctx.Context, principal auth.Principal, payload packaging.ImportReviewRequest) (any, int, *catalog.Error) {
 			return h.ImportReview(ctx, principal, payload)
 		},
 	)
@@ -95,41 +94,38 @@ func (h Handlers) PublishHandler(c *gin.Context) {
 func handlePackagingWorkflow[T interface {
 	GetIdempotencyKey() string
 	GetTarget() packaging.Target
-}](h Handlers, context *gin.Context, decode func(context.Context, auth.Principal, []byte) (T, *catalog.Error), execute func(context.Context, auth.Principal, T) (any, int, *catalog.Error)) {
+}](h Handlers, context *gin.Context, decode func(stdctx.Context, auth.Principal, []byte) (T, *catalog.Error), execute func(stdctx.Context, auth.Principal, T) (any, int, *catalog.Error)) {
 	if !h.packagingAvailable() {
 		context.Status(stdhttp.StatusNotFound)
 		return
 	}
 
-	rawBody, readErr := io.ReadAll(context.Request.Body)
-	if readErr != nil {
-		platformhttp.WriteCatalogError(context.Writer, context.Request, catalog.NewError(422, "invalid_request", "request body is invalid JSON.", map[string]any{"error": readErr.Error()}))
-		return
-	}
+	var (
+		principal auth.Principal
+		payload   T
+	)
 
-	principal := auth.PrincipalFromContext(context.Request.Context())
-	payload, err := decode(context.Request.Context(), principal, rawBody)
-	if err != nil {
-		platformhttp.WriteCatalogError(context.Writer, context.Request, err)
-		return
-	}
-	if packageName := payload.GetTarget().PackageName; packageName != "" {
-		if !h.authorizePackage(context, packageName) {
-			return
-		}
-	}
-	release := h.acquireWriteLimiter(context)
-	if release == nil {
-		return
-	}
-	defer release()
-
-	result, status, execErr := execute(context.Request.Context(), principal, payload)
-	if execErr != nil {
-		platformhttp.WriteCatalogError(context.Writer, context.Request, execErr)
-		return
-	}
-	platformhttp.WriteJSON(context.Writer, status, result)
+	platformhttp.ExecuteRawBodyMutation(context.Writer, context.Request, platformhttp.RawBodyMutationConfig{
+		Prepare: func(ctx stdctx.Context, rawBody []byte) *catalog.Error {
+			principal = auth.PrincipalFromContext(ctx)
+			decoded, err := decode(ctx, principal, rawBody)
+			if err != nil {
+				return err
+			}
+			payload = decoded
+			return nil
+		},
+		Authorize: func([]byte) bool {
+			if packageName := payload.GetTarget().PackageName; packageName != "" {
+				return h.authorizePackage(context, packageName)
+			}
+			return true
+		},
+		AcquireWriteLimiter: h.AcquireWriteLimiter,
+		Execute: func(ctx stdctx.Context, _ []byte) (any, int, *catalog.Error) {
+			return execute(ctx, principal, payload)
+		},
+	})
 }
 
 func (h Handlers) packagingAvailable() bool {

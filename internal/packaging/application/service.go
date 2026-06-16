@@ -11,17 +11,6 @@ import (
 	persist "skill_registry/internal/platform/persistence"
 )
 
-type WorkflowService interface {
-	PrepareContext(ctx context.Context, input packagingdomain.PrepareRequest) (packagingdomain.PrepareResponse, error)
-	ValidateContext(ctx context.Context, input packagingdomain.ValidateRequest) (packagingdomain.ValidateResponse, error)
-	PackContext(ctx context.Context, input packagingdomain.PackRequest) (packagingdomain.PackResponse, error)
-}
-
-type AccessService interface {
-	CleanupContext(ctx context.Context, workspacePath string) error
-	BundleFilePathContext(ctx context.Context, workspacePath string, target packagingdomain.Target) (string, error)
-}
-
 type Service struct {
 	workspaceService *WorkspaceService
 	importReview     *ImportReviewService
@@ -46,70 +35,6 @@ func (s *Service) ConfigurePublishWorkflow(repo ReleaseRecordCreator, publisher 
 		s.publishService = NewPublishService(s.workspaceService)
 	}
 	s.publishService.Configure(repo, publisher)
-}
-
-func (s *Service) Prepare(input packagingdomain.PrepareRequest) (packagingdomain.PrepareResponse, error) {
-	return s.PrepareContext(context.Background(), input)
-}
-
-func (s *Service) PrepareContext(ctx context.Context, input packagingdomain.PrepareRequest) (packagingdomain.PrepareResponse, error) {
-	return s.workspaceService.Prepare(ctx, input)
-}
-
-func (s *Service) Validate(input packagingdomain.ValidateRequest) (packagingdomain.ValidateResponse, error) {
-	return s.ValidateContext(context.Background(), input)
-}
-
-func (s *Service) ValidateContext(ctx context.Context, input packagingdomain.ValidateRequest) (packagingdomain.ValidateResponse, error) {
-	return s.workspaceService.Validate(ctx, input)
-}
-
-func (s *Service) Pack(input packagingdomain.PackRequest) (packagingdomain.PackResponse, error) {
-	return s.PackContext(context.Background(), input)
-}
-
-func (s *Service) PackContext(ctx context.Context, input packagingdomain.PackRequest) (packagingdomain.PackResponse, error) {
-	return s.workspaceService.Pack(ctx, input)
-}
-
-func (s *Service) Cleanup(workspacePath string) error {
-	return s.CleanupContext(context.Background(), workspacePath)
-}
-
-func (s *Service) CleanupContext(ctx context.Context, workspacePath string) error {
-	return s.workspaceService.Cleanup(ctx, workspacePath)
-}
-
-func (s *Service) BundlePath(workspacePath string, target packagingdomain.Target) (string, error) {
-	return s.BundlePathContext(context.Background(), workspacePath, target)
-}
-
-func (s *Service) BundlePathContext(ctx context.Context, workspacePath string, target packagingdomain.Target) (string, error) {
-	return s.workspaceService.BundlePath(ctx, workspacePath, target)
-}
-
-func (s *Service) BundleFilePath(workspacePath string, target packagingdomain.Target) (string, error) {
-	return s.BundleFilePathContext(context.Background(), workspacePath, target)
-}
-
-func (s *Service) BundleFilePathContext(ctx context.Context, workspacePath string, target packagingdomain.Target) (string, error) {
-	return s.workspaceService.BundleFilePath(ctx, workspacePath, target)
-}
-
-func (s *Service) BundleContent(workspacePath string, target packagingdomain.Target) ([]byte, error) {
-	return s.BundleContentContext(context.Background(), workspacePath, target)
-}
-
-func (s *Service) BundleContentContext(ctx context.Context, workspacePath string, target packagingdomain.Target) ([]byte, error) {
-	return s.workspaceService.BundleContent(ctx, workspacePath, target)
-}
-
-func (s *Service) PackageMetadata(workspacePath string) (map[string]any, error) {
-	return s.PackageMetadataContext(context.Background(), workspacePath)
-}
-
-func (s *Service) PackageMetadataContext(ctx context.Context, workspacePath string) (map[string]any, error) {
-	return s.workspaceService.PackageMetadata(ctx, workspacePath)
 }
 
 func (s *Service) Review(input packagingdomain.ImportReviewRequest) (packagingdomain.ImportReviewResponse, error) {
@@ -186,11 +111,4 @@ func stringPtr(value string) *string {
 		return nil
 	}
 	return &value
-}
-
-func ensureManagedWorkspace(workspacePath string, managed bool) error {
-	if managed {
-		return nil
-	}
-	return catalog.NewError(422, "invalid_request", "workspacePath must reference a managed packaging workspace.", map[string]any{"workspacePath": workspacePath})
 }

@@ -1,8 +1,7 @@
 package http
 
 import (
-	"context"
-	"io"
+	stdctx "context"
 	stdhttp "net/http"
 	"time"
 
@@ -18,7 +17,7 @@ type ServeCachedReadJSONFunc func(stdhttp.ResponseWriter, *stdhttp.Request, time
 type AuthorizePackageFunc func(stdhttp.ResponseWriter, *stdhttp.Request, string) bool
 type AuthorizeActionFunc func(stdhttp.ResponseWriter, *stdhttp.Request, auth.Action, string, string) bool
 type AcquireWriteLimiterFunc func() (func(), *catalog.Error)
-type ListGovernanceChangesFunc func(context.Context, auth.Principal, catalog.GovernanceQuery) (catalog.GovernancePage, *catalog.Error)
+type ListGovernanceChangesFunc func(stdctx.Context, auth.Principal, catalog.GovernanceQuery) (catalog.GovernancePage, *catalog.Error)
 type CreateReleaseRecordFunc func(ctx any, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.ReleaseRecordResult, int, *catalog.Error)
 type ApplySkillGovernanceChangeFunc func(ctx any, principal auth.Principal, packageName string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error)
 type ApplyVersionGovernanceChangeFunc func(ctx any, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error)
@@ -124,27 +123,17 @@ func (h Handlers) SkillGovernance(context *gin.Context) {
 		return
 	}
 
-	rawBody, readErr := io.ReadAll(context.Request.Body)
-	if readErr != nil {
-		platformhttp.WriteCatalogError(context.Writer, context.Request, catalog.NewError(422, "invalid_request", "request body is invalid JSON.", map[string]any{"error": readErr.Error()}))
-		return
-	}
-	release := h.acquireWriteLimiter(context)
-	if release == nil {
-		return
-	}
-	defer release()
-
-	if h.ApplySkillGovernanceChange == nil {
-		platformhttp.WriteJSON(context.Writer, stdhttp.StatusCreated, catalog.GovernanceChangeResponse{})
-		return
-	}
-	payload, status, handlerErr := h.ApplySkillGovernanceChange(context.Request, auth.PrincipalFromContext(context.Request.Context()), packageName, rawBody)
-	if handlerErr != nil {
-		platformhttp.WriteCatalogError(context.Writer, context.Request, handlerErr)
-		return
-	}
-	platformhttp.WriteJSON(context.Writer, status, payload)
+	platformhttp.ExecuteRawBodyMutation(context.Writer, context.Request, platformhttp.RawBodyMutationConfig{
+		AcquireWriteLimiter: h.AcquireWriteLimiter,
+		DefaultStatus:       stdhttp.StatusCreated,
+		DefaultPayload:      catalog.GovernanceChangeResponse{},
+		Execute: func(ctx stdctx.Context, rawBody []byte) (any, int, *catalog.Error) {
+			if h.ApplySkillGovernanceChange == nil {
+				return catalog.GovernanceChangeResponse{}, stdhttp.StatusCreated, nil
+			}
+			return h.ApplySkillGovernanceChange(context.Request, auth.PrincipalFromContext(ctx), packageName, rawBody)
+		},
+	})
 }
 
 func (h Handlers) VersionGovernance(context *gin.Context) {
@@ -165,27 +154,17 @@ func (h Handlers) VersionGovernance(context *gin.Context) {
 		return
 	}
 
-	rawBody, readErr := io.ReadAll(context.Request.Body)
-	if readErr != nil {
-		platformhttp.WriteCatalogError(context.Writer, context.Request, catalog.NewError(422, "invalid_request", "request body is invalid JSON.", map[string]any{"error": readErr.Error()}))
-		return
-	}
-	release := h.acquireWriteLimiter(context)
-	if release == nil {
-		return
-	}
-	defer release()
-
-	if h.ApplyVersionGovernance == nil {
-		platformhttp.WriteJSON(context.Writer, stdhttp.StatusCreated, catalog.GovernanceChangeResponse{})
-		return
-	}
-	payload, status, handlerErr := h.ApplyVersionGovernance(context.Request, auth.PrincipalFromContext(context.Request.Context()), packageName, uri.Version, rawBody)
-	if handlerErr != nil {
-		platformhttp.WriteCatalogError(context.Writer, context.Request, handlerErr)
-		return
-	}
-	platformhttp.WriteJSON(context.Writer, status, payload)
+	platformhttp.ExecuteRawBodyMutation(context.Writer, context.Request, platformhttp.RawBodyMutationConfig{
+		AcquireWriteLimiter: h.AcquireWriteLimiter,
+		DefaultStatus:       stdhttp.StatusCreated,
+		DefaultPayload:      catalog.GovernanceChangeResponse{},
+		Execute: func(ctx stdctx.Context, rawBody []byte) (any, int, *catalog.Error) {
+			if h.ApplyVersionGovernance == nil {
+				return catalog.GovernanceChangeResponse{}, stdhttp.StatusCreated, nil
+			}
+			return h.ApplyVersionGovernance(context.Request, auth.PrincipalFromContext(ctx), packageName, uri.Version, rawBody)
+		},
+	})
 }
 
 func (h Handlers) ReleaseRecord(context *gin.Context) {
@@ -206,27 +185,17 @@ func (h Handlers) ReleaseRecord(context *gin.Context) {
 		return
 	}
 
-	rawBody, readErr := io.ReadAll(context.Request.Body)
-	if readErr != nil {
-		platformhttp.WriteCatalogError(context.Writer, context.Request, catalog.NewError(422, "invalid_request", "request body is invalid JSON.", map[string]any{"error": readErr.Error()}))
-		return
-	}
-	release := h.acquireWriteLimiter(context)
-	if release == nil {
-		return
-	}
-	defer release()
-
-	if h.CreateReleaseRecord == nil {
-		platformhttp.WriteJSON(context.Writer, stdhttp.StatusCreated, catalog.ReleaseRecordResult{})
-		return
-	}
-	payload, status, handlerErr := h.CreateReleaseRecord(context.Request, auth.PrincipalFromContext(context.Request.Context()), packageName, uri.Version, rawBody)
-	if handlerErr != nil {
-		platformhttp.WriteCatalogError(context.Writer, context.Request, handlerErr)
-		return
-	}
-	platformhttp.WriteJSON(context.Writer, status, payload)
+	platformhttp.ExecuteRawBodyMutation(context.Writer, context.Request, platformhttp.RawBodyMutationConfig{
+		AcquireWriteLimiter: h.AcquireWriteLimiter,
+		DefaultStatus:       stdhttp.StatusCreated,
+		DefaultPayload:      catalog.ReleaseRecordResult{},
+		Execute: func(ctx stdctx.Context, rawBody []byte) (any, int, *catalog.Error) {
+			if h.CreateReleaseRecord == nil {
+				return catalog.ReleaseRecordResult{}, stdhttp.StatusCreated, nil
+			}
+			return h.CreateReleaseRecord(context.Request, auth.PrincipalFromContext(ctx), packageName, uri.Version, rawBody)
+		},
+	})
 }
 
 func (h Handlers) authorizePackage(context *gin.Context, packageName string) bool {
@@ -241,18 +210,6 @@ func (h Handlers) authorizeAction(context *gin.Context, action auth.Action, pack
 		return true
 	}
 	return h.AuthorizeAction(context.Writer, context.Request, action, packageName, version)
-}
-
-func (h Handlers) acquireWriteLimiter(context *gin.Context) func() {
-	if h.AcquireWriteLimiter == nil {
-		return func() {}
-	}
-	release, err := h.AcquireWriteLimiter()
-	if err != nil {
-		platformhttp.WriteCatalogError(context.Writer, context.Request, err)
-		return nil
-	}
-	return release
 }
 
 func (h Handlers) serveCachedReadJSON(context *gin.Context, ttl time.Duration, load func() (any, *catalog.Error)) {

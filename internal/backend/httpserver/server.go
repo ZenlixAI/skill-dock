@@ -67,33 +67,30 @@ type ServerConfig struct {
 }
 
 type Server struct {
-	repo                             catalog.Repository
-	authorizer                       *auth.Authorizer
-	sessionManager                   *auth.SessionManager
-	accessWorkflow                   platformaccess.Gate
-	catalogReadModule                internalcataloghttp.Workflow
-	auditQueryModule                 auditQueryWorkflow
-	catalogMutationService           catalogMutationService
-	catalogGovernanceService         catalogGovernanceService
-	listGovernanceChangesFunc        func(ctx context.Context, principal auth.Principal, query catalog.GovernanceQuery) (catalog.GovernancePage, *catalog.Error)
-	createReleaseRecordFunc          func(ctx context.Context, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.ReleaseRecordResult, int, *catalog.Error)
-	applySkillGovernanceChangeFunc   func(ctx context.Context, principal auth.Principal, packageName string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error)
-	applyVersionGovernanceChangeFunc func(ctx context.Context, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error)
-	oneShotPackagingWorkflow         *internalpackaginghttp.OneShotWorkflow
-	sessionModule                    platformsession.Workflow
-	systemModule                     systemWorkflow
-	publicNPMRegistryURL             string
-	packaging                        packagingApplication
-	auditRecorder                    *platformaudit.Recorder
-	logger                           *log.Logger
-	metrics                          *observability.Collector
-	requestID                        atomic.Uint64
-	mode                             ServerMode
-	readListCacheTTL                 time.Duration
-	readDetailCacheTTL               time.Duration
-	readCache                        *platformhttp.ReadCache
-	readLimiter                      *platformhttp.RequestLimiter
-	writeLimiter                     *platformhttp.RequestLimiter
+	repo                     catalog.Repository
+	authorizer               *auth.Authorizer
+	sessionManager           *auth.SessionManager
+	accessWorkflow           platformaccess.Gate
+	catalogReadModule        internalcataloghttp.Workflow
+	auditQueryModule         auditQueryWorkflow
+	catalogMutationService   catalogMutationService
+	catalogGovernanceService catalogGovernanceService
+	governanceWorkflow       internalgovernancehttp.Workflow
+	oneShotPackagingWorkflow *internalpackaginghttp.OneShotWorkflow
+	sessionModule            platformsession.Workflow
+	systemModule             systemWorkflow
+	publicNPMRegistryURL     string
+	packaging                packagingApplication
+	auditRecorder            *platformaudit.Recorder
+	logger                   *log.Logger
+	metrics                  *observability.Collector
+	requestID                atomic.Uint64
+	mode                     ServerMode
+	readListCacheTTL         time.Duration
+	readDetailCacheTTL       time.Duration
+	readCache                *platformhttp.ReadCache
+	readLimiter              *platformhttp.RequestLimiter
+	writeLimiter             *platformhttp.RequestLimiter
 }
 
 func NewServer(config ServerConfig) *Server {
@@ -158,11 +155,7 @@ func NewServer(config ServerConfig) *Server {
 	server.catalogGovernanceService = catalogGovernanceService
 	server.accessWorkflow = platformaccess.New(authorizer, auditRecorder, logger)
 	server.auditQueryModule = platformaudit.NewQueryModule(config.Audit, authorizer)
-	governanceWorkflow := internalgovernancehttp.NewWorkflow(authorizer, catalogMutationService, catalogGovernanceService, auditRecorder)
-	server.listGovernanceChangesFunc = governanceWorkflow.ListGovernanceChanges
-	server.createReleaseRecordFunc = governanceWorkflow.CreateReleaseRecord
-	server.applySkillGovernanceChangeFunc = governanceWorkflow.ApplySkillGovernanceChange
-	server.applyVersionGovernanceChangeFunc = governanceWorkflow.ApplyVersionGovernanceChange
+	server.governanceWorkflow = internalgovernancehttp.NewWorkflow(authorizer, catalogMutationService, catalogGovernanceService, auditRecorder)
 	server.oneShotPackagingWorkflow = internalpackaginghttp.NewOneShotWorkflow(internalpackaginghttp.OneShotWorkflowConfig{
 		ReviewService:       packagingReviewSvc,
 		Idempotency:         config.Idempotency,
@@ -324,18 +317,18 @@ func (s *Server) newEngine() *gin.Engine {
 		ReadListCacheTTL:    s.readListCacheTTL,
 		AuthorizePackage:    s.authorizePackageAccess,
 		AuthorizeAction:     s.accessWorkflow.AuthorizeAction,
-		ListGovernance:      s.listGovernanceChangesFunc,
+		ListGovernance:      s.governanceWorkflow.ListGovernanceChanges,
 		AcquireWriteLimiter: func() (func(), *catalog.Error) {
 			return s.writeLimiter.Acquire()
 		},
 		CreateReleaseRecord: func(request *http.Request, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.ReleaseRecordResult, int, *catalog.Error) {
-			return s.createReleaseRecordFunc(request.Context(), principal, packageName, versionPath, rawBody)
+			return s.governanceWorkflow.CreateReleaseRecord(request.Context(), principal, packageName, versionPath, rawBody)
 		},
 		ApplySkillGovernanceChange: func(request *http.Request, principal auth.Principal, packageName string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error) {
-			return s.applySkillGovernanceChangeFunc(request.Context(), principal, packageName, rawBody)
+			return s.governanceWorkflow.ApplySkillGovernanceChange(request.Context(), principal, packageName, rawBody)
 		},
 		ApplyVersionGovernance: func(request *http.Request, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error) {
-			return s.applyVersionGovernanceChangeFunc(request.Context(), principal, packageName, versionPath, rawBody)
+			return s.governanceWorkflow.ApplyVersionGovernanceChange(request.Context(), principal, packageName, versionPath, rawBody)
 		},
 	})
 	packagingHTTPHandlers := internalpackaginghttp.New(internalpackaginghttp.Handlers{

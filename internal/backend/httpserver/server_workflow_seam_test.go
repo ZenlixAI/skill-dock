@@ -9,10 +9,12 @@ import (
 	"testing"
 
 	internalapp "skill_registry/internal/catalog/application"
+	catalog "skill_registry/internal/catalog/domain"
 	internalcataloghttp "skill_registry/internal/catalog/http"
 	cataloginfra "skill_registry/internal/catalog/infra"
 	packagingapplication "skill_registry/internal/packaging/application"
 	packaging "skill_registry/internal/packaging/domain"
+	"skill_registry/internal/platform/auth"
 	platformhttp "skill_registry/internal/platform/http"
 	internalsystemhttp "skill_registry/internal/system/http"
 )
@@ -186,7 +188,7 @@ func TestServerRoutesReadyzThroughSystemModule(t *testing.T) {
 func TestServerRoutesReleaseRecordThroughCatalogMutationWorkflow(t *testing.T) {
 	module := newCatalogMutationWorkflowStubForTest(t)
 	server := newTestServer()
-	server.createReleaseRecordFunc = module.createReleaseRecord
+	server.governanceWorkflow = governanceWorkflowAdapter{stub: module}
 
 	request := httptest.NewRequest(http.MethodPut, "/api/v1/skills/%40platform.skill%2Fpdf-skill/versions/1.2.0/release-record", strings.NewReader(`{}`))
 	request.Header.Set("X-Role", "publisher")
@@ -205,7 +207,7 @@ func TestServerRoutesReleaseRecordThroughCatalogMutationWorkflow(t *testing.T) {
 func TestServerRoutesSkillGovernanceThroughCatalogMutationWorkflow(t *testing.T) {
 	module := newCatalogMutationWorkflowStubForTest(t)
 	server := newTestServer()
-	server.applySkillGovernanceChangeFunc = module.applySkillGovernanceChange
+	server.governanceWorkflow = governanceWorkflowAdapter{stub: module}
 
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/skills/%40platform.skill%2Fcode-review/governance-changes", strings.NewReader(`{"action":"retire","reason":"merged"}`))
 	request.Header.Set("X-Role", "publisher")
@@ -224,7 +226,7 @@ func TestServerRoutesSkillGovernanceThroughCatalogMutationWorkflow(t *testing.T)
 func TestServerRoutesVersionGovernanceThroughCatalogMutationWorkflow(t *testing.T) {
 	module := newCatalogMutationWorkflowStubForTest(t)
 	server := newTestServer()
-	server.applyVersionGovernanceChangeFunc = module.applyVersionGovernanceChange
+	server.governanceWorkflow = governanceWorkflowAdapter{stub: module}
 
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/skills/%40platform.skill%2Fpdf-skill/versions/1.2.0/governance-changes", strings.NewReader(`{"action":"yank","reason":"security issue"}`))
 	request.Header.Set("X-Role", "publisher")
@@ -293,28 +295,28 @@ type packagingApplicationStub struct {
 	configurePublishWorkflowCalls int
 }
 
+type governanceWorkflowAdapter struct {
+	stub *catalogMutationWorkflowStub
+}
+
+func (a governanceWorkflowAdapter) ListGovernanceChanges(ctx context.Context, principal auth.Principal, query catalog.GovernanceQuery) (catalog.GovernancePage, *catalog.Error) {
+	return a.stub.ListGovernanceChanges(ctx, principal, query)
+}
+
+func (a governanceWorkflowAdapter) CreateReleaseRecord(ctx context.Context, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.ReleaseRecordResult, int, *catalog.Error) {
+	return a.stub.createReleaseRecord(ctx, principal, packageName, versionPath, rawBody)
+}
+
+func (a governanceWorkflowAdapter) ApplySkillGovernanceChange(ctx context.Context, principal auth.Principal, packageName string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error) {
+	return a.stub.applySkillGovernanceChange(ctx, principal, packageName, rawBody)
+}
+
+func (a governanceWorkflowAdapter) ApplyVersionGovernanceChange(ctx context.Context, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error) {
+	return a.stub.applyVersionGovernanceChange(ctx, principal, packageName, versionPath, rawBody)
+}
+
 func (s *packagingApplicationStub) ReviewContext(context.Context, packaging.ImportReviewRequest) (packaging.ImportReviewResponse, error) {
 	return packaging.ImportReviewResponse{}, nil
-}
-
-func (s *packagingApplicationStub) PrepareContext(context.Context, packaging.PrepareRequest) (packaging.PrepareResponse, error) {
-	return packaging.PrepareResponse{}, nil
-}
-
-func (s *packagingApplicationStub) ValidateContext(context.Context, packaging.ValidateRequest) (packaging.ValidateResponse, error) {
-	return packaging.ValidateResponse{}, nil
-}
-
-func (s *packagingApplicationStub) PackContext(context.Context, packaging.PackRequest) (packaging.PackResponse, error) {
-	return packaging.PackResponse{}, nil
-}
-
-func (s *packagingApplicationStub) CleanupContext(context.Context, string) error {
-	return nil
-}
-
-func (s *packagingApplicationStub) BundleFilePathContext(context.Context, string, packaging.Target) (string, error) {
-	return "", nil
 }
 
 func (s *packagingApplicationStub) PublishContext(context.Context, packaging.PublishRequest) (packaging.PublishResponse, error) {
