@@ -676,6 +676,9 @@ export function ImportPage() {
     try {
       prepareRequest = await buildPrepareRequest();
     } catch (error: unknown) {
+      if (inputRevision !== inputRevisionRef.current) {
+        return;
+      }
       const outcome = inferMutationFailureOutcome(error);
       const normalizedError = normalizeThrownRegistryError(error);
       const message = describeImportOperationError(normalizedError);

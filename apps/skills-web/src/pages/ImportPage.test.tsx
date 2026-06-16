@@ -524,6 +524,30 @@ describe('ImportPage', () => {
     expect(client.validatePackaging).not.toHaveBeenCalled();
   });
 
+  it('ignores stale archive assembly failures after inputs change', async () => {
+    let rejectArchive!: (error: Error) => void;
+    vi.mocked(externalImport.buildExternalImportArchive).mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectArchive = reject;
+        })
+    );
+
+    renderImportPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: '检查并生成发布预览' }));
+    await waitFor(() => expect(externalImport.buildExternalImportArchive).toHaveBeenCalledTimes(1));
+    fireEvent.change(screen.getByLabelText('显示名'), {
+      target: { value: 'Zoom Out v2' },
+    });
+
+    rejectArchive(new Error('无法获取外部 skill 源，请检查地址、仓库可见性或浏览器网络限制。'));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '发布 skill' })).toBeDisabled());
+    expect(screen.queryByText('无法获取外部 skill 源，请检查地址、仓库可见性或浏览器网络限制。')).not.toBeInTheDocument();
+    expect(client.preparePackaging).not.toHaveBeenCalled();
+  });
+
   it('shows the validated stage after preview succeeds', async () => {
     vi.mocked(client.preparePackaging).mockResolvedValue({
       workspacePath: '/tmp/skill-packaging/workspace',
