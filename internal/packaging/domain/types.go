@@ -188,7 +188,6 @@ func (r PublishRequest) GetTarget() Target {
 }
 
 type PublishResponse struct {
-	WorkspacePath       string                `json:"workspacePath"`
 	PackageName         string                `json:"packageName"`
 	Version             string                `json:"version"`
 	ManifestDigest      string                `json:"manifestDigest"`

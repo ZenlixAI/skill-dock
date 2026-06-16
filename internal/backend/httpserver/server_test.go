@@ -1311,7 +1311,6 @@ func TestSkillPackagingPublishPublishesAndCreatesReleaseRecord(t *testing.T) {
 	}
 
 	var publishPayload struct {
-		WorkspacePath       string                `json:"workspacePath"`
 		PackageName         string                `json:"packageName"`
 		Version             string                `json:"version"`
 		ManifestDigest      string                `json:"manifestDigest"`
@@ -1325,9 +1324,6 @@ func TestSkillPackagingPublishPublishesAndCreatesReleaseRecord(t *testing.T) {
 	}
 	if err := json.Unmarshal(publishRecorder.Body.Bytes(), &publishPayload); err != nil {
 		t.Fatalf("decode publish response: %v", err)
-	}
-	if strings.TrimSpace(publishPayload.WorkspacePath) == "" {
-		t.Fatalf("expected publish response workspacePath, got %+v", publishPayload)
 	}
 	if !publishPayload.PublishedToRegistry || !publishPayload.Created || publishPayload.IdempotentReplay {
 		t.Fatalf("unexpected publish result: %+v", publishPayload)

@@ -150,7 +150,6 @@ describe('packaging workflow view state', () => {
       },
       packResult: null,
       publishResult: {
-        workspacePath: '/tmp/workspace',
         packageName: '@company.skill/zoom-out',
         version: '1.2.0',
         manifestDigest: 'sha256:abc',

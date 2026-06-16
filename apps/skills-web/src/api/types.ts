@@ -261,7 +261,6 @@ export interface PackagingPublishRequest {
 }
 
 export interface PackagingPublishResponse {
-  workspacePath: string;
   packageName: string;
   version: string;
   manifestDigest: string;

@@ -337,7 +337,6 @@ export const mockClient: RegistryApiClient = {
       (item) => item.version === request.target.version
     );
     const result: PackagingPublishResponse = {
-      workspacePath: '',
       packageName: request.target.packageName,
       version: request.target.version,
       manifestDigest: 'sha256:1c65eab3e1fb04af11c5ff2e7c54a1f0',

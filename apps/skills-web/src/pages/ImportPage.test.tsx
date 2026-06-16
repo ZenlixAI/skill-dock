@@ -384,7 +384,6 @@ describe('ImportPage', () => {
       errors: [],
     });
     vi.mocked(client.publishSkill).mockResolvedValue({
-      workspacePath: '/tmp/skill-packaging/workspace',
       packageName: '@company.skill/zoom-out',
       version: '1.2.0',
       manifestDigest: 'sha256:manifest',

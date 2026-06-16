@@ -141,7 +141,6 @@ func packagingContextError(ctx context.Context) error {
 
 func publishResponseFromPack(packResponse packagingdomain.PackResponse, releaseResult catalog.ReleaseRecordResult, publishedToRegistry bool) packagingdomain.PublishResponse {
 	return packagingdomain.PublishResponse{
-		WorkspacePath:       packResponse.WorkspacePath,
 		PackageName:         packResponse.PackageName,
 		Version:             packResponse.Version,
 		ManifestDigest:      packResponse.ManifestDigest,

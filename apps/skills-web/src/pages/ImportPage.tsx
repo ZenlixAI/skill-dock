@@ -1314,10 +1314,12 @@ export function ImportPage() {
                 }
               >
                 <dl className="property-list">
-                  <div>
-                    <dt>workspace handle</dt>
-                    <dd>{reviewData.workspacePath}</dd>
-                  </div>
+                  {'workspacePath' in reviewData ? (
+                    <div>
+                      <dt>workspace handle</dt>
+                      <dd>{reviewData.workspacePath}</dd>
+                    </div>
+                  ) : null}
                   {hasBundlePath(reviewData) ? (
                     <div>
                       <dt>bundle 路径</dt>
