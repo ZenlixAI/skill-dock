@@ -25,3 +25,19 @@ func TestRecorderUsesInternalPlatformHTTPDirectly(t *testing.T) {
 		t.Fatalf("expected recorder.go to stop importing skill_registry/app/catalogapi/common")
 	}
 }
+
+func TestQueryStopsImportingCommon(t *testing.T) {
+	file, err := parser.ParseFile(token.NewFileSet(), "query.go", nil, parser.ImportsOnly)
+	if err != nil {
+		t.Fatalf("parse query.go imports: %v", err)
+	}
+
+	imports := map[string]bool{}
+	for _, spec := range file.Imports {
+		imports[strings.Trim(spec.Path.Value, "\"")] = true
+	}
+
+	if imports["skill_registry/app/catalogapi/common"] {
+		t.Fatalf("expected query.go to stop importing skill_registry/app/catalogapi/common")
+	}
+}

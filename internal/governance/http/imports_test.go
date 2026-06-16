@@ -13,8 +13,13 @@ func TestRoutesUseInternalPlatformHTTPHelpers(t *testing.T) {
 	if !imports["skill_registry/internal/platform/http"] {
 		t.Fatalf("expected routes.go to import skill_registry/internal/platform/http directly")
 	}
-	if imports["skill_registry/app/catalogapi/response"] {
-		t.Fatalf("expected routes.go to stop importing skill_registry/app/catalogapi/response")
+	for _, importPath := range []string{
+		"skill_registry/app/catalogapi/common",
+		"skill_registry/app/catalogapi/response",
+	} {
+		if imports[importPath] {
+			t.Fatalf("expected routes.go to stop importing %s", importPath)
+		}
 	}
 }
 

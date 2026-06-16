@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"skill_registry/app/catalogapi/common"
 	catalog "skill_registry/internal/catalog/domain"
+	internalcataloghttp "skill_registry/internal/catalog/http"
 	packagingapplication "skill_registry/internal/packaging/application"
 	packaging "skill_registry/internal/packaging/domain"
 	"skill_registry/internal/platform/auth"
@@ -39,7 +39,7 @@ func (s *Server) listGovernanceChanges(ctx context.Context, principal auth.Princ
 }
 
 func (s *Server) createReleaseRecord(ctx context.Context, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.ReleaseRecordResult, int, *catalog.Error) {
-	version, err := common.DecodeVersion(versionPath)
+	version, err := internalcataloghttp.DecodeVersion(versionPath)
 	if err != nil {
 		return catalog.ReleaseRecordResult{}, 0, err
 	}
@@ -95,7 +95,7 @@ func (s *Server) applySkillGovernanceChange(ctx context.Context, principal auth.
 }
 
 func (s *Server) applyVersionGovernanceChange(ctx context.Context, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error) {
-	version, err := common.DecodeVersion(versionPath)
+	version, err := internalcataloghttp.DecodeVersion(versionPath)
 	if err != nil {
 		return catalog.GovernanceChangeResponse{}, 0, err
 	}

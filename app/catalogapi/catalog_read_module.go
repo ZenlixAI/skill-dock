@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 
-	"skill_registry/app/catalogapi/common"
 	catalog "skill_registry/internal/catalog/domain"
 	internalcataloghttp "skill_registry/internal/catalog/http"
 	"skill_registry/internal/platform/auth"
@@ -38,7 +37,7 @@ func (m *catalogReadModule) listSkills(ctx context.Context, principal auth.Princ
 	if sourceTypeErr != nil {
 		return catalog.SkillsPage{}, sourceTypeErr
 	}
-	includeRetired, includeRetiredErr := common.ParseBooleanQueryParam(query.IncludeRetired, "include_retired", false)
+	includeRetired, includeRetiredErr := internalcataloghttp.ParseBooleanQueryParam(query.IncludeRetired, "include_retired", false)
 	if includeRetiredErr != nil {
 		return catalog.SkillsPage{}, includeRetiredErr
 	}
@@ -46,11 +45,11 @@ func (m *catalogReadModule) listSkills(ctx context.Context, principal auth.Princ
 	if sortErr != nil {
 		return catalog.SkillsPage{}, sortErr
 	}
-	pageSize, pageSizeErr := common.ParsePageSizeValue(query.PageSize)
+	pageSize, pageSizeErr := internalcataloghttp.ParsePageSizeValue(query.PageSize)
 	if pageSizeErr != nil {
 		return catalog.SkillsPage{}, pageSizeErr
 	}
-	cursor, cursorErr := common.ParseCursorValue(query.Cursor)
+	cursor, cursorErr := internalcataloghttp.ParseCursorValue(query.Cursor)
 	if cursorErr != nil {
 		return catalog.SkillsPage{}, cursorErr
 	}

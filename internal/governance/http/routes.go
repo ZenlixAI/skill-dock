@@ -8,7 +8,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"skill_registry/app/catalogapi/common"
 	catalog "skill_registry/internal/catalog/domain"
 	cataloghttp "skill_registry/internal/catalog/http"
 	"skill_registry/internal/platform/auth"
@@ -69,12 +68,12 @@ func (h Handlers) GovernanceChanges(context *gin.Context) {
 		platformhttp.WriteCatalogError(context.Writer, context.Request, err)
 		return
 	}
-	pageSize, pageSizeErr := common.ParsePageSizeValue(query.PageSize)
+	pageSize, pageSizeErr := cataloghttp.ParsePageSizeValue(query.PageSize)
 	if pageSizeErr != nil {
 		platformhttp.WriteCatalogError(context.Writer, context.Request, pageSizeErr)
 		return
 	}
-	cursor, cursorErr := common.ParseCursorValue(query.Cursor)
+	cursor, cursorErr := cataloghttp.ParseCursorValue(query.Cursor)
 	if cursorErr != nil {
 		platformhttp.WriteCatalogError(context.Writer, context.Request, cursorErr)
 		return
@@ -82,12 +81,12 @@ func (h Handlers) GovernanceChanges(context *gin.Context) {
 	if query.PackageName != "" && !h.authorizePackage(context, query.PackageName) {
 		return
 	}
-	targetType, targetTypeErr := common.ParseGovernanceTargetTypeFilter(query.TargetType)
+	targetType, targetTypeErr := cataloghttp.ParseGovernanceTargetTypeFilter(query.TargetType)
 	if targetTypeErr != nil {
 		platformhttp.WriteCatalogError(context.Writer, context.Request, targetTypeErr)
 		return
 	}
-	versionFilter, versionFilterErr := common.ParseExactVersionQueryParam(query.Version, "version")
+	versionFilter, versionFilterErr := cataloghttp.ParseExactVersionQueryParam(query.Version, "version")
 	if versionFilterErr != nil {
 		platformhttp.WriteCatalogError(context.Writer, context.Request, versionFilterErr)
 		return

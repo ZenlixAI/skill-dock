@@ -8,7 +8,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"skill_registry/app/catalogapi/common"
 	catalog "skill_registry/internal/catalog/domain"
 	"skill_registry/internal/platform/auth"
 	platformhttp "skill_registry/internal/platform/http"
@@ -87,12 +86,12 @@ func (h Handlers) CuratedSkills(context *gin.Context) {
 		platformhttp.WriteCatalogError(context.Writer, context.Request, err)
 		return
 	}
-	pageSize, pageSizeErr := common.ParsePageSizeValue(query.PageSize)
+	pageSize, pageSizeErr := ParsePageSizeValue(query.PageSize)
 	if pageSizeErr != nil {
 		platformhttp.WriteCatalogError(context.Writer, context.Request, pageSizeErr)
 		return
 	}
-	cursor, cursorErr := common.ParseCursorValue(query.Cursor)
+	cursor, cursorErr := ParseCursorValue(query.Cursor)
 	if cursorErr != nil {
 		platformhttp.WriteCatalogError(context.Writer, context.Request, cursorErr)
 		return
@@ -153,22 +152,22 @@ func (h Handlers) VersionList(context *gin.Context) {
 		return
 	}
 
-	includeDeprecated, includeDeprecatedErr := common.ParseBooleanQueryParam(query.IncludeDeprecated, "include_deprecated", true)
+	includeDeprecated, includeDeprecatedErr := ParseBooleanQueryParam(query.IncludeDeprecated, "include_deprecated", true)
 	if includeDeprecatedErr != nil {
 		platformhttp.WriteCatalogError(context.Writer, context.Request, includeDeprecatedErr)
 		return
 	}
-	includeYanked, includeYankedErr := common.ParseBooleanQueryParam(query.IncludeYanked, "include_yanked", false)
+	includeYanked, includeYankedErr := ParseBooleanQueryParam(query.IncludeYanked, "include_yanked", false)
 	if includeYankedErr != nil {
 		platformhttp.WriteCatalogError(context.Writer, context.Request, includeYankedErr)
 		return
 	}
-	pageSize, pageSizeErr := common.ParsePageSizeValue(query.PageSize)
+	pageSize, pageSizeErr := ParsePageSizeValue(query.PageSize)
 	if pageSizeErr != nil {
 		platformhttp.WriteCatalogError(context.Writer, context.Request, pageSizeErr)
 		return
 	}
-	cursor, cursorErr := common.ParseCursorValue(query.Cursor)
+	cursor, cursorErr := ParseCursorValue(query.Cursor)
 	if cursorErr != nil {
 		platformhttp.WriteCatalogError(context.Writer, context.Request, cursorErr)
 		return
@@ -206,7 +205,7 @@ func (h Handlers) VersionDetail(context *gin.Context) {
 	if !h.authorizePackage(context, packageName) {
 		return
 	}
-	version, versionErr := common.DecodeVersion(uri.Version)
+	version, versionErr := DecodeVersion(uri.Version)
 	if versionErr != nil {
 		platformhttp.WriteCatalogError(context.Writer, context.Request, versionErr)
 		return

@@ -1,6 +1,4 @@
-// Package common temporarily owns catalog-specific query and version parsing
-// helpers that have not yet been reassigned to a retained internal package.
-package common
+package http
 
 import (
 	"net/url"

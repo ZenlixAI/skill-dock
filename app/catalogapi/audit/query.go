@@ -5,9 +5,8 @@ import (
 	"net/http"
 	"net/url"
 
-	"skill_registry/app/catalogapi/common"
-
 	catalog "skill_registry/internal/catalog/domain"
+	internalcataloghttp "skill_registry/internal/catalog/http"
 	"skill_registry/internal/platform/auth"
 	platformhttp "skill_registry/internal/platform/http"
 	persist "skill_registry/internal/platform/persistence"
@@ -27,11 +26,11 @@ func (m *QueryModule) ListEvents(ctx context.Context, principal auth.Principal, 
 		return persist.AuditPage{}, catalog.NewError(http.StatusServiceUnavailable, "internal_error", "Audit store is not configured.", nil)
 	}
 
-	pageSize, err := common.ParsePageSize(values)
+	pageSize, err := internalcataloghttp.ParsePageSize(values)
 	if err != nil {
 		return persist.AuditPage{}, err
 	}
-	cursor, err := common.ParseCursor(values)
+	cursor, err := internalcataloghttp.ParseCursor(values)
 	if err != nil {
 		return persist.AuditPage{}, err
 	}
@@ -43,11 +42,11 @@ func (m *QueryModule) ListEvents(ctx context.Context, principal auth.Principal, 
 		}
 	}
 
-	authDecision, authDecisionErr := common.ParseAuthDecisionFilter(values.Get("auth_decision"))
+	authDecision, authDecisionErr := internalcataloghttp.ParseAuthDecisionFilter(values.Get("auth_decision"))
 	if authDecisionErr != nil {
 		return persist.AuditPage{}, authDecisionErr
 	}
-	version, versionErr := common.ParseExactVersionQueryParam(values.Get("version"), "version")
+	version, versionErr := internalcataloghttp.ParseExactVersionQueryParam(values.Get("version"), "version")
 	if versionErr != nil {
 		return persist.AuditPage{}, versionErr
 	}
