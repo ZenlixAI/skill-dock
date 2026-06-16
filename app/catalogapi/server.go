@@ -39,6 +39,7 @@ type packagingApplication interface {
 }
 
 type packagingService = packagingapplication.WorkflowService
+type catalogReadService = internalcataloghttp.ReadService
 
 type ServerConfig struct {
 	Repository                      catalog.Repository
@@ -71,7 +72,7 @@ type Server struct {
 	authorizer                       *auth.Authorizer
 	sessionManager                   *auth.SessionManager
 	accessWorkflow                   platformaccess.Gate
-	catalogReadModule                catalogReadWorkflow
+	catalogReadModule                internalcataloghttp.Workflow
 	auditQueryModule                 auditQueryWorkflow
 	catalogMutationService           catalogMutationService
 	catalogGovernanceService         catalogGovernanceService
@@ -155,9 +156,7 @@ func NewServer(config ServerConfig) *Server {
 		readLimiter:          platformhttp.NewRequestLimiter(config.ReadMaxInFlight),
 		writeLimiter:         platformhttp.NewRequestLimiter(config.WriteMaxInFlight),
 	}
-	server.catalogReadModule = &catalogReadModule{
-		service: catalogReadService,
-	}
+	server.catalogReadModule = internalcataloghttp.NewReadWorkflow(catalogReadService)
 	server.catalogMutationService = catalogMutationService
 	server.catalogGovernanceService = catalogGovernanceService
 	server.accessWorkflow = platformaccess.New(authorizer, auditRecorder, logger)
@@ -314,12 +313,12 @@ func (s *Server) newEngine() *gin.Engine {
 		ReadListCacheTTL:     s.readListCacheTTL,
 		ReadDetailCacheTTL:   s.readDetailCacheTTL,
 		ListAuditEvents:      s.auditQueryModule.ListEvents,
-		ListSkillsFunc:       s.catalogReadModule.listSkills,
-		ListCuratedSkills:    s.catalogReadModule.listCuratedSkills,
-		GetSkillFunc:         s.catalogReadModule.getSkill,
-		ListVersionsFunc:     s.catalogReadModule.listVersions,
-		GetVersionFunc:       s.catalogReadModule.getVersion,
-		ResolveInstallTarget: s.catalogReadModule.resolveInstallTarget,
+		ListSkillsFunc:       s.catalogReadModule.ListSkills,
+		ListCuratedSkills:    s.catalogReadModule.ListCuratedSkills,
+		GetSkillFunc:         s.catalogReadModule.GetSkill,
+		ListVersionsFunc:     s.catalogReadModule.ListVersions,
+		GetVersionFunc:       s.catalogReadModule.GetVersion,
+		ResolveInstallTarget: s.catalogReadModule.ResolveInstallTarget,
 		PublicInstallTarget:  s.publicInstallTarget,
 	})
 	governanceHTTPHandlers := internalgovernancehttp.New(internalgovernancehttp.Handlers{

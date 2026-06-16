@@ -23,6 +23,22 @@ func TestHandlersUseInternalPlatformHTTPHelpers(t *testing.T) {
 	}
 }
 
+func TestReadWorkflowUsesInternalPlatformHTTPHelpers(t *testing.T) {
+	imports := parseImports(t, "read_workflow.go")
+
+	if !imports["skill_registry/internal/platform/http"] {
+		t.Fatalf("expected read_workflow.go to import skill_registry/internal/platform/http directly")
+	}
+	for _, importPath := range []string{
+		"skill_registry/app/catalogapi/common",
+		"skill_registry/app/catalogapi/response",
+	} {
+		if imports[importPath] {
+			t.Fatalf("expected read_workflow.go to stop importing %s", importPath)
+		}
+	}
+}
+
 func parseImports(t *testing.T, path string) map[string]bool {
 	t.Helper()
 

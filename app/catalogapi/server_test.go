@@ -24,7 +24,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -172,11 +171,11 @@ func TestNewServerPrefersCatalogApplicationServicesFromRepositoryProvider(t *tes
 		PublisherToken: "publisher-secret",
 	})
 
-	readModule, ok := server.catalogReadModule.(*catalogReadModule)
+	readModule, ok := server.catalogReadModule.(*internalcataloghttp.ReadModule)
 	if !ok {
-		t.Fatalf("expected concrete catalogReadModule, got %T", server.catalogReadModule)
+		t.Fatalf("expected concrete internal catalog read module, got %T", server.catalogReadModule)
 	}
-	if readModule.service != provider.readService {
+	if readModule.Service() != provider.readService {
 		t.Fatal("expected server to wire repository-provided catalog read service")
 	}
 
@@ -352,59 +351,6 @@ func TestPlatformEnginePreservesRawPathSettings(t *testing.T) {
 	}
 	if recorder.Header().Get("X-Trace-Id") == "" {
 		t.Fatal("expected X-Trace-Id response header")
-	}
-}
-
-func TestCatalogReadModuleListsSkillsFromParsedQuery(t *testing.T) {
-	service := &capturingCatalogReadService{
-		response: catalog.SkillsPage{
-			Items: []catalog.SkillSummary{
-				{PackageName: "@platform.skill/pdf-skill"},
-			},
-		},
-	}
-	module := &catalogReadModule{
-		service: service,
-	}
-	principal := auth.Principal{
-		Role:  "reader",
-		Actor: "reader",
-	}
-
-	response, err := module.listSkills(context.Background(), principal, internalcataloghttp.SkillsQuery{
-		Query:          "pdf",
-		PackageName:    "@platform.skill/pdf-skill",
-		SourceType:     string(catalog.SourceTypeImported),
-		IncludeRetired: "true",
-		Sort:           "package_name_asc",
-		PageSize:       "7",
-		Cursor:         "cursor_12",
-	})
-	if err != nil {
-		t.Fatalf("expected nil error, got %v", err)
-	}
-	if got := service.listSkillsCallCount(); got != 1 {
-		t.Fatalf("expected catalog read service to be called once, got %d", got)
-	}
-	if !reflect.DeepEqual(service.query.AllowedPackages, principal.AllowedPackages) {
-		t.Fatalf("unexpected allowed packages (-want +got):\nwant: %#v\ngot:  %#v", principal.AllowedPackages, service.query.AllowedPackages)
-	}
-
-	service.query.AllowedPackages = nil
-	wantQuery := catalog.SkillQuery{
-		Query:          "pdf",
-		PackageName:    "@platform.skill/pdf-skill",
-		SourceType:     string(catalog.SourceTypeImported),
-		IncludeRetired: true,
-		Sort:           "package_name_asc",
-		PageSize:       7,
-		Cursor:         12,
-	}
-	if !reflect.DeepEqual(service.query, wantQuery) {
-		t.Fatalf("unexpected parsed query (-want +got):\nwant: %#v\ngot:  %#v", wantQuery, service.query)
-	}
-	if !reflect.DeepEqual(response, service.response) {
-		t.Fatalf("expected response passthrough, got %#v", response)
 	}
 }
 
@@ -4289,44 +4235,6 @@ func (s stubIdempotencyStore) DeleteExpired(context.Context) error {
 
 func (s stubIdempotencyStore) Ping(context.Context) error {
 	return s.pingErr
-}
-
-type capturingCatalogReadService struct {
-	listSkillsCalls atomic.Int64
-	query           catalog.SkillQuery
-	response        catalog.SkillsPage
-	listCuratedResp catalog.CuratedSkillsPage
-	err             error
-}
-
-func (s *capturingCatalogReadService) ListSkills(_ context.Context, query catalog.SkillQuery) (catalog.SkillsPage, error) {
-	s.listSkillsCalls.Add(1)
-	s.query = query
-	return s.response, s.err
-}
-
-func (s *capturingCatalogReadService) ListCuratedSkills(context.Context, catalog.CuratedSkillQuery) (catalog.CuratedSkillsPage, error) {
-	return s.listCuratedResp, nil
-}
-
-func (s *capturingCatalogReadService) GetSkill(context.Context, string) (catalog.SkillDetail, error) {
-	return catalog.SkillDetail{}, nil
-}
-
-func (s *capturingCatalogReadService) ListVersions(context.Context, catalog.VersionQuery) (catalog.VersionsPage, error) {
-	return catalog.VersionsPage{}, nil
-}
-
-func (s *capturingCatalogReadService) GetVersion(context.Context, string, string) (catalog.SkillVersionDetail, error) {
-	return catalog.SkillVersionDetail{}, nil
-}
-
-func (s *capturingCatalogReadService) ResolveInstallTarget(context.Context, string, string) (catalog.InstallResolution, error) {
-	return catalog.InstallResolution{}, nil
-}
-
-func (s *capturingCatalogReadService) listSkillsCallCount() int {
-	return int(s.listSkillsCalls.Load())
 }
 
 type testAuditRecord struct {

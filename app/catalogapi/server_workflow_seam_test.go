@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	internalapp "skill_registry/internal/catalog/application"
+	internalcataloghttp "skill_registry/internal/catalog/http"
 	cataloginfra "skill_registry/internal/catalog/infra"
 	packagingapplication "skill_registry/internal/packaging/application"
 	packaging "skill_registry/internal/packaging/domain"
@@ -102,11 +103,11 @@ func TestNewServerUsesExplicitWorkflowServicesWhenProvided(t *testing.T) {
 		CatalogGovernanceService: explicitRead,
 	})
 
-	readModule, ok := server.catalogReadModule.(*catalogReadModule)
+	readModule, ok := server.catalogReadModule.(*internalcataloghttp.ReadModule)
 	if !ok {
-		t.Fatalf("expected concrete catalogReadModule, got %T", server.catalogReadModule)
+		t.Fatalf("expected concrete internal catalog read module, got %T", server.catalogReadModule)
 	}
-	if readModule.service != explicitRead {
+	if readModule.Service() != explicitRead {
 		t.Fatal("expected explicit catalog read service to win over repository provider")
 	}
 

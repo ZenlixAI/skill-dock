@@ -36,34 +36,34 @@ func newCatalogReadModuleStubForTest(_ interface{ Helper() }) *catalogReadModule
 	return &catalogReadModuleStub{}
 }
 
-func newTestServerWithCatalogReadModule(_ interface{ Helper() }, module catalogReadWorkflow) *Server {
+func newTestServerWithCatalogReadModule(_ interface{ Helper() }, module internalcataloghttp.Workflow) *Server {
 	server := newTestServer()
 	server.catalogReadModule = module
 	return server
 }
 
-func (m *catalogReadModuleStub) listSkills(context.Context, auth.Principal, internalcataloghttp.SkillsQuery) (catalog.SkillsPage, *catalog.Error) {
+func (m *catalogReadModuleStub) ListSkills(context.Context, auth.Principal, internalcataloghttp.SkillsQuery) (catalog.SkillsPage, *catalog.Error) {
 	m.listSkillsCalls.Add(1)
 	return catalog.SkillsPage{}, nil
 }
 
-func (m *catalogReadModuleStub) listCuratedSkills(context.Context, auth.Principal, int, int) (catalog.CuratedSkillsPage, *catalog.Error) {
+func (m *catalogReadModuleStub) ListCuratedSkills(context.Context, auth.Principal, int, int) (catalog.CuratedSkillsPage, *catalog.Error) {
 	return catalog.CuratedSkillsPage{}, nil
 }
 
-func (m *catalogReadModuleStub) getSkill(context.Context, string) (catalog.SkillDetail, error) {
+func (m *catalogReadModuleStub) GetSkill(context.Context, string) (catalog.SkillDetail, error) {
 	return catalog.SkillDetail{}, nil
 }
 
-func (m *catalogReadModuleStub) listVersions(context.Context, catalog.VersionQuery) (catalog.VersionsPage, error) {
+func (m *catalogReadModuleStub) ListVersions(context.Context, catalog.VersionQuery) (catalog.VersionsPage, error) {
 	return catalog.VersionsPage{}, nil
 }
 
-func (m *catalogReadModuleStub) getVersion(context.Context, string, string) (catalog.SkillVersionDetail, error) {
+func (m *catalogReadModuleStub) GetVersion(context.Context, string, string) (catalog.SkillVersionDetail, error) {
 	return catalog.SkillVersionDetail{}, nil
 }
 
-func (m *catalogReadModuleStub) resolveInstallTarget(context.Context, string, string) (catalog.InstallResolution, error) {
+func (m *catalogReadModuleStub) ResolveInstallTarget(context.Context, string, string) (catalog.InstallResolution, error) {
 	return catalog.InstallResolution{}, nil
 }
 
