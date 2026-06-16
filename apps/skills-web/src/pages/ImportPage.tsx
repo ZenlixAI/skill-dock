@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   getPackagingBundleDownloadPath,
@@ -183,6 +183,7 @@ export function ImportPage() {
   const [packResult, setPackResult] = useState<PackagingPackResponse | null>(null);
   const [publishResult, setPublishResult] = useState<PackagingPublishResponse | null>(null);
   const [activityLog, setActivityLog] = useState<ImportLogEntry[]>([]);
+  const inputRevisionRef = useRef(0);
 
   const workflow = derivePackagingViewState({
     prepareResult,
@@ -242,6 +243,7 @@ export function ImportPage() {
   const advancedInlineFilesValue = rawInlineFilesDirty ? rawInlineFiles : serializeAuthoringFiles(authoringFiles);
 
   useEffect(() => {
+    inputRevisionRef.current += 1;
     setPrepareResult(null);
     setValidateResult(null);
     setPackResult(null);
@@ -435,7 +437,10 @@ export function ImportPage() {
     };
   }
 
-  async function runPrepare(successMessage = 'prepare 完成，已经拿到 workspace handle 和 import review 数据。') {
+  async function runPrepare(
+    successMessage = 'prepare 完成，已经拿到 workspace handle 和 import review 数据。',
+    request?: PackagingPrepareRequest
+  ) {
     if (sourceType === 'platform_authoring' && authoringError) {
       setOperationState({
         loading: false,
@@ -446,6 +451,7 @@ export function ImportPage() {
       return null;
     }
 
+    const inputRevision = inputRevisionRef.current;
     setOperationState({
       loading: 'prepare',
       error: null,
@@ -453,7 +459,10 @@ export function ImportPage() {
       success: null,
     });
     try {
-      const response = await preparePackaging(await buildPrepareRequest());
+      const response = await preparePackaging(request ?? (await buildPrepareRequest()));
+      if (inputRevision !== inputRevisionRef.current) {
+        return null;
+      }
       setPrepareResult(response);
       setValidateResult(null);
       setPackResult(null);
@@ -474,6 +483,9 @@ export function ImportPage() {
       appendLog('prepare', 'succeeded', `已准备 ${response.packageName}@${response.version}。`);
       return response;
     } catch (error: unknown) {
+      if (inputRevision !== inputRevisionRef.current) {
+        return null;
+      }
       const outcome = inferMutationFailureOutcome(error);
       const normalizedError = normalizeThrownRegistryError(error);
       const message = describeImportOperationError(normalizedError);
@@ -504,8 +516,13 @@ export function ImportPage() {
     } = {
       success: 'validate 通过，可以继续 pack。',
       failed: 'validate 返回未通过，请先处理 errors。',
+    },
+    target = {
+      packageName: packageName.trim(),
+      version: version.trim(),
     }
   ) {
+    const inputRevision = inputRevisionRef.current;
     setOperationState({
       loading: 'validate',
       error: null,
@@ -515,11 +532,11 @@ export function ImportPage() {
     try {
       const response = await validatePackaging({
         workspacePath,
-        target: {
-          packageName: packageName.trim(),
-          version: version.trim(),
-        },
+        target,
       });
+      if (inputRevision !== inputRevisionRef.current) {
+        return null;
+      }
       setValidateResult(response);
       setPackResult(null);
       setPublishResult(null);
@@ -540,6 +557,9 @@ export function ImportPage() {
       appendLog('validate', response.ok ? 'succeeded' : 'failed', response.ok ? '校验通过。' : '校验返回阻断错误。');
       return response;
     } catch (error: unknown) {
+      if (inputRevision !== inputRevisionRef.current) {
+        return null;
+      }
       const outcome = inferMutationFailureOutcome(error);
       const normalizedError = normalizeThrownRegistryError(error);
       const message = describeImportOperationError(normalizedError);
@@ -563,6 +583,7 @@ export function ImportPage() {
   }
 
   async function runPack(workspacePath: string, successMessage = 'pack 完成，已经拿到 bundlePath / manifestDigest / components。') {
+    const inputRevision = inputRevisionRef.current;
     setOperationState({
       loading: 'pack',
       error: null,
@@ -578,6 +599,9 @@ export function ImportPage() {
         },
         includeBundle,
       });
+      if (inputRevision !== inputRevisionRef.current) {
+        return null;
+      }
       setPackResult(response);
       setPublishResult(null);
       setOperationState({
@@ -596,6 +620,9 @@ export function ImportPage() {
       appendLog('pack', 'succeeded', `已打包 bundle ${response.bundlePath}。`);
       return response;
     } catch (error: unknown) {
+      if (inputRevision !== inputRevisionRef.current) {
+        return null;
+      }
       const outcome = inferMutationFailureOutcome(error);
       const normalizedError = normalizeThrownRegistryError(error);
       const message = describeImportOperationError(normalizedError);
@@ -644,15 +671,44 @@ export function ImportPage() {
   }
 
   async function handlePreview() {
-    const prepared = await runPrepare('来源检查完成，继续生成预览…');
+    let prepareRequest: PackagingPrepareRequest;
+    try {
+      prepareRequest = await buildPrepareRequest();
+    } catch (error: unknown) {
+      const outcome = inferMutationFailureOutcome(error);
+      const normalizedError = normalizeThrownRegistryError(error);
+      const message = describeImportOperationError(normalizedError);
+      appendLog('prepare', 'failed', normalizedError.message);
+      setOperationState({
+        loading: false,
+        error: normalizedError.message,
+        errorDetail: normalizedError,
+        success: null,
+      });
+      persistMutationResult(
+        toMutationResult('prepare', normalizedError, outcome, {
+          packageName: normalizedPackageName || null,
+          version: version.trim() || null,
+          actor: session.data?.actor ?? null,
+          message,
+        })
+      );
+      return;
+    }
+
+    const prepared = await runPrepare('来源检查完成，继续生成预览…', prepareRequest);
     if (!prepared?.workspacePath) {
       return;
     }
 
-    await runValidate(prepared.workspacePath, {
-      success: '预览已生成，可以继续发布 skill。',
-      failed: '预览生成完成，但存在阻断错误，请先处理 errors。',
-    });
+    await runValidate(
+      prepared.workspacePath,
+      {
+        success: '预览已生成，可以继续发布 skill。',
+        failed: '预览生成完成，但存在阻断错误，请先处理 errors。',
+      },
+      prepareRequest.target
+    );
   }
 
   async function handlePublish() {
@@ -681,7 +737,11 @@ export function ImportPage() {
       success: null,
     });
     try {
+      const inputRevision = inputRevisionRef.current;
       const prepareRequest = await buildPrepareRequest();
+      if (inputRevision !== inputRevisionRef.current) {
+        return;
+      }
       const response = await publishSkill({
         ...prepareRequest,
         review: {
@@ -689,6 +749,9 @@ export function ImportPage() {
           components: validateResult.components,
         },
       });
+      if (inputRevision !== inputRevisionRef.current) {
+        return;
+      }
       setPublishResult(response);
       setPackResult(null);
       setOperationState({

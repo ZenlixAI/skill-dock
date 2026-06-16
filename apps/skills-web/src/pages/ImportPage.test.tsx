@@ -469,6 +469,37 @@ describe('ImportPage', () => {
     expect(client.publishSkill).not.toHaveBeenCalled();
   });
 
+  it('ignores stale preview responses after inputs change mid-request', async () => {
+    let resolvePrepare!: (value: any) => void;
+    vi.mocked(client.preparePackaging).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePrepare = resolve;
+        })
+    );
+
+    renderImportPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: '检查并生成发布预览' }));
+    await waitFor(() => expect(client.preparePackaging).toHaveBeenCalledTimes(1));
+    fireEvent.change(screen.getByLabelText('显示名'), {
+      target: { value: 'Zoom Out v2' },
+    });
+
+    resolvePrepare({
+      workspacePath: '/tmp/skill-packaging/workspace',
+      packageName: '@company.skill/zoom-out',
+      version: '1.2.0',
+      warnings: [],
+      warningDetails: [],
+      errors: [],
+    });
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '发布 skill' })).toBeDisabled());
+    expect(client.validatePackaging).not.toHaveBeenCalled();
+    expect(screen.queryByText('预览已生成，可以继续发布 skill。')).not.toBeInTheDocument();
+  });
+
   it('shows the validated stage after preview succeeds', async () => {
     vi.mocked(client.preparePackaging).mockResolvedValue({
       workspacePath: '/tmp/skill-packaging/workspace',
