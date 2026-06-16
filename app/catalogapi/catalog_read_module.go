@@ -8,6 +8,7 @@ import (
 	catalog "skill_registry/internal/catalog/domain"
 	internalcataloghttp "skill_registry/internal/catalog/http"
 	"skill_registry/internal/platform/auth"
+	platformhttp "skill_registry/internal/platform/http"
 )
 
 type catalogReadService interface {
@@ -67,7 +68,7 @@ func (m *catalogReadModule) listSkills(ctx context.Context, principal auth.Princ
 
 	response, err := m.service.ListSkills(ctx, skillQuery)
 	if err != nil {
-		return catalog.SkillsPage{}, common.CatalogErrorFromError(err)
+		return catalog.SkillsPage{}, platformhttp.CatalogErrorFromError(err)
 	}
 	return response, nil
 }
@@ -79,7 +80,7 @@ func (m *catalogReadModule) listCuratedSkills(ctx context.Context, principal aut
 		Cursor:          cursor,
 	})
 	if err != nil {
-		return catalog.CuratedSkillsPage{}, common.CatalogErrorFromError(err)
+		return catalog.CuratedSkillsPage{}, platformhttp.CatalogErrorFromError(err)
 	}
 	return response, nil
 }

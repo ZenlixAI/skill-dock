@@ -13,7 +13,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"skill_registry/app/catalogapi/audit"
-	"skill_registry/app/catalogapi/common"
 	sessionhandlers "skill_registry/app/catalogapi/handlers/session"
 	catalogapp "skill_registry/internal/catalog/application"
 	catalog "skill_registry/internal/catalog/domain"
@@ -222,30 +221,30 @@ func (s *Server) authorizeActionAccess(writer http.ResponseWriter, request *http
 func (s *Server) serveCachedReadJSON(writer http.ResponseWriter, request *http.Request, ttl time.Duration, load func() (any, *catalog.Error)) {
 	release, limitErr := s.readLimiter.acquire()
 	if limitErr != nil {
-		common.WriteCatalogError(writer, request, limitErr)
+		platformhttp.WriteCatalogError(writer, request, limitErr)
 		return
 	}
 	defer release()
 
 	cacheKey := s.readCacheKey(request, auth.PrincipalFromContext(request.Context()))
 	if cached, ok := s.readCache.lookup(cacheKey); ok {
-		common.WriteJSONBytes(writer, http.StatusOK, cached)
+		platformhttp.WriteJSONBytes(writer, http.StatusOK, cached)
 		return
 	}
 
 	response, err := load()
 	if err != nil {
-		common.WriteCatalogError(writer, request, err)
+		platformhttp.WriteCatalogError(writer, request, err)
 		return
 	}
 
 	raw, marshalErr := json.Marshal(response)
 	if marshalErr != nil {
-		common.WriteCatalogError(writer, request, marshalErr)
+		platformhttp.WriteCatalogError(writer, request, marshalErr)
 		return
 	}
 	s.readCache.store(cacheKey, raw, ttl)
-	common.WriteJSONBytes(writer, http.StatusOK, raw)
+	platformhttp.WriteJSONBytes(writer, http.StatusOK, raw)
 }
 
 func (s *Server) readCacheKey(request *http.Request, principal auth.Principal) string {
@@ -279,8 +278,8 @@ func (s *Server) logAuditWriteFailure(request *http.Request, action string, err 
 	}
 	s.logger.Printf(
 		`{"event":"audit_write_failed","requestId":%q,"traceId":%q,"action":%q,"authDecision":%q,"error":%q}`,
-		common.RequestIDFromContext(request.Context()),
-		common.TraceIDFromContext(request.Context()),
+		platformhttp.RequestIDFromContext(request.Context()),
+		platformhttp.TraceIDFromContext(request.Context()),
 		action,
 		observability.AuthDecisionAllowed,
 		err.Error(),

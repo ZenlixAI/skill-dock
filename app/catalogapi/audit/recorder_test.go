@@ -6,9 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"skill_registry/app/catalogapi/common"
-
 	"skill_registry/internal/platform/auth"
+	platformhttp "skill_registry/internal/platform/http"
 	"skill_registry/internal/platform/observability"
 	persist "skill_registry/internal/platform/persistence"
 )
@@ -18,7 +17,7 @@ func TestAuditRecorderRecordMutationIncludesPrincipalAndAuthDecision(t *testing.
 	recorder := NewRecorder(store)
 
 	request := httptest.NewRequest(http.MethodPut, "/api/v1/skills/%40platform.skill%2Fagent-notes/versions/0.1.0/release-record", nil)
-	ctx := common.ContextWithRequestMetadata(request.Context(), "req_123", "trace_123")
+	ctx := platformhttp.ContextWithRequestMetadata(request.Context(), "req_123", "trace_123")
 	ctx = auth.ContextWithPrincipal(ctx, auth.Principal{
 		Role:          "publisher",
 		Actor:         "svc-publisher",
@@ -50,7 +49,7 @@ func TestAuditRecorderRecordAuthorizationDeniedIncludesDecisionAndCoordinates(t 
 	recorder := NewRecorder(store)
 
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/skills/%40platform.skill%2Fpdf-skill/governance-changes", nil)
-	ctx := common.ContextWithRequestMetadata(request.Context(), "req_456", "trace_456")
+	ctx := platformhttp.ContextWithRequestMetadata(request.Context(), "req_456", "trace_456")
 	request = request.WithContext(ctx)
 
 	recorder.RecordAuthorizationDenied(request, auth.Principal{

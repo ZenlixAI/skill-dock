@@ -10,6 +10,7 @@ import (
 	packagingapplication "skill_registry/internal/packaging/application"
 	packaging "skill_registry/internal/packaging/domain"
 	"skill_registry/internal/platform/auth"
+	platformhttp "skill_registry/internal/platform/http"
 )
 
 type catalogMutationService interface {
@@ -31,7 +32,7 @@ func (s *Server) listGovernanceChanges(ctx context.Context, principal auth.Princ
 
 	response, err := s.catalogGovernanceService.ListGovernanceChanges(ctx, query)
 	if err != nil {
-		return catalog.GovernancePage{}, common.CatalogErrorFromError(err)
+		return catalog.GovernancePage{}, platformhttp.CatalogErrorFromError(err)
 	}
 	response.Items = auth.FilterGovernanceRecordsByPrincipal(response.Items, principal)
 	return response, nil
@@ -43,7 +44,7 @@ func (s *Server) createReleaseRecord(ctx context.Context, principal auth.Princip
 		return catalog.ReleaseRecordResult{}, 0, err
 	}
 
-	input, decodeErr := common.DecodeOptionalReleaseRecordInputBytes(rawBody)
+	input, decodeErr := platformhttp.DecodeOptionalReleaseRecordInputBytes(rawBody)
 	if decodeErr != nil {
 		s.recordMutationAuditForEndpoint(ctx, principal, http.MethodPut, "/api/v1/skills/"+packageName+"/versions/"+version+"/release-record", "release.record", packageName, version, decodeErr.Status, "failed", map[string]any{
 			"errorCode": decodeErr.Code,
@@ -53,7 +54,7 @@ func (s *Server) createReleaseRecord(ctx context.Context, principal auth.Princip
 
 	response, repoErr := s.catalogMutationService.CreateReleaseRecord(ctx, packageName, version, input)
 	if repoErr != nil {
-		catalogErr := common.CatalogErrorFromError(repoErr)
+		catalogErr := platformhttp.CatalogErrorFromError(repoErr)
 		s.recordMutationAuditForEndpoint(ctx, principal, http.MethodPut, "/api/v1/skills/"+packageName+"/versions/"+version+"/release-record", "release.record", packageName, version, catalogErr.Status, "failed", map[string]any{
 			"errorCode": catalogErr.Code,
 		})
@@ -73,13 +74,13 @@ func (s *Server) createReleaseRecord(ctx context.Context, principal auth.Princip
 
 func (s *Server) applySkillGovernanceChange(ctx context.Context, principal auth.Principal, packageName string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error) {
 	var payload catalog.SkillGovernanceChangeInput
-	if err := common.DecodeJSONBytes(rawBody, &payload); err != nil {
+	if err := platformhttp.DecodeJSONBytes(rawBody, &payload); err != nil {
 		return catalog.GovernanceChangeResponse{}, 0, err
 	}
 
 	response, repoErr := s.catalogMutationService.ApplySkillGovernanceChange(ctx, packageName, payload, principal.Actor)
 	if repoErr != nil {
-		catalogErr := common.CatalogErrorFromError(repoErr)
+		catalogErr := platformhttp.CatalogErrorFromError(repoErr)
 		s.recordMutationAuditForEndpoint(ctx, principal, http.MethodPost, "/api/v1/skills/"+packageName+"/governance-changes", "governance.skill", packageName, "", catalogErr.Status, "failed", map[string]any{
 			"action":    payload.Action,
 			"errorCode": catalogErr.Code,
@@ -100,13 +101,13 @@ func (s *Server) applyVersionGovernanceChange(ctx context.Context, principal aut
 	}
 
 	var payload catalog.VersionGovernanceChangeInput
-	if err := common.DecodeJSONBytes(rawBody, &payload); err != nil {
+	if err := platformhttp.DecodeJSONBytes(rawBody, &payload); err != nil {
 		return catalog.GovernanceChangeResponse{}, 0, err
 	}
 
 	response, repoErr := s.catalogMutationService.ApplyVersionGovernanceChange(ctx, packageName, version, payload, principal.Actor)
 	if repoErr != nil {
-		catalogErr := common.CatalogErrorFromError(repoErr)
+		catalogErr := platformhttp.CatalogErrorFromError(repoErr)
 		s.recordMutationAuditForEndpoint(ctx, principal, http.MethodPost, "/api/v1/skills/"+packageName+"/versions/"+version+"/governance-changes", "governance.version", packageName, version, catalogErr.Status, "failed", map[string]any{
 			"action":    payload.Action,
 			"errorCode": catalogErr.Code,
@@ -130,7 +131,7 @@ func (s *Server) cleanupPackaging(ctx context.Context, principal auth.Principal,
 		return packaging.CleanupResponse{}, http.StatusNotFound, nil
 	}
 	if err := s.packaging.CleanupContext(ctx, payload.WorkspacePath); err != nil {
-		catalogErr := common.CatalogErrorFromError(err)
+		catalogErr := platformhttp.CatalogErrorFromError(err)
 		s.recordMutationAuditForEndpoint(ctx, principal, http.MethodPost, "/api/v1/skill-packaging/cleanup", "packaging.cleanup", "", "", catalogErr.Status, "failed", map[string]any{"errorCode": catalogErr.Code})
 		return packaging.CleanupResponse{}, 0, catalogErr
 	}
@@ -153,7 +154,7 @@ func (s *Server) downloadBundle(ctx context.Context, principal auth.Principal, w
 		Version:     version,
 	})
 	if err != nil {
-		catalogErr := common.CatalogErrorFromError(err)
+		catalogErr := platformhttp.CatalogErrorFromError(err)
 		s.recordMutationAuditForEndpoint(ctx, principal, http.MethodGet, "/api/v1/skill-packaging/bundle", "packaging.bundle.download", packageName, version, catalogErr.Status, "failed", map[string]any{"errorCode": catalogErr.Code})
 		return "", catalogErr
 	}

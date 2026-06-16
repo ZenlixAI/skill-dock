@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"skill_registry/app/catalogapi/audit"
-	"skill_registry/app/catalogapi/common"
 	packagingapplication "skill_registry/internal/packaging/application"
 	packaging "skill_registry/internal/packaging/domain"
 	internalpackaginghttp "skill_registry/internal/packaging/http"
 	"skill_registry/internal/platform/auth"
+	platformhttp "skill_registry/internal/platform/http"
 )
 
 func TestPackagingWorkflowUsesPackagingApplicationWorkflowContract(t *testing.T) {
@@ -46,7 +46,7 @@ func TestPackagingWorkflowPrepareRecordsSuccessAudit(t *testing.T) {
 	store := &captureAuditStore{}
 	workflow := newPackagingWorkflowWithAuditForTest(audit.NewRecorder(store))
 	principal := auth.Principal{Role: "authoring", Actor: "svc-authoring", AuthMechanism: "configured_token"}
-	ctx := common.ContextWithRequestMetadata(context.Background(), "req_packaging_success", "trace_packaging_success")
+	ctx := platformhttp.ContextWithRequestMetadata(context.Background(), "req_packaging_success", "trace_packaging_success")
 
 	_, status, err := workflow.Prepare(ctx, principal, packaging.PrepareRequest{
 		Target: packaging.Target{PackageName: "@platform.skill/zoom-out", Version: "1.0.0"},
@@ -67,7 +67,7 @@ func TestPackagingWorkflowPrepareRecordsFailureAudit(t *testing.T) {
 	store := &captureAuditStore{}
 	workflow := newPackagingWorkflowWithAuditForTest(audit.NewRecorder(store))
 	principal := auth.Principal{Role: "authoring", Actor: "svc-authoring", AuthMechanism: "configured_token"}
-	ctx := common.ContextWithRequestMetadata(context.Background(), "req_packaging_failure", "trace_packaging_failure")
+	ctx := platformhttp.ContextWithRequestMetadata(context.Background(), "req_packaging_failure", "trace_packaging_failure")
 
 	_, status, err := workflow.Prepare(ctx, principal, packaging.PrepareRequest{
 		Source: packaging.Source{Type: "local"},
@@ -89,7 +89,7 @@ func TestPackagingWorkflowDecodePrepareRequestRecordsFailureAudit(t *testing.T) 
 	store := &captureAuditStore{}
 	workflow := newPackagingWorkflowWithAuditForTest(audit.NewRecorder(store))
 	principal := auth.Principal{Role: "authoring", Actor: "svc-authoring", AuthMechanism: "configured_token"}
-	ctx := common.ContextWithRequestMetadata(context.Background(), "req_packaging_decode_failure", "trace_packaging_decode_failure")
+	ctx := platformhttp.ContextWithRequestMetadata(context.Background(), "req_packaging_decode_failure", "trace_packaging_decode_failure")
 
 	_, err := workflow.DecodePrepareRequest(ctx, principal, []byte(`{"source":{"type":"local"},"target":{"packageName":"@platform.skill/test","version":"1.0.0"}}{"extra":true}`))
 
@@ -112,7 +112,7 @@ func TestPackagingWorkflowPassesRequestContextToPackagingService(t *testing.T) {
 	workflow := internalpackaginghttp.NewWorkflow(internalpackaginghttp.WorkflowConfig{
 		Service: &stubPackagingService{
 			prepareFunc: func(ctx context.Context, input packaging.PrepareRequest) (packaging.PrepareResponse, error) {
-				value := common.RequestIDFromContext(ctx)
+				value := platformhttp.RequestIDFromContext(ctx)
 				seenRequestID = value
 				return packaging.PrepareResponse{
 					WorkspacePath: "workspace-handle",
@@ -124,7 +124,7 @@ func TestPackagingWorkflowPassesRequestContextToPackagingService(t *testing.T) {
 		CacheTTL:            10 * time.Minute,
 		AllowAnonymousCache: true,
 	})
-	ctx := common.ContextWithRequestMetadata(context.Background(), "req_packaging_ctx", "")
+	ctx := platformhttp.ContextWithRequestMetadata(context.Background(), "req_packaging_ctx", "")
 
 	_, status, err := workflow.Prepare(ctx, auth.Principal{Role: "authoring"}, packaging.PrepareRequest{
 		Target: packaging.Target{PackageName: "@platform.skill/zoom-out", Version: "1.0.0"},

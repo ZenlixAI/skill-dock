@@ -11,8 +11,8 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"skill_registry/app/catalogapi/audit"
-	"skill_registry/app/catalogapi/common"
 	"skill_registry/internal/platform/auth"
+	platformhttp "skill_registry/internal/platform/http"
 	platformmiddleware "skill_registry/internal/platform/http/middleware"
 	"skill_registry/internal/platform/observability"
 )
@@ -113,7 +113,7 @@ func TestAccessWorkflowAuthorizeActionSetsNeutralObservedState(t *testing.T) {
 	}
 
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills", nil)
-	request = common.EnsureObservedState(request)
+	request = platformhttp.EnsureObservedState(request)
 	request = request.WithContext(auth.ContextWithPrincipal(request.Context(), auth.Principal{
 		Role:          "reader",
 		Actor:         "svc-reader",
@@ -126,7 +126,7 @@ func TestAccessWorkflowAuthorizeActionSetsNeutralObservedState(t *testing.T) {
 		t.Fatal("expected action to be authorized")
 	}
 
-	state := common.ObservedStateFromContext(request.Context())
+	state := platformhttp.ObservedStateFromContext(request.Context())
 	if state == nil {
 		t.Fatal("expected observed state in request context")
 	}

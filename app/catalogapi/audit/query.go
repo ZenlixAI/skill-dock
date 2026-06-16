@@ -9,6 +9,7 @@ import (
 
 	catalog "skill_registry/internal/catalog/domain"
 	"skill_registry/internal/platform/auth"
+	platformhttp "skill_registry/internal/platform/http"
 	persist "skill_registry/internal/platform/persistence"
 )
 
@@ -62,7 +63,7 @@ func (m *QueryModule) ListEvents(ctx context.Context, principal auth.Principal, 
 		Cursor:       cursor,
 	})
 	if listErr != nil {
-		return persist.AuditPage{}, common.CatalogErrorFromError(listErr)
+		return persist.AuditPage{}, platformhttp.CatalogErrorFromError(listErr)
 	}
 	return page, nil
 }

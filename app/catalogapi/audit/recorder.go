@@ -5,9 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"skill_registry/app/catalogapi/common"
-
 	"skill_registry/internal/platform/auth"
+	platformhttp "skill_registry/internal/platform/http"
 	"skill_registry/internal/platform/observability"
 	persist "skill_registry/internal/platform/persistence"
 )
@@ -73,8 +72,8 @@ func (r *Recorder) record(ctx context.Context, current auth.Principal, method st
 	if r == nil || r.store == nil || ctx == nil {
 		return nil
 	}
-	event.RequestID = common.RequestIDFromContext(ctx)
-	event.TraceID = common.TraceIDFromContext(ctx)
+	event.RequestID = platformhttp.RequestIDFromContext(ctx)
+	event.TraceID = platformhttp.TraceIDFromContext(ctx)
 	event.Actor = current.Actor
 	event.Role = current.Role
 	event.AuthMechanism = current.AuthMechanism

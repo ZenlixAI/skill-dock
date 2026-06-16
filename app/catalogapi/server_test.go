@@ -30,7 +30,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"skill_registry/app/catalogapi/common"
 	internalapp "skill_registry/internal/catalog/application"
 	catalog "skill_registry/internal/catalog/domain"
 	internalcataloghttp "skill_registry/internal/catalog/http"
@@ -41,6 +40,7 @@ import (
 	internalpackaginghttp "skill_registry/internal/packaging/http"
 	artifactadapter "skill_registry/internal/platform/artifact"
 	"skill_registry/internal/platform/auth"
+	platformhttp "skill_registry/internal/platform/http"
 	"skill_registry/internal/platform/observability"
 	persist "skill_registry/internal/platform/persistence"
 	internalsystemhttp "skill_registry/internal/system/http"
@@ -3685,7 +3685,7 @@ func TestDecodeOptionalReleaseRecordInputAllowsNilBody(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPut, "/api/v1/skills/%40platform.skill%2Fagent-notes/versions/0.1.0/release-record", nil)
 	request.Body = nil
 
-	payload, err := common.DecodeOptionalReleaseRecordInput(request)
+	payload, err := platformhttp.DecodeOptionalReleaseRecordInput(request)
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
@@ -3736,7 +3736,7 @@ func TestRecordMutationAuditLogsWriteFailure(t *testing.T) {
 	})
 
 	request := httptest.NewRequest(http.MethodPut, "/api/v1/skills/%40platform.skill%2Fagent-notes/versions/0.1.0/release-record", nil)
-	ctx := common.ContextWithRequestMetadata(request.Context(), "req_audit", "trace_audit")
+	ctx := platformhttp.ContextWithRequestMetadata(request.Context(), "req_audit", "trace_audit")
 
 	server.recordMutationAudit(
 		request.WithContext(ctx),
@@ -3804,7 +3804,7 @@ func TestLogAuditWriteFailureIgnoresNilError(t *testing.T) {
 	})
 
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills", nil)
-	ctx := common.ContextWithRequestMetadata(request.Context(), "req_nil", "trace_nil")
+	ctx := platformhttp.ContextWithRequestMetadata(request.Context(), "req_nil", "trace_nil")
 
 	server.logAuditWriteFailure(request.WithContext(ctx), "auth.denied", nil)
 

@@ -11,18 +11,18 @@ import (
 	"time"
 
 	"skill_registry/app/catalogapi/audit"
-	"skill_registry/app/catalogapi/common"
 	catalog "skill_registry/internal/catalog/domain"
 	internalcataloghttp "skill_registry/internal/catalog/http"
 	packagingapplication "skill_registry/internal/packaging/application"
 	packaging "skill_registry/internal/packaging/domain"
 	internalpackaginghttp "skill_registry/internal/packaging/http"
 	"skill_registry/internal/platform/auth"
+	platformhttp "skill_registry/internal/platform/http"
 	persist "skill_registry/internal/platform/persistence"
 )
 
 func contextWithRequestMetadataForTest(ctx context.Context, requestID string, traceID string) context.Context {
-	ctx = common.ContextWithRequestMetadata(ctx, requestID, traceID)
+	ctx = platformhttp.ContextWithRequestMetadata(ctx, requestID, traceID)
 	return ctx
 }
 
@@ -274,7 +274,7 @@ func (w *accessWorkflowStub) deny(writer http.ResponseWriter, request *http.Requ
 			Message: "forbidden",
 		})
 	}
-	common.WriteAuthorizationError(writer, request, authErr)
+	platformhttp.WriteAuthorizationError(writer, request, authErr)
 }
 
 func (w *accessWorkflowStub) denyCallCount() int {
