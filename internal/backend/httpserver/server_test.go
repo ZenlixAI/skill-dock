@@ -18,7 +18,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -1518,14 +1517,34 @@ func TestSkillPackagingSupportsPlatformAuthoringSource(t *testing.T) {
 	}
 }
 
-func TestSkillPackagingSupportsLocalGitSourcePath(t *testing.T) {
+func TestSkillPackagingRejectsGitSource(t *testing.T) {
+	server := newTestServer()
+
+	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
+		"source":{"type":"git","location":"https://github.com/example/skills?path=skills/pdf"},
+		"target":{"packageName":"@platform.skill/rejected-git","version":"0.4.0"},
+		"metadata":{"displayName":"Rejected Git","description":"Old import contract","sourceType":"imported"}
+	}`)
+	request.Header.Set("X-Role", "publisher")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusUnprocessableEntity, recorder.Code, recorder.Body.String())
+	}
+	assertErrorDetailContains(t, recorder, "sourceType", "git")
+	assertErrorDetailContains(t, recorder, "suggestedAction", "upload_archive")
+}
+
+func TestSkillPackagingStillSupportsUploadArchiveSource(t *testing.T) {
 	server := newTestServer()
 	fixtureDir := createPackagingFixture(t)
 
 	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
-		"source":{"type":"git","location":"`+fixtureDir+`"},
-		"target":{"packageName":"@platform.skill/git-fixture","version":"0.4.0"},
-		"metadata":{"displayName":"Git Fixture","description":"Copied from git source path","sourceType":"imported"},
+		"source":`+uploadArchiveSourceJSON(t, fixtureDir)+`,
+		"target":{"packageName":"@platform.skill/upload-fixture","version":"0.4.0"},
+		"metadata":{"displayName":"Upload Fixture","description":"Uploaded archive","sourceType":"imported"},
 		"options":{"publishRegistry":"https://registry.example.com"}
 	}`)
 	request.Header.Set("X-Role", "publisher")
@@ -1536,7 +1555,6 @@ func TestSkillPackagingSupportsLocalGitSourcePath(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
 	}
-
 	var payload struct {
 		WorkspacePath string `json:"workspacePath"`
 	}
@@ -1545,46 +1563,6 @@ func TestSkillPackagingSupportsLocalGitSourcePath(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(payload.WorkspacePath, "commands", "run.txt")); err != nil {
 		t.Fatalf("expected copied command file: %v", err)
-	}
-}
-
-func TestSkillPackagingSupportsRemoteGitSourceRefAndPath(t *testing.T) {
-	server := newTestServer()
-	remoteURL := createPackagingGitRemote(t)
-
-	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/prepare", `{
-		"source":{"type":"git","location":"`+remoteURL+`?path=skills/pdf","ref":"release"},
-		"target":{"packageName":"@platform.skill/remote-git-fixture","version":"0.5.0"},
-		"metadata":{"displayName":"Remote Git Fixture","description":"Cloned from remote git source","sourceType":"imported"},
-		"options":{"publishRegistry":"https://registry.example.com"}
-	}`)
-	request.Header.Set("X-Role", "publisher")
-	recorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
-	}
-
-	var payload struct {
-		WorkspacePath string `json:"workspacePath"`
-	}
-	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	commandContent, err := os.ReadFile(filepath.Join(payload.WorkspacePath, "commands", "run.txt"))
-	if err != nil {
-		t.Fatalf("read copied command: %v", err)
-	}
-	if strings.TrimSpace(string(commandContent)) != "echo release" {
-		t.Fatalf("expected release branch content, got %q", string(commandContent))
-	}
-	if _, err := os.Stat(filepath.Join(payload.WorkspacePath, "SKILL.md")); err != nil {
-		t.Fatalf("expected SKILL.md from nested path: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(payload.WorkspacePath, ".git")); !os.IsNotExist(err) {
-		t.Fatalf("expected workspace to contain only packaged subtree, err=%v", err)
 	}
 }
 
@@ -4418,50 +4396,6 @@ func buildSourceArchiveBase64FromDirectory(t *testing.T, root string) string {
 		t.Fatalf("close gzip writer: %v", err)
 	}
 	return base64.StdEncoding.EncodeToString(archive.Bytes())
-}
-
-func createPackagingGitRemote(t *testing.T) string {
-	t.Helper()
-
-	root := t.TempDir()
-	repoDir := filepath.Join(root, "repo")
-	if err := os.MkdirAll(filepath.Join(repoDir, "skills", "pdf", "commands"), 0o755); err != nil {
-		t.Fatalf("mkdir repo fixture: %v", err)
-	}
-	writeFile := func(path string, content string) {
-		t.Helper()
-		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-			t.Fatalf("write %s: %v", path, err)
-		}
-	}
-	writeFile(filepath.Join(repoDir, "skills", "pdf", "SKILL.md"), "---\nname: Remote Git Fixture\ndescription: Git packaging flow\n---\n")
-	writeFile(filepath.Join(repoDir, "skills", "pdf", "commands", "run.txt"), "echo main\n")
-
-	runGit := func(dir string, args ...string) {
-		t.Helper()
-		command := exec.Command("git", args...)
-		command.Dir = dir
-		command.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1")
-		output, err := command.CombinedOutput()
-		if err != nil {
-			t.Fatalf("git %v failed: %v output=%s", args, err, string(output))
-		}
-	}
-
-	runGit(repoDir, "init")
-	runGit(repoDir, "config", "user.name", "Test User")
-	runGit(repoDir, "config", "user.email", "test@example.com")
-	runGit(repoDir, "add", ".")
-	runGit(repoDir, "commit", "-m", "main")
-	runGit(repoDir, "branch", "-M", "main")
-	runGit(repoDir, "checkout", "-b", "release")
-	writeFile(filepath.Join(repoDir, "skills", "pdf", "commands", "run.txt"), "echo release\n")
-	runGit(repoDir, "add", ".")
-	runGit(repoDir, "commit", "-m", "release")
-
-	remoteDir := filepath.Join(root, "remote.git")
-	runGit(root, "clone", "--bare", repoDir, remoteDir)
-	return "file://" + remoteDir
 }
 
 func manifestDigest(content string) string {

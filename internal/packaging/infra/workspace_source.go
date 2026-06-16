@@ -4,15 +4,10 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
-	"context"
 	"encoding/base64"
-	"errors"
 	"io"
-	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -26,10 +21,6 @@ var packagingIgnoredDirectories = map[string]struct{}{
 	".dist": {},
 	".git":  {},
 }
-
-const defaultGitCloneTimeout = 45 * time.Second
-
-const DefaultGitCloneTimeout = defaultGitCloneTimeout
 
 type PrepareRequest = packagingdomain.PrepareRequest
 type Source = packagingdomain.Source
@@ -71,10 +62,6 @@ func ShouldIgnorePackagingPath(relativePath string) bool {
 	return shouldIgnorePackagingPath(relativePath)
 }
 
-func RunGitCommand(directory string, args ...string) error {
-	return runGitCommand(directory, args...)
-}
-
 type workspaceSourceModule struct {
 	tempRoot     string
 	workspaceTTL time.Duration
@@ -110,9 +97,10 @@ func (m workspaceSourceModule) prepare(input PrepareRequest) (string, error) {
 	case "local":
 		return "", catalog.NewError(422, "unsupported_source_type", "source.type=local has been removed. Upload the source archive content instead of sending a local filesystem path.", map[string]any{"sourceType": input.Source.Type})
 	case "git":
-		if err := m.prepareGitSource(input.Source, workspacePath); err != nil {
-			return "", err
-		}
+		return "", catalog.NewError(422, "unsupported_source_type", "source.type=git has been removed. Package the source on the client side and upload it as source.type=upload_archive.", map[string]any{
+			"sourceType":      input.Source.Type,
+			"suggestedAction": "Use source.type=upload_archive instead.",
+		})
 	case "upload_archive":
 		if err := extractUploadedArchive(input.Source.ArchiveBase64, workspacePath); err != nil {
 			return "", err
@@ -345,102 +333,6 @@ func extractUploadedArchive(archiveBase64 string, workspacePath string) error {
 func writeSkillMarkdown(workspacePath string, displayName string, description string) error {
 	content := "---\nname: " + strings.TrimSpace(displayName) + "\ndescription: " + strings.TrimSpace(description) + "\n---\n"
 	return os.WriteFile(filepath.Join(workspacePath, "SKILL.md"), []byte(content), 0o644)
-}
-
-func (m workspaceSourceModule) prepareGitSource(source Source, workspacePath string) error {
-	location := strings.TrimSpace(source.Location)
-	if location == "" {
-		return catalog.NewError(422, "invalid_request", "source.location is required.", nil)
-	}
-
-	cloneURL, subdirectory := normalizeGitLocation(location)
-	if source.Ref == "" && subdirectory == "" && isExistingDirectory(location) {
-		return copySourceDirectory(location, workspacePath)
-	}
-
-	cloneDir, err := os.MkdirTemp(m.tempRoot, "skill-git-source-*")
-	if err != nil {
-		return catalog.NewError(500, "internal_error", "Failed to create git clone workspace.", nil)
-	}
-	defer os.RemoveAll(cloneDir)
-
-	cloneArgs := []string{"clone"}
-	if strings.TrimSpace(source.Ref) == "" {
-		cloneArgs = append(cloneArgs, "--depth", "1")
-	}
-	cloneArgs = append(cloneArgs, cloneURL, cloneDir)
-	if err := runGitCommand("", cloneArgs...); err != nil {
-		return catalog.NewError(422, "invalid_request", "Failed to clone git source.", map[string]any{"location": location, "error": err.Error()})
-	}
-	if strings.TrimSpace(source.Ref) != "" {
-		if err := runGitCommand(cloneDir, "checkout", strings.TrimSpace(source.Ref)); err != nil {
-			return catalog.NewError(422, "invalid_request", "Failed to checkout requested git ref.", map[string]any{"location": location, "ref": source.Ref, "error": err.Error()})
-		}
-	}
-
-	sourceDir := cloneDir
-	if subdirectory != "" {
-		targetDir, err := resolveWorkspacePath(cloneDir, subdirectory)
-		if err != nil {
-			return err
-		}
-		info, err := os.Stat(targetDir)
-		if err != nil || !info.IsDir() {
-			return catalog.NewError(422, "invalid_request", "source.location path must reference an existing directory inside the git repository.", map[string]any{"location": location, "path": subdirectory})
-		}
-		sourceDir = targetDir
-	}
-	return copySourceDirectory(sourceDir, workspacePath)
-}
-
-func normalizeGitLocation(location string) (string, string) {
-	parsed, err := url.Parse(location)
-	if err != nil {
-		return location, ""
-	}
-	if parsed.Scheme == "" && parsed.Host == "" {
-		return location, ""
-	}
-
-	subdirectory := strings.Trim(strings.TrimSpace(parsed.Query().Get("path")), "/")
-	parsed.RawQuery = ""
-	if subdirectory == "" {
-		return parsed.String(), ""
-	}
-	return parsed.String(), filepath.Clean(subdirectory)
-}
-
-func isExistingDirectory(path string) bool {
-	info, err := os.Stat(strings.TrimSpace(strings.TrimPrefix(path, "file://")))
-	return err == nil && info.IsDir()
-}
-
-func runGitCommand(directory string, args ...string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), gitCommandTimeout())
-	defer cancel()
-
-	command := exec.CommandContext(ctx, "git", args...)
-	command.Dir = directory
-	command.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1")
-	if output, err := command.CombinedOutput(); err != nil {
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return catalog.NewError(500, "internal_error", "git command timed out.", map[string]any{"args": args, "timeoutMs": gitCommandTimeout().Milliseconds()})
-		}
-		return catalog.NewError(500, "internal_error", "git command failed.", map[string]any{"args": args, "output": strings.TrimSpace(string(output))})
-	}
-	return nil
-}
-
-func gitCommandTimeout() time.Duration {
-	raw := strings.TrimSpace(os.Getenv("SKILL_REGISTRY_GIT_CLONE_TIMEOUT_MS"))
-	if raw == "" {
-		return defaultGitCloneTimeout
-	}
-	timeoutMs, err := strconv.Atoi(raw)
-	if err != nil || timeoutMs <= 0 {
-		return defaultGitCloneTimeout
-	}
-	return time.Duration(timeoutMs) * time.Millisecond
 }
 
 func resolveWorkspacePath(root string, name string) (string, error) {
