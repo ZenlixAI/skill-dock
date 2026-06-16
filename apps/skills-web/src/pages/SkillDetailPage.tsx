@@ -1,11 +1,6 @@
 import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
-  applySkillGovernanceChange,
-} from '../api/client';
-import { normalizeThrownRegistryError } from '../api/httpClient';
-import {
-  inferMutationFailureOutcome,
   MutationResultPanel,
   readMutationResultSearchParams,
 } from '../components/MutationResultPanel';
@@ -15,10 +10,12 @@ import { SectionHeading } from '../components/SectionHeading';
 import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
 import {
-  createMutationState,
-  type CatalogMutationState,
   persistCatalogMutation,
 } from '../features/catalog-mutations/useCatalogMutation';
+import {
+  useSkillDetailActions,
+  type SkillLogEntry,
+} from '../features/skill-detail/useSkillDetailActions';
 import { useSkillDetailSnapshot } from '../features/skill-detail/useSkillDetailSnapshot';
 import { formatDate } from '../lib/format';
 import {
@@ -32,13 +29,6 @@ import {
   getVersionStatusLabel,
 } from '../lib/installCommand';
 import { useRegistrySession } from '../session/SessionProvider';
-
-type SkillLogEntry = {
-  id: string;
-  action: 'retire';
-  outcome: 'succeeded' | 'failed';
-  summary: string;
-};
 
 function describeSkillInstallPolicy(installPolicy?: 'catalog_only' | 'resolvable' | 'blocked' | null) {
   return installPolicy ? getInstallPolicyLabel(installPolicy) : '—';
@@ -56,8 +46,6 @@ export function SkillDetailPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [retireReason, setRetireReason] = useState('');
   const [retireConfirmed, setRetireConfirmed] = useState(false);
-  const [activityLog, setActivityLog] = useState<SkillLogEntry[]>([]);
-  const [submitState, setSubmitState] = useState<CatalogMutationState>(createMutationState());
 
   const {
     detail,
@@ -78,7 +66,6 @@ export function SkillDetailPage() {
     installTarget.data?.tarballUrl,
     installTarget.data?.npmRegistry
   );
-  const canRetireSkill = retireReason.trim() !== '' && retireConfirmed && !submitState.loading;
   const governancePosture = getPosture({
     packageName: decodedPackage,
     requiredAction: 'catalog.governance.skill.apply',
@@ -103,6 +90,28 @@ export function SkillDetailPage() {
     version: null,
     actor: session.data?.actor ?? null,
   };
+  const { submitState, activityLog, handleRetireSkill } = useSkillDetailActions({
+    packageName: decodedPackage,
+    onMutationResult: (result) => {
+      setSearchParams(
+        persistCatalogMutation(
+          searchParams,
+          {
+            action: result.action,
+            outcome: result.outcome,
+            message: result.message,
+            requestId: result.requestId,
+          },
+          mutationDefaults
+        ),
+        { replace: true }
+      );
+    },
+    onRefresh: () => {
+      setRefreshKey((current) => current + 1);
+    },
+  });
+  const canRetireSkill = retireReason.trim() !== '' && retireConfirmed && !submitState.loading;
 
   function renderInstallSurface() {
     if (installTarget.loading) {
@@ -184,73 +193,6 @@ export function SkillDetailPage() {
         integrity={installTarget.data.integrity}
       />
     );
-  }
-
-  function appendLog(outcome: SkillLogEntry['outcome'], summary: string) {
-    setActivityLog((current) => [
-      {
-        id: `retire-${Date.now()}`,
-        action: 'retire',
-        outcome,
-        summary,
-      },
-      ...current,
-    ]);
-  }
-
-  async function handleRetireSkill() {
-    setSubmitState({
-      ...createMutationState(),
-      loading: true,
-    });
-    try {
-      const response = await applySkillGovernanceChange(decodedPackage, {
-        action: 'retire',
-        reason: retireReason.trim(),
-      });
-      const successMessage = `已提交技能退役。当前状态：${getSkillStatusLabel(response.resultingState.status || 'retired')}`;
-      setSubmitState({
-        loading: false,
-        error: null,
-        success: successMessage,
-      });
-      setSearchParams(
-        persistCatalogMutation(
-          searchParams,
-          {
-            action: getGovernanceActionLabel('retire'),
-            outcome: 'succeeded',
-            message: successMessage,
-          },
-          mutationDefaults
-        ),
-        { replace: true }
-      );
-      appendLog('succeeded', `已退役 ${decodedPackage}。`);
-      setRefreshKey((current) => current + 1);
-    } catch (error: unknown) {
-      const outcome = inferMutationFailureOutcome(error);
-      const normalizedError = normalizeThrownRegistryError(error);
-      appendLog('failed', normalizedError.message);
-      setSubmitState({
-        loading: false,
-        error: normalizedError.message,
-        success: null,
-      });
-      setSearchParams(
-        persistCatalogMutation(
-          searchParams,
-          {
-            action: getGovernanceActionLabel('retire'),
-            outcome,
-            message: normalizedError.message,
-            requestId: normalizedError.requestId,
-          },
-          mutationDefaults
-        ),
-        { replace: true }
-      );
-    }
   }
 
   return (
@@ -443,7 +385,7 @@ export function SkillDetailPage() {
               <button
                 className="button button--secondary"
                 disabled={!canRetireSkill}
-                onClick={() => void handleRetireSkill()}
+                onClick={() => void handleRetireSkill(retireReason)}
                 type="button"
               >
                 {submitState.loading ? '提交中…' : '退役技能'}

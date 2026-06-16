@@ -30,7 +30,7 @@ export function derivePackagingViewState({
     ? 'published'
     : reviewResult
       ? 'reviewed'
-        : 'draft';
+      : 'draft';
   const releaseHandoffPath = reviewResult
     ? buildReleaseHandoffPath({
         packageName: reviewResult.packageName,
@@ -69,11 +69,11 @@ export function derivePackagingViewState({
             tone: 'warn',
             label: '待处理',
           }
-    : {
-        detail: '还没有审阅结果',
-        tone: 'warn',
-        label: '等待中',
-      };
+        : {
+            detail: '还没有审阅结果',
+            tone: 'warn',
+            label: '等待中',
+          };
   const releaseReadiness: WorkflowReadiness = publishResult
     ? {
         detail: 'registry publish 和 release record 都已完成',
@@ -99,7 +99,7 @@ export function derivePackagingViewState({
         ? 'registry publish 和 release record 都已完成。'
         : currentStage === 'reviewed'
           ? '导入审阅已完成，可以继续发布。'
-            : '先填写 source 和 target。',
+          : '先填写 source 和 target。',
     activeStepIndex: publishResult ? 2 : reviewResult ? 1 : 0,
     canPublish: Boolean(reviewResult?.ok),
     releaseHandoffPath,
@@ -107,8 +107,8 @@ export function derivePackagingViewState({
     releaseSummary: publishResult
       ? '后端已经完成 registry publish 和 release record。'
       : releaseHandoffPath
-      ? '导入审阅结果已就绪，下一步是确认后执行一次性发布。'
-      : '完成导入审阅后才会开放下游 handoff。',
+        ? '导入审阅结果已就绪，下一步是确认后执行一次性发布。'
+        : '完成导入审阅后才会开放下游 handoff。',
     reviewReadiness,
     publishReadiness,
     releaseReadiness,

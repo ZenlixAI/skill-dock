@@ -25,7 +25,7 @@ func (r PackExecutionResult) BundlePath() string       { return r.bundlePath }
 func (r PackExecutionResult) Cleanup() func()          { return r.cleanup }
 
 func packManagedWorkspace(ctx context.Context, workspace *packagingWorkspaceBacking, bundleRules packagingdomain.BundleRules, input packagingdomain.PackRequest) (PackExecutionResult, error) {
-	record, err := workspace.loadManagedWorkspaceRecord(ctx, input.WorkspacePath)
+	record, err := workspace.loadManagedWorkspaceRecord(ctx, input.WorkspaceHandle)
 	if err != nil {
 		return PackExecutionResult{}, err
 	}
@@ -36,13 +36,13 @@ func packManagedWorkspace(ctx context.Context, workspace *packagingWorkspaceBack
 		if err != nil {
 			return PackExecutionResult{}, err
 		}
-		if saveErr := workspace.workspaceStore.SaveValidationCache(ctx, input.WorkspacePath, workspaceValidationCacheFromResult(input.Target, result), time.Now().UTC()); saveErr != nil {
+		if saveErr := workspace.workspaceStore.SaveValidationCache(ctx, input.WorkspaceHandle, workspaceValidationCacheFromResult(input.Target, result), time.Now().UTC()); saveErr != nil {
 			return PackExecutionResult{}, catalog.NewError(500, "internal_error", "Failed to persist packaging workspace validation cache.", nil)
 		}
 	}
 
 	response := packagingdomain.PackResponse{
-		WorkspacePath:  input.WorkspacePath,
+		WorkspaceHandle: input.WorkspaceHandle,
 		PackageName:    input.Target.PackageName,
 		Version:        input.Target.Version,
 		ManifestDigest: result.ManifestDigest,
@@ -60,14 +60,14 @@ func packManagedWorkspace(ctx context.Context, workspace *packagingWorkspaceBack
 		}, nil
 	}
 
-	bundlePath := workspace.managedBundlePath(input.WorkspacePath, input.Target)
-	if err := workspace.validateManagedBundlePath(input.WorkspacePath, input.Target, bundlePath); err != nil {
+	bundlePath := workspace.managedBundlePath(input.WorkspaceHandle, input.Target)
+	if err := workspace.validateManagedBundlePath(input.WorkspaceHandle, input.Target, bundlePath); err != nil {
 		return PackExecutionResult{}, catalog.NewError(500, "internal_error", "Packed bundle could not be persisted.", nil)
 	}
 	if bundleBase64, ok, err := reuseManagedBundle(record, input, bundlePath); err != nil {
 		return PackExecutionResult{}, err
 	} else if ok {
-		response.BundlePath = workspaceBundleHandle(input.WorkspacePath, input.Target)
+		response.BundleHandle = workspaceBundleHandle(input.WorkspaceHandle, input.Target)
 		response.BundleBase64 = bundleBase64
 		return PackExecutionResult{
 			Response:         response,
@@ -77,14 +77,14 @@ func packManagedWorkspace(ctx context.Context, workspace *packagingWorkspaceBack
 		}, nil
 	}
 
-	bundleBase64, err := buildManagedBundle(workspace, bundleRules, record.WorkspacePath, input.WorkspacePath, input.Target, input.IncludeBundle)
+	bundleBase64, err := buildManagedBundle(workspace, bundleRules, record.WorkspacePath, input.WorkspaceHandle, input.Target, input.IncludeBundle)
 	if err != nil {
 		return PackExecutionResult{}, err
 	}
-	if saveErr := workspace.workspaceStore.SaveBundle(ctx, input.WorkspacePath, bundlePath, time.Now().UTC()); saveErr != nil {
+	if saveErr := workspace.workspaceStore.SaveBundle(ctx, input.WorkspaceHandle, bundlePath, time.Now().UTC()); saveErr != nil {
 		return PackExecutionResult{}, catalog.NewError(500, "internal_error", "Packed bundle could not be persisted.", nil)
 	}
-	response.BundlePath = workspaceBundleHandle(input.WorkspacePath, input.Target)
+	response.BundleHandle = workspaceBundleHandle(input.WorkspaceHandle, input.Target)
 	response.BundleBase64 = bundleBase64
 	return PackExecutionResult{
 		Response:         response,
@@ -95,7 +95,7 @@ func packManagedWorkspace(ctx context.Context, workspace *packagingWorkspaceBack
 }
 
 func packEphemeralWorkspace(ctx context.Context, workspace *packagingWorkspaceBacking, bundleRules packagingdomain.BundleRules, input packagingdomain.PackRequest) (PackExecutionResult, error) {
-	workspacePath, cleanup, err := workspace.materializeWorkspace(ctx, input.WorkspacePath)
+	workspacePath, cleanup, err := workspace.materializeWorkspace(ctx, input.WorkspaceHandle)
 	if err != nil {
 		return PackExecutionResult{}, err
 	}
@@ -107,7 +107,7 @@ func packEphemeralWorkspace(ctx context.Context, workspace *packagingWorkspaceBa
 	}
 
 	response := packagingdomain.PackResponse{
-		WorkspacePath:  input.WorkspacePath,
+		WorkspaceHandle: input.WorkspaceHandle,
 		PackageName:    input.Target.PackageName,
 		Version:        input.Target.Version,
 		ManifestDigest: result.ManifestDigest,
@@ -136,7 +136,7 @@ func packEphemeralWorkspace(ctx context.Context, workspace *packagingWorkspaceBa
 		cleanup()
 		return PackExecutionResult{}, err
 	}
-	response.BundlePath = bundlePath
+	response.BundleHandle = bundlePath
 	response.BundleBase64 = bundleBase64
 
 	return PackExecutionResult{
@@ -235,15 +235,15 @@ func cachedValidationResult(cache *persist.WorkspaceValidationCache, target pack
 
 func validateResponseFromResult(input packagingdomain.ValidateRequest, result packagingdomain.ValidationResult, workspacePath string) packagingdomain.ValidateResponse {
 	return packagingdomain.ValidateResponse{
-		OK:             len(result.Errors) == 0,
-		WorkspacePath:  input.WorkspacePath,
-		PackageName:    input.Target.PackageName,
-		Version:        input.Target.Version,
-		ManifestDigest: result.ManifestDigest,
-		Components:     append([]string(nil), result.Components...),
-		Warnings:       append([]string(nil), result.Warnings...),
-		WarningDetails: packagingdomain.WarningDetails(result.Warnings),
-		ImportReport:   packagingdomain.ReadImportReport(workspacePath, result.Warnings),
-		Errors:         append([]string(nil), result.Errors...),
+		OK:              len(result.Errors) == 0,
+		WorkspaceHandle: input.WorkspaceHandle,
+		PackageName:     input.Target.PackageName,
+		Version:         input.Target.Version,
+		ManifestDigest:  result.ManifestDigest,
+		Components:      append([]string(nil), result.Components...),
+		Warnings:        append([]string(nil), result.Warnings...),
+		WarningDetails:  packagingdomain.WarningDetails(result.Warnings),
+		ImportReport:    packagingdomain.ReadImportReport(workspacePath, result.Warnings),
+		Errors:          append([]string(nil), result.Errors...),
 	}
 }

@@ -110,15 +110,15 @@ func TestWorkspaceServicePreparePersistsManagedWorkspaceAndReturnsHandle(t *test
 	if err != nil {
 		t.Fatalf("prepare returned error: %v", err)
 	}
-	if response.WorkspacePath == "" {
+	if response.WorkspaceHandle == "" {
 		t.Fatal("expected workspace handle")
 	}
 
-	record, err := store.LoadWorkspace(context.Background(), response.WorkspacePath)
+	record, err := store.LoadWorkspace(context.Background(), response.WorkspaceHandle)
 	if err != nil {
 		t.Fatalf("expected persisted workspace row: %v", err)
 	}
-	expectedManagedWorkspace := filepath.Join(root, response.WorkspacePath, "workspace")
+	expectedManagedWorkspace := filepath.Join(root, response.WorkspaceHandle, "workspace")
 	if record.WorkspacePath != expectedManagedWorkspace {
 		t.Fatalf("expected managed workspace path %q, got %q", expectedManagedWorkspace, record.WorkspacePath)
 	}

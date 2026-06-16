@@ -131,6 +131,7 @@ describe('apiClient real-response normalization', () => {
     });
 
     expect('workspacePath' in response).toBe(false);
+    expect('workspaceHandle' in response).toBe(false);
     expect(response.ok).toBe(true);
   });
 

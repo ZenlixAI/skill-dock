@@ -1191,6 +1191,7 @@ func TestSkillPackagingImportReviewReturnsReviewDataWithoutWorkspacePath(t *test
 		t.Fatalf("expected manifest digest and components, got %+v", payload)
 	}
 	assertJSONBodyNotContains(t, recorder, "workspacePath")
+	assertJSONBodyNotContains(t, recorder, "workspaceHandle")
 }
 
 func TestSkillPackagingPublishUsesStatelessInput(t *testing.T) {
@@ -1255,6 +1256,7 @@ func TestSkillPackagingPublishUsesStatelessInput(t *testing.T) {
 		t.Fatalf("expected publish success, got %d body=%s", publishRecorder.Code, publishRecorder.Body.String())
 	}
 	assertJSONBodyNotContains(t, publishRecorder, "workspacePath")
+	assertJSONBodyNotContains(t, publishRecorder, "workspaceHandle")
 }
 
 func TestSkillPackagingPublishRejectsMismatchedReviewSummary(t *testing.T) {
@@ -1481,6 +1483,7 @@ func TestSkillPackagingImportReviewSupportsPlatformAuthoringSource(t *testing.T)
 		t.Fatalf("expected manifest digest and components, got %+v", payload)
 	}
 	assertJSONBodyNotContains(t, recorder, "workspacePath")
+	assertJSONBodyNotContains(t, recorder, "workspaceHandle")
 }
 
 func TestSkillPackagingImportReviewRejectsGitSource(t *testing.T) {
@@ -1532,6 +1535,7 @@ func TestSkillPackagingImportReviewSupportsUploadArchiveSource(t *testing.T) {
 		t.Fatalf("expected review summary, got %+v", payload)
 	}
 	assertJSONBodyNotContains(t, recorder, "workspacePath")
+	assertJSONBodyNotContains(t, recorder, "workspaceHandle")
 }
 
 func TestSkillPackagingImportReviewAllowsAuthoringRole(t *testing.T) {
@@ -1607,6 +1611,7 @@ Prompt body.
 		t.Fatalf("unexpected importReport: %#v", payload.ImportReport)
 	}
 	assertJSONBodyNotContains(t, recorder, "workspacePath")
+	assertJSONBodyNotContains(t, recorder, "workspaceHandle")
 }
 
 func TestSkillPackagingImportReviewReturnsIdentityRewriteWarningDetails(t *testing.T) {
@@ -1671,6 +1676,7 @@ Prompt body.
 		t.Fatalf("unexpected importReport: %#v", payload.ImportReport)
 	}
 	assertJSONBodyNotContains(t, recorder, "workspacePath")
+	assertJSONBodyNotContains(t, recorder, "workspaceHandle")
 }
 
 func TestSkillPackagingImportReviewRejectsEscapingPlatformAuthoringPaths(t *testing.T) {
@@ -1743,6 +1749,7 @@ func TestSkillPackagingImportReviewIsIdempotentByKey(t *testing.T) {
 		t.Fatalf("expected idempotent response body, got %s and %s", firstRecorder.Body.String(), secondRecorder.Body.String())
 	}
 	assertJSONBodyNotContains(t, firstRecorder, "workspacePath")
+	assertJSONBodyNotContains(t, firstRecorder, "workspaceHandle")
 }
 
 func TestSkillPackagingImportReviewRejectsIdempotencyKeyReuseWithDifferentBody(t *testing.T) {

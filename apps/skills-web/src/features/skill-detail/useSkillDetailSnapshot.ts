@@ -11,6 +11,8 @@ type UseSkillDetailSnapshotOptions = {
   refreshKey: number;
 };
 
+type SkillDetailStatusTone = 'good' | 'bad';
+
 export function useSkillDetailSnapshot(options: UseSkillDetailSnapshotOptions) {
   const { packageName, refreshKey } = options;
 
@@ -27,6 +29,7 @@ export function useSkillDetailSnapshot(options: UseSkillDetailSnapshotOptions) {
     installTarget.data && versionList.data?.items
       ? versionList.data.items.find((item) => item.version === installTarget.data?.version) ?? null
       : null;
+  const statusTone: SkillDetailStatusTone = detail.data?.status === 'active' ? 'good' : 'bad';
 
   return {
     detail,
@@ -35,7 +38,7 @@ export function useSkillDetailSnapshot(options: UseSkillDetailSnapshotOptions) {
     governance,
     latestVersionItem,
     installTargetVersionItem,
-    statusTone: detail.data?.status === 'active' ? 'good' : 'bad',
+    statusTone,
     hasInstallTarget: Boolean(installTarget.data),
     installVersion:
       installTargetVersionItem?.version || installTarget.data?.version || '待确认版本',

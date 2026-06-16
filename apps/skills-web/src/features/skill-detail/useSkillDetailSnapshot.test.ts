@@ -80,5 +80,6 @@ describe('useSkillDetailSnapshot', () => {
     expect(result.current.installTargetVersionItem?.installPolicy).toBe('resolvable');
     expect(result.current.installVersion).toBe('1.9.0');
     expect(result.current.hasInstallTarget).toBe(true);
+    expect(result.current.statusTone).toBe('good');
   });
 });

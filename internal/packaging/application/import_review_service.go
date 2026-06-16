@@ -42,13 +42,13 @@ func (s *ImportReviewService) ReviewContext(ctx context.Context, input packaging
 		return packagingdomain.ImportReviewResponse{}, err
 	}
 	defer func() {
-		_ = s.workspace.Cleanup(ctx, prepared.WorkspacePath)
+		_ = s.workspace.Cleanup(ctx, prepared.WorkspaceHandle)
 	}()
 
 	packed, err := s.workspace.Pack(ctx, packagingdomain.PackRequest{
-		WorkspacePath: prepared.WorkspacePath,
-		Target:        input.Target,
-		IncludeBundle: input.IncludeBundleBase64,
+		WorkspaceHandle: prepared.WorkspaceHandle,
+		Target:          input.Target,
+		IncludeBundle:   input.IncludeBundleBase64,
 	})
 	if err != nil {
 		return packagingdomain.ImportReviewResponse{}, err

@@ -105,7 +105,7 @@ func (r PrepareRequest) GetTarget() Target {
 }
 
 type PrepareResponse struct {
-	WorkspacePath  string          `json:"workspacePath"`
+	WorkspaceHandle string         `json:"workspaceHandle"`
 	PackageName    string          `json:"packageName"`
 	Version        string          `json:"version"`
 	Warnings       []string        `json:"warnings"`
@@ -116,7 +116,7 @@ type PrepareResponse struct {
 
 type ValidateRequest struct {
 	IdempotencyKey string `json:"idempotencyKey,omitempty"`
-	WorkspacePath  string `json:"workspacePath"`
+	WorkspaceHandle string `json:"workspaceHandle"`
 	Target         Target `json:"target"`
 }
 
@@ -130,7 +130,7 @@ func (r ValidateRequest) GetTarget() Target {
 
 type ValidateResponse struct {
 	OK             bool            `json:"ok"`
-	WorkspacePath  string          `json:"workspacePath"`
+	WorkspaceHandle string         `json:"workspaceHandle"`
 	PackageName    string          `json:"packageName"`
 	Version        string          `json:"version"`
 	ManifestDigest string          `json:"manifestDigest,omitempty"`
@@ -143,7 +143,7 @@ type ValidateResponse struct {
 
 type PackRequest struct {
 	IdempotencyKey string `json:"idempotencyKey,omitempty"`
-	WorkspacePath  string `json:"workspacePath"`
+	WorkspaceHandle string `json:"workspaceHandle"`
 	Target         Target `json:"target"`
 	IncludeBundle  bool   `json:"includeBundle,omitempty"`
 }
@@ -157,8 +157,8 @@ func (r PackRequest) GetTarget() Target {
 }
 
 type PackResponse struct {
-	WorkspacePath  string          `json:"workspacePath"`
-	BundlePath     string          `json:"bundlePath"`
+	WorkspaceHandle string         `json:"workspaceHandle"`
+	BundleHandle    string         `json:"bundleHandle"`
 	BundleBase64   string          `json:"bundleBase64,omitempty"`
 	PackageName    string          `json:"packageName"`
 	Version        string          `json:"version"`
@@ -204,10 +204,10 @@ type PublishResponse struct {
 }
 
 type CleanupRequest struct {
-	WorkspacePath string `json:"workspacePath"`
+	WorkspaceHandle string `json:"workspaceHandle"`
 }
 
 type CleanupResponse struct {
-	WorkspacePath string `json:"workspacePath"`
-	Removed       bool   `json:"removed"`
+	WorkspaceHandle string `json:"workspaceHandle"`
+	Removed         bool   `json:"removed"`
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { RegistryHttpError, normalizeThrownRegistryError } from '../../api/httpClient';
 import { inferMutationFailureOutcome } from '../../components/MutationResultPanel';
 import { buildReleaseHandoffPath } from '../../lib/releaseHandoff';
-import { derivePackagingViewState, toMutationResult } from './usePackagingWorkflow';
+import { derivePackagingViewState, toMutationResult } from './packagingWorkflowState';
 
 describe('packaging workflow view state', () => {
   it('moves to reviewed after a successful import-review result', () => {

@@ -15,10 +15,10 @@ type WorkspaceAdapter interface {
 	Prepare(ctx context.Context, input packagingdomain.PrepareRequest, bundleRules packagingdomain.BundleRules) (packagingdomain.PrepareResponse, error)
 	ValidateLocked(ctx context.Context, input packagingdomain.ValidateRequest, bundleRules packagingdomain.BundleRules) (packagingdomain.ValidateResponse, error)
 	PackLocked(ctx context.Context, input packagingdomain.PackRequest, bundleRules packagingdomain.BundleRules) (PackExecutionResult, error)
-	CleanupLocked(ctx context.Context, workspacePath string) error
-	BundlePathLocked(ctx context.Context, workspacePath string, target packagingdomain.Target) (string, error)
-	BundleContentLocked(ctx context.Context, workspacePath string, target packagingdomain.Target, pack func(context.Context, packagingdomain.PackRequest) (packagingdomain.PackResponse, error)) ([]byte, error)
-	PackageMetadataLocked(ctx context.Context, workspacePath string) (map[string]any, error)
+	CleanupLocked(ctx context.Context, workspaceHandle string) error
+	BundleHandleLocked(ctx context.Context, workspaceHandle string, target packagingdomain.Target) (string, error)
+	BundleContentLocked(ctx context.Context, workspaceHandle string, target packagingdomain.Target, pack func(context.Context, packagingdomain.PackRequest) (packagingdomain.PackResponse, error)) ([]byte, error)
+	PackageMetadataLocked(ctx context.Context, workspaceHandle string) (map[string]any, error)
 	PruneExpired(ctx context.Context, ttl time.Duration) error
 }
 
@@ -72,20 +72,20 @@ func (a *ephemeralWorkspaceAdapter) Prepare(_ context.Context, input packagingdo
 	return prepareResponseFromOutcome(workspacePath, input, outcome), nil
 }
 
-func prepareResponseFromOutcome(workspacePath string, input packagingdomain.PrepareRequest, outcome packagingdomain.PreparedWorkspaceOutcome) packagingdomain.PrepareResponse {
+func prepareResponseFromOutcome(workspaceHandle string, input packagingdomain.PrepareRequest, outcome packagingdomain.PreparedWorkspaceOutcome) packagingdomain.PrepareResponse {
 	return packagingdomain.PrepareResponse{
-		WorkspacePath:  workspacePath,
-		PackageName:    input.Target.PackageName,
-		Version:        input.Target.Version,
-		Warnings:       outcome.Warnings,
-		WarningDetails: packagingdomain.WarningDetails(outcome.Warnings),
-		ImportReport:   outcome.ImportReport,
-		Errors:         []string{},
+		WorkspaceHandle: workspaceHandle,
+		PackageName:     input.Target.PackageName,
+		Version:         input.Target.Version,
+		Warnings:        outcome.Warnings,
+		WarningDetails:  packagingdomain.WarningDetails(outcome.Warnings),
+		ImportReport:    outcome.ImportReport,
+		Errors:          []string{},
 	}
 }
 
 func (a *managedWorkspaceAdapter) ValidateLocked(ctx context.Context, input packagingdomain.ValidateRequest, bundleRules packagingdomain.BundleRules) (packagingdomain.ValidateResponse, error) {
-	record, err := a.workspace.loadManagedWorkspaceRecord(ctx, input.WorkspacePath)
+	record, err := a.workspace.loadManagedWorkspaceRecord(ctx, input.WorkspaceHandle)
 	if err != nil {
 		return packagingdomain.ValidateResponse{}, err
 	}
@@ -97,7 +97,7 @@ func (a *managedWorkspaceAdapter) ValidateLocked(ctx context.Context, input pack
 	if err != nil {
 		return packagingdomain.ValidateResponse{}, err
 	}
-	if saveErr := a.workspace.workspaceStore.SaveValidationCache(ctx, input.WorkspacePath, workspaceValidationCacheFromResult(input.Target, result), time.Now().UTC()); saveErr != nil {
+	if saveErr := a.workspace.workspaceStore.SaveValidationCache(ctx, input.WorkspaceHandle, workspaceValidationCacheFromResult(input.Target, result), time.Now().UTC()); saveErr != nil {
 		return packagingdomain.ValidateResponse{}, catalog.NewError(500, "internal_error", "Failed to persist packaging workspace validation cache.", nil)
 	}
 	return validateResponseFromResult(input, result, record.WorkspacePath), nil
@@ -108,7 +108,7 @@ func (a *managedWorkspaceAdapter) PackLocked(ctx context.Context, input packagin
 }
 
 func (a *ephemeralWorkspaceAdapter) ValidateLocked(ctx context.Context, input packagingdomain.ValidateRequest, bundleRules packagingdomain.BundleRules) (packagingdomain.ValidateResponse, error) {
-	workspacePath, cleanup, err := a.workspace.materializeWorkspace(ctx, input.WorkspacePath)
+	workspacePath, cleanup, err := a.workspace.materializeWorkspace(ctx, input.WorkspaceHandle)
 	if err != nil {
 		return packagingdomain.ValidateResponse{}, err
 	}
@@ -120,16 +120,16 @@ func (a *ephemeralWorkspaceAdapter) ValidateLocked(ctx context.Context, input pa
 	}
 
 	return packagingdomain.ValidateResponse{
-		OK:             len(result.Errors) == 0,
-		WorkspacePath:  input.WorkspacePath,
-		PackageName:    input.Target.PackageName,
-		Version:        input.Target.Version,
-		ManifestDigest: result.ManifestDigest,
-		Components:     result.Components,
-		Warnings:       result.Warnings,
-		WarningDetails: packagingdomain.WarningDetails(result.Warnings),
-		ImportReport:   packagingdomain.ReadImportReport(workspacePath, result.Warnings),
-		Errors:         result.Errors,
+		OK:              len(result.Errors) == 0,
+		WorkspaceHandle: input.WorkspaceHandle,
+		PackageName:     input.Target.PackageName,
+		Version:         input.Target.Version,
+		ManifestDigest:  result.ManifestDigest,
+		Components:      result.Components,
+		Warnings:        result.Warnings,
+		WarningDetails:  packagingdomain.WarningDetails(result.Warnings),
+		ImportReport:    packagingdomain.ReadImportReport(workspacePath, result.Warnings),
+		Errors:          result.Errors,
 	}, nil
 }
 
@@ -137,85 +137,85 @@ func (a *ephemeralWorkspaceAdapter) PackLocked(ctx context.Context, input packag
 	return packEphemeralWorkspace(ctx, a.workspace, bundleRules, input)
 }
 
-func (a *managedWorkspaceAdapter) CleanupLocked(ctx context.Context, workspacePath string) error {
-	return a.cleanupLocked(ctx, workspacePath)
+func (a *managedWorkspaceAdapter) CleanupLocked(ctx context.Context, workspaceHandle string) error {
+	return a.cleanupLocked(ctx, workspaceHandle)
 }
 
-func (a *managedWorkspaceAdapter) cleanupLocked(ctx context.Context, workspacePath string) error {
-	record, err := a.workspace.workspaceStore.LoadWorkspace(ctx, workspacePath)
+func (a *managedWorkspaceAdapter) cleanupLocked(ctx context.Context, workspaceHandle string) error {
+	record, err := a.workspace.workspaceStore.LoadWorkspace(ctx, workspaceHandle)
 	if err != nil {
 		if err == persist.ErrWorkspaceRecordNotFound {
-			return catalog.NewError(422, "invalid_request", "workspacePath must reference an existing packaging workspace.", map[string]any{"workspacePath": workspacePath})
+			return catalog.NewError(422, "invalid_request", "workspaceHandle must reference an existing packaging workspace.", map[string]any{"workspaceHandle": workspaceHandle})
 		}
 		return catalog.NewError(500, "internal_error", "Failed to remove packaging workspace.", nil)
 	}
-	managedRoot, err := a.workspace.managedWorkspaceRootFromPath(workspacePath, record.WorkspacePath)
+	managedRoot, err := a.workspace.managedWorkspaceRootFromPath(workspaceHandle, record.WorkspacePath)
 	if err != nil {
 		return catalog.NewError(500, "internal_error", "Failed to remove packaging workspace.", nil)
 	}
 	if err := os.RemoveAll(managedRoot); err != nil {
 		return catalog.NewError(500, "internal_error", "Failed to remove packaging workspace.", nil)
 	}
-	if err := a.workspace.workspaceStore.DeleteWorkspace(ctx, workspacePath); err != nil {
+	if err := a.workspace.workspaceStore.DeleteWorkspace(ctx, workspaceHandle); err != nil {
 		return catalog.NewError(500, "internal_error", "Failed to remove packaging workspace.", nil)
 	}
 	return nil
 }
 
-func (a *ephemeralWorkspaceAdapter) CleanupLocked(ctx context.Context, workspacePath string) error {
-	return a.cleanupLocked(ctx, workspacePath)
+func (a *ephemeralWorkspaceAdapter) CleanupLocked(ctx context.Context, workspaceHandle string) error {
+	return a.cleanupLocked(ctx, workspaceHandle)
 }
 
-func (a *ephemeralWorkspaceAdapter) cleanupLocked(_ context.Context, workspacePath string) error {
-	return a.workspace.workspaceSource.cleanup(workspacePath)
+func (a *ephemeralWorkspaceAdapter) cleanupLocked(_ context.Context, workspaceHandle string) error {
+	return a.workspace.workspaceSource.cleanup(workspaceHandle)
 }
 
-func (a *managedWorkspaceAdapter) BundlePathLocked(ctx context.Context, workspacePath string, target packagingdomain.Target) (string, error) {
-	return a.bundlePathLocked(ctx, workspacePath, target)
+func (a *managedWorkspaceAdapter) BundleHandleLocked(ctx context.Context, workspaceHandle string, target packagingdomain.Target) (string, error) {
+	return a.bundleHandleLocked(ctx, workspaceHandle, target)
 }
 
-func (a *managedWorkspaceAdapter) bundlePathLocked(ctx context.Context, workspacePath string, target packagingdomain.Target) (string, error) {
-	_, err := a.workspace.workspaceStore.LoadBundle(ctx, workspacePath)
+func (a *managedWorkspaceAdapter) bundleHandleLocked(ctx context.Context, workspaceHandle string, target packagingdomain.Target) (string, error) {
+	_, err := a.workspace.workspaceStore.LoadBundle(ctx, workspaceHandle)
 	if err != nil {
 		if err == persist.ErrWorkspaceRecordNotFound {
-			return "", catalog.NewError(422, "invalid_request", "workspacePath must reference an existing packaging workspace.", map[string]any{"workspacePath": workspacePath})
+			return "", catalog.NewError(422, "invalid_request", "workspaceHandle must reference an existing packaging workspace.", map[string]any{"workspaceHandle": workspaceHandle})
 		}
 		if err == persist.ErrWorkspaceBundleNotFound {
-			return "", catalog.NewError(404, "bundle_not_found", "Bundle archive does not exist for the requested workspace.", map[string]any{"workspacePath": workspacePath})
+			return "", catalog.NewError(404, "bundle_not_found", "Bundle archive does not exist for the requested workspace.", map[string]any{"workspaceHandle": workspaceHandle})
 		}
 		return "", catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil)
 	}
-	bundlePath := a.workspace.managedBundlePath(workspacePath, target)
-	if err := a.workspace.validateManagedBundlePath(workspacePath, target, bundlePath); err != nil {
+	bundlePath := a.workspace.managedBundlePath(workspaceHandle, target)
+	if err := a.workspace.validateManagedBundlePath(workspaceHandle, target, bundlePath); err != nil {
 		return "", catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil)
 	}
 	info, statErr := os.Stat(bundlePath)
 	if statErr != nil || info.IsDir() {
 		if os.IsNotExist(statErr) || statErr == nil {
-			return "", catalog.NewError(404, "bundle_not_found", "Bundle archive does not exist for the requested workspace.", map[string]any{"workspacePath": workspacePath})
+			return "", catalog.NewError(404, "bundle_not_found", "Bundle archive does not exist for the requested workspace.", map[string]any{"workspaceHandle": workspaceHandle})
 		}
 		return "", catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil)
 	}
-	return workspaceBundleHandle(workspacePath, target), nil
+	return workspaceBundleHandle(workspaceHandle, target), nil
 }
 
-func (a *ephemeralWorkspaceAdapter) BundlePathLocked(ctx context.Context, workspacePath string, target packagingdomain.Target) (string, error) {
-	return a.bundlePathLocked(ctx, workspacePath, target)
+func (a *ephemeralWorkspaceAdapter) BundleHandleLocked(ctx context.Context, workspaceHandle string, target packagingdomain.Target) (string, error) {
+	return a.bundleHandleLocked(ctx, workspaceHandle, target)
 }
 
-func (a *ephemeralWorkspaceAdapter) bundlePathLocked(_ context.Context, workspacePath string, target packagingdomain.Target) (string, error) {
-	return a.workspace.workspaceSource.bundlePath(workspacePath, target)
+func (a *ephemeralWorkspaceAdapter) bundleHandleLocked(_ context.Context, workspaceHandle string, target packagingdomain.Target) (string, error) {
+	return a.workspace.workspaceSource.bundlePath(workspaceHandle, target)
 }
 
-func (a *managedWorkspaceAdapter) BundleContentLocked(ctx context.Context, workspacePath string, target packagingdomain.Target, pack func(context.Context, packagingdomain.PackRequest) (packagingdomain.PackResponse, error)) ([]byte, error) {
-	return a.bundleContentLocked(ctx, workspacePath, target, pack)
+func (a *managedWorkspaceAdapter) BundleContentLocked(ctx context.Context, workspaceHandle string, target packagingdomain.Target, pack func(context.Context, packagingdomain.PackRequest) (packagingdomain.PackResponse, error)) ([]byte, error) {
+	return a.bundleContentLocked(ctx, workspaceHandle, target, pack)
 }
 
-func (a *managedWorkspaceAdapter) bundleContentLocked(ctx context.Context, workspacePath string, target packagingdomain.Target, pack func(context.Context, packagingdomain.PackRequest) (packagingdomain.PackResponse, error)) ([]byte, error) {
-	_, err := a.workspace.workspaceStore.LoadBundle(ctx, workspacePath)
-	bundlePath := a.workspace.managedBundlePath(workspacePath, target)
+func (a *managedWorkspaceAdapter) bundleContentLocked(ctx context.Context, workspaceHandle string, target packagingdomain.Target, pack func(context.Context, packagingdomain.PackRequest) (packagingdomain.PackResponse, error)) ([]byte, error) {
+	_, err := a.workspace.workspaceStore.LoadBundle(ctx, workspaceHandle)
+	bundlePath := a.workspace.managedBundlePath(workspaceHandle, target)
 	if err == nil {
-		if err := a.workspace.validateManagedBundlePath(workspacePath, target, bundlePath); err != nil {
+		if err := a.workspace.validateManagedBundlePath(workspaceHandle, target, bundlePath); err != nil {
 			return nil, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil)
 		}
 		bundleContent, readErr := os.ReadFile(bundlePath)
@@ -232,20 +232,20 @@ func (a *managedWorkspaceAdapter) bundleContentLocked(ctx context.Context, works
 	}
 
 	packed, packErr := pack(ctx, packagingdomain.PackRequest{
-		WorkspacePath: workspacePath,
-		Target:        target,
+		WorkspaceHandle: workspaceHandle,
+		Target:          target,
 	})
 	if packErr != nil {
 		return nil, packErr
 	}
 	if len(packed.Errors) > 0 {
-		return nil, catalog.NewError(404, "bundle_not_found", "Bundle archive does not exist for the requested workspace.", map[string]any{"workspacePath": workspacePath})
+		return nil, catalog.NewError(404, "bundle_not_found", "Bundle archive does not exist for the requested workspace.", map[string]any{"workspaceHandle": workspaceHandle})
 	}
-	_, err = a.workspace.workspaceStore.LoadBundle(ctx, workspacePath)
+	_, err = a.workspace.workspaceStore.LoadBundle(ctx, workspaceHandle)
 	if err != nil {
 		return nil, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil)
 	}
-	if err := a.workspace.validateManagedBundlePath(workspacePath, target, bundlePath); err != nil {
+	if err := a.workspace.validateManagedBundlePath(workspaceHandle, target, bundlePath); err != nil {
 		return nil, catalog.NewError(500, "internal_error", "Failed to load packaging bundle.", nil)
 	}
 	bundleContent, readErr := os.ReadFile(bundlePath)
@@ -255,53 +255,53 @@ func (a *managedWorkspaceAdapter) bundleContentLocked(ctx context.Context, works
 	return bundleContent, nil
 }
 
-func (a *ephemeralWorkspaceAdapter) BundleContentLocked(ctx context.Context, workspacePath string, target packagingdomain.Target, pack func(context.Context, packagingdomain.PackRequest) (packagingdomain.PackResponse, error)) ([]byte, error) {
-	return a.bundleContentLocked(ctx, workspacePath, target, pack)
+func (a *ephemeralWorkspaceAdapter) BundleContentLocked(ctx context.Context, workspaceHandle string, target packagingdomain.Target, pack func(context.Context, packagingdomain.PackRequest) (packagingdomain.PackResponse, error)) ([]byte, error) {
+	return a.bundleContentLocked(ctx, workspaceHandle, target, pack)
 }
 
-func (a *ephemeralWorkspaceAdapter) bundleContentLocked(_ context.Context, workspacePath string, target packagingdomain.Target, _ func(context.Context, packagingdomain.PackRequest) (packagingdomain.PackResponse, error)) ([]byte, error) {
-	bundlePath, err := a.workspace.workspaceSource.bundlePath(workspacePath, target)
+func (a *ephemeralWorkspaceAdapter) bundleContentLocked(_ context.Context, workspaceHandle string, target packagingdomain.Target, _ func(context.Context, packagingdomain.PackRequest) (packagingdomain.PackResponse, error)) ([]byte, error) {
+	bundlePath, err := a.workspace.workspaceSource.bundlePath(workspaceHandle, target)
 	if err != nil {
 		return nil, err
 	}
 	return os.ReadFile(bundlePath)
 }
 
-func (a *managedWorkspaceAdapter) PackageMetadataLocked(ctx context.Context, workspacePath string) (map[string]any, error) {
-	return a.packageMetadataLocked(ctx, workspacePath)
+func (a *managedWorkspaceAdapter) PackageMetadataLocked(ctx context.Context, workspaceHandle string) (map[string]any, error) {
+	return a.packageMetadataLocked(ctx, workspaceHandle)
 }
 
-func (a *managedWorkspaceAdapter) packageMetadataLocked(ctx context.Context, workspacePath string) (map[string]any, error) {
-	record, err := a.workspace.loadManagedWorkspaceRecord(ctx, workspacePath)
+func (a *managedWorkspaceAdapter) packageMetadataLocked(ctx context.Context, workspaceHandle string) (map[string]any, error) {
+	record, err := a.workspace.loadManagedWorkspaceRecord(ctx, workspaceHandle)
 	if err != nil {
 		return nil, err
 	}
 	if len(record.PackageMetadataJSON) > 0 {
-		return decodeWorkspacePackageMetadataJSON(workspacePath, record.PackageMetadataJSON)
+		return decodeWorkspacePackageMetadataJSON(workspaceHandle, record.PackageMetadataJSON)
 	}
 
 	content, err := os.ReadFile(filepath.Join(record.WorkspacePath, "package.json"))
 	if err != nil {
 		return nil, catalog.NewError(422, "invalid_request", "workspace package.json could not be read.", map[string]any{
-			"workspacePath": workspacePath,
+			"workspaceHandle": workspaceHandle,
 		})
 	}
-	payload, err := decodeWorkspacePackageMetadataJSON(workspacePath, content)
+	payload, err := decodeWorkspacePackageMetadataJSON(workspaceHandle, content)
 	if err != nil {
 		return nil, err
 	}
-	if saveErr := a.workspace.workspaceStore.SavePackageMetadata(ctx, workspacePath, content, time.Now().UTC()); saveErr != nil {
+	if saveErr := a.workspace.workspaceStore.SavePackageMetadata(ctx, workspaceHandle, content, time.Now().UTC()); saveErr != nil {
 		return nil, catalog.NewError(500, "internal_error", "Failed to persist packaging workspace package metadata cache.", nil)
 	}
 	return payload, nil
 }
 
-func (a *ephemeralWorkspaceAdapter) PackageMetadataLocked(ctx context.Context, workspacePath string) (map[string]any, error) {
-	return a.packageMetadataLocked(ctx, workspacePath)
+func (a *ephemeralWorkspaceAdapter) PackageMetadataLocked(ctx context.Context, workspaceHandle string) (map[string]any, error) {
+	return a.packageMetadataLocked(ctx, workspaceHandle)
 }
 
-func (a *ephemeralWorkspaceAdapter) packageMetadataLocked(ctx context.Context, workspacePath string) (map[string]any, error) {
-	materializedPath, cleanup, err := a.workspace.materializeWorkspace(ctx, workspacePath)
+func (a *ephemeralWorkspaceAdapter) packageMetadataLocked(ctx context.Context, workspaceHandle string) (map[string]any, error) {
+	materializedPath, cleanup, err := a.workspace.materializeWorkspace(ctx, workspaceHandle)
 	if err != nil {
 		return nil, err
 	}
@@ -310,11 +310,11 @@ func (a *ephemeralWorkspaceAdapter) packageMetadataLocked(ctx context.Context, w
 	content, err := os.ReadFile(filepath.Join(materializedPath, "package.json"))
 	if err != nil {
 		return nil, catalog.NewError(422, "invalid_request", "workspace package.json could not be read.", map[string]any{
-			"workspacePath": workspacePath,
+			"workspaceHandle": workspaceHandle,
 		})
 	}
 
-	return decodeWorkspacePackageMetadataJSON(workspacePath, content)
+	return decodeWorkspacePackageMetadataJSON(workspaceHandle, content)
 }
 
 func (a *managedWorkspaceAdapter) PruneExpired(ctx context.Context, ttl time.Duration) error {

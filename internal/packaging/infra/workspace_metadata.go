@@ -35,7 +35,7 @@ func readWorkspacePackageMetadataFile(workspaceHandle string, workspacePath stri
 	var payload workspacePackageMetadata
 	if err := json.Unmarshal(content, &payload); err != nil {
 		return workspacePackageMetadata{}, catalog.NewError(422, "invalid_request", "workspace package.json is invalid JSON.", map[string]any{
-			"workspacePath": workspaceHandle,
+			"workspaceHandle": workspaceHandle,
 		})
 	}
 	return payload, nil
@@ -45,7 +45,7 @@ func readWorkspacePackageMetadataContent(workspaceHandle string, workspacePath s
 	content, err := os.ReadFile(filepath.Join(workspacePath, "package.json"))
 	if err != nil {
 		return nil, catalog.NewError(422, "invalid_request", "workspace package.json could not be read.", map[string]any{
-			"workspacePath": workspaceHandle,
+			"workspaceHandle": workspaceHandle,
 		})
 	}
 	return content, nil
@@ -55,7 +55,7 @@ func decodeWorkspacePackageMetadataJSON(workspaceHandle string, content []byte) 
 	var payload map[string]any
 	if err := json.Unmarshal(content, &payload); err != nil {
 		return nil, catalog.NewError(422, "invalid_request", "workspace package.json is invalid JSON.", map[string]any{
-			"workspacePath": workspaceHandle,
+			"workspaceHandle": workspaceHandle,
 		})
 	}
 	return payload, nil

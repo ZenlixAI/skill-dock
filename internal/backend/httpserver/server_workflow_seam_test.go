@@ -254,7 +254,7 @@ func TestServerLegacyPackagingWorkspaceRoutesReturnNotFound(t *testing.T) {
 		{method: http.MethodPost, path: "/api/v1/skill-packaging/validate", body: `{}`},
 		{method: http.MethodPost, path: "/api/v1/skill-packaging/pack", body: `{}`},
 		{method: http.MethodPost, path: "/api/v1/skill-packaging/cleanup", body: `{}`},
-		{method: http.MethodGet, path: "/api/v1/skill-packaging/bundle?workspacePath=/tmp/workspace&packageName=%40platform.skill%2Fpdf-skill&version=1.2.0"},
+		{method: http.MethodGet, path: "/api/v1/skill-packaging/bundle?workspaceHandle=ws-legacy&packageName=%40platform.skill%2Fpdf-skill&version=1.2.0"},
 	}
 
 	for _, tc := range requests {

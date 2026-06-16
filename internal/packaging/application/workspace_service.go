@@ -52,7 +52,7 @@ func (r *WorkspaceService) Validate(ctx context.Context, input packagingdomain.V
 	if err := packagingContextError(ctx); err != nil {
 		return packagingdomain.ValidateResponse{}, err
 	}
-	ctx, unlock, err := r.workspace.LockWorkspace(ctx, input.WorkspacePath)
+	ctx, unlock, err := r.workspace.LockWorkspace(ctx, input.WorkspaceHandle)
 	if err != nil {
 		return packagingdomain.ValidateResponse{}, err
 	}
@@ -72,7 +72,7 @@ func (r *WorkspaceService) Pack(ctx context.Context, input packagingdomain.PackR
 	if err := packagingContextError(ctx); err != nil {
 		return packagingdomain.PackResponse{}, err
 	}
-	ctx, unlock, err := r.workspace.LockWorkspace(ctx, input.WorkspacePath)
+	ctx, unlock, err := r.workspace.LockWorkspace(ctx, input.WorkspaceHandle)
 	if err != nil {
 		return packagingdomain.PackResponse{}, err
 	}
@@ -87,85 +87,85 @@ func (r *WorkspaceService) Pack(ctx context.Context, input packagingdomain.PackR
 	return result.Response, nil
 }
 
-func (r *WorkspaceService) Cleanup(ctx context.Context, workspacePath string) error {
+func (r *WorkspaceService) Cleanup(ctx context.Context, workspaceHandle string) error {
 	if err := packagingContextError(ctx); err != nil {
 		return err
 	}
-	ctx, unlock, err := r.workspace.LockWorkspace(ctx, workspacePath)
+	ctx, unlock, err := r.workspace.LockWorkspace(ctx, workspaceHandle)
 	if err != nil {
 		return err
 	}
 	defer unlock()
 
-	return r.adapter.CleanupLocked(ctx, workspacePath)
+	return r.adapter.CleanupLocked(ctx, workspaceHandle)
 }
 
-func (r *WorkspaceService) BundlePath(ctx context.Context, workspacePath string, target packagingdomain.Target) (string, error) {
+func (r *WorkspaceService) BundleHandle(ctx context.Context, workspaceHandle string, target packagingdomain.Target) (string, error) {
 	if err := packagingdomain.ValidateTarget(target); err != nil {
 		return "", err
 	}
 	if err := packagingContextError(ctx); err != nil {
 		return "", err
 	}
-	ctx, unlock, err := r.workspace.LockWorkspace(ctx, workspacePath)
+	ctx, unlock, err := r.workspace.LockWorkspace(ctx, workspaceHandle)
 	if err != nil {
 		return "", err
 	}
 	defer unlock()
 
-	return r.adapter.BundlePathLocked(ctx, workspacePath, target)
+	return r.adapter.BundleHandleLocked(ctx, workspaceHandle, target)
 }
 
-func (r *WorkspaceService) BundleFilePath(ctx context.Context, workspacePath string, target packagingdomain.Target) (string, error) {
+func (r *WorkspaceService) BundleFilePath(ctx context.Context, workspaceHandle string, target packagingdomain.Target) (string, error) {
 	if err := packagingdomain.ValidateTarget(target); err != nil {
 		return "", err
 	}
 	if err := packagingContextError(ctx); err != nil {
 		return "", err
 	}
-	ctx, unlock, err := r.workspace.LockWorkspace(ctx, workspacePath)
+	ctx, unlock, err := r.workspace.LockWorkspace(ctx, workspaceHandle)
 	if err != nil {
 		return "", err
 	}
 	defer unlock()
 
-	bundlePath, err := r.adapter.BundlePathLocked(ctx, workspacePath, target)
+	bundleHandle, err := r.adapter.BundleHandleLocked(ctx, workspaceHandle, target)
 	if err != nil {
 		return "", err
 	}
 	if r.workspace.HasWorkspaceStore() {
-		return r.workspace.ManagedBundlePath(workspacePath, target), nil
+		return r.workspace.ManagedBundlePath(workspaceHandle, target), nil
 	}
-	return bundlePath, nil
+	return bundleHandle, nil
 }
 
-func (r *WorkspaceService) BundleContent(ctx context.Context, workspacePath string, target packagingdomain.Target) ([]byte, error) {
+func (r *WorkspaceService) BundleContent(ctx context.Context, workspaceHandle string, target packagingdomain.Target) ([]byte, error) {
 	if err := packagingdomain.ValidateTarget(target); err != nil {
 		return nil, err
 	}
 	if err := packagingContextError(ctx); err != nil {
 		return nil, err
 	}
-	ctx, unlock, err := r.workspace.LockWorkspace(ctx, workspacePath)
+	ctx, unlock, err := r.workspace.LockWorkspace(ctx, workspaceHandle)
 	if err != nil {
 		return nil, err
 	}
 	defer unlock()
 
-	return r.adapter.BundleContentLocked(ctx, workspacePath, target, r.Pack)
+	return r.adapter.BundleContentLocked(ctx, workspaceHandle, target, r.Pack)
 }
 
-func (r *WorkspaceService) PackageMetadata(ctx context.Context, workspacePath string) (map[string]any, error) {
+func (r *WorkspaceService) PackageMetadata(ctx context.Context, workspaceHandle string) (map[string]any, error) {
 	if err := packagingContextError(ctx); err != nil {
 		return nil, err
 	}
-	ctx, unlock, err := r.workspace.LockWorkspace(ctx, workspacePath)
+	ctx, unlock, err := r.workspace.LockWorkspace(ctx, workspaceHandle)
 	if err != nil {
 		return nil, err
 	}
 	defer unlock()
 
-	return r.adapter.PackageMetadataLocked(ctx, workspacePath)
+	return r.adapter.PackageMetadataLocked(ctx, workspaceHandle)
 }
 
 func (r *WorkspaceService) preparePublishedRelease(ctx context.Context, input packagingdomain.PublishRequest) (publishedReleaseMaterial, error) {
@@ -186,15 +186,15 @@ func (r *WorkspaceService) preparePublishedRelease(ctx context.Context, input pa
 		return publishedReleaseMaterial{}, err
 	}
 
-	workspacePath := prepared.WorkspacePath
-	ctx, unlock, err := r.workspace.LockWorkspace(ctx, workspacePath)
+	workspaceHandle := prepared.WorkspaceHandle
+	ctx, unlock, err := r.workspace.LockWorkspace(ctx, workspaceHandle)
 	if err != nil {
 		return publishedReleaseMaterial{}, err
 	}
 
 	packResult, err := r.adapter.PackLocked(ctx, packagingdomain.PackRequest{
-		WorkspacePath: workspacePath,
-		Target:        input.Target,
+		WorkspaceHandle: workspaceHandle,
+		Target:          input.Target,
 	}, r.bundleRules)
 	if err != nil {
 		unlock()
@@ -212,7 +212,7 @@ func (r *WorkspaceService) preparePublishedRelease(ctx context.Context, input pa
 		return material, nil
 	}
 
-	metadata, err := packaginginfra.ReadWorkspacePackageMetadataFile(workspacePath, packResult.MaterializedPath())
+	metadata, err := packaginginfra.ReadWorkspacePackageMetadataFile(workspaceHandle, packResult.MaterializedPath())
 	if err != nil {
 		material.cleanup()
 		return publishedReleaseMaterial{}, err

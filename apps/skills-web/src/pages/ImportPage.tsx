@@ -1,17 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { importReviewPackaging, publishSkill } from '../api/client';
-import { normalizeThrownRegistryError } from '../api/httpClient';
 import type {
   PackagingImportReviewRequest,
   PackagingImportReviewResponse,
   PackagingPublishResponse,
   PackagingSourceType,
-  RegistryRequestError,
 } from '../api/types';
 import { ImportReportCard } from '../components/ImportReportCard';
 import {
-  inferMutationFailureOutcome,
   MutationResultPanel,
   readMutationResultSearchParams,
 } from '../components/MutationResultPanel';
@@ -24,19 +20,13 @@ import { buildExternalImportArchive } from '../features/packaging/externalImport
 import {
   derivePackagingViewState,
   persistPackagingMutationResult,
-  toMutationResult,
-} from '../features/packaging/usePackagingWorkflow';
+} from '../features/packaging/packagingWorkflowState';
+import { useImportWorkflow } from '../features/packaging/useImportWorkflow';
 import {
-  createAuthoringEditorState,
-  getDefaultAuthoringPath,
-  hasUnsavedAuthoringChanges,
-  parseOptionalAuthoringJson,
   resolvePrepareAuthoringFiles,
-  serializeAuthoringFiles,
-  type AuthoringFile,
   type AuthoringTemplateId,
-  validateAuthoringPath,
 } from '../features/packaging/useAuthoringDraft';
+import { useAuthoringEditor } from '../features/packaging/useAuthoringEditor';
 import { buildReleaseHandoffPath } from '../lib/releaseHandoff';
 import { useRegistrySession } from '../session/SessionProvider';
 
@@ -56,13 +46,6 @@ const steps = [
 ];
 
 type ReviewData = PackagingImportReviewResponse | PackagingPublishResponse;
-
-type ImportLogEntry = {
-  id: string;
-  step: 'review' | 'publish';
-  outcome: 'succeeded' | 'failed';
-  summary: string;
-};
 
 const AUTHORING_TEMPLATES: Record<
   AuthoringTemplateId,
@@ -85,43 +68,12 @@ const AUTHORING_TEMPLATES: Record<
   },
 };
 
-function createLocalRequestError(message: string): RegistryRequestError {
-  return {
-    kind: 'unknown',
-    message,
-  };
-}
-
-function describeImportOperationError(error: RegistryRequestError) {
-  if (error.kind === 'auth') {
-    return `${error.message} 这次导入操作需要具备 packaging 权限的会话后再重试。`;
-  }
-
-  if (error.kind === 'network') {
-    return `${error.message} 当前无法连接 packaging 后端，等真实后端恢复后再重试。`;
-  }
-
-  return error.message;
-}
-
 export function ImportPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { session, getPosture, getPostureLabel } = useRegistrySession();
   const [sourceType, setSourceType] = useState<PackagingSourceType>('upload_archive');
   const [location, setLocation] = useState('https://github.com/mattpocock/skills?path=skills/engineering/zoom-out');
   const [sourceRef, setSourceRef] = useState('');
-  const [authoringTemplate, setAuthoringTemplate] = useState<AuthoringTemplateId>('command');
-  const [authoringFiles, setAuthoringFiles] = useState<AuthoringFile[]>(
-    () => createAuthoringEditorState('command').draft.files
-  );
-  const [selectedAuthoringPath, setSelectedAuthoringPath] = useState(
-    () => createAuthoringEditorState('command').selectedPath
-  );
-  const [newAuthoringPath, setNewAuthoringPath] = useState('');
-  const [authoringError, setAuthoringError] = useState<string | null>(null);
-  const [showAdvancedFiles, setShowAdvancedFiles] = useState(false);
-  const [rawInlineFiles, setRawInlineFiles] = useState('');
-  const [rawInlineFilesDirty, setRawInlineFilesDirty] = useState(false);
   const [packageName, setPackageName] = useState('@company.skill/zoom-out');
   const [version, setVersion] = useState('1.2.0');
   const [displayName, setDisplayName] = useState('Zoom Out');
@@ -130,42 +82,7 @@ export function ImportPage() {
   const [publishRegistry, setPublishRegistry] = useState('https://npm.internal.example.com');
   const [strictMode, setStrictMode] = useState(false);
   const [includeBundle, setIncludeBundle] = useState(false);
-  const [operationState, setOperationState] = useState<{
-    loading: false | 'review' | 'publish';
-    error: string | null;
-    errorDetail: RegistryRequestError | null;
-    success: string | null;
-  }>({
-    loading: false,
-    error: null,
-    errorDetail: null,
-    success: null,
-  });
-  const [reviewResult, setReviewResult] = useState<PackagingImportReviewResponse | null>(null);
-  const [publishResult, setPublishResult] = useState<PackagingPublishResponse | null>(null);
-  const [activityLog, setActivityLog] = useState<ImportLogEntry[]>([]);
-  const inputRevisionRef = useRef(0);
 
-  const workflow = derivePackagingViewState({
-    reviewResult,
-    publishResult,
-    publishRegistry,
-  });
-  const reviewData: ReviewData | null = publishResult || reviewResult;
-  const stageTone = workflow.currentStage === 'published' ? 'good' : workflow.currentStage === 'reviewed' ? 'accent' : undefined;
-  const releaseHandoffPath = workflow.releaseHandoffPath;
-  const authoringHandoffPath = reviewResult
-    ? buildReleaseHandoffPath(
-        {
-          packageName: reviewResult.packageName,
-          version: reviewResult.version,
-          publishRegistry: publishRegistry.trim() || undefined,
-          manifestDigest: reviewResult.manifestDigest,
-          components: reviewResult.components,
-        },
-        '/workbench/authoring'
-      )
-    : null;
   const normalizedPackageName = packageName.trim();
   const packagingPosture = getPosture({
     packageName: normalizedPackageName,
@@ -185,52 +102,28 @@ export function ImportPage() {
     version: null,
     actor: session.data?.actor ?? null,
   });
-  const selectedAuthoringFile =
-    authoringFiles.find((file) => file.path === selectedAuthoringPath) || authoringFiles[0] || null;
-  const advancedInlineFilesValue = rawInlineFilesDirty ? rawInlineFiles : serializeAuthoringFiles(authoringFiles);
-
-  useEffect(() => {
-    inputRevisionRef.current += 1;
-    setReviewResult(null);
-    setPublishResult(null);
-    setOperationState((current) =>
-      current.loading === false && current.success === null
-        ? current
-        : {
-            loading: false,
-            error: null,
-            errorDetail: null,
-            success: null,
-          }
-    );
-  }, [
-    sourceType,
-    location,
-    sourceRef,
+  const {
+    authoringTemplate,
     authoringFiles,
+    selectedAuthoringPath,
+    setSelectedAuthoringPath,
+    selectedAuthoringFile,
+    newAuthoringPath,
+    setNewAuthoringPath,
+    authoringError,
+    showAdvancedFiles,
+    setShowAdvancedFiles,
     rawInlineFiles,
+    setRawInlineFiles,
     rawInlineFilesDirty,
-    packageName,
-    version,
-    displayName,
-    description,
-    metadataSourceType,
-    publishRegistry,
-    strictMode,
-    includeBundle,
-  ]);
-
-  function appendLog(step: ImportLogEntry['step'], outcome: ImportLogEntry['outcome'], summary: string) {
-    setActivityLog((current) => [
-      {
-        id: `${step}-${Date.now()}`,
-        step,
-        outcome,
-        summary,
-      },
-      ...current,
-    ]);
-  }
+    setRawInlineFilesDirty,
+    advancedInlineFilesValue,
+    resetAuthoringTemplate,
+    handleAddAuthoringFile,
+    handleDeleteAuthoringFile,
+    handleAuthoringContentChange,
+    applyRawInlineFiles,
+  } = useAuthoringEditor('command');
 
   function persistMutationResult(result: {
     action: string;
@@ -247,86 +140,6 @@ export function ImportPage() {
       }),
       { replace: true }
     );
-  }
-
-  function resetAuthoringTemplate(nextTemplate: AuthoringTemplateId) {
-    const hasUnsavedChanges = hasUnsavedAuthoringChanges({
-      authoringFiles,
-      rawInlineFilesDirty,
-      template: authoringTemplate,
-    });
-
-    if (
-      hasUnsavedChanges &&
-      !window.confirm('切换模板会重建当前文件列表，未保存的作者输入会丢失。继续吗？')
-    ) {
-      return;
-    }
-
-    const nextAuthoringState = createAuthoringEditorState(nextTemplate);
-    setAuthoringTemplate(nextTemplate);
-    setAuthoringFiles(nextAuthoringState.draft.files);
-    setSelectedAuthoringPath(nextAuthoringState.selectedPath);
-    setAuthoringError(null);
-    setRawInlineFiles('');
-    setRawInlineFilesDirty(false);
-    setNewAuthoringPath('');
-  }
-
-  function handleAddAuthoringFile() {
-    const validationError = validateAuthoringPath(newAuthoringPath, authoringFiles);
-    if (validationError) {
-      setAuthoringError(validationError);
-      return;
-    }
-
-    const trimmed = newAuthoringPath.trim();
-    const nextFiles = [...authoringFiles, { path: trimmed, content: '', locked: false }];
-    setAuthoringFiles(nextFiles);
-    setSelectedAuthoringPath(trimmed);
-    setAuthoringError(null);
-    setNewAuthoringPath('');
-    setRawInlineFilesDirty(false);
-  }
-
-  function handleDeleteAuthoringFile(path: string) {
-    const target = authoringFiles.find((file) => file.path === path);
-    if (!target || target.locked) {
-      return;
-    }
-
-    const nextFiles = authoringFiles.filter((file) => file.path !== path);
-    setAuthoringFiles(nextFiles);
-    setAuthoringError(null);
-    setRawInlineFilesDirty(false);
-
-    if (selectedAuthoringPath === path) {
-      setSelectedAuthoringPath(getDefaultAuthoringPath(nextFiles));
-    }
-  }
-
-  function handleAuthoringContentChange(content: string) {
-    const activePath = selectedAuthoringFile?.path;
-    if (!activePath) {
-      return;
-    }
-
-    setAuthoringFiles((current) =>
-      current.map((file) => (file.path === activePath ? { ...file, content } : file))
-    );
-    setAuthoringError(null);
-    setRawInlineFilesDirty(false);
-  }
-
-  function applyRawInlineFiles() {
-    const nextAuthoringState = createAuthoringEditorState(
-      authoringTemplate,
-      parseOptionalAuthoringJson(rawInlineFiles) || {}
-    );
-    setAuthoringFiles(nextAuthoringState.draft.files);
-    setSelectedAuthoringPath(nextAuthoringState.selectedPath);
-    setAuthoringError(null);
-    setRawInlineFilesDirty(false);
   }
 
   async function buildReviewRequest(): Promise<PackagingImportReviewRequest> {
@@ -384,144 +197,57 @@ export function ImportPage() {
       includeBundleBase64: includeBundle,
     };
   }
-
-  async function handlePreview() {
-    if (sourceType === 'platform_authoring' && authoringError) {
-      setOperationState({
-        loading: false,
-        error: authoringError,
-        errorDetail: createLocalRequestError(authoringError),
-        success: null,
-      });
-      return;
-    }
-
-    const inputRevision = inputRevisionRef.current;
-    setOperationState({
-      loading: 'review',
-      error: null,
-      errorDetail: null,
-      success: null,
-    });
-
-    try {
-      const response = await importReviewPackaging(await buildReviewRequest());
-      if (inputRevision !== inputRevisionRef.current) {
-        return;
-      }
-      setReviewResult(response);
-      setPublishResult(null);
-      setOperationState({
-        loading: false,
-        error: null,
-        errorDetail: null,
-        success: '预览已生成，可以继续发布 skill。',
-      });
-      persistMutationResult({
-        action: 'import-review',
-        outcome: 'succeeded',
-        message: '预览已生成，可以继续发布 skill。',
-        packageName: response.packageName,
-        version: response.version,
-      });
-      appendLog('review', 'succeeded', `已生成 ${response.packageName}@${response.version} 的发布预览。`);
-    } catch (error: unknown) {
-      if (inputRevision !== inputRevisionRef.current) {
-        return;
-      }
-      const outcome = inferMutationFailureOutcome(error);
-      const normalizedError = normalizeThrownRegistryError(error);
-      const message = describeImportOperationError(normalizedError);
-      appendLog('review', 'failed', normalizedError.message);
-      setOperationState({
-        loading: false,
-        error: normalizedError.message,
-        errorDetail: normalizedError,
-        success: null,
-      });
-      persistMutationResult(
-        toMutationResult('import-review', normalizedError, outcome, {
-          packageName: normalizedPackageName || null,
-          version: version.trim() || null,
-          actor: session.data?.actor ?? null,
-          message,
-        })
-      );
-    }
-  }
-
-  async function handlePublish() {
-    if (!reviewResult?.ok) {
-      const message = '请先执行“检查并生成发布预览”。';
-      setOperationState({
-        loading: false,
-        error: message,
-        errorDetail: createLocalRequestError(message),
-        success: null,
-      });
-      return;
-    }
-
-    const inputRevision = inputRevisionRef.current;
-    setOperationState({
-      loading: 'publish',
-      error: null,
-      errorDetail: null,
-      success: null,
-    });
-
-    try {
-      const response = await publishSkill({
-        ...(await buildReviewRequest()),
-        review: {
+  const {
+    operationState,
+    reviewResult,
+    publishResult,
+    activityLog,
+    handlePreview,
+    handlePublish,
+  } = useImportWorkflow({
+    sourceType,
+    authoringError,
+    normalizedPackageName,
+    version,
+    buildReviewRequest,
+    onMutationResult: persistMutationResult,
+    resetKeys: [
+      sourceType,
+      location,
+      sourceRef,
+      authoringFiles,
+      rawInlineFiles,
+      rawInlineFilesDirty,
+      packageName,
+      version,
+      displayName,
+      description,
+      metadataSourceType,
+      publishRegistry,
+      strictMode,
+      includeBundle,
+    ],
+  });
+  const workflow = derivePackagingViewState({
+    reviewResult,
+    publishResult,
+    publishRegistry,
+  });
+  const reviewData: ReviewData | null = publishResult || reviewResult;
+  const stageTone = workflow.currentStage === 'published' ? 'good' : workflow.currentStage === 'reviewed' ? 'accent' : undefined;
+  const releaseHandoffPath = workflow.releaseHandoffPath;
+  const authoringHandoffPath = reviewResult
+    ? buildReleaseHandoffPath(
+        {
+          packageName: reviewResult.packageName,
+          version: reviewResult.version,
+          publishRegistry: publishRegistry.trim() || undefined,
           manifestDigest: reviewResult.manifestDigest,
           components: reviewResult.components,
         },
-      });
-      if (inputRevision !== inputRevisionRef.current) {
-        return;
-      }
-      setPublishResult(response);
-      setOperationState({
-        loading: false,
-        error: null,
-        errorDetail: null,
-        success: response.created ? 'skill 已发布并写入 release record。' : '后端返回幂等重放结果。'
-      });
-      persistMutationResult({
-        action: 'publish',
-        outcome: 'succeeded',
-        message: response.created ? 'skill 已发布并写入 release record。' : '后端返回幂等重放结果。',
-        packageName: response.packageName,
-        version: response.version,
-      });
-      appendLog(
-        'publish',
-        'succeeded',
-        response.created ? '已完成一次性发布。' : '返回幂等重放发布结果。'
-      );
-    } catch (error: unknown) {
-      if (inputRevision !== inputRevisionRef.current) {
-        return;
-      }
-      const outcome = inferMutationFailureOutcome(error);
-      const normalizedError = normalizeThrownRegistryError(error);
-      appendLog('publish', 'failed', normalizedError.message);
-      setOperationState({
-        loading: false,
-        error: normalizedError.message,
-        errorDetail: normalizedError,
-        success: null,
-      });
-      persistMutationResult(
-        toMutationResult('publish', normalizedError, outcome, {
-          packageName: reviewResult.packageName,
-          version: reviewResult.version,
-          actor: session.data?.actor ?? null,
-        })
-      );
-    }
-  }
+        '/workbench/authoring'
+      )
+    : null;
 
   return (
     <div className="page-grid">

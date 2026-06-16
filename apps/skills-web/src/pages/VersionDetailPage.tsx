@@ -1,14 +1,6 @@
 import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
-  applyVersionGovernanceChange,
-  createReleaseRecord,
-  getVersionDetail,
-  listGovernanceChanges,
-} from '../api/client';
-import { normalizeThrownRegistryError } from '../api/httpClient';
-import {
-  inferMutationFailureOutcome,
   MutationResultPanel,
   readMutationResultSearchParams,
 } from '../components/MutationResultPanel';
@@ -18,29 +10,22 @@ import { SectionHeading } from '../components/SectionHeading';
 import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
 import {
-  createMutationState,
-  type CatalogMutationState,
   persistCatalogMutation,
 } from '../features/catalog-mutations/useCatalogMutation';
-import { useAsyncData } from '../lib/useAsyncData';
+import {
+  useVersionDetailActions,
+  type VersionLogEntry,
+} from '../features/version-detail/useVersionDetailActions';
+import { useVersionDetailSnapshot } from '../features/version-detail/useVersionDetailSnapshot';
 import { formatDate } from '../lib/format';
 import {
   getGovernanceActionLabel,
   getGovernanceTargetTypeLabel,
-  getInstallHostLabel,
   getInstallPolicyLabel,
-  rewriteInstallTarballUrl,
   getVersionStatusLabel,
 } from '../lib/installCommand';
 import { buildReleaseHandoffPath, readReleaseHandoff } from '../lib/releaseHandoff';
 import { useRegistrySession } from '../session/SessionProvider';
-
-type VersionLogEntry = {
-  id: string;
-  action: 'release-record' | 'governance';
-  outcome: 'succeeded' | 'failed';
-  summary: string;
-};
 
 function getLogActionLabel(action: VersionLogEntry['action']) {
   return action === 'release-record' ? '发布记录' : '治理变更';
@@ -67,17 +52,20 @@ export function VersionDetailPage() {
   const [governanceReason, setGovernanceReason] = useState('');
   const [replacementRecommendation, setReplacementRecommendation] = useState('');
   const [governanceConfirmed, setGovernanceConfirmed] = useState(false);
-  const [activityLog, setActivityLog] = useState<VersionLogEntry[]>([]);
-  const [actionState, setActionState] = useState<CatalogMutationState<'release' | 'governance'>>(
-    createMutationState()
-  );
 
-  const detail = useAsyncData(() => getVersionDetail(decodedPackage, version), [decodedPackage, version, refreshKey]);
-  const { session, hasCapability, getPosture, getPostureLabel } = useRegistrySession();
-  const governance = useAsyncData(
-    () => listGovernanceChanges({ packageName: decodedPackage, version }),
-    [decodedPackage, version, refreshKey]
-  );
+  const { session, getPosture, getPostureLabel } = useRegistrySession();
+  const {
+    detail,
+    governance,
+    currentVersionStatus,
+    versionTone,
+    installRegistryHost,
+    installTarballUrl,
+  } = useVersionDetailSnapshot({
+    packageName: decodedPackage,
+    version,
+    refreshKey,
+  });
 
   const releaseComponents = components
     .split(',')
@@ -85,13 +73,32 @@ export function VersionDetailPage() {
     .filter(Boolean);
   const authoringPath = buildReleaseHandoffPath(handoff, '/workbench/authoring');
   const hasHandoff = Boolean(handoff.manifestDigest || handoff.components?.length);
-  const currentVersionStatus = detail.data?.versionStatus || 'unknown';
-  const versionTone =
-    currentVersionStatus === 'published' ? 'good' : currentVersionStatus === 'deprecated' ? 'warn' : 'bad';
   const governanceImpact =
     governanceAction === 'yank'
       ? '显式安装应被阻断，下游用户需要迁移到替代版本。'
       : '当前版本仍可见，但应明确引导消费方迁移到更新版本。';
+  const { actionState, activityLog, handleReleaseRecord, handleVersionGovernance } = useVersionDetailActions({
+    packageName: decodedPackage,
+    version,
+    onMutationResult: (result) => {
+      setSearchParams(
+        persistCatalogMutation(
+          searchParams,
+          {
+            action: result.action,
+            outcome: result.outcome,
+            message: result.message,
+            requestId: result.requestId,
+          },
+          mutationDefaults
+        ),
+        { replace: true }
+      );
+    },
+    onRefresh: () => {
+      setRefreshKey((current) => current + 1);
+    },
+  });
   const replacementRequired = governanceAction === 'deprecate' || governanceAction === 'yank';
   const canSubmitGovernance =
     actionState.loading === false &&
@@ -102,8 +109,6 @@ export function VersionDetailPage() {
     packageName: decodedPackage,
     requiredAction: 'catalog.release_record.create',
   });
-  const releaseWriteEnabled = hasCapability('catalog.release_record.create', decodedPackage);
-  const governanceWriteEnabled = hasCapability('catalog.governance.version.apply', decodedPackage);
   const releasePostureLabel =
     releasePosture === 'write_enabled'
       ? '允许发布登记'
@@ -123,11 +128,6 @@ export function VersionDetailPage() {
     version,
     actor: session.data?.actor ?? null,
   };
-  const installRegistryHost = getInstallHostLabel(detail.data?.registry.npmRegistry);
-  const installTarballUrl = rewriteInstallTarballUrl(
-    detail.data?.registry.tarballUrl,
-    detail.data?.registry.npmRegistry
-  );
 
   function renderInstallSurface() {
     if (detail.loading) {
@@ -173,139 +173,6 @@ export function VersionDetailPage() {
         integrity={detail.data.registry.integrity}
       />
     );
-  }
-
-  function appendLog(action: VersionLogEntry['action'], outcome: VersionLogEntry['outcome'], summary: string) {
-    setActivityLog((current) => [
-      {
-        id: `${action}-${Date.now()}`,
-        action,
-        outcome,
-        summary,
-      },
-      ...current,
-    ]);
-  }
-
-  async function handleReleaseRecord() {
-    setActionState({
-      ...createMutationState<'release' | 'governance'>(),
-      loading: 'release',
-    });
-    try {
-      const response = await createReleaseRecord(decodedPackage, version, {
-        publishRegistry: publishRegistry.trim() || undefined,
-        manifestDigest: manifestDigest.trim() || undefined,
-        components: releaseComponents.length ? releaseComponents : undefined,
-      });
-      const successMessage = response.created
-        ? '已写入新的发布记录。'
-        : '发布记录已存在，后端返回幂等重放结果。';
-      setActionState({
-        loading: false,
-        error: null,
-        success: successMessage,
-      });
-      setSearchParams(
-        persistCatalogMutation(
-          searchParams,
-          {
-            action: '发布记录',
-            outcome: 'succeeded',
-            message: successMessage,
-          },
-          mutationDefaults
-        ),
-        { replace: true }
-      );
-      appendLog(
-        'release-record',
-        'succeeded',
-        response.created ? '已写入新的发布记录。' : '发布记录返回幂等重放结果。'
-      );
-      setRefreshKey((current) => current + 1);
-    } catch (error: unknown) {
-      const outcome = inferMutationFailureOutcome(error);
-      const normalizedError = normalizeThrownRegistryError(error);
-      appendLog('release-record', 'failed', normalizedError.message);
-      setActionState({
-        loading: false,
-        error: normalizedError.message,
-        success: null,
-      });
-      setSearchParams(
-        persistCatalogMutation(
-          searchParams,
-          {
-            action: '发布记录',
-            outcome,
-            message: normalizedError.message,
-            requestId: normalizedError.requestId,
-          },
-          mutationDefaults
-        ),
-        { replace: true }
-      );
-    }
-  }
-
-  async function handleVersionGovernance() {
-    setActionState({
-      ...createMutationState<'release' | 'governance'>(),
-      loading: 'governance',
-    });
-    try {
-      const response = await applyVersionGovernanceChange(decodedPackage, version, {
-        action: governanceAction,
-        reason: governanceReason.trim(),
-        replacementRecommendation:
-          replacementRecommendation.trim() === '' ? undefined : replacementRecommendation.trim(),
-      });
-      const successMessage = `已提交${getGovernanceActionLabel(response.record.action)}。当前版本状态：${
-        getVersionStatusLabel(response.resultingState.versionStatus || 'unknown')
-      }`;
-      setActionState({
-        loading: false,
-        error: null,
-        success: successMessage,
-      });
-      setSearchParams(
-        persistCatalogMutation(
-          searchParams,
-          {
-            action: getGovernanceActionLabel(response.record.action),
-            outcome: 'succeeded',
-            message: successMessage,
-          },
-          mutationDefaults
-        ),
-        { replace: true }
-      );
-      appendLog('governance', 'succeeded', `已应用${getGovernanceActionLabel(response.record.action)}治理动作。`);
-      setRefreshKey((current) => current + 1);
-    } catch (error: unknown) {
-      const outcome = inferMutationFailureOutcome(error);
-      const normalizedError = normalizeThrownRegistryError(error);
-      appendLog('governance', 'failed', normalizedError.message);
-      setActionState({
-        loading: false,
-        error: normalizedError.message,
-        success: null,
-      });
-      setSearchParams(
-        persistCatalogMutation(
-          searchParams,
-          {
-            action: getGovernanceActionLabel(governanceAction),
-            outcome,
-            message: normalizedError.message,
-            requestId: normalizedError.requestId,
-          },
-          mutationDefaults
-        ),
-        { replace: true }
-      );
-    }
   }
 
   return (
@@ -555,7 +422,13 @@ export function VersionDetailPage() {
               <button
                 className="button button--primary"
                 disabled={actionState.loading !== false || !publishConfirmed}
-                onClick={() => void handleReleaseRecord()}
+                onClick={() =>
+                  void handleReleaseRecord({
+                    publishRegistry,
+                    manifestDigest,
+                    components: releaseComponents,
+                  })
+                }
                 type="button"
               >
                 {actionState.loading === 'release' ? '提交中…' : '写入发布记录'}
@@ -613,7 +486,13 @@ export function VersionDetailPage() {
               <button
                 className="button button--secondary"
                 disabled={!canSubmitGovernance}
-                onClick={() => void handleVersionGovernance()}
+                onClick={() =>
+                  void handleVersionGovernance({
+                    action: governanceAction,
+                    reason: governanceReason,
+                    replacementRecommendation,
+                  })
+                }
                 type="button"
               >
                 {actionState.loading === 'governance' ? '提交中…' : '提交治理变更'}

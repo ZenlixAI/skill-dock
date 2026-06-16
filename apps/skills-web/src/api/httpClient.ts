@@ -71,7 +71,11 @@ function isNetworkMessage(message: string) {
 }
 
 function isMissingPackagingWorkspaceMessage(message: string) {
-  return message.toLowerCase().includes('workspacepath must reference an existing directory');
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes('workspacepath must reference an existing directory') ||
+    normalized.includes('workspacehandle must reference an existing packaging workspace')
+  );
 }
 
 function isRegistryPublishAuthFailure(code: string | undefined, details: Record<string, unknown> | undefined) {

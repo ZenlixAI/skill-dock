@@ -74,41 +74,41 @@ func (w *packagingWorkspaceBacking) PersistManagedWorkspace(ctx context.Context,
 	return w.persistManagedWorkspace(ctx, workspacePath)
 }
 
-func (w *packagingWorkspaceBacking) materializeWorkspace(ctx context.Context, workspacePath string) (string, func(), error) {
+func (w *packagingWorkspaceBacking) materializeWorkspace(ctx context.Context, workspaceHandle string) (string, func(), error) {
 	if err := packagingContextError(ctx); err != nil {
 		return "", nil, err
 	}
 	if w.workspaceStore == nil {
-		return workspacePath, func() {}, nil
+		return workspaceHandle, func() {}, nil
 	}
 
-	record, err := w.loadManagedWorkspaceRecord(ctx, workspacePath)
+	record, err := w.loadManagedWorkspaceRecord(ctx, workspaceHandle)
 	if err != nil {
 		return "", nil, err
 	}
 	return record.WorkspacePath, func() {}, nil
 }
 
-func (w *packagingWorkspaceBacking) MaterializeWorkspace(ctx context.Context, workspacePath string) (string, func(), error) {
-	return w.materializeWorkspace(ctx, workspacePath)
+func (w *packagingWorkspaceBacking) MaterializeWorkspace(ctx context.Context, workspaceHandle string) (string, func(), error) {
+	return w.materializeWorkspace(ctx, workspaceHandle)
 }
 
-func (w *packagingWorkspaceBacking) loadManagedWorkspaceRecord(ctx context.Context, workspacePath string) (persist.WorkspaceRecord, error) {
-	record, err := w.workspaceStore.LoadWorkspace(ctx, workspacePath)
+func (w *packagingWorkspaceBacking) loadManagedWorkspaceRecord(ctx context.Context, workspaceHandle string) (persist.WorkspaceRecord, error) {
+	record, err := w.workspaceStore.LoadWorkspace(ctx, workspaceHandle)
 	if err != nil {
 		if err == persist.ErrWorkspaceRecordNotFound {
-			return persist.WorkspaceRecord{}, catalog.NewError(422, "invalid_request", "workspacePath must reference an existing packaging workspace.", map[string]any{"workspacePath": workspacePath})
+			return persist.WorkspaceRecord{}, catalog.NewError(422, "invalid_request", "workspaceHandle must reference an existing packaging workspace.", map[string]any{"workspaceHandle": workspaceHandle})
 		}
 		return persist.WorkspaceRecord{}, catalog.NewError(500, "internal_error", "Failed to load packaging workspace.", nil)
 	}
-	managedWorkspacePath := w.managedWorkspacePath(workspacePath)
-	if _, err := w.canonicalManagedWorkspaceRoot(workspacePath); err != nil {
+	managedWorkspacePath := w.managedWorkspacePath(workspaceHandle)
+	if _, err := w.canonicalManagedWorkspaceRoot(workspaceHandle); err != nil {
 		return persist.WorkspaceRecord{}, catalog.NewError(500, "internal_error", "Failed to load packaging workspace.", nil)
 	}
 	info, err := os.Stat(managedWorkspacePath)
 	if err != nil || !info.IsDir() {
 		if errors.Is(err, os.ErrNotExist) || err == nil {
-			return persist.WorkspaceRecord{}, catalog.NewError(422, "invalid_request", "workspacePath must reference an existing packaging workspace.", map[string]any{"workspacePath": workspacePath})
+			return persist.WorkspaceRecord{}, catalog.NewError(422, "invalid_request", "workspaceHandle must reference an existing packaging workspace.", map[string]any{"workspaceHandle": workspaceHandle})
 		}
 		return persist.WorkspaceRecord{}, catalog.NewError(500, "internal_error", "Failed to load packaging workspace.", nil)
 	}
@@ -117,8 +117,8 @@ func (w *packagingWorkspaceBacking) loadManagedWorkspaceRecord(ctx context.Conte
 	return record, nil
 }
 
-func (w *packagingWorkspaceBacking) LoadManagedWorkspaceRecord(ctx context.Context, workspacePath string) (persist.WorkspaceRecord, error) {
-	return w.loadManagedWorkspaceRecord(ctx, workspacePath)
+func (w *packagingWorkspaceBacking) LoadManagedWorkspaceRecord(ctx context.Context, workspaceHandle string) (persist.WorkspaceRecord, error) {
+	return w.loadManagedWorkspaceRecord(ctx, workspaceHandle)
 }
 
 func (w *packagingWorkspaceBacking) managedWorkspacePath(workspaceID string) string {
@@ -214,12 +214,12 @@ func workspaceHandle() string {
 	return filepath.Base(dir)
 }
 
-func workspaceBundleHandle(workspacePath string, target packagingdomain.Target) string {
-	return "workspace://" + workspacePath + "/" + packagingdomain.PackageBasename(target.PackageName) + "-" + target.Version + ".tgz"
+func workspaceBundleHandle(workspaceHandle string, target packagingdomain.Target) string {
+	return "workspace://" + workspaceHandle + "/" + packagingdomain.PackageBasename(target.PackageName) + "-" + target.Version + ".tgz"
 }
 
-func WorkspaceBundleHandle(workspacePath string, target packagingdomain.Target) string {
-	return workspaceBundleHandle(workspacePath, target)
+func WorkspaceBundleHandle(workspaceHandle string, target packagingdomain.Target) string {
+	return workspaceBundleHandle(workspaceHandle, target)
 }
 
 func packagingContextError(ctx context.Context) error {

@@ -117,6 +117,24 @@ describe('normalizeRegistryError', () => {
       details: undefined,
     });
   });
+
+  it('turns workspace-handle packaging errors into the same actionable operator hint', () => {
+    expect(
+      normalizeRegistryError({
+        status: 422,
+        message: 'invalid_request: workspaceHandle must reference an existing packaging workspace.',
+        requestId: 'req-790',
+      })
+    ).toEqual({
+      kind: 'unknown',
+      message:
+        'Catalog returned a legacy workspace-path error. One-shot packaging should be stateless; retry after upgrading Catalog to the latest packaging API.',
+      requestId: 'req-790',
+      code: undefined,
+      status: 422,
+      details: undefined,
+    });
+  });
 });
 
 describe('normalizeThrownRegistryError', () => {
