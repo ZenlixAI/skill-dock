@@ -11,7 +11,7 @@ describe('skills CLI', () => {
       expect(output).toContain('Usage: skills <command> [options]');
       expect(output).toContain('Manage Skills:');
       expect(output).toContain('init [name]');
-      expect(output).toContain('add <package_name>');
+      expect(output).toContain('add <source>');
       expect(output).toContain('update');
       expect(output).toContain('Add Options:');
       expect(output).toContain('-g, --global');

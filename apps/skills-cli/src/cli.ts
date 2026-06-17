@@ -10,8 +10,10 @@ import { runList } from './list.ts';
 import { removeCommand, parseRemoveOptions } from './remove.ts';
 import { flushTelemetry } from './telemetry.ts';
 import { runInspect } from './inspect.ts';
+import { runImportGit } from './import-git.ts';
 import { runImportLocal } from './import-local.ts';
 import { runPublish } from './publish.ts';
+import { runSync } from './sync.ts';
 import { runUpdate } from './update.ts';
 
 if (module.enableCompileCache && !process.env.NODE_DISABLE_COMPILE_CACHE) {
@@ -48,14 +50,15 @@ function showHelp(): void {
 ${BOLD}Usage:${RESET} skills <command> [options]
 
 ${BOLD}Manage Skills:${RESET}
-  add <package_name>   Add a skill package from the registry (alias: a)
-                       e.g. @company.skill/pdf-skill
+  add <source>         Install a registry package or source-discovered skill (alias: a)
+                       e.g. @company.skill/pdf-skill or owner/repo --skill pdf
   remove [skills]      Remove installed skills
   list, ls             List installed skills
   find [query]         Search for skills (supports --registry, --json)
 
 ${BOLD}Updates:${RESET}
-  update [skills...]   Update skills to latest versions
+  update [skills...]   Update installed registry skills to latest versions
+  sync [skills...]     Refresh installed skills that came from local paths or git sources
 
 ${BOLD}Update Options:${RESET}
   -g, --global           Update global skills only
@@ -66,14 +69,19 @@ ${BOLD}Project:${RESET}
   init [name]          Initialize a skill (creates <name>/SKILL.md or ./SKILL.md)
   inspect [path]       Validate a local skill directory
   publish [path]       Validate, pack, and publish a local skill directory
-  import-local [path]  Upload a local source directory for import + publish
+  import-local [path]  Upload a local source directory for Catalog one-shot publish
+  import-git <src>     Clone a git source and publish a discovered skill through Catalog
 
 ${BOLD}Add Options:${RESET}
   -g, --global           Install skill globally (user-level) instead of project-level
   -a, --agent <agents>   Specify agents to install to (use '*' for all agents)
+  -s, --skill <names>    Select specific skill names from a source repository/path
+  -l, --list             List discovered skills from a source repository/path
+  --all                  Install all discovered skills from a source repository/path
+  --full-depth           Search nested directories more aggressively for source installs
   -y, --yes              Skip confirmation prompts
   --registry <url>       Catalog base URL override (default env: SKILLS_REGISTRY_URL)
-  --version <version>    Install an exact version from the registry
+  --version <version>    Install an exact published version for registry installs
   --copy                 Copy files instead of symlinking to agent directories
   --verbose              Show per-agent install results instead of a compact summary
 
@@ -96,7 +104,7 @@ ${BOLD}Find Options:${RESET}
   --json                 Output query results as JSON
 
 ${BOLD}Publish / Import Options:${RESET}
-  --registry <url>       Catalog base URL override for registry-backed packaging flows
+  --registry <url>       Catalog base URL override for publish / import flows
   --strict               Disable imported workspace normalization
 
 ${BOLD}Options:${RESET}
@@ -121,12 +129,14 @@ ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} skills find                          ${DIM}# interactive search${RESET}
   ${DIM}$${RESET} skills find typescript               ${DIM}# search by keyword${RESET}
   ${DIM}$${RESET} skills update
-  ${DIM}$${RESET} skills update my-skill             ${DIM}# update a single skill${RESET}
+  ${DIM}$${RESET} skills update @company.skill/pdf-skill ${DIM}# update a single registry install${RESET}
   ${DIM}$${RESET} skills update -g                    ${DIM}# update global skills only${RESET}
+  ${DIM}$${RESET} skills sync legacy-skill            ${DIM}# refresh a source-installed skill${RESET}
   ${DIM}$${RESET} skills init my-skill
   ${DIM}$${RESET} skills inspect
   ${DIM}$${RESET} skills publish
   ${DIM}$${RESET} skills import-local ./legacy-skill --package-name @company.skill/legacy-skill --version 0.1.0
+  ${DIM}$${RESET} skills import-git owner/repo --skill pdf
   ${DIM}$${RESET} skills find pdf --json                ${DIM}# machine-readable search results${RESET}
 `);
 }
@@ -237,10 +247,10 @@ function showUpdateHelp(): void {
 ${BOLD}Usage:${RESET} skills update [skills...] [options]
 
 ${BOLD}Description:${RESET}
-  Update installed skills to latest versions.
+  Update installed registry skills to latest versions.
 
 ${BOLD}Arguments:${RESET}
-  skills            Optional package_name values to update
+  skills            Optional package_name values to update for registry installs
 
 ${BOLD}Options:${RESET}
   -g, --global           Update global skills only
@@ -251,6 +261,28 @@ ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} skills update
   ${DIM}$${RESET} skills update @company.skill/pdf-skill
   ${DIM}$${RESET} skills update -g
+`);
+}
+
+function showSyncHelp(): void {
+  console.log(`
+${BOLD}Usage:${RESET} skills sync [skills...] [options]
+
+${BOLD}Description:${RESET}
+  Refresh installed skills that came from local paths or git sources.
+
+${BOLD}Arguments:${RESET}
+  skills            Optional installed skill references to sync
+
+${BOLD}Options:${RESET}
+  -g, --global           Sync global skills only
+  -p, --project          Sync project skills only
+  -y, --yes              Skip scope prompt
+
+${BOLD}Examples:${RESET}
+  ${DIM}$${RESET} skills sync
+  ${DIM}$${RESET} skills sync legacy-skill
+  ${DIM}$${RESET} skills sync -g
 `);
 }
 
@@ -297,7 +329,7 @@ function showImportLocalHelp(): void {
 ${BOLD}Usage:${RESET} skills import-local [path] [options]
 
 ${BOLD}Description:${RESET}
-  Upload a local source directory to Catalog for import review and one-shot publish.
+  Upload a local source directory to Catalog for one-shot publish.
 
 ${BOLD}Arguments:${RESET}
   path                   Optional path to a local source directory (default: current directory)
@@ -312,6 +344,32 @@ ${BOLD}Options:${RESET}
 ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} skills import-local ./legacy-skill --package-name @company.skill/legacy-skill --version 0.1.0
   ${DIM}$${RESET} skills import-local ./legacy-skill --registry https://catalog.example.com
+`);
+}
+
+function showImportGitHelp(): void {
+  console.log(`
+${BOLD}Usage:${RESET} skills import-git <source> [options]
+
+${BOLD}Description:${RESET}
+  Clone an external git source, discover a skill, and publish it through Catalog one-shot import.
+
+${BOLD}Arguments:${RESET}
+  source                 Required git source (owner/repo, https://..., git@...)
+
+${BOLD}Options:${RESET}
+  --registry <url>       Catalog base URL override
+  --package-name <name>  Override/inject package_name when package.json is missing
+  --version <version>    Override/inject version when package.json is missing
+  --publish-registry     Registry recorded into package metadata for publish
+  --skill <name>         Select a specific discovered skill
+  --full-depth           Search nested directories more aggressively
+  --strict               Disable imported workspace normalization during import
+
+${BOLD}Examples:${RESET}
+  ${DIM}$${RESET} skills import-git owner/repo
+  ${DIM}$${RESET} skills import-git owner/repo --skill pdf
+  ${DIM}$${RESET} skills import-git https://github.com/owner/repo?path=skills/pdf
 `);
 }
 
@@ -460,6 +518,13 @@ async function main(): Promise<void> {
       }
       await runImportLocal(restArgs);
       break;
+    case 'import-git':
+      if (restArgs.includes('--help') || restArgs.includes('-h')) {
+        showImportGitHelp();
+        break;
+      }
+      await runImportGit(restArgs);
+      break;
     case 'a':
     case 'add': {
       if (restArgs.includes('--help') || restArgs.includes('-h')) {
@@ -494,6 +559,13 @@ async function main(): Promise<void> {
         break;
       }
       await runUpdate(restArgs);
+      break;
+    case 'sync':
+      if (restArgs.includes('--help') || restArgs.includes('-h')) {
+        showSyncHelp();
+        break;
+      }
+      await runSync(restArgs);
       break;
     case '--help':
     case '-h':

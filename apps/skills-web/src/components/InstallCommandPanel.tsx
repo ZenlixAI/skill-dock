@@ -37,14 +37,14 @@ function getInstallLabel(installPolicy: InstallPolicy) {
 
 function getInstallGuidance(installPolicy: InstallPolicy) {
   if (installPolicy === 'resolvable') {
-    return '当前版本可直接作为安装目标，复制命令后即可在你自己的终端执行。';
+    return '当前版本可直接作为 registry 安装目标，复制命令后即可在你自己的终端执行 `skills add`。';
   }
 
   if (installPolicy === 'catalog_only') {
-    return '当前版本保留在目录中用于审阅，但不建议继续作为默认安装目标。';
+    return '当前版本仍保留在目录中用于审阅，但不建议继续作为默认 `skills add` 安装目标。';
   }
 
-  return '当前版本已被阻断，不应继续作为安装目标。';
+  return '当前版本已被阻断，不应继续作为默认 `skills add` 安装目标。';
 }
 
 export function InstallCommandPanel({

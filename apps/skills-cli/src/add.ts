@@ -1,6 +1,5 @@
 import * as p from '@clack/prompts';
 import pc from 'picocolors';
-import { existsSync } from 'fs';
 import { homedir } from 'os';
 import { sep, join, dirname, relative, resolve } from 'path';
 import { searchMultiselect } from './prompts/search-multiselect.ts';
@@ -21,10 +20,7 @@ import {
   getNonUniversalAgents,
   isUniversalAgent,
 } from './agents.ts';
-import {
-  track,
-  setVersion,
-} from './telemetry.ts';
+import { track, setVersion } from './telemetry.ts';
 import { detectAgent, getAgentType } from './detect-agent.ts';
 import {
   addSkillToLock,
@@ -36,8 +32,10 @@ import {
 import type { AgentType, ParsedSource, Skill } from './types.ts';
 import { runRegistryInstallWorkflow } from './registry-install-workflow.ts';
 import { addSkillToLocalLock, computeSkillFolderHash } from './local-lock.ts';
-import { cloneRepo, cleanupTempDir } from './git.ts';
-import { discoverSkills, filterSkills } from './skills.ts';
+import { cleanupTempDir } from './git.ts';
+import { discoverSkills } from './skills.ts';
+import { resolveExternalSourceSkills } from './external-source.ts';
+import { parseSourceInput } from './source-parser.ts';
 import packageJson from '../package.json' with { type: 'json' };
 export function initTelemetry(version: string): void {
   setVersion(version);
@@ -324,8 +322,6 @@ export interface AddOptions {
 const PACKAGE_NAME_RE = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 const EXACT_VERSION_RE =
   /^\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
-const GITHUB_SHORTHAND_RE =
-  /^(?<owner>[A-Za-z0-9_.-]+)\/(?<repo>[A-Za-z0-9_.-]+?)(?:@(?<skill>[^/?#]+))?$/;
 
 function isPackageName(value: string): boolean {
   return PACKAGE_NAME_RE.test(value);
@@ -340,9 +336,7 @@ function showAddUsageError(message: string): never {
   console.log(pc.bgRed(pc.white(pc.bold(' ERROR '))) + ' ' + pc.red(message));
   console.log();
   console.log(pc.dim('  Usage:'));
-  console.log(
-    `    ${pc.cyan('npx skills add')} ${pc.yellow('<source>')} ${pc.dim('[options]')}`
-  );
+  console.log(`    ${pc.cyan('npx skills add')} ${pc.yellow('<source>')} ${pc.dim('[options]')}`);
   console.log();
   console.log(pc.dim('  Example:'));
   console.log(`    ${pc.cyan('npx skills add')} ${pc.yellow('@platform.skill/pdf-skill')}`);
@@ -357,7 +351,8 @@ function validateRegistryAddOptions(options: AddOptions): void {
   if (options.skill && options.skill.length > 0) unsupported.push('--skill');
   if (options.all) unsupported.push('--all');
   if (options.fullDepth) unsupported.push('--full-depth');
-  if (options.dangerouslyAcceptOpenclawRisks) unsupported.push('--dangerously-accept-openclaw-risks');
+  if (options.dangerouslyAcceptOpenclawRisks)
+    unsupported.push('--dangerously-accept-openclaw-risks');
 
   if (unsupported.length > 0) {
     throw new Error(
@@ -377,94 +372,6 @@ function formatAgentDisplayList(agentTypes: AgentType[], maxShow: number = 6): s
     agentTypes.map((agentType) => agents[agentType].displayName),
     maxShow
   );
-}
-
-function normalizeSourceSubpath(raw: string | null): string | undefined {
-  if (!raw) return undefined;
-  const normalized = raw.trim().replace(/^\/+/, '');
-  return normalized.length > 0 ? normalized : undefined;
-}
-
-function parseGitHttpSource(value: string): ParsedSource | null {
-  let parsed: URL;
-  try {
-    parsed = new URL(value);
-  } catch {
-    return null;
-  }
-
-  if (!['http:', 'https:'].includes(parsed.protocol)) {
-    return null;
-  }
-
-  const subpath = normalizeSourceSubpath(parsed.searchParams.get('path'));
-  const ref = parsed.searchParams.get('ref')?.trim() || undefined;
-
-  if (parsed.hostname === 'github.com') {
-    const segments = parsed.pathname.split('/').filter(Boolean);
-    if (segments.length >= 2) {
-      const owner = segments[0]!;
-      const repo = segments[1]!.replace(/\.git$/, '');
-      return {
-        type: 'github',
-        url: `https://github.com/${owner}/${repo}.git`,
-        ...(subpath ? { subpath } : {}),
-        ...(ref ? { ref } : {}),
-      };
-    }
-  }
-
-  if (parsed.pathname.endsWith('.git')) {
-    return {
-      type: 'git',
-      url: value,
-      ...(subpath ? { subpath } : {}),
-      ...(ref ? { ref } : {}),
-    };
-  }
-
-  return null;
-}
-
-function parseSourceInput(value: string): ParsedSource | null {
-  if (existsSync(value)) {
-    return {
-      type: 'local',
-      url: resolve(value),
-      localPath: resolve(value),
-    };
-  }
-
-  const httpSource = parseGitHttpSource(value);
-  if (httpSource) {
-    return httpSource;
-  }
-
-  if (
-    value.startsWith('git@') ||
-    value.startsWith('ssh://') ||
-    value.startsWith('git://') ||
-    value.startsWith('git+ssh://')
-  ) {
-    return {
-      type: 'git',
-      url: value,
-    };
-  }
-
-  const shorthandMatch = value.match(GITHUB_SHORTHAND_RE);
-  if (shorthandMatch?.groups) {
-    const owner = shorthandMatch.groups.owner;
-    const repo = shorthandMatch.groups.repo;
-    const skillFilter = shorthandMatch.groups.skill?.trim();
-    return {
-      type: 'github',
-      url: `https://github.com/${owner}/${repo}.git`,
-      ...(skillFilter ? { skillFilter } : {}),
-    };
-  }
-
-  return null;
 }
 
 function resolveDefaultTargetAgents(installedAgents: AgentType[]): AgentType[] {
@@ -519,7 +426,10 @@ async function resolveTargetAgentsForAdd(
       label: config.displayName,
     }));
 
-    const selected = await promptForAgents('Which agents do you want to install to?', allAgentChoices);
+    const selected = await promptForAgents(
+      'Which agents do you want to install to?',
+      allAgentChoices
+    );
     if (p.isCancel(selected)) {
       p.cancel('Installation cancelled');
       process.exit(0);
@@ -629,9 +539,7 @@ function buildInstallResultLines(
 
   const agentNames = successful.map(({ agent }) => agents[agent].displayName);
   const uniquePaths = Array.from(
-    new Set(
-      successful.map(({ result }) => shortenPath(result.canonicalPath || result.path, cwd))
-    )
+    new Set(successful.map(({ result }) => shortenPath(result.canonicalPath || result.path, cwd)))
   );
 
   const lines = [`Agents: ${formatList(agentNames, 8)}`];
@@ -750,28 +658,23 @@ function buildLegacySourceMetadata(
 
 async function selectSourceSkills(
   discoveredSkills: Skill[],
-  source: ParsedSource,
+  matchedSkills: Skill[],
+  requestedSkillNames: string[],
   options: AddOptions
 ): Promise<Skill[]> {
   if (options.list) {
     const lines = discoveredSkills.map(
       (skill) => `${skill.name}${skill.pluginName ? ` ${pc.dim(`(${skill.pluginName})`)}` : ''}`
     );
-    p.note(lines.join('\n'), `Found ${discoveredSkills.length} skill${discoveredSkills.length === 1 ? '' : 's'}`);
+    p.note(
+      lines.join('\n'),
+      `Found ${discoveredSkills.length} skill${discoveredSkills.length === 1 ? '' : 's'}`
+    );
     return [];
   }
 
-  const requestedSkillNames = [
-    ...(options.skill || []),
-    ...(source.skillFilter ? [source.skillFilter] : []),
-  ];
-
   if (requestedSkillNames.length > 0) {
-    const matched = filterSkills(discoveredSkills, requestedSkillNames);
-    if (matched.length === 0) {
-      throw new Error(`No matching skills found for: ${requestedSkillNames.join(', ')}`);
-    }
-    return matched;
+    return matchedSkills;
   }
 
   if (options.all || discoveredSkills.length === 1) {
@@ -814,28 +717,25 @@ async function installSourceReference(
   let cleanupRoot: string | null = null;
 
   try {
-    if (source.type !== 'local') {
-      spinner.start('Cloning source repository...');
-      sourceRoot = await cloneRepo(source.url, source.ref);
-      cleanupRoot = sourceRoot;
-      spinner.stop('Source repository ready');
-    }
-
     spinner.start('Discovering skills...');
-    const discoveredSkills = await discoverSkills(sourceRoot, source.subpath, {
-      fullDepth: options.fullDepth === true,
+    const resolved = await resolveExternalSourceSkills(source, {
+      requestedSkillNames: options.skill,
+      fullDepth: options.fullDepth,
     });
+    sourceRoot = resolved.sourceRoot;
+    cleanupRoot = resolved.cleanupRoot;
     spinner.stop(
-      discoveredSkills.length === 0
+      resolved.discoveredSkills.length === 0
         ? 'No skills discovered'
-        : `Discovered ${discoveredSkills.length} skill${discoveredSkills.length === 1 ? '' : 's'}`
+        : `Discovered ${resolved.discoveredSkills.length} skill${resolved.discoveredSkills.length === 1 ? '' : 's'}`
     );
 
-    if (discoveredSkills.length === 0) {
-      throw new Error('No skills found in the provided source.');
-    }
-
-    const selectedSkills = await selectSourceSkills(discoveredSkills, source, options);
+    const selectedSkills = await selectSourceSkills(
+      resolved.discoveredSkills,
+      resolved.matchedSkills,
+      resolved.requestedSkillNames,
+      options
+    );
     if (selectedSkills.length === 0) {
       p.outro(pc.green('Done!'));
       return;
@@ -846,7 +746,10 @@ async function installSourceReference(
 
     const summaryLines = [
       `Source: ${source.type === 'local' ? shortenPath(sourceRoot, cwd) : source.url}`,
-      `Skills: ${formatList(selectedSkills.map((skill) => skill.name), 8)}`,
+      `Skills: ${formatList(
+        selectedSkills.map((skill) => skill.name),
+        8
+      )}`,
       ...buildAgentSummaryLines(targetAgents, installMode),
     ];
 
@@ -902,12 +805,12 @@ async function installSourceReference(
         }))
       );
 
-      const successfulForSkill = installResults.filter(
-        (entry): entry is typeof successful[number] => entry.result.success
-      ).map((entry) => ({ ...entry, skill }));
-      const failedForSkill = installResults.filter(
-        (entry): entry is typeof failed[number] => !entry.result.success
-      ).map((entry) => ({ ...entry, skill }));
+      const successfulForSkill = installResults
+        .filter((entry): entry is (typeof successful)[number] => entry.result.success)
+        .map((entry) => ({ ...entry, skill }));
+      const failedForSkill = installResults
+        .filter((entry): entry is (typeof failed)[number] => !entry.result.success)
+        .map((entry) => ({ ...entry, skill }));
 
       successful.push(...successfulForSkill);
       failed.push(...failedForSkill);
@@ -968,7 +871,8 @@ async function installSourceReference(
 
     console.log();
     p.outro(
-      pc.green('Done!') + pc.dim('  Review skills before use; they run with full agent permissions.')
+      pc.green('Done!') +
+        pc.dim('  Review skills before use; they run with full agent permissions.')
     );
   } finally {
     if (cleanupRoot) {

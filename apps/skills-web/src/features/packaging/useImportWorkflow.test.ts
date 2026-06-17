@@ -95,7 +95,7 @@ describe('useImportWorkflow', () => {
       )
     );
     expect(result.current.publishResult?.created).toBe(true);
-    expect(result.current.operationState.success).toBe('skill 已发布并写入 release record。');
+    expect(result.current.operationState.success).toBe('skill 已完成一次性发布，并写入 release record。');
     expect(onMutationResult).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'publish',

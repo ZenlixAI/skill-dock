@@ -73,6 +73,84 @@ describe('ImportPage', () => {
     expect(screen.queryByRole('button', { name: '清理 workspace' })).not.toBeInTheDocument();
   });
 
+  it('imports a GitHub skill archive and publishes it with the reviewed summary', async () => {
+    vi.mocked(client.importReviewPackaging).mockResolvedValue({
+      ok: true,
+      packageName: '@company.skill/zoom-out',
+      version: '1.2.0',
+      manifestDigest: 'sha256:archive',
+      components: ['commands'],
+      warnings: [],
+      warningDetails: [],
+      errors: [],
+    });
+    vi.mocked(client.publishSkill).mockResolvedValue({
+      packageName: '@company.skill/zoom-out',
+      version: '1.2.0',
+      manifestDigest: 'sha256:archive',
+      components: ['commands'],
+      publishedToRegistry: true,
+      created: true,
+      idempotentReplay: false,
+      versionStatus: 'published',
+      installPolicy: 'resolvable',
+      warnings: [],
+      warningDetails: [],
+      errors: [],
+    });
+
+    renderImportPage();
+
+    fireEvent.change(await screen.findByDisplayValue('https://github.com/mattpocock/skills?path=skills/engineering/zoom-out'), {
+      target: { value: 'https://github.com/example/skills?path=skills/engineering/zoom-out' },
+    });
+    fireEvent.change(screen.getByDisplayValue('@company.skill/zoom-out'), {
+      target: { value: '@company.skill/zoom-out' },
+    });
+    fireEvent.change(screen.getByDisplayValue('1.2.0'), {
+      target: { value: '1.2.0' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '检查并生成发布预览' }));
+
+    await waitFor(() =>
+      expect(externalImport.buildExternalImportArchive).toHaveBeenCalledWith(
+        'https://github.com/example/skills?path=skills/engineering/zoom-out',
+        undefined
+      )
+    );
+    expect(client.importReviewPackaging).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: {
+          type: 'upload_archive',
+          archiveBase64: 'archive-base64',
+        },
+        target: {
+          packageName: '@company.skill/zoom-out',
+          version: '1.2.0',
+        },
+      })
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '发布 skill' }));
+
+    await waitFor(() =>
+      expect(client.publishSkill).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source: {
+            type: 'upload_archive',
+            archiveBase64: 'archive-base64',
+          },
+          review: {
+            manifestDigest: 'sha256:archive',
+            components: ['commands'],
+          },
+        })
+      )
+    );
+    expect((await screen.findAllByText('skill 已完成一次性发布，并写入 release record。')).length).toBeGreaterThan(0);
+  });
+
   it('runs import-review for platform_authoring and publishes with review summary', async () => {
     vi.mocked(client.importReviewPackaging).mockResolvedValue({
       ok: true,
@@ -112,7 +190,7 @@ describe('ImportPage', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: '检查并生成发布预览' }));
 
-    expect(await screen.findByText('预览已生成，可以继续发布 skill。')).toBeInTheDocument();
+    expect(await screen.findByText('发布预览已生成，可以继续执行一次性发布。')).toBeInTheDocument();
     expect(client.importReviewPackaging).toHaveBeenCalledWith(
       expect.objectContaining({
         source: {
@@ -165,7 +243,7 @@ describe('ImportPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '应用 JSON 到文件列表' }));
     fireEvent.click(screen.getByRole('button', { name: '检查并生成发布预览' }));
 
-    expect(await screen.findByText('预览已生成，可以继续发布 skill。')).toBeInTheDocument();
+    expect(await screen.findByText('发布预览已生成，可以继续执行一次性发布。')).toBeInTheDocument();
     expect(client.importReviewPackaging).toHaveBeenCalledWith(
       expect.objectContaining({
         source: {
@@ -210,6 +288,45 @@ describe('ImportPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '发布 skill' }));
 
     expect((await screen.findAllByText('Current session is not allowed to perform this action.')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('sha256:test').length).toBeGreaterThan(0);
+  });
+
+  it('surfaces stale workspace-style 404 publish errors with an actionable hint', async () => {
+    vi.mocked(client.importReviewPackaging).mockResolvedValue({
+      ok: true,
+      packageName: '@company.skill/zoom-out',
+      version: '1.2.0',
+      manifestDigest: 'sha256:test',
+      components: ['commands'],
+      warnings: [],
+      warningDetails: [],
+      errors: [],
+    });
+    vi.mocked(client.publishSkill).mockRejectedValue(
+      new RegistryHttpError('Bundle archive does not exist for the requested workspace.', 404, {
+        error: {
+          code: 'bundle_not_found',
+          requestId: 'req_404',
+          details: {
+            workspaceHandle: 'ws_123',
+          },
+        },
+      })
+    );
+
+    renderImportPage();
+    fireEvent.click(await screen.findByRole('button', { name: '检查并生成发布预览' }));
+    expect((await screen.findAllByText('sha256:test')).length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', { name: '发布 skill' }));
+
+    expect(
+      (
+        await screen.findAllByText(
+          'Catalog returned a stale workspace or bundle reference. One-shot packaging should be stateless; retry after upgrading Catalog or removing any legacy workspace-based handoff.'
+        )
+      ).length
+    ).toBeGreaterThan(0);
     expect(screen.getAllByText('sha256:test').length).toBeGreaterThan(0);
   });
 });

@@ -110,7 +110,7 @@ describe('InstallCommandPanel', () => {
     );
 
     expect(screen.getByRole('button', { name: '复制安装命令' })).toBeDisabled();
-    expect(screen.getByText('当前版本已被阻断，不应继续作为安装目标。')).toBeInTheDocument();
+    expect(screen.getByText('当前版本已被阻断，不应继续作为默认 `skills add` 安装目标。')).toBeInTheDocument();
   });
 
   it('shows Chinese fallback copy when install metadata is missing', () => {

@@ -350,7 +350,7 @@ describe('VersionDetailPage', () => {
     const submitButton = await screen.findByRole('button', { name: '写入发布记录' });
     expect(submitButton).toBeDisabled();
 
-    fireEvent.click(screen.getByLabelText('我确认这个版本已经完成 npm publish，可继续写入发布记录。'));
+    fireEvent.click(screen.getByLabelText('我确认这个版本已经完成 npm publish 或一次性发布，可继续写入发布记录。'));
 
     expect(submitButton).not.toBeDisabled();
   });

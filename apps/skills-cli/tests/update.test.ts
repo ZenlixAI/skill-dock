@@ -51,7 +51,7 @@ describe('update command', () => {
     it('shows dedicated update help output', () => {
       const output = runCliOutput(['update', '--help']);
       expect(output).toContain('Usage: skills update [skills...] [options]');
-      expect(output).toContain('Update installed skills to latest versions');
+      expect(output).toContain('Update installed registry skills to latest versions');
       expect(output).toContain('--global');
       expect(output).toContain('skills update @company.skill/pdf-skill');
       expect(output).not.toContain('npx skills');

@@ -7,7 +7,7 @@
 - `postgres`
 - `nexus`
 
-全部运行在 `kind` 中。Makefile 只负责顶层环境拉起与部署，不再包装 CLI 子命令。
+全部运行在 `kind` 中。Makefile 只负责顶层环境拉起与部署，以及 CLI 的测试 / type-check / 包发布；终端交互类 `skills` 子命令仍直接走独立 CLI。
 
 ## 固定本地入口
 
@@ -90,7 +90,7 @@ skills add @company.skill/your-skill-name -y
 skills import-local /abs/path/to/legacy-skill \
   --package-name @company.skill/legacy-skill \
   --version 0.1.0 \
-  --npm-registry http://127.0.0.1:8081/repository/skills-npm/
+  --publish-registry http://127.0.0.1:8081/repository/skills-npm/
 ```
 
 说明：
@@ -98,6 +98,12 @@ skills import-local /abs/path/to/legacy-skill \
 - `SKILL_PATH` 只在 CLI 本地使用
 - CLI 会先归档源码，再把内容上传给 Catalog
 - Catalog 不直接依赖调用方的绝对路径
+
+如需从 git 源一把导入发布，使用：
+
+```bash
+skills import-git owner/repo --skill pdf
+```
 
 ### 批量导入
 
@@ -118,7 +124,7 @@ manifest 里的本地 `path` 会先在调用方本地转成源码归档，再走
 4. 跑一次 `skills publish /abs/path/to/skill`
 5. 跑一次 `skills find your-skill`
 6. 跑一次 `skills add @company.skill/your-skill-name -y`
-7. 跑一次 `skills import-local ... --npm-registry http://127.0.0.1:8081/repository/skills-npm/`
+7. 跑一次 `skills import-local ... --publish-registry http://127.0.0.1:8081/repository/skills-npm/`
 8. 如有批量场景，再跑批量导入脚本
 
 ## 重置本地环境

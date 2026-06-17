@@ -99,6 +99,7 @@ describe('publish workflow', () => {
 
     expect(runPackagingSession).toHaveBeenCalledWith({
       path: testDir,
+      registry: 'https://catalog.example.com',
       strict: undefined,
     });
     expect(packLocalSkillDirectory).toHaveBeenCalledWith({
@@ -124,7 +125,12 @@ describe('publish workflow', () => {
     expect(spawnSync).toHaveBeenCalledTimes(1);
     const publishCall = vi.mocked(spawnSync).mock.calls[0];
     expect(publishCall?.[0]).toBe('npm');
-    expect(publishCall?.[1]).toEqual(['publish', bundlePath, '--registry', 'https://npm.example.com']);
+    expect(publishCall?.[1]).toEqual([
+      'publish',
+      bundlePath,
+      '--registry',
+      'https://npm.example.com',
+    ]);
     expect(publishCall?.[2]).toMatchObject({
       cwd: testDir,
       env: expect.objectContaining({
@@ -184,6 +190,7 @@ describe('publish workflow', () => {
 
     expect(runPackagingSession).toHaveBeenCalledWith({
       path: testDir,
+      registry: undefined,
       strict: undefined,
     });
     expect(fetchMock).toHaveBeenNthCalledWith(
@@ -217,6 +224,7 @@ describe('publish workflow', () => {
     });
     expect(runPackagingSession).toHaveBeenCalledWith({
       path: testDir,
+      registry: 'https://catalog.example.com',
       strict: undefined,
     });
     expect(packLocalSkillDirectory).not.toHaveBeenCalled();

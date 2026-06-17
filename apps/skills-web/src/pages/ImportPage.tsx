@@ -254,7 +254,7 @@ export function ImportPage() {
       <SectionHeading
         eyebrow="导入与打包"
         title="先检查并生成预览，再一键发布。"
-        description="默认模式只保留“检查并生成发布预览”和“发布 skill”两个动作。"
+        description="默认模式只保留“检查并生成发布预览”和“执行一次性发布”两个动作。"
         tone="backstage"
       />
 
@@ -268,7 +268,7 @@ export function ImportPage() {
       </div>
 
       <div className="two-column two-column--wide-right">
-        <SurfaceCard title="导入 skill" description="先填来源和目标，再用默认模式完成预览与发布。" variant="console">
+        <SurfaceCard title="导入并发布 skill" description="先填来源和发布目标，再用默认模式完成发布预览与一次性发布。" variant="console">
           <div className="stack-column form-section">
             <label className="field">
               <span>来源类型</span>
@@ -450,7 +450,7 @@ export function ImportPage() {
             <div className="action-row">
               <div className="action-row__copy">
                 <strong>默认模式</strong>
-                <p>先生成导入审阅结果，再执行后端一次性 publish。发布成功后由 Catalog 一并完成 release record。</p>
+                <p>先生成发布预览，再执行 Catalog 后端的一次性发布。发布成功后会一并写入 release record。</p>
               </div>
             </div>
             <div className="button-row">
@@ -487,7 +487,7 @@ export function ImportPage() {
         </SurfaceCard>
 
         <SurfaceCard className="surface-card--sticky" title="校验审阅" description="右侧始终展示当前 preview / publish 结果，方便确认能不能继续发版。" variant="rail">
-          {!reviewData ? <div className="empty-box">先执行“检查并生成发布预览”，再决定是否继续发布。</div> : null}
+          {!reviewData ? <div className="empty-box">先执行“检查并生成发布预览”，再决定是否继续执行一次性发布。</div> : null}
           {reviewData ? (
             <div className="stack-column">
               <div className="step-list">

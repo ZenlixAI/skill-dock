@@ -392,7 +392,7 @@ export function VersionDetailPage() {
               <div className="action-row">
                 <div className="action-row__copy">
                   <strong>登记这个打包产物</strong>
-                  <p>先确认这个版本已经完成 `npm publish`，再为它写入目录发布记录。</p>
+                  <p>先确认这个版本已经完成 `npm publish` 或 Catalog 一次性发布，再为它写入目录发布记录。</p>
                 </div>
               </div>
               <div className="list-stack">
@@ -400,24 +400,24 @@ export function VersionDetailPage() {
                   <div className="list-card__head">
                     <div>
                       <strong>发布前检查清单</strong>
-                      <span>发布记录不会替你执行 `npm publish`。</span>
+                      <span>发布记录不会替你执行 `npm publish` 或一次性发布。</span>
                     </div>
                     <StatusPill tone={publishConfirmed ? 'good' : 'warn'}>
                       {publishConfirmed ? '已确认' : '待确认'}
                     </StatusPill>
                   </div>
-                  <p>先确认 Catalog 的一次性发布已经完成，再用这里的审阅摘要写入发布记录。</p>
-                  <p className="support-copy">如果你不是从发布交接进入这个页面，请先回到导入页重新生成导入审阅结果。</p>
+                  <p>先确认这个版本已经完成可追溯的发布动作，再用这里的审阅摘要写入发布记录。</p>
+                  <p className="support-copy">如果你不是从导入或发布交接进入这个页面，请先回到导入页重新生成发布预览。</p>
                 </article>
               </div>
               <label className="checkbox-row">
                 <input
-                  aria-label="我确认这个版本已经完成 npm publish，可继续写入发布记录。"
+                  aria-label="我确认这个版本已经完成 npm publish 或一次性发布，可继续写入发布记录。"
                   checked={publishConfirmed}
                   onChange={(event) => setPublishConfirmed(event.target.checked)}
                   type="checkbox"
                 />
-                <span>我确认这个版本已经完成 npm publish，可继续写入发布记录。</span>
+                <span>我确认这个版本已经完成 npm publish 或一次性发布，可继续写入发布记录。</span>
               </label>
               <button
                 className="button button--primary"

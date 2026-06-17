@@ -15,7 +15,8 @@ This README describes the generic CLI surface. In the current private-registry d
 - `--registry` / `SKILLS_REGISTRY_URL` points to the Catalog / Web public base URL
 - npm package install and tarball access use the npm-compatible registry URL separately
 - `publish` still means `local pack -> npm publish -> Catalog release-record`
-- `import-local` means `local source archive -> Catalog stateless publish`
+- `import-local` means `local source archive -> Catalog one-shot publish`
+- `import-git` means `git clone -> source discovery -> Catalog one-shot publish`
 
 <!-- agent-list:start -->
 
@@ -31,8 +32,12 @@ Supports **OpenCode**, **Claude Code**, **Codex**, **Cursor**, and [51 more](#su
 npx skills add @platform.skill/pdf-skill
 ```
 
-The CLI is registry-first. `skills add` only accepts a `package_name`.
-Short alias: `npx skills a <package_name>`.
+`skills add` supports two install modes:
+
+- registry install by `package_name`
+- direct source install from a local path, GitHub shorthand, or git URL
+
+Short alias: `npx skills a <source>`.
 
 ```bash
 # Exact package install
@@ -43,6 +48,12 @@ npx skills add @platform.skill/pdf-skill --version 1.2.0
 
 # Temporary catalog override
 npx skills add @platform.skill/pdf-skill --registry https://catalog.example.com
+
+# Install from a repository source
+npx skills add owner/repo --skill pdf
+
+# Inspect discoverable skills in a local source tree
+npx skills add ./local-skills --list
 ```
 
 ### Options
@@ -51,23 +62,35 @@ npx skills add @platform.skill/pdf-skill --registry https://catalog.example.com
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `-g, --global`            | Install to user directory instead of project                                                                                                       |
 | `-a, --agent <agents...>` | <!-- agent-names:start -->Target specific agents (e.g., `claude-code`, `codex`). See [Supported Agents](#supported-agents)<!-- agent-names:end --> |
+| `-s, --skill <names>`     | Select specific skill names from a source repository/path                                                                                          |
+| `-l, --list`              | List discovered skills from a source repository/path without installing                                                                            |
+| `--all`                   | Install all discovered skills from a source repository/path                                                                                        |
+| `--full-depth`            | Search nested directories more aggressively for source installs                                                                                    |
 | `--copy`                  | Copy files instead of symlinking to agent directories                                                                                              |
 | `-y, --yes`               | Skip all confirmation prompts                                                                                                                      |
 | `--verbose`               | Show per-agent install results instead of a compact summary                                                                                        |
-| `--version <version>`     | Install an exact published version                                                                                                                 |
+| `--version <version>`     | Install an exact published version for registry installs                                                                                           |
 | `--registry <url>`        | Temporary catalog base URL override (default env: `SKILLS_REGISTRY_URL`)                                                                           |
 
 ### Examples
 
 ```bash
-# Install to specific agents
+# Install from registry to specific agents
 npx skills add @platform.skill/pdf-skill -a claude-code -a opencode
 
-# Non-interactive installation (CI/CD friendly)
+# Install from GitHub source
+npx skills add owner/repo --skill pdf
+
+# Install every discovered skill from a local source tree
+npx skills add ./local-skills --all
+
+# Install to specific agents
 npx skills add @platform.skill/pdf-skill -g -a claude-code -y
 ```
 
 When `-y` is used without `--agent`, the CLI skips prompts and uses detected agents when available; if none are detected, it falls back to the universal `.agents/skills` agents instead of broadcasting to every known adapter.
+
+For direct source installs, the CLI records replayable source metadata in the lock entry. Use `skills sync` later to refresh that installed copy from the same source.
 
 ### Catalog Auth
 
@@ -77,6 +100,7 @@ When talking to a private Catalog, the CLI can attach auth headers from env:
 - `SKILLS_REGISTRY_ROLE` -> `X-Role: <role>` for local/dev registries such as the current Go prototype
 - `skills publish` still requires publisher-capable credentials because it ends with `release-record`
 - `skills import-local` also requires publisher-capable credentials because Catalog performs the publish server-side
+- `skills import-git` also requires publisher-capable credentials because it ends with the same server-side publish path
 
 ### npm Registry Auth
 
@@ -134,14 +158,17 @@ When installing interactively, you can choose:
 
 | Command                      | Description                                   |
 | ---------------------------- | --------------------------------------------- |
-| `npx skills add <package>`   | Add a registry skill package (alias: `a`)     |
+| `npx skills add <source>`    | Install a registry package or source-discovered skill (alias: `a`) |
 | `npx skills list`            | List installed skills (alias: `ls`)           |
 | `npx skills find [query]`    | Search for skills interactively or by keyword |
 | `npx skills remove [skills]` | Remove installed skills from agents (alias: `rm`) |
-| `npx skills update [skills]` | Update installed skills to latest versions    |
+| `npx skills update [skills]` | Update installed registry skills to latest versions |
+| `npx skills sync [skills]`   | Refresh installed skills that came from local paths or git sources |
 | `npx skills init [name]`     | Create a new skill scaffold                   |
 | `npx skills inspect [path]`  | Validate a local skill directory              |
 | `npx skills publish [path]`  | Validate, pack, and publish a local skill     |
+| `npx skills import-local [path]` | Upload a local source tree and publish it through Catalog |
+| `npx skills import-git <source>` | Clone an external git source and publish a selected skill through Catalog |
 
 ### `skills list`
 
@@ -175,6 +202,9 @@ npx skills find typescript --json
 
 ### `skills update`
 
+`update` only operates on registry-tracked installs that have a stable `packageName`.
+Use `sync` for source-installed skills.
+
 ```bash
 # Update all skills (interactive scope prompt)
 npx skills update
@@ -200,6 +230,36 @@ npx skills update -y
 | `-y, --yes`     | Skip scope prompt (auto-detect: project if in a project dir, else global) |
 | `[skills...]`   | Update specific skills by name instead of all                             |
 
+### `skills sync`
+
+`sync` refreshes installed skills that originally came from a local path, GitHub
+repository, or generic git URL. It replays the recorded external source, re-discovers
+the original skill by its stored `skillPath`, and reinstalls it into the selected scope.
+
+Use `update` for registry-installed skills.
+
+```bash
+# Sync all source-installed skills (interactive scope prompt)
+npx skills sync
+
+# Sync a specific installed source skill
+npx skills sync legacy-skill
+
+# Sync only global or project source-installed skills
+npx skills sync -g
+npx skills sync -p
+
+# Non-interactive (auto-detects scope: project if in a project, else global)
+npx skills sync -y
+```
+
+| Option          | Description                                                             |
+| --------------- | ----------------------------------------------------------------------- |
+| `-g, --global`  | Only sync global source-installed skills                                |
+| `-p, --project` | Only sync project source-installed skills                               |
+| `-y, --yes`     | Skip scope prompt (auto-detect: project if in a project dir, else global) |
+| `[skills...]`   | Sync specific installed source skills by name instead of all            |
+
 ### `skills init`
 
 ```bash
@@ -218,7 +278,7 @@ Creates:
 
 Default package identity:
 
-- `@platform.skill/<skill-name>`
+- `@company.skill/<skill-name>`
 
 ### `skills inspect`
 
@@ -276,12 +336,65 @@ and human-readable `Warnings` blocks before returning the published bundle path.
 an archive of the local directory to Catalog, lets Catalog normalize it if needed, and asks
 Catalog to perform a one-shot publish.
 
+This is a publish flow, not an install-refresh flow. To refresh an already-installed external
+skill in agent directories, use `skills sync` instead.
+
 Flow:
 
 1. `POST /api/v1/skill-packaging/publish`
 
 Success output reports the published package identity plus review metadata such as
 `manifest_digest`, `components`, warning details, and the import summary when normalization happened.
+
+```bash
+# Publish a local source tree through Catalog
+npx skills import-local ./legacy-skill \
+  --package-name @company.skill/legacy-skill \
+  --version 0.1.0
+
+# Record a specific publish registry in package metadata
+npx skills import-local ./legacy-skill \
+  --registry https://catalog.example.com \
+  --publish-registry https://npm.example.com/private/
+```
+
+| Option                    | Description                                                 |
+| ------------------------- | ----------------------------------------------------------- |
+| `--registry <url>`        | Catalog base URL override                                   |
+| `--package-name <name>`   | Override/inject `package_name` when `package.json` is missing |
+| `--version <version>`     | Override/inject version when `package.json` is missing      |
+| `--publish-registry <url>` | Registry recorded into package metadata for publish        |
+| `--strict`                | Disable imported workspace normalization during import      |
+
+### `skills import-git`
+
+`import-git` is the git-source variant of the same publish flow. It clones an external git
+source, discovers skills, selects one or more skill names, and asks Catalog to perform a
+one-shot publish.
+
+This is also a publish flow, not an install-refresh flow. To refresh an already-installed
+external skill in agent directories, use `skills sync`.
+
+```bash
+# Publish from a GitHub repository
+npx skills import-git owner/repo
+
+# Publish a specific discovered skill
+npx skills import-git owner/repo --skill pdf
+
+# Publish from a generic git URL or path-scoped source
+npx skills import-git https://github.com/owner/repo?path=skills/pdf
+```
+
+| Option                    | Description                                                 |
+| ------------------------- | ----------------------------------------------------------- |
+| `--registry <url>`        | Catalog base URL override                                   |
+| `--package-name <name>`   | Override/inject `package_name` when `package.json` is missing |
+| `--version <version>`     | Override/inject version when `package.json` is missing      |
+| `--publish-registry <url>` | Registry recorded into package metadata for publish        |
+| `--skill <name>`          | Select a specific discovered skill                          |
+| `--full-depth`            | Search nested directories more aggressively                 |
+| `--strict`                | Disable imported workspace normalization during import      |
 
 ### `skills remove`
 

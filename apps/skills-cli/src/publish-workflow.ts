@@ -1,10 +1,6 @@
 import { spawnSync } from 'child_process';
 import { resolve } from 'path';
-import {
-  getRegistryBaseUrl,
-  putReleaseRecord,
-  type PackagingWarningDetail,
-} from './catalog.ts';
+import { getRegistryBaseUrl, putReleaseRecord, type PackagingWarningDetail } from './catalog.ts';
 import type { PackagingImportReport } from './catalog.ts';
 import { packLocalSkillDirectory } from './local-packaging.ts';
 import { resolveNpmUserConfigPath } from './npm-auth.ts';
@@ -78,6 +74,7 @@ export async function runPublishWorkflow(
   const registry = getRegistryBaseUrl(options.registry);
   const session = await runPackagingSession({
     path: options.path,
+    registry: options.registry,
     strict: options.strict,
   });
 

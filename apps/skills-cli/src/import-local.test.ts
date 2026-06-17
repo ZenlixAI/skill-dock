@@ -93,7 +93,7 @@ describe('import-local command', () => {
   it('shows dedicated import-local help output', () => {
     const output = stripLogo(runCliOutput(['import-local', '--help']));
     expect(output).toContain('Usage: skills import-local [path] [options]');
-    expect(output).toContain('Upload a local source directory to Catalog for import review and one-shot publish.');
+    expect(output).toContain('Upload a local source directory to Catalog for one-shot publish.');
     expect(output).toContain('--package-name <name>');
     expect(output).toContain('--version <version>');
   });

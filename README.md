@@ -8,7 +8,7 @@
 - `postgres`
 - `nexus`
 
-不再提供细粒度的 CLI / kind 生命周期 Make 包装。Makefile 只保留顶层工作流入口。
+不再提供细粒度的交互式 CLI / kind 生命周期 Make 包装。Makefile 只保留顶层环境工作流，以及 CLI 的 test / type-check / 包发布入口。
 
 ## 常用命令
 
@@ -20,6 +20,10 @@ make build
 make verify
 make test-go
 make test-web
+make test-cli
+make typecheck-cli
+make publish-cli NPM_CONFIG_USERCONFIG=/abs/path/to/.npmrc
+make publish-cli-snapshot NPM_CONFIG_USERCONFIG=/abs/path/to/.npmrc
 make build-web
 make clean-dev
 ```
@@ -29,7 +33,10 @@ make clean-dev
 - `make dev`：构建本地镜像，确保 kind 集群存在，部署开发栈，初始化 Nexus，并等待服务 Ready
 - `make deploy`：把最新本地镜像部署到现有 kind 环境
 - `make build`：构建本地 `catalog` / `skills-web` 镜像
-- `make verify`：执行顶层校验
+- `make verify`：执行顶层校验，包括 Go、Web、CLI test 和 CLI type-check
+- `make test-cli`：在 `apps/skills-cli` 里跑测试
+- `make typecheck-cli`：在 `apps/skills-cli` 里跑类型检查
+- `make publish-cli` / `make publish-cli-snapshot`：把 CLI 包发布到当前配置的 npm 仓
 - `make clean-dev`：删除本地 Nexus bootstrap 状态目录
 
 ## 本地开发
@@ -69,7 +76,7 @@ make dev STRICT=1
 
 ## 本地 Nexus E2E
 
-仓库不再通过 Makefile 包装 CLI。需要发布、搜索、安装时，直接使用独立 `skills` CLI。
+Makefile 不再包装交互式 CLI 子命令。需要 `find`、`add`、`publish`、`import-*`、`sync` 时，直接使用独立 `skills` CLI；仓库级 Make 只保留 CLI 的测试、类型检查和包发布入口。
 
 ```bash
 make dev
@@ -85,15 +92,17 @@ skills add @company.skill/your-skill -y
 skills import-local /abs/path/to/legacy-skill \
   --package-name @company.skill/legacy-skill \
   --version 0.1.0 \
-  --npm-registry http://127.0.0.1:8081/repository/skills-npm/
+  --publish-registry http://127.0.0.1:8081/repository/skills-npm/
 ```
 
 说明：
 
-- `publish` / `import-local` 需要可发布凭据，通常使用 `publisher-secret`
+- `publish` / `import-local` / `import-git` 需要可发布凭据，通常使用 `publisher-secret`
 - 只读查询可以把 `SKILLS_REGISTRY_TOKEN` 换成 `reader-secret`
 - `NPM_CONFIG_USERCONFIG` 指向 `make dev` / `make deploy` 生成的本地 Nexus `.npmrc`
+- 根 Makefile 的 `publish-cli` / `publish-cli-snapshot` 优先读取 `NPM_CONFIG_USERCONFIG`，未提供时才回退到 `NEXUS_NPMRC`
 - `skills add` 安装结果默认写入当前项目的 `./.agents/skills/`
+- source 安装后用 `skills sync` 刷新；registry 安装后用 `skills update`
 
 批量导入不再通过 Makefile 暴露，直接运行脚本：
 

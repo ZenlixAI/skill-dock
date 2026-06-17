@@ -503,7 +503,15 @@ skills import-local /abs/path/to/legacy-skill \
   --package-name @company.skill/legacy-skill \
   --version 0.1.0 \
   --registry https://skills.example.com \
-  --npm-registry https://skills.example.com/repository/skills-npm/ \
+  --publish-registry https://skills.example.com/repository/skills-npm/
+```
+
+如果是外部 git 源：
+
+```bash
+skills import-git owner/repo \
+  --skill pdf \
+  --registry https://skills.example.com \
   --publish-registry https://skills.example.com/repository/skills-npm/
 ```
 
@@ -520,6 +528,7 @@ skills import-local /abs/path/to/legacy-skill \
 - `nexus.repository.publicUrl`
 - `web` 对 `/repository/skills-npm/` 的代理是否正常
 - CLI 机器到公网 npm 入口的可达性
+- `NPM_CONFIG_USERCONFIG` 指向的 `.npmrc` 是否包含正确的 registry auth
 
 Web 可以打开但发布失败时，优先检查：
 

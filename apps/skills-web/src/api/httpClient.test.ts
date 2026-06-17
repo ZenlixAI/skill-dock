@@ -16,7 +16,7 @@ describe('normalizeRegistryError', () => {
   it('turns 404 into a not_found error', () => {
     expect(normalizeRegistryError({ status: 404, message: 'missing' })).toEqual({
       kind: 'not_found',
-      message: 'The requested registry resource was not found.',
+      message: 'missing',
       requestId: undefined,
       code: undefined,
       status: 404,
@@ -133,6 +133,30 @@ describe('normalizeRegistryError', () => {
       code: undefined,
       status: 422,
       details: undefined,
+    });
+  });
+
+  it('turns 404 bundle/workspace references into an actionable stateless-packaging hint', () => {
+    expect(
+      normalizeRegistryError({
+        status: 404,
+        code: 'bundle_not_found',
+        message: 'Bundle archive does not exist for the requested workspace.',
+        requestId: 'req-791',
+        details: {
+          workspaceHandle: 'ws_123',
+        },
+      })
+    ).toEqual({
+      kind: 'not_found',
+      message:
+        'Catalog returned a stale workspace or bundle reference. One-shot packaging should be stateless; retry after upgrading Catalog or removing any legacy workspace-based handoff.',
+      requestId: 'req-791',
+      code: 'bundle_not_found',
+      status: 404,
+      details: {
+        workspaceHandle: 'ws_123',
+      },
     });
   });
 });

@@ -78,6 +78,26 @@ function isMissingPackagingWorkspaceMessage(message: string) {
   );
 }
 
+function isMissingPackagingWorkspaceDetails(details: Record<string, unknown> | undefined) {
+  if (!details) {
+    return false;
+  }
+
+  return 'workspacePath' in details || 'workspaceHandle' in details;
+}
+
+function isMissingPackagingWorkspaceError(input: {
+  message: string;
+  code?: string;
+  details?: Record<string, unknown>;
+}) {
+  return (
+    input.code === 'bundle_not_found' ||
+    isMissingPackagingWorkspaceMessage(input.message) ||
+    isMissingPackagingWorkspaceDetails(input.details)
+  );
+}
+
 function isRegistryPublishAuthFailure(code: string | undefined, details: Record<string, unknown> | undefined) {
   if (code !== 'registry_publish_failed' || !details) {
     return false;
@@ -115,9 +135,20 @@ export function normalizeRegistryError(input: {
         details: input.details,
       };
     }
+    if (isMissingPackagingWorkspaceError(input)) {
+      return {
+        kind: 'not_found',
+        message:
+          'Catalog returned a stale workspace or bundle reference. One-shot packaging should be stateless; retry after upgrading Catalog or removing any legacy workspace-based handoff.',
+        requestId: input.requestId,
+        code: input.code,
+        status: input.status,
+        details: input.details,
+      };
+    }
     return {
       kind: 'not_found',
-      message: 'The requested registry resource was not found.',
+      message: input.message,
       requestId: input.requestId,
       code: input.code,
       status: input.status,

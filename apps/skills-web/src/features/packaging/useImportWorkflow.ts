@@ -142,12 +142,12 @@ export function useImportWorkflow(options: UseImportWorkflowOptions) {
         loading: false,
         error: null,
         errorDetail: null,
-        success: '预览已生成，可以继续发布 skill。',
+        success: '发布预览已生成，可以继续执行一次性发布。',
       });
       onMutationResult({
         action: 'import-review',
         outcome: 'succeeded',
-        message: '预览已生成，可以继续发布 skill。',
+        message: '发布预览已生成，可以继续执行一次性发布。',
         packageName: response.packageName,
         version: response.version,
       });
@@ -212,12 +212,12 @@ export function useImportWorkflow(options: UseImportWorkflowOptions) {
         loading: false,
         error: null,
         errorDetail: null,
-        success: response.created ? 'skill 已发布并写入 release record。' : '后端返回幂等重放结果。',
+        success: response.created ? 'skill 已完成一次性发布，并写入 release record。' : '后端返回幂等重放结果。',
       });
       onMutationResult({
         action: 'publish',
         outcome: 'succeeded',
-        message: response.created ? 'skill 已发布并写入 release record。' : '后端返回幂等重放结果。',
+        message: response.created ? 'skill 已完成一次性发布，并写入 release record。' : '后端返回幂等重放结果。',
         packageName: response.packageName,
         version: response.version,
       });

@@ -52,7 +52,7 @@ zarf/tools/batch-import/example.json
 如果你要配合本地 Nexus 做真实导入，直接用 `kind` 本地栈：
 
 ```bash
-make dev-run
+make dev
 ```
 
 这样 `publish`、`import-local`、`batch-import` 都能直接打到 `kind` 里的 Catalog 和 Nexus。
@@ -62,17 +62,12 @@ make dev-run
 ```bash
 export SKILLS_REGISTRY_URL=http://127.0.0.1:18080
 export SKILLS_REGISTRY_TOKEN=publisher-secret
+export NPM_CONFIG_USERCONFIG=/private/tmp/skill-registry-nexus/.npmrc
 
 uv run python zarf/tools/batch-import/batch_import_skills.py \
   --manifest zarf/tools/batch-import/example.json \
   --npm-registry http://127.0.0.1:8081/repository/skills-npm \
   --continue-on-error
-```
-
-也可以直接走 Make 入口：
-
-```bash
-make batch-import MANIFEST=/abs/path/to/import.json NPM_BACKEND=nexus
 ```
 
 严格模式示例：
@@ -82,12 +77,6 @@ uv run python zarf/tools/batch-import/batch_import_skills.py \
   --manifest zarf/tools/batch-import/example.json \
   --npm-registry http://127.0.0.1:8081/repository/skills-npm \
   --strict
-```
-
-或：
-
-```bash
-make batch-import MANIFEST=/abs/path/to/import.json NPM_BACKEND=nexus STRICT=1
 ```
 
 manifest 最小格式：
@@ -163,5 +152,4 @@ uv run python zarf/tools/batch-import/batch_import_skills.py --root-dir /abs/pat
 补充：
 
 - 本地 Nexus 默认地址是 `http://127.0.0.1:8081/repository/skills-npm`
-- Make 入口现在统一通过 `NPM_BACKEND=nexus` 切场景
-- 如果你想先显式准备 Python 环境，可以先执行 `make python-sync`
+- npm publish 认证建议直接通过 `NPM_CONFIG_USERCONFIG` 指向本地 Nexus `.npmrc`
