@@ -197,8 +197,12 @@ export function useImportWorkflow(options: UseImportWorkflowOptions) {
     });
 
     try {
+      const reviewRequest = await buildReviewRequest();
       const response = await publishSkill({
-        ...(await buildReviewRequest()),
+        source: reviewRequest.source,
+        target: reviewRequest.target,
+        metadata: reviewRequest.metadata,
+        options: reviewRequest.options,
         review: {
           manifestDigest: reviewResult.manifestDigest,
           components: reviewResult.components,

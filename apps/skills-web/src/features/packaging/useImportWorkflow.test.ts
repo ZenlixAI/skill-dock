@@ -94,6 +94,9 @@ describe('useImportWorkflow', () => {
         })
       )
     );
+    expect(vi.mocked(client.publishSkill).mock.calls[0]?.[0]).not.toHaveProperty(
+      'includeBundleBase64'
+    );
     expect(result.current.publishResult?.created).toBe(true);
     expect(result.current.operationState.success).toBe('skill 已完成一次性发布，并写入 release record。');
     expect(onMutationResult).toHaveBeenCalledWith(
