@@ -108,7 +108,7 @@ describe('import-git command', () => {
     const output = stripLogo(runCliOutput(['import-git', '--help']));
     expect(output).toContain('Usage: skills import-git <source> [options]');
     expect(output).toContain(
-      'Clone an external git source, select a skill, and publish it through Catalog one-shot import.'
+      'Clone an external git source, discover a skill, and publish it through Catalog one-shot import.'
     );
     expect(output).toContain('--skill <name>');
     expect(output).toContain('--full-depth');
