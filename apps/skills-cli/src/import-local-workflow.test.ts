@@ -224,6 +224,7 @@ describe('import-local workflow', () => {
       description: 'Imported skill',
       sourceType: 'platform_created',
     });
+    expect(payload).not.toHaveProperty('includeBundleBase64');
     expect(payload.options).toEqual({
       publishRegistry: 'https://npm.example.com',
       strict: true,

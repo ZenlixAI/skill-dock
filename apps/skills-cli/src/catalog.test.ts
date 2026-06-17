@@ -250,6 +250,7 @@ describe('catalog client', () => {
       manifestDigest: 'sha256:test',
       components: ['commands'],
     });
+    expect(payload).not.toHaveProperty('includeBundleBase64');
     expect(response.manifestDigest).toBe('sha256:test');
     expect(response.versionStatus).toBe('published');
     expect(response.installPolicy).toBe('resolvable');
