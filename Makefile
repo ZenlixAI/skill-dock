@@ -4,6 +4,8 @@ WEB_DIR := apps/skills-web
 CLI_DIR := apps/skills-cli
 CLI_PNPM := npx -y pnpm@10.17.1
 CLI_NPMRC ?= $(if $(NPM_CONFIG_USERCONFIG),$(NPM_CONFIG_USERCONFIG),$(NEXUS_NPMRC))
+CLI_NPMRC_PATH := $(if $(filter ~,$(CLI_NPMRC)),$(HOME),$(patsubst ~/%,$(HOME)/%,$(CLI_NPMRC)))
+CLI_VERSION_BUMP ?= patch
 
 GO_CACHE ?= /private/tmp/go-cache
 
@@ -45,7 +47,7 @@ help:
 	@printf "  make test-web  Run web tests in %s\n" "$(WEB_DIR)"
 	@printf "  make test-cli  Run CLI tests in %s\n" "$(CLI_DIR)"
 	@printf "  make typecheck-cli Run CLI type-check in %s\n" "$(CLI_DIR)"
-	@printf "  make publish-cli Publish the CLI package to %s using CLI_NPMRC/NPM_CONFIG_USERCONFIG\n" "$(NEXUS_REPOSITORY_URL)"
+	@printf "  make publish-cli Build, bump version, and publish the CLI package to %s using CLI_NPMRC/NPM_CONFIG_USERCONFIG\n" "$(NEXUS_REPOSITORY_URL)"
 	@printf "  make publish-cli-snapshot Publish a snapshot CLI package to %s using CLI_NPMRC/NPM_CONFIG_USERCONFIG\n" "$(NEXUS_REPOSITORY_URL)"
 	@printf "  make build-web Run web build in %s\n" "$(WEB_DIR)"
 	@printf "  make clean-dev Remove local Nexus bootstrap state under %s\n" "$(NEXUS_STATE_DIR)"
@@ -71,12 +73,14 @@ typecheck-cli:
 	$(CLI_PNPM) --dir $(CLI_DIR) type-check
 
 publish-cli:
-	test -f "$(CLI_NPMRC)"
-	NPM_CONFIG_USERCONFIG="$(CLI_NPMRC)" npm --prefix $(CLI_DIR) publish --registry $(NEXUS_REPOSITORY_URL)
+	test -f "$(CLI_NPMRC_PATH)"
+	cd $(CLI_DIR) && NPM_CONFIG_USERCONFIG="$(CLI_NPMRC_PATH)" npm run build
+	cd $(CLI_DIR) && NPM_CONFIG_USERCONFIG="$(CLI_NPMRC_PATH)" npm version $(CLI_VERSION_BUMP) --no-git-tag-version
+	cd $(CLI_DIR) && NPM_CONFIG_USERCONFIG="$(CLI_NPMRC_PATH)" npm publish --registry $(NEXUS_REPOSITORY_URL)
 
 publish-cli-snapshot:
-	test -f "$(CLI_NPMRC)"
-	cd $(CLI_DIR) && NPM_CONFIG_USERCONFIG="$(CLI_NPMRC)" npm run publish:snapshot -- --registry $(NEXUS_REPOSITORY_URL)
+	test -f "$(CLI_NPMRC_PATH)"
+	cd $(CLI_DIR) && NPM_CONFIG_USERCONFIG="$(CLI_NPMRC_PATH)" npm run publish:snapshot -- --registry $(NEXUS_REPOSITORY_URL)
 
 build-web:
 	npm --prefix $(WEB_DIR) run build
