@@ -139,8 +139,8 @@ npm run dev
 Web 真实模式现在默认走生产路径：
 
 - 浏览器优先走 session / 真实 API
-- 导入页负责 `prepare -> validate -> pack`
-- `npm publish` 仍然在 Web 之外完成
+- 导入页使用 `import-review` 和一次性 `publish`
+- Catalog 负责打包、npm 发布和 release-record
 
 Playwright 冒烟见 [docs/local-web-catalog-e2e.zh-CN.md](docs/local-web-catalog-e2e.zh-CN.md)。
 
@@ -148,10 +148,8 @@ Playwright 冒烟见 [docs/local-web-catalog-e2e.zh-CN.md](docs/local-web-catalo
 
 客户现场部署统一看：
 
-- [docs/customer-k3s-deployment.zh-CN.md](docs/customer-k3s-deployment.zh-CN.md)
-- [../skill-registry-helm-chart/README.md](/Users/ultraman/workspace/skill-registry-helm-chart/README.md)
-- [../skill-registry-helm-chart/values.yaml](/Users/ultraman/workspace/skill-registry-helm-chart/values.yaml)
-- [../skill-registry-helm-chart/values.192.168.10.124.yaml](/Users/ultraman/workspace/skill-registry-helm-chart/values.192.168.10.124.yaml)
+- [../../helm-charts/skills-registry/README.md](../../helm-charts/skills-registry/README.md)
+- [../../helm-charts/skills-registry/values.yaml](../../helm-charts/skills-registry/values.yaml)
 
 ## 清理与重建
 

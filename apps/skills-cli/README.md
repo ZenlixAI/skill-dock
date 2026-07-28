@@ -8,7 +8,6 @@ For the current `skill_registry` monorepo deployment model, also read:
 
 - root repo runbook: [`../../README.md`](../../README.md)
 - local kind + Nexus E2E: [`../../docs/local-nexus-e2e.zh-CN.md`](../../docs/local-nexus-e2e.zh-CN.md)
-- customer deployment: [`../../docs/customer-k3s-deployment.zh-CN.md`](../../docs/customer-k3s-deployment.zh-CN.md)
 
 This README describes the generic CLI surface. In the current private-registry deployment:
 
