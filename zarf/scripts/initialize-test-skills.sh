@@ -2,9 +2,11 @@
 set -eu
 
 publish_skill() {
+  echo "Importing fixture from $1"
   skills import-local "$1" \
     --registry "${SKILLS_REGISTRY_URL}" \
     --publish-registry "${SKILLS_NPM_REGISTRY}"
+  echo "Imported fixture from $1"
 }
 
 publish_skill /runtime-test-skills/runtime-basic

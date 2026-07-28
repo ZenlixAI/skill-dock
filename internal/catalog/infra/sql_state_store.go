@@ -888,7 +888,7 @@ func insertVersionRowTx(ctx context.Context, tx *sql.Tx, insertVersionSQL string
 		version.Version,
 		string(version.VersionStatus),
 		string(version.InstallPolicy),
-		version.PublishedAt.UTC().Format(time.RFC3339),
+		version.PublishedAt.UTC().Format(time.RFC3339Nano),
 		version.Registry.NPMRegistry,
 		version.Registry.TarballURL,
 		version.Registry.Integrity,
@@ -1396,7 +1396,7 @@ func scanSkillVersionDetail(scanner interface {
 	); err != nil {
 		return SkillVersionDetail{}, err
 	}
-	publishedAt, err := time.Parse(time.RFC3339, publishedAtRaw)
+	publishedAt, err := time.Parse(time.RFC3339Nano, publishedAtRaw)
 	if err != nil {
 		return SkillVersionDetail{}, err
 	}

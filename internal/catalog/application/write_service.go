@@ -103,7 +103,7 @@ func (s *WriteService) CreateReleaseRecord(ctx context.Context, packageName stri
 			if existing.Version != version {
 				continue
 			}
-			if reflect.DeepEqual(existing, artifact.Version) {
+			if sameReleaseContent(existing, artifact.Version) {
 				return aggregate, domain.ReleaseRecordResult{
 					PackageName:      packageName,
 					Version:          version,
@@ -135,6 +135,14 @@ func (s *WriteService) CreateReleaseRecord(ctx context.Context, packageName stri
 			InstallPolicy:    artifact.Version.InstallPolicy,
 		}, nil
 	})
+}
+
+func sameReleaseContent(existing domain.SkillVersionDetail, candidate domain.SkillVersionDetail) bool {
+	existing.PublishedAt = time.Time{}
+	existing.Registry.PublishedAt = time.Time{}
+	candidate.PublishedAt = time.Time{}
+	candidate.Registry.PublishedAt = time.Time{}
+	return reflect.DeepEqual(existing, candidate)
 }
 
 func (s *WriteService) ApplySkillGovernanceChange(ctx context.Context, packageName string, input domain.SkillGovernanceChangeInput, actor string) (domain.GovernanceChangeResponse, error) {

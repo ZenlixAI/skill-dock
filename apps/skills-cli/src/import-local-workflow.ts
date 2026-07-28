@@ -49,12 +49,19 @@ function failure(errors: string[]): ImportLocalWorkflowFailureResult {
 }
 
 function formatImportLocalError(error: unknown): string {
-  if (
-    error instanceof CatalogError &&
-    error.code === 'internal_error' &&
-    error.message === 'Failed to create packaging workspace.'
-  ) {
-    return `${error.message} Catalog write-side packaging workspace root is missing or not writable; check SKILL_REGISTRY_SHARED_WORKSPACE_ROOT and its mounted directory.`;
+  if (error instanceof CatalogError) {
+    const context = [`catalog_status=${error.status}`, `catalog_code=${error.code}`];
+    if (error.requestId) {
+      context.push(`catalog_request_id=${error.requestId}`);
+    }
+    if (error.details) {
+      context.push(`catalog_details=${JSON.stringify(error.details)}`);
+    }
+    const advice =
+      error.code === 'internal_error' && error.message === 'Failed to create packaging workspace.'
+        ? ' Catalog write-side packaging workspace root is missing or not writable; check SKILL_REGISTRY_SHARED_WORKSPACE_ROOT and its mounted directory.'
+        : '';
+    return `${error.message} (${context.join(', ')})${advice}`;
   }
 
   return error instanceof Error ? error.message : String(error);
@@ -64,7 +71,11 @@ function resolvePublishRegistry(
   options: ImportLocalWorkflowOptions,
   inspectedPublishRegistry?: string
 ): string | undefined {
-  return normalizeRegistryUrl(options.publishRegistry) || normalizeRegistryUrl(inspectedPublishRegistry) || undefined;
+  return (
+    normalizeRegistryUrl(options.publishRegistry) ||
+    normalizeRegistryUrl(inspectedPublishRegistry) ||
+    undefined
+  );
 }
 
 function packageNameIsValid(value: string): boolean {
@@ -82,8 +93,10 @@ export async function runImportLocalWorkflow(
   const version = options.version || inspection.version;
   const errors = inspection.errors.filter(
     (error) =>
-      !(options.packageName && error === 'package.json name must use a scoped @<company>.skill/<skill-name> package name') &&
-      !(options.version && error === 'package.json version must be an exact semver')
+      !(
+        options.packageName &&
+        error === 'package.json name must use a scoped @<company>.skill/<skill-name> package name'
+      ) && !(options.version && error === 'package.json version must be an exact semver')
   );
 
   if (!packageName) {

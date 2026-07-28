@@ -266,6 +266,79 @@ describe('import-local workflow', () => {
     });
   });
 
+  it('includes Catalog error context in publish failures', async () => {
+    writeFileSync(
+      join(testDir, 'SKILL.md'),
+      `---\nname: legacy-skill\ndescription: Imported skill\n---\n`
+    );
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          error: {
+            code: 'immutable_release_conflict',
+            message: 'Immutable release content conflicts with the existing record.',
+            details: {
+              packageName: '@acme.skill/legacy-skill',
+              version: '0.1.0',
+            },
+            requestId: 'req_123',
+          },
+        },
+        409
+      )
+    );
+
+    const result = await runImportLocalWorkflow({
+      path: testDir,
+      registry: 'https://catalog.example.com',
+      packageName: '@acme.skill/legacy-skill',
+      version: '0.1.0',
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      errors: [
+        'Immutable release content conflicts with the existing record. (catalog_status=409, catalog_code=immutable_release_conflict, catalog_request_id=req_123, catalog_details={"packageName":"@acme.skill/legacy-skill","version":"0.1.0"})',
+      ],
+    });
+  });
+
+  it('keeps Catalog error context with workspace remediation advice', async () => {
+    writeFileSync(
+      join(testDir, 'SKILL.md'),
+      `---\nname: legacy-skill\ndescription: Imported skill\n---\n`
+    );
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          error: {
+            code: 'internal_error',
+            message: 'Failed to create packaging workspace.',
+            details: { root: '/var/lib/skill-registry/packaging-workspaces' },
+            requestId: 'req_456',
+          },
+        },
+        500
+      )
+    );
+
+    const result = await runImportLocalWorkflow({
+      path: testDir,
+      registry: 'https://catalog.example.com',
+      packageName: '@acme.skill/legacy-skill',
+      version: '0.1.0',
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      errors: [
+        'Failed to create packaging workspace. (catalog_status=500, catalog_code=internal_error, catalog_request_id=req_456, catalog_details={"root":"/var/lib/skill-registry/packaging-workspaces"}) Catalog write-side packaging workspace root is missing or not writable; check SKILL_REGISTRY_SHARED_WORKSPACE_ROOT and its mounted directory.',
+      ],
+    });
+  });
+
   it('fails validation when package identity overrides are still missing', async () => {
     writeFileSync(
       join(testDir, 'SKILL.md'),
