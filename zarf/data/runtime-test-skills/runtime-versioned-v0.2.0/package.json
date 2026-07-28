@@ -1,0 +1,8 @@
+{
+  "name": "@platform.skill/runtime-versioned",
+  "version": "0.2.0",
+  "description": "Runtime fixture version 0.2.0",
+  "skill": {
+    "sourceType": "platform_created"
+  }
+}

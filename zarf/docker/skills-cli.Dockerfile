@@ -15,4 +15,8 @@ RUN mkdir -p /seed \
     && pnpm run build \
     && npm pack --pack-destination /seed
 
+COPY zarf/data/runtime-test-skills /runtime-test-skills
+COPY zarf/scripts/initialize-test-skills.sh /usr/local/bin/initialize-test-skills
+RUN chmod +x /usr/local/bin/initialize-test-skills
+
 WORKDIR /seed

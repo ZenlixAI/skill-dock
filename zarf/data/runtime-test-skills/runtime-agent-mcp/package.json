@@ -1,0 +1,8 @@
+{
+  "name": "@platform.skill/runtime-agent-mcp",
+  "version": "0.1.0",
+  "description": "Runtime fixture with agent and MCP content",
+  "skill": {
+    "sourceType": "platform_created"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "@beta.skill/runtime-collision",
+  "version": "0.1.0",
+  "description": "Beta collision fixture",
+  "skill": {
+    "sourceType": "platform_created"
+  }
+}

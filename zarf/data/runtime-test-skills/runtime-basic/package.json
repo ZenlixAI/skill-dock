@@ -1,0 +1,8 @@
+{
+  "name": "@platform.skill/runtime-basic",
+  "version": "0.1.0",
+  "description": "Minimal runtime fixture",
+  "skill": {
+    "sourceType": "platform_created"
+  }
+}

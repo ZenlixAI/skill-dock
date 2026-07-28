@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "runtime-fixture": {
+      "command": "echo",
+      "args": ["runtime-fixture"]
+    }
+  }
+}

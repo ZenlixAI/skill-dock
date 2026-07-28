@@ -1,0 +1,8 @@
+{
+  "name": "@alpha.skill/runtime-collision",
+  "version": "0.1.0",
+  "description": "Alpha collision fixture",
+  "skill": {
+    "sourceType": "platform_created"
+  }
+}

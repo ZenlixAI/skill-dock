@@ -1,0 +1,8 @@
+{
+  "name": "@platform.skill/runtime-command-suite",
+  "version": "0.1.0",
+  "description": "Runtime fixture with nested content",
+  "skill": {
+    "sourceType": "platform_created"
+  }
+}
