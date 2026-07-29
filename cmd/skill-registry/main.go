@@ -114,6 +114,21 @@ func configuredAuthTokens() map[string]auth.TokenConfig {
 }
 
 func configuredSessionUsers() map[string]auth.SessionUserConfig {
+	username := strings.TrimSpace(os.Getenv("SKILL_REGISTRY_LOGIN_USERNAME"))
+	password := strings.TrimSpace(os.Getenv("SKILL_REGISTRY_LOGIN_PASSWORD"))
+	if username != "" || password != "" {
+		if username == "" || password == "" {
+			log.Fatal("SKILL_REGISTRY_LOGIN_USERNAME and SKILL_REGISTRY_LOGIN_PASSWORD must be set together")
+		}
+		return map[string]auth.SessionUserConfig{
+			username: {
+				Password: password,
+				Role:     "operator",
+				Actor:    username,
+			},
+		}
+	}
+
 	raw := os.Getenv("SKILL_REGISTRY_SESSION_USERS_JSON")
 	if raw == "" {
 		return nil
