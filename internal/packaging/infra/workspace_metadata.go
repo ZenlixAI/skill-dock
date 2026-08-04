@@ -22,10 +22,6 @@ func ReadWorkspacePackageMetadataFile(workspaceHandle string, workspacePath stri
 	return readWorkspacePackageMetadataFile(workspaceHandle, workspacePath)
 }
 
-func DecodeWorkspacePackageMetadataJSON(workspaceHandle string, content []byte) (map[string]any, error) {
-	return decodeWorkspacePackageMetadataJSON(workspaceHandle, content)
-}
-
 func readWorkspacePackageMetadataFile(workspaceHandle string, workspacePath string) (workspacePackageMetadata, error) {
 	content, err := readWorkspacePackageMetadataContent(workspaceHandle, workspacePath)
 	if err != nil {

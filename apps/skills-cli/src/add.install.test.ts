@@ -51,7 +51,6 @@ vi.mock('./agents.ts', () => ({
 
 vi.mock('./installer.ts', () => ({
   getCanonicalPath: vi.fn(() => '/tmp/.agents/skills/pdf-skill'),
-  isSkillInstalled: vi.fn(() => Promise.resolve(false)),
 }));
 
 vi.mock('./detect-agent.ts', () => ({
@@ -60,14 +59,11 @@ vi.mock('./detect-agent.ts', () => ({
 }));
 
 vi.mock('./skill-lock.ts', () => ({
-  isPromptDismissed: vi.fn(() => Promise.resolve(true)),
-  dismissPrompt: vi.fn(),
   getLastSelectedAgents: vi.fn(() => Promise.resolve(undefined)),
   saveSelectedAgents: vi.fn(),
 }));
 
 vi.mock('./telemetry.ts', () => ({
-  track: vi.fn(),
   setVersion: vi.fn(),
 }));
 

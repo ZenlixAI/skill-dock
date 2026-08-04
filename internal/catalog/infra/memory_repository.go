@@ -430,10 +430,6 @@ func packageBasename(packageName string) string {
 	return parts[len(parts)-1]
 }
 
-func releaseArtifactKey(packageName string, version string) string {
-	return packageName + "@" + version
-}
-
 func stringPtr(value string) *string {
 	return &value
 }
@@ -547,14 +543,6 @@ func AggregatesFromSampleData(data SampleCatalogData) []AgentSkillAggregate {
 	return aggregatesFromSampleData(data)
 }
 
-func LatestReplacementRecommendation(packageName string, version string, records []GovernanceRecord) *string {
-	return latestReplacementRecommendation(packageName, version, records)
-}
-
-func RefreshLatestVersion(record *internaldomain.SkillRecord) {
-	refreshLatestVersion(record)
-}
-
 func MatchesSkillQuery(skill SkillDetail, query string) bool {
 	return matchesSkillQuery(skill, query)
 }
@@ -563,52 +551,10 @@ func SortSkills(items []SkillSummary, sortKey string, query string) {
 	sortSkills(items, sortKey, query)
 }
 
-func SkillRelevanceScore(item SkillSummary, query string) int {
-	return skillRelevanceScore(item, query)
-}
-
 func CompareExactVersions(left string, right string) int {
 	return compareExactVersions(left, right)
 }
 
 func Paginate[T any](items []T, cursor int, pageSize int) ([]T, PageInfo, error) {
 	return paginate(items, cursor, pageSize)
-}
-
-func FormatCursorToken(offset int) string {
-	return formatCursorToken(offset)
-}
-
-func NewVersion(registryBase string, packageName string, version string, versionStatus VersionStatus, policy InstallPolicy, publishedAt time.Time) SkillVersionDetail {
-	return newVersion(registryBase, packageName, version, versionStatus, policy, publishedAt)
-}
-
-func NewMaterializedVersion(
-	registryBase string,
-	packageName string,
-	version string,
-	versionStatus VersionStatus,
-	policy InstallPolicy,
-	publishedAt time.Time,
-	displayName string,
-	description string,
-	components []string,
-) SkillVersionDetail {
-	return newMaterializedVersion(registryBase, packageName, version, versionStatus, policy, publishedAt, displayName, description, components)
-}
-
-func StringPtr(value string) *string {
-	return stringPtr(value)
-}
-
-func DefaultActor(actor string) string {
-	return defaultActor(actor)
-}
-
-func ValidateReleaseRecordInput(input ReleaseRecordInput, artifact ReleaseArtifact) *Error {
-	return validateReleaseRecordInput(input, artifact)
-}
-
-func SameStringSet(left []string, right []string) bool {
-	return sameStringSet(left, right)
 }

@@ -22,12 +22,6 @@ func newWorkspaceLocker() *workspaceLocker {
 	return &workspaceLocker{locks: map[string]*workspaceLockEntry{}}
 }
 
-type WorkspaceLocker = workspaceLocker
-
-func NewWorkspaceLocker() *WorkspaceLocker {
-	return newWorkspaceLocker()
-}
-
 func (l *workspaceLocker) lock(ctx context.Context, workspaceID string, enabled bool) (context.Context, func(), error) {
 	if !enabled || strings.TrimSpace(workspaceID) == "" {
 		return ctx, func() {}, nil

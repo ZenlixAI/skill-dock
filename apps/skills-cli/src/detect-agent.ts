@@ -50,14 +50,6 @@ export async function isRunningInAgent(): Promise<boolean> {
 }
 
 /**
- * Returns the name of the detected agent, or null if not running in an agent.
- */
-export async function getAgentName(): Promise<string | null> {
-  const result = await detectAgent();
-  return result.isAgent ? result.agent.name : null;
-}
-
-/**
  * Maps a detected agent name to the corresponding skills-cli AgentType.
  * Returns null if the agent can't be mapped to a specific skills-cli agent.
  */

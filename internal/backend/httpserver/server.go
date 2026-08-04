@@ -175,10 +175,6 @@ func (s *Server) authorizePackageAccess(writer http.ResponseWriter, request *htt
 	return s.accessWorkflow.AuthorizePackage(writer, request, packageName)
 }
 
-func (s *Server) authorizeActionAccess(writer http.ResponseWriter, request *http.Request, action auth.Action, packageName string, version string) bool {
-	return s.accessWorkflow.AuthorizeAction(writer, request, action, packageName, version)
-}
-
 func (s *Server) serveCachedReadJSON(writer http.ResponseWriter, request *http.Request, ttl time.Duration, load func() (any, *catalog.Error)) {
 	release, limitErr := s.readLimiter.Acquire()
 	if limitErr != nil {

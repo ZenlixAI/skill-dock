@@ -1,7 +1,7 @@
 import * as p from '@clack/prompts';
 import pc from 'picocolors';
 import { homedir } from 'os';
-import { sep, join, dirname, relative, resolve } from 'path';
+import { sep, join, relative, resolve } from 'path';
 import { searchMultiselect } from './prompts/search-multiselect.ts';
 
 // Helper to check if a value is a cancel symbol (works with both clack and our custom prompts)
@@ -9,7 +9,6 @@ const isCancelled = (value: unknown): value is symbol => typeof value === 'symbo
 
 import {
   installSkillForAgent,
-  isSkillInstalled,
   getCanonicalPath,
   type InstallMode,
 } from './installer.ts';
@@ -20,12 +19,10 @@ import {
   getNonUniversalAgents,
   isUniversalAgent,
 } from './agents.ts';
-import { track, setVersion } from './telemetry.ts';
+import { setVersion } from './telemetry.ts';
 import { detectAgent, getAgentType } from './detect-agent.ts';
 import {
   addSkillToLock,
-  isPromptDismissed,
-  dismissPrompt,
   getLastSelectedAgents,
   saveSelectedAgents,
 } from './skill-lock.ts';
@@ -33,7 +30,6 @@ import type { AgentType, ParsedSource, Skill } from './types.ts';
 import { runRegistryInstallWorkflow } from './registry-install-workflow.ts';
 import { addSkillToLocalLock, computeSkillFolderHash } from './local-lock.ts';
 import { cleanupTempDir } from './git.ts';
-import { discoverSkills } from './skills.ts';
 import { resolveExternalSourceSkills } from './external-source.ts';
 import { parseSourceInput } from './source-parser.ts';
 import packageJson from '../package.json' with { type: 'json' };
@@ -129,42 +125,6 @@ function ensureUniversalAgents(targetAgents: AgentType[]): AgentType[] {
   }
 
   return result;
-}
-
-/**
- * Builds result lines from installation results, splitting by universal vs symlinked
- */
-function buildResultLines(
-  results: Array<{
-    agent: string;
-    symlinkFailed?: boolean;
-    skipped?: boolean;
-  }>,
-  targetAgents: AgentType[]
-): string[] {
-  const lines: string[] = [];
-
-  // Split target agents by type
-  const { universal, symlinked: symlinkAgents } = splitAgentsByType(targetAgents);
-
-  // For symlink results, also track which ones actually succeeded vs failed
-  // Exclude skipped agents (those whose config dir doesn't exist in the project)
-  const successfulSymlinks = results
-    .filter((r) => !r.symlinkFailed && !r.skipped && !universal.includes(r.agent))
-    .map((r) => r.agent);
-  const failedSymlinks = results.filter((r) => r.symlinkFailed && !r.skipped).map((r) => r.agent);
-
-  if (universal.length > 0) {
-    lines.push(`  ${pc.green('universal:')} ${formatList(universal)}`);
-  }
-  if (successfulSymlinks.length > 0) {
-    lines.push(`  ${pc.dim('symlinked:')} ${formatList(successfulSymlinks)}`);
-  }
-  if (failedSymlinks.length > 0) {
-    lines.push(`  ${pc.yellow('copied:')} ${formatList(failedSymlinks)}`);
-  }
-
-  return lines;
 }
 
 /**
@@ -946,80 +906,6 @@ export async function runAdd(args: string[], options: AddOptions = {}): Promise<
     showInstallTip();
     p.outro(pc.red('Installation failed'));
     process.exit(1);
-  }
-}
-
-/**
- * Prompt user to install the find-skills skill after their first installation.
- */
-async function promptForFindSkills(
-  options?: AddOptions,
-  targetAgents?: AgentType[]
-): Promise<void> {
-  const registryPackage = process.env.SKILLS_FIND_SKILLS_PACKAGE;
-  if (!registryPackage) return;
-
-  // Skip if already dismissed or not in interactive mode
-  if (!process.stdin.isTTY) return;
-  if (options?.yes) return;
-
-  try {
-    const dismissed = await isPromptDismissed('findSkillsPrompt');
-    if (dismissed) return;
-
-    // Check if find-skills is already installed
-    const findSkillsInstalled = await isSkillInstalled(registryPackage, 'claude-code', {
-      global: true,
-    });
-    if (findSkillsInstalled) {
-      // Mark as dismissed so we don't check again
-      await dismissPrompt('findSkillsPrompt');
-      return;
-    }
-
-    console.log();
-    p.log.message(pc.dim("One-time prompt - you won't be asked again if you dismiss."));
-    const install = await p.confirm({
-      message: `Install ${pc.cyan(registryPackage)}? It helps your agent discover and suggest skills.`,
-    });
-
-    if (p.isCancel(install)) {
-      await dismissPrompt('findSkillsPrompt');
-      return;
-    }
-
-    if (install) {
-      // Install find-skills to the same agents the user selected, excluding replit
-      await dismissPrompt('findSkillsPrompt');
-
-      // Filter out replit from target agents
-      const findSkillsAgents = targetAgents?.filter((a) => a !== 'replit');
-
-      // Skip if no valid agents remain after filtering
-      if (!findSkillsAgents || findSkillsAgents.length === 0) {
-        return;
-      }
-
-      console.log();
-      p.log.step('Installing find-skills skill...');
-
-      try {
-        await runAdd([registryPackage], {
-          global: true,
-          yes: true,
-          agent: findSkillsAgents,
-        });
-      } catch {
-        p.log.warn('Failed to install find-skills. You can try again with:');
-        p.log.message(pc.dim(`  npx skills add ${registryPackage} -g -y --all`));
-      }
-    } else {
-      // User declined - dismiss the prompt
-      await dismissPrompt('findSkillsPrompt');
-      p.log.message(pc.dim(`You can install it later with: npx skills add ${registryPackage}`));
-    }
-  } catch {
-    // Don't fail the main installation if prompt fails
   }
 }
 

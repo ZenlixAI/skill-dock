@@ -1482,13 +1482,6 @@ func isIgnorableCatalogAddColumnError(err error) bool {
 	return strings.Contains(message, "duplicate column") || strings.Contains(message, "already exists")
 }
 
-func maxUint64(left uint64, right uint64) uint64 {
-	if left > right {
-		return left
-	}
-	return right
-}
-
 func cloneAggregate(aggregate AgentSkillAggregate) AgentSkillAggregate {
 	return AgentSkillAggregate{
 		Revision: aggregate.Revision,

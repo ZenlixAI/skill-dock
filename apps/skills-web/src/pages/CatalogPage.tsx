@@ -1,5 +1,5 @@
 import { startTransition, useDeferredValue, useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { listSkills } from '../api/client';
 import type { CatalogSourceType, RegistryRequestError, SkillStatus } from '../api/types';
 import { SectionHeading } from '../components/SectionHeading';

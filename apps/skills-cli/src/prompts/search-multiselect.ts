@@ -37,7 +37,6 @@ const S_STEP_CANCEL = pc.red('■');
 const S_STEP_SUBMIT = pc.green('◇');
 const S_RADIO_ACTIVE = pc.green('●');
 const S_RADIO_INACTIVE = pc.dim('○');
-const S_CHECKBOX_LOCKED = pc.green('✓');
 const S_BULLET = pc.green('•');
 const S_BAR = pc.dim('│');
 const S_BAR_H = pc.dim('─');

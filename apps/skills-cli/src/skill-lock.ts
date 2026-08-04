@@ -1,9 +1,6 @@
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
-import { createHash } from 'crypto';
-import { execSync } from 'child_process';
-import pc from 'picocolors';
 
 const AGENTS_DIR = '.agents';
 const LOCK_FILE = '.skill-lock.json';
@@ -165,90 +162,6 @@ export async function writeSkillLock(lock: SkillLockFile): Promise<void> {
 }
 
 /**
- * Compute SHA-256 hash of content.
- */
-export function computeContentHash(content: string): string {
-  return createHash('sha256').update(content, 'utf-8').digest('hex');
-}
-
-let _ghWarningShown = false;
-
-/** For tests only. Resets the one-shot warning flag. */
-export function resetGhAuthWarning(): void {
-  _ghWarningShown = false;
-}
-
-/**
- * Get GitHub token from user's environment.
- * Tries in order:
- * 1. GITHUB_TOKEN environment variable (silent)
- * 2. GH_TOKEN environment variable (silent)
- * 3. gh CLI auth token, if gh is installed. Prints a one-time warning to
- *    stderr before invoking `gh auth token`, because that subprocess call
- *    is flagged by some corporate endpoint security tooling (Defender, etc.)
- *    as credential extraction. Callers should invoke this function lazily
- *    (e.g. only after an unauthenticated request hits a rate limit) so the
- *    fallback rarely runs in practice.
- *
- * @returns The token string or null if not available
- */
-export function getGitHubToken(): string | null {
-  // Check environment variables first (silent: user has explicitly opted in)
-  if (process.env.GITHUB_TOKEN) {
-    return process.env.GITHUB_TOKEN;
-  }
-  if (process.env.GH_TOKEN) {
-    return process.env.GH_TOKEN;
-  }
-
-  // Last resort: spawn gh CLI. Warn the user once per process before doing so.
-  if (!_ghWarningShown) {
-    process.stderr.write(
-      `${pc.yellow('│')}  ${pc.yellow('GitHub rate limit reached')} — using your ${pc.cyan('gh')} login to continue.\n` +
-        `${pc.yellow('│')}  ${pc.dim(`Tip: set ${pc.cyan('GITHUB_TOKEN')} to avoid this prompt, or use ${pc.cyan('--full-depth')} to clone instead.\n`)}`
-    );
-    _ghWarningShown = true;
-  }
-  try {
-    const token = execSync('gh auth token', {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim();
-    if (token) {
-      return token;
-    }
-  } catch {
-    // gh not installed or not authenticated
-  }
-
-  return null;
-}
-
-/**
- * Fetch the tree SHA (folder hash) for a skill folder using GitHub's Trees API.
- * This makes ONE API call to get the entire repo tree, then extracts the SHA
- * for the specific skill folder.
- *
- * @param ownerRepo - GitHub owner/repo (e.g., "vercel-labs/agent-skills")
- * @param skillPath - Path to skill folder or SKILL.md (e.g., "skills/react-best-practices/SKILL.md")
- * @param getToken - Optional lazy token resolver. Invoked only if the
- *                   unauthenticated request hits a rate limit.
- * @param ref - Optional branch/tag ref. Defaults to trying main then master.
- * @returns The tree SHA for the skill folder, or null if not found
- */
-export async function fetchSkillFolderHash(
-  ownerRepo: string,
-  skillPath: string,
-  getToken?: (() => string | null) | null,
-  ref?: string
-): Promise<string | null> {
-  const { fetchRepoTree, getSkillFolderHashFromTree } = await import('./blob.ts');
-  const tree = await fetchRepoTree(ownerRepo, ref, getToken ?? undefined);
-  if (!tree) return null;
-  return getSkillFolderHashFromTree(tree, skillPath);
-}
-
-/**
  * Add or update a skill entry in the lock file.
  */
 export async function addSkillToLock(
@@ -298,28 +211,6 @@ export async function getSkillFromLock(skillName: string): Promise<SkillLockEntr
 export async function getAllLockedSkills(): Promise<Record<string, SkillLockEntry>> {
   const lock = await readSkillLock();
   return lock.skills;
-}
-
-/**
- * Get skills grouped by source for batch update operations.
- */
-export async function getSkillsBySource(): Promise<
-  Map<string, { skills: string[]; entry: SkillLockEntry }>
-> {
-  const lock = await readSkillLock();
-  const bySource = new Map<string, { skills: string[]; entry: SkillLockEntry }>();
-
-  for (const [skillName, entry] of Object.entries(lock.skills)) {
-    const sourceKey = entry.packageName || entry.legacy?.source || skillName;
-    const existing = bySource.get(sourceKey);
-    if (existing) {
-      existing.skills.push(skillName);
-    } else {
-      bySource.set(sourceKey, { skills: [skillName], entry });
-    }
-  }
-
-  return bySource;
 }
 
 /**
@@ -398,26 +289,6 @@ function serializeSkillLockEntry(entry: SkillLockEntry): Record<string, unknown>
     ...(entry.skillManifestDigest ? { skillManifestDigest: entry.skillManifestDigest } : {}),
     ...(entry.pluginName ? { pluginName: entry.pluginName } : {}),
   };
-}
-
-/**
- * Check if a prompt has been dismissed.
- */
-export async function isPromptDismissed(promptKey: keyof DismissedPrompts): Promise<boolean> {
-  const lock = await readSkillLock();
-  return lock.dismissed?.[promptKey] === true;
-}
-
-/**
- * Mark a prompt as dismissed.
- */
-export async function dismissPrompt(promptKey: keyof DismissedPrompts): Promise<void> {
-  const lock = await readSkillLock();
-  if (!lock.dismissed) {
-    lock.dismissed = {};
-  }
-  lock.dismissed[promptKey] = true;
-  await writeSkillLock(lock);
 }
 
 /**

@@ -43,7 +43,7 @@ function buildGovernanceLayers(records: GovernanceRecord[]): GovernanceLayer[] {
 }
 
 export function GovernancePage() {
-  const { session, hasCapability, getPosture } = useRegistrySession();
+  const { hasCapability, getPosture } = useRegistrySession();
   const [packageName, setPackageName] = useState('');
   const [targetType, setTargetType] = useState<GovernanceTargetType | ''>('');
   const [action, setAction] = useState<GovernanceAction | ''>('');

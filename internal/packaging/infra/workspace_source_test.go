@@ -12,9 +12,9 @@ import (
 
 func TestWorkspaceSourceModulePreparesPlatformAuthoringWorkspace(t *testing.T) {
 	tempRoot := t.TempDir()
-	module := NewWorkspaceSourceModule(tempRoot, 0*time.Second)
+	module := newWorkspaceSourceModule(tempRoot, 0*time.Second)
 
-	workspacePath, err := module.Prepare(packagingdomain.PrepareRequest{
+	workspacePath, err := module.prepare(packagingdomain.PrepareRequest{
 		Source: packagingdomain.Source{
 			Type: "platform_authoring",
 			Files: map[string]string{
@@ -29,7 +29,7 @@ func TestWorkspaceSourceModulePreparesPlatformAuthoringWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepare workspace: %v", err)
 	}
-	if !module.ManagesWorkspace(workspacePath) {
+	if !module.managesWorkspace(workspacePath) {
 		t.Fatalf("expected managed workspace, got %q", workspacePath)
 	}
 

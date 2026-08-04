@@ -42,7 +42,7 @@ export function SkillDetailPage() {
   const { packageName = '' } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const decodedPackage = decodeURIComponent(packageName);
-  const { session, hasCapability, getPosture, getPostureLabel } = useRegistrySession();
+  const { session, getPosture, getPostureLabel } = useRegistrySession();
   const [refreshKey, setRefreshKey] = useState(0);
   const [retireReason, setRetireReason] = useState('');
   const [retireConfirmed, setRetireConfirmed] = useState(false);
@@ -70,7 +70,6 @@ export function SkillDetailPage() {
     packageName: decodedPackage,
     requiredAction: 'catalog.governance.skill.apply',
   });
-  const governanceWriteEnabled = hasCapability('catalog.governance.skill.apply', decodedPackage);
   const governancePostureLabel =
     governancePosture === 'write_enabled'
       ? '允许退役'

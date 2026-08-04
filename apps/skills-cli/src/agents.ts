@@ -555,10 +555,6 @@ export async function detectInstalledAgents(): Promise<AgentType[]> {
   return results.filter((r) => r.installed).map((r) => r.type);
 }
 
-export function getAgentConfig(type: AgentType): AgentConfig {
-  return agents[type];
-}
-
 /**
  * Returns agents that use the universal .agents/skills directory.
  * These agents share a common skill location and don't need symlinks.

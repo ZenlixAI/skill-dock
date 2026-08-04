@@ -138,7 +138,6 @@ This is a test skill.
   }
 
   function createSymlink(skillName: string, targetDir: string) {
-    const skillPath = join(skillsDir, skillName);
     const linkPath = join(targetDir, skillName);
     try {
       // Create relative symlink

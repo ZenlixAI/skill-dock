@@ -22,46 +22,6 @@ var packagingIgnoredDirectories = map[string]struct{}{
 	".git":  {},
 }
 
-type PrepareRequest = packagingdomain.PrepareRequest
-type Source = packagingdomain.Source
-type Target = packagingdomain.Target
-
-type WorkspaceSourceModule struct {
-	workspaceSourceModule
-}
-
-func NewWorkspaceSourceModule(tempRoot string, workspaceTTL time.Duration) WorkspaceSourceModule {
-	return WorkspaceSourceModule{workspaceSourceModule: newWorkspaceSourceModule(tempRoot, workspaceTTL)}
-}
-
-func (m WorkspaceSourceModule) Prepare(input PrepareRequest) (string, error) {
-	return m.prepare(input)
-}
-
-func (m WorkspaceSourceModule) Cleanup(workspacePath string) error {
-	return m.cleanup(workspacePath)
-}
-
-func (m WorkspaceSourceModule) BundlePath(workspacePath string, target Target) (string, error) {
-	return m.bundlePath(workspacePath, target)
-}
-
-func (m WorkspaceSourceModule) PruneExpiredWorkspaces(ttl time.Duration) error {
-	return m.pruneExpiredWorkspaces(ttl)
-}
-
-func (m WorkspaceSourceModule) ManagesWorkspace(workspacePath string) bool {
-	return m.managesWorkspace(workspacePath)
-}
-
-func CopySourceDirectory(sourcePath string, workspacePath string) error {
-	return copySourceDirectory(sourcePath, workspacePath)
-}
-
-func ShouldIgnorePackagingPath(relativePath string) bool {
-	return shouldIgnorePackagingPath(relativePath)
-}
-
 type workspaceSourceModule struct {
 	tempRoot     string
 	workspaceTTL time.Duration
@@ -78,7 +38,7 @@ func (m workspaceSourceModule) ensureTempRoot() error {
 	return os.MkdirAll(m.tempRoot, 0o755)
 }
 
-func (m workspaceSourceModule) prepare(input PrepareRequest) (string, error) {
+func (m workspaceSourceModule) prepare(input packagingdomain.PrepareRequest) (string, error) {
 	if m.workspaceTTL > 0 {
 		if err := m.pruneExpiredWorkspaces(m.workspaceTTL); err != nil {
 			return "", catalog.NewError(500, "internal_error", "Failed to prune expired packaging workspaces.", nil)
@@ -132,7 +92,7 @@ func (m workspaceSourceModule) cleanup(workspacePath string) error {
 	return nil
 }
 
-func (m workspaceSourceModule) bundlePath(workspacePath string, target Target) (string, error) {
+func (m workspaceSourceModule) bundlePath(workspacePath string, target packagingdomain.Target) (string, error) {
 	if err := ensureManagedWorkspace(workspacePath, m.managesWorkspace(workspacePath)); err != nil {
 		return "", err
 	}
@@ -178,51 +138,6 @@ func (m workspaceSourceModule) managesWorkspace(workspacePath string) bool {
 	}
 	firstSegment := strings.Split(filepath.ToSlash(relativePath), "/")[0]
 	return strings.HasPrefix(firstSegment, "skill-packaging-")
-}
-
-func copySourceDirectory(sourcePath string, workspacePath string) error {
-	sourcePath = strings.TrimSpace(strings.TrimPrefix(sourcePath, "file://"))
-	if sourcePath == "" {
-		return catalog.NewError(422, "invalid_request", "source.location is required.", nil)
-	}
-	sourceInfo, err := os.Stat(sourcePath)
-	if err != nil || !sourceInfo.IsDir() {
-		return catalog.NewError(422, "invalid_request", "source.location must reference an existing directory.", map[string]any{"location": sourcePath})
-	}
-
-	return filepath.WalkDir(sourcePath, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if path == sourcePath {
-			return nil
-		}
-		relativePath, err := filepath.Rel(sourcePath, path)
-		if err != nil {
-			return err
-		}
-		if shouldIgnorePackagingPath(relativePath) {
-			if entry.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		targetPath := filepath.Join(workspacePath, relativePath)
-		if entry.IsDir() {
-			return os.MkdirAll(targetPath, 0o755)
-		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			return catalog.NewError(422, "unsafe_path_entry", "source directory must not contain symbolic links.", map[string]any{"path": relativePath})
-		}
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
-			return err
-		}
-		return os.WriteFile(targetPath, content, 0o644)
-	})
 }
 
 func ensureManagedWorkspace(workspacePath string, managed bool) error {

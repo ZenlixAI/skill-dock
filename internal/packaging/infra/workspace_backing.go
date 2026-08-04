@@ -70,10 +70,6 @@ func (w *packagingWorkspaceBacking) persistManagedWorkspace(ctx context.Context,
 	return workspaceID, managedWorkspace, nil
 }
 
-func (w *packagingWorkspaceBacking) PersistManagedWorkspace(ctx context.Context, workspacePath string) (string, string, error) {
-	return w.persistManagedWorkspace(ctx, workspacePath)
-}
-
 func (w *packagingWorkspaceBacking) materializeWorkspace(ctx context.Context, workspaceHandle string) (string, func(), error) {
 	if err := packagingContextError(ctx); err != nil {
 		return "", nil, err
@@ -87,10 +83,6 @@ func (w *packagingWorkspaceBacking) materializeWorkspace(ctx context.Context, wo
 		return "", nil, err
 	}
 	return record.WorkspacePath, func() {}, nil
-}
-
-func (w *packagingWorkspaceBacking) MaterializeWorkspace(ctx context.Context, workspaceHandle string) (string, func(), error) {
-	return w.materializeWorkspace(ctx, workspaceHandle)
 }
 
 func (w *packagingWorkspaceBacking) loadManagedWorkspaceRecord(ctx context.Context, workspaceHandle string) (persist.WorkspaceRecord, error) {
@@ -117,16 +109,8 @@ func (w *packagingWorkspaceBacking) loadManagedWorkspaceRecord(ctx context.Conte
 	return record, nil
 }
 
-func (w *packagingWorkspaceBacking) LoadManagedWorkspaceRecord(ctx context.Context, workspaceHandle string) (persist.WorkspaceRecord, error) {
-	return w.loadManagedWorkspaceRecord(ctx, workspaceHandle)
-}
-
 func (w *packagingWorkspaceBacking) managedWorkspacePath(workspaceID string) string {
 	return filepath.Join(w.workspaceRoot, workspaceID, "workspace")
-}
-
-func (w *packagingWorkspaceBacking) ManagedWorkspacePath(workspaceID string) string {
-	return w.managedWorkspacePath(workspaceID)
 }
 
 func (w *packagingWorkspaceBacking) managedBundlePath(workspaceID string, target packagingdomain.Target) string {
@@ -151,10 +135,6 @@ func ensureManagedPathWithinRoot(root string, path string) error {
 	return nil
 }
 
-func EnsureManagedPathWithinRoot(root string, path string) error {
-	return ensureManagedPathWithinRoot(root, path)
-}
-
 func (w *packagingWorkspaceBacking) managedWorkspaceRoot(workspaceID string) string {
 	return filepath.Join(w.workspaceRoot, workspaceID)
 }
@@ -167,10 +147,6 @@ func (w *packagingWorkspaceBacking) canonicalManagedWorkspaceRoot(workspaceID st
 	return managedRoot, nil
 }
 
-func (w *packagingWorkspaceBacking) CanonicalManagedWorkspaceRoot(workspaceID string) (string, error) {
-	return w.canonicalManagedWorkspaceRoot(workspaceID)
-}
-
 func (w *packagingWorkspaceBacking) managedWorkspaceRootFromPath(workspaceID string, workspacePath string) (string, error) {
 	expectedWorkspace := filepath.Clean(w.managedWorkspacePath(workspaceID))
 	actualWorkspace := filepath.Clean(workspacePath)
@@ -178,10 +154,6 @@ func (w *packagingWorkspaceBacking) managedWorkspaceRootFromPath(workspaceID str
 		return "", errors.New("managed workspace path must match canonical layout")
 	}
 	return w.canonicalManagedWorkspaceRoot(workspaceID)
-}
-
-func (w *packagingWorkspaceBacking) ManagedWorkspaceRootFromPath(workspaceID string, workspacePath string) (string, error) {
-	return w.managedWorkspaceRootFromPath(workspaceID, workspacePath)
 }
 
 func (w *packagingWorkspaceBacking) validateManagedBundlePath(workspaceID string, target packagingdomain.Target, bundlePath string) error {
@@ -193,16 +165,8 @@ func (w *packagingWorkspaceBacking) validateManagedBundlePath(workspaceID string
 	return ensureManagedPathWithinRoot(w.workspaceRoot, actualBundle)
 }
 
-func (w *packagingWorkspaceBacking) ValidateManagedBundlePath(workspaceID string, target packagingdomain.Target, bundlePath string) error {
-	return w.validateManagedBundlePath(workspaceID, target, bundlePath)
-}
-
 func (w *packagingWorkspaceBacking) HasWorkspaceStore() bool {
 	return w.workspaceStore != nil
-}
-
-func (w *packagingWorkspaceBacking) WorkspaceStore() persist.WorkspaceStore {
-	return w.workspaceStore
 }
 
 func workspaceHandle() string {
@@ -216,10 +180,6 @@ func workspaceHandle() string {
 
 func workspaceBundleHandle(workspaceHandle string, target packagingdomain.Target) string {
 	return "workspace://" + workspaceHandle + "/" + packagingdomain.PackageBasename(target.PackageName) + "-" + target.Version + ".tgz"
-}
-
-func WorkspaceBundleHandle(workspaceHandle string, target packagingdomain.Target) string {
-	return workspaceBundleHandle(workspaceHandle, target)
 }
 
 func packagingContextError(ctx context.Context) error {

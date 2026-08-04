@@ -26,7 +26,7 @@ describe('removeCommand canonical protection', () => {
     process.chdir(tempDir);
 
     // Mock/Setup agent directories
-    // We need to simulate the structure that getInstallPath and getCanonicalPath expect
+    // We need to simulate the structure that the installer path helpers expect
     // Default skills dir is .agents/skills
     await mkdir(join(tempDir, '.agents/skills'), { recursive: true });
 

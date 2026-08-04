@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { runCliOutput, stripLogo, hasLogo } from './test-utils.ts';
+import { runCliOutput, hasLogo } from './test-utils.ts';
 
 describe('skills CLI', () => {
   describe('--help', () => {

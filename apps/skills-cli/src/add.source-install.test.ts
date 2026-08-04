@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import * as prompts from '@clack/prompts';
 import { runAdd } from './add.ts';
 import * as workflow from './registry-install-workflow.ts';
 import * as installer from './installer.ts';
@@ -33,8 +32,6 @@ vi.mock('./local-lock.ts', () => ({
 
 vi.mock('./skill-lock.ts', () => ({
   addSkillToLock: vi.fn(() => Promise.resolve()),
-  isPromptDismissed: vi.fn(() => Promise.resolve(true)),
-  dismissPrompt: vi.fn(),
   getLastSelectedAgents: vi.fn(() => Promise.resolve(undefined)),
   saveSelectedAgents: vi.fn(),
 }));
@@ -60,7 +57,6 @@ vi.mock('./agents.ts', () => ({
 
 vi.mock('./installer.ts', () => ({
   getCanonicalPath: vi.fn((name: string) => `/tmp/.agents/skills/${name}`),
-  isSkillInstalled: vi.fn(() => Promise.resolve(false)),
   installSkillForAgent: vi.fn(() =>
     Promise.resolve({
       success: true,

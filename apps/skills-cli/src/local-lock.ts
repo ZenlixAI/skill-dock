@@ -1,4 +1,4 @@
-import { readFile, writeFile, readdir, stat } from 'fs/promises';
+import { readFile, writeFile, readdir } from 'fs/promises';
 import { join, relative } from 'path';
 import { createHash } from 'crypto';
 
