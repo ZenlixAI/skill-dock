@@ -90,6 +90,7 @@ data:
     const adminPassword = process.env.NEXUS_ADMIN_PASSWORD || 'admin123456';
     const repositoryName = process.env.NEXUS_REPOSITORY_NAME || 'skills-npm';
     const anonymousRead = process.env.NEXUS_ENABLE_ANONYMOUS_READ === 'true';
+    const eulaDisclaimer = 'Use of Sonatype Nexus Repository - Community Edition is governed by the End User License Agreement at https://links.sonatype.com/products/nxrm/ce-eula. By returning the value from ‘accepted:false’ to ‘accepted:true’, you acknowledge that you have read and agree to the End User License Agreement at https://links.sonatype.com/products/nxrm/ce-eula.';
     const marker = `${dataDir}/.skills-registry-bootstrap-ready`;
 
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -146,10 +147,14 @@ data:
     await fail(realmsResponse, 'Read Nexus realms');
     const realms = Array.isArray(realmsResponse.data) ? realmsResponse.data : [];
     if (!realms.includes('NpmToken')) await fail(await request('/service/rest/v1/security/realms/active', { method: 'PUT', body: ['NpmToken', ...realms] }), 'Enable Nexus NpmToken realm');
-    await fail(await request('/service/rest/v1/system/eula', { method: 'POST', body: { accepted: true } }), 'Accept Nexus EULA');
     const eulaState = await request('/service/rest/v1/system/eula');
     await fail(eulaState, 'Read Nexus EULA');
-    if (eulaState.data?.accepted !== true) throw new Error('Nexus EULA acceptance did not persist');
+    if (eulaState.data?.accepted !== true) {
+      await fail(await request('/service/rest/v1/system/eula', { method: 'POST', body: { accepted: true, disclaimer: eulaDisclaimer } }), 'Accept Nexus EULA');
+      const acceptedEula = await request('/service/rest/v1/system/eula');
+      await fail(acceptedEula, 'Verify Nexus EULA');
+      if (acceptedEula.data?.accepted !== true) throw new Error('Nexus EULA acceptance did not persist');
+    }
     await fail(await request('/service/rest/v1/security/anonymous', { method: 'PUT', body: { enabled: anonymousRead, userId: 'anonymous', realmName: 'NexusAuthorizingRealm' } }), 'Configure Nexus anonymous access');
     const repository = repositories.data?.find?.(({ name }) => name === repositoryName);
     const payload = { name: repositoryName, online: true, storage: { blobStoreName: 'default', strictContentTypeValidation: true, writePolicy: 'ALLOW' }, component: { proprietaryComponents: false } };
