@@ -48,7 +48,6 @@ export function LoginPage() {
       <section aria-labelledby="login-title" className="login-layout">
         <div className="login-context">
           <span className="login-context__eyebrow">控制台登录</span>
-          <p className="login-context__kicker">技能注册表</p>
           <h1 id="login-title">进入技能注册表控制台</h1>
           <p className="login-context__description">导入、编写、治理和审计流程统一收口到这个控制台入口。</p>
         </div>

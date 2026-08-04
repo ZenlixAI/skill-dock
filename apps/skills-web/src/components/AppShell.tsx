@@ -1,5 +1,4 @@
 import type { PropsWithChildren } from 'react';
-import { motion } from 'framer-motion';
 import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom';
 import { getRegistryClientConfig, logoutSession } from '../api/client';
 import { hasAction } from '../api/session';
@@ -39,10 +38,6 @@ export function AppShell({ children }: PropsWithChildren) {
       <a className="skip-link" href="#main-content">
         跳到主要内容
       </a>
-      <div className="app-shell__halo app-shell__halo--ember" />
-      <div className="app-shell__halo app-shell__halo--moss" />
-      <div className="app-shell__grain" />
-
       <header className="shell-header">
         <div className="shell-header__inner">
           <div className="brand-lockup">
@@ -112,17 +107,14 @@ export function AppShell({ children }: PropsWithChildren) {
         </div>
       </header>
 
-      <motion.main
-        animate={{ opacity: 1, y: 0 }}
-        className="page-shell"
+      <main
+        className="page-shell page-shell--enter"
         id="main-content"
-        initial={{ opacity: 0, y: 12 }}
         key={location.pathname}
         tabIndex={-1}
-        transition={{ duration: 0.28, ease: 'easeOut' }}
       >
         {children}
-      </motion.main>
+      </main>
 
       <footer className="shell-footer">
         <div className="shell-footer__inner">
