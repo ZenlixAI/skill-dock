@@ -679,12 +679,14 @@ Ensure you have write access to the target directory.
 
 | Variable            | Description                              |
 | ------------------- | ---------------------------------------- |
-| `DISABLE_TELEMETRY` | Set to disable anonymous usage telemetry |
+| `SKILLS_TELEMETRY_URL` | Optional internal endpoint for anonymous usage telemetry; unset means no telemetry network request |
+| `SKILLS_AUDIT_URL`     | Optional internal endpoint for skill security audit lookups; unset means audits are skipped |
+| `DISABLE_TELEMETRY` | Explicitly disable telemetry (legacy compatibility) |
 | `DO_NOT_TRACK`      | Alternative way to disable telemetry     |
 
 ## Telemetry
 
-This CLI collects anonymous usage data to help improve the tool. No personal information is collected.
+Telemetry and audit requests are disabled by default. Set the corresponding internal endpoint explicitly when an offline installation provides those services. No public endpoint is contacted implicitly.
 
 Telemetry is automatically disabled in CI environments.
 

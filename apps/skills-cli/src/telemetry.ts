@@ -1,5 +1,13 @@
-const TELEMETRY_URL = 'https://add-skill.vercel.sh/t';
-const AUDIT_URL = 'https://add-skill.vercel.sh/audit';
+// Network telemetry is opt-in. Offline installations must not contact a
+// public endpoint merely by invoking the CLI. Set an internal URL explicitly
+// when telemetry/audit are desired.
+function telemetryUrl(): string | undefined {
+  return process.env.SKILLS_TELEMETRY_URL?.trim() || undefined;
+}
+
+function auditUrl(): string | undefined {
+  return process.env.SKILLS_AUDIT_URL?.trim() || undefined;
+}
 
 interface InstallTelemetryData {
   event: 'install';
@@ -100,7 +108,8 @@ export async function fetchAuditData(
   skillSlugs: string[],
   timeoutMs = 3000
 ): Promise<AuditResponse | null> {
-  if (skillSlugs.length === 0) return null;
+  const endpoint = auditUrl();
+  if (skillSlugs.length === 0 || !endpoint) return null;
 
   try {
     const params = new URLSearchParams({
@@ -111,7 +120,7 @@ export async function fetchAuditData(
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-    const response = await fetch(`${AUDIT_URL}?${params.toString()}`, {
+    const response = await fetch(`${endpoint}?${params.toString()}`, {
       signal: controller.signal,
     });
     clearTimeout(timeout);
@@ -128,7 +137,8 @@ export async function fetchAuditData(
 const pendingTelemetry: Promise<void>[] = [];
 
 export function track(data: TelemetryData): void {
-  if (!isEnabled()) return;
+  const endpoint = telemetryUrl();
+  if (!isEnabled() || !endpoint) return;
 
   try {
     const params = new URLSearchParams();
@@ -157,7 +167,7 @@ export function track(data: TelemetryData): void {
 
     // Fire and forget during the workflow, but track the promise so
     // flushTelemetry() can await it before the process exits.
-    const p = fetch(`${TELEMETRY_URL}?${params.toString()}`)
+    const p = fetch(`${endpoint}?${params.toString()}`)
       .catch(() => {})
       .then(() => {});
     pendingTelemetry.push(p);

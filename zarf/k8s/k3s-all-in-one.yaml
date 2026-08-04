@@ -80,77 +80,84 @@ data:
     #!/bin/bash
     set -euo pipefail
 
-    NEXUS_URL="${NEXUS_URL:-http://127.0.0.1:8081}"
-    NEXUS_DATA_DIR="${NEXUS_DATA_DIR:-/nexus-data}"
-    ADMIN_USER="${NEXUS_ADMIN_USER:-admin}"
-    ADMIN_PASSWORD="${NEXUS_ADMIN_PASSWORD:-admin123456}"
-    REPOSITORY_NAME="${NEXUS_REPOSITORY_NAME:-skills-npm}"
-    ENABLE_ANONYMOUS_READ="${NEXUS_ENABLE_ANONYMOUS_READ:-true}"
-    BOOTSTRAP_MARKER="${NEXUS_DATA_DIR}/.skills-registry-bootstrap-complete"
+    exec node /bootstrap/bootstrap.mjs
+  bootstrap.mjs: |
+    import { readFile, unlink, writeFile } from 'node:fs/promises';
 
-    apt-get update >/dev/null
-    apt-get install -y curl jq >/dev/null
+    const nexusUrl = process.env.NEXUS_URL || 'http://127.0.0.1:8081';
+    const dataDir = process.env.NEXUS_DATA_DIR || '/nexus-data';
+    const adminUser = process.env.NEXUS_ADMIN_USER || 'admin';
+    const adminPassword = process.env.NEXUS_ADMIN_PASSWORD || 'admin123456';
+    const repositoryName = process.env.NEXUS_REPOSITORY_NAME || 'skills-npm';
+    const anonymousRead = process.env.NEXUS_ENABLE_ANONYMOUS_READ === 'true';
+    const marker = `${dataDir}/.skills-registry-bootstrap-ready`;
 
-    until curl -fsS "${NEXUS_URL}/service/rest/v1/status" >/dev/null 2>&1; do
-      sleep 5
-    done
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const authHeader = (user, password) => `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`;
+    async function request(path, { user = adminUser, password = adminPassword, method = 'GET', body, headers = {} } = {}) {
+      const requestBody = body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body);
+      const response = await fetch(`${nexusUrl}${path}`, {
+        method,
+        headers: { Authorization: authHeader(user, password), ...(requestBody === undefined ? {} : { 'Content-Type': 'application/json' }), ...headers },
+        body: requestBody,
+      });
+      const text = await response.text();
+      let data = text;
+      try { data = text ? JSON.parse(text) : null; } catch { /* plain text response */ }
+      return { ok: response.ok, status: response.status, data };
+    }
+    async function waitForNexus() {
+      for (;;) {
+        try { if ((await fetch(`${nexusUrl}/service/rest/v1/status`)).ok) return; } catch { /* starting */ }
+        console.log(`waiting for Nexus at ${nexusUrl}`);
+        await sleep(5000);
+      }
+    }
+    async function fail(response, operation) {
+      if (!response.ok) throw new Error(`${operation} failed with HTTP ${response.status}: ${JSON.stringify(response.data)}`);
+    }
 
-    current_auth="${ADMIN_USER}:${ADMIN_PASSWORD}"
-    if ! curl -fsS -u "${current_auth}" "${NEXUS_URL}/service/rest/v1/repositories" >/dev/null 2>&1; then
-      if [[ ! -f "${NEXUS_DATA_DIR}/admin.password" ]]; then
-        echo "Missing Nexus initial admin password file at ${NEXUS_DATA_DIR}/admin.password" >&2
-        exit 1
-      fi
-      initial_password="$(tr -d '\r\n' < "${NEXUS_DATA_DIR}/admin.password")"
-      initial_auth="${ADMIN_USER}:${initial_password}"
-      curl -fsS -u "${initial_auth}" \
-        -X PUT \
-        -H 'Content-Type: text/plain' \
-        --data "${ADMIN_PASSWORD}" \
-        "${NEXUS_URL}/service/rest/v1/security/users/${ADMIN_USER}/change-password" >/dev/null
-      current_auth="${ADMIN_USER}:${ADMIN_PASSWORD}"
-    fi
-
-    active_realms="$(curl -fsS -u "${current_auth}" "${NEXUS_URL}/service/rest/v1/security/realms/active")"
-    if ! printf '%s' "${active_realms}" | jq -e '.[] | select(. == "NpmToken")' >/dev/null; then
-      updated_realms="$(printf '%s' "${active_realms}" | jq -c '["NpmToken"] + .')"
-      curl -fsS -u "${current_auth}" \
-        -X PUT \
-        -H 'Content-Type: application/json' \
-        --data "${updated_realms}" \
-        "${NEXUS_URL}/service/rest/v1/security/realms/active" >/dev/null
-    fi
-
-    curl -fsS -u "${current_auth}" \
-      -X POST \
-      -H 'Content-Type: application/json' \
-      --data '{"accepted":true}' \
-      "${NEXUS_URL}/service/rest/v1/system/eula" >/dev/null || true
-
-    anonymous_payload="$(jq -nc \
-      --argjson enabled "$([[ "${ENABLE_ANONYMOUS_READ}" == "true" ]] && echo true || echo false)" \
-      '{enabled:$enabled,userId:"anonymous",realmName:"NexusAuthorizingRealm"}')"
-    curl -fsS -u "${current_auth}" \
-      -X PUT \
-      -H 'Content-Type: application/json' \
-      --data "${anonymous_payload}" \
-      "${NEXUS_URL}/service/rest/v1/security/anonymous" >/dev/null
-
-    repositories="$(curl -fsS -u "${current_auth}" "${NEXUS_URL}/service/rest/v1/repositories")"
-    if ! printf '%s' "${repositories}" | jq -e --arg name "${REPOSITORY_NAME}" '.[] | select(.name == $name)' >/dev/null; then
-      repository_payload="$(jq -nc \
-        --arg name "${REPOSITORY_NAME}" \
-        '{name:$name,online:true,storage:{blobStoreName:"default",strictContentTypeValidation:true,writePolicy:"ALLOW_ONCE"}}')"
-      curl -fsS -u "${current_auth}" \
-        -X POST \
-        -H 'Content-Type: application/json' \
-        --data "${repository_payload}" \
-        "${NEXUS_URL}/service/rest/v1/repositories/npm/hosted" >/dev/null
-    fi
-
-    touch "${BOOTSTRAP_MARKER}"
-    echo "Nexus bootstrap complete for repository ${REPOSITORY_NAME}"
-    exec tail -f /dev/null
+    await unlink(marker).catch(() => {});
+    await waitForNexus();
+    let currentPassword = adminPassword;
+    let repositories;
+    let initialPasswordAttempts = 0;
+    let passwordChangeSucceeded = false;
+    for (let attempt = 1; attempt <= 60; attempt += 1) {
+      repositories = await request('/service/rest/v1/repositories');
+      if (repositories.ok) break;
+      if (!passwordChangeSucceeded && initialPasswordAttempts < 3) try {
+        initialPasswordAttempts += 1;
+        const initialPassword = (await readFile(`${dataDir}/admin.password`, 'utf8')).trim();
+        const changed = await request(`/service/rest/v1/security/users/${encodeURIComponent(adminUser)}/change-password`, {
+          user: adminUser, password: initialPassword, method: 'PUT', body: adminPassword, headers: { 'Content-Type': 'text/plain' },
+        });
+        if (changed.ok) {
+          passwordChangeSucceeded = true;
+          repositories = await request('/service/rest/v1/repositories');
+          if (repositories.ok) break;
+        }
+      } catch { /* Nexus security may still be initializing */ }
+      console.log(`waiting for Nexus authentication (attempt ${attempt}/60)`);
+      await sleep(5000);
+    }
+    await fail(repositories, 'List Nexus repositories');
+    const realmsResponse = await request('/service/rest/v1/security/realms/active');
+    await fail(realmsResponse, 'Read Nexus realms');
+    const realms = Array.isArray(realmsResponse.data) ? realmsResponse.data : [];
+    if (!realms.includes('NpmToken')) await fail(await request('/service/rest/v1/security/realms/active', { method: 'PUT', body: ['NpmToken', ...realms] }), 'Enable Nexus NpmToken realm');
+    await fail(await request('/service/rest/v1/system/eula', { method: 'POST', body: { accepted: true } }), 'Accept Nexus EULA');
+    const eulaState = await request('/service/rest/v1/system/eula');
+    await fail(eulaState, 'Read Nexus EULA');
+    if (eulaState.data?.accepted !== true) throw new Error('Nexus EULA acceptance did not persist');
+    await fail(await request('/service/rest/v1/security/anonymous', { method: 'PUT', body: { enabled: anonymousRead, userId: 'anonymous', realmName: 'NexusAuthorizingRealm' } }), 'Configure Nexus anonymous access');
+    const repository = repositories.data?.find?.(({ name }) => name === repositoryName);
+    const payload = { name: repositoryName, online: true, storage: { blobStoreName: 'default', strictContentTypeValidation: true, writePolicy: 'ALLOW' }, component: { proprietaryComponents: false } };
+    if (!repository) await fail(await request('/service/rest/v1/repositories/npm/hosted', { method: 'POST', body: payload }), `Create Nexus repository ${repositoryName}`);
+    else if (repository.storage?.writePolicy !== 'ALLOW') await fail(await request(`/service/rest/v1/repositories/npm/hosted/${encodeURIComponent(repositoryName)}`, { method: 'PUT', body: payload }), `Update Nexus repository ${repositoryName}`);
+    await writeFile(marker, 'ready\n');
+    console.log(`Nexus bootstrap complete for repository ${repositoryName}`);
+    for (;;) await sleep(60_000);
 ---
 apiVersion: v1
 kind: Service
@@ -318,6 +325,16 @@ spec:
               mountPath: /nexus-data
             - name: nexus-bootstrap
               mountPath: /bootstrap
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - test -f /nexus-data/.skills-registry-bootstrap-ready
+            initialDelaySeconds: 2
+            periodSeconds: 2
+            timeoutSeconds: 1
+            failureThreshold: 30
       volumes:
         - name: nexus-bootstrap
           configMap:

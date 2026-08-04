@@ -293,7 +293,12 @@ export class CatalogError extends Error {
 }
 
 export function getRegistryBaseUrl(explicit?: string): string {
-  const raw = explicit || process.env.SKILLS_REGISTRY_URL || 'https://skills.sh';
+  const raw = explicit?.trim() || process.env.SKILLS_REGISTRY_URL?.trim();
+  if (!raw) {
+    throw new Error(
+      'A registry URL is required in offline deployments. Set SKILLS_REGISTRY_URL or pass --registry.'
+    );
+  }
 
   return raw.replace(/\/+$/, '');
 }

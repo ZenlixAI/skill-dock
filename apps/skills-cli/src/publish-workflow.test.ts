@@ -145,59 +145,10 @@ describe('publish workflow', () => {
     });
   });
 
-  it('uses the default catalog registry when no override is provided', async () => {
+  it('requires a catalog registry when no override is provided', async () => {
     vi.stubEnv('SKILLS_REGISTRY_URL', '');
-    vi.mocked(spawnSync).mockReturnValueOnce({
-      status: 0,
-      stdout: 'published',
-      stderr: '',
-    } as ReturnType<typeof spawnSync>);
-    vi.mocked(runPackagingSession).mockResolvedValueOnce({
-      ok: true,
-      sessionKind: 'local',
-      directory: testDir,
-      skillMdPath: join(testDir, 'SKILL.md'),
-      packageJsonPath: join(testDir, 'package.json'),
-      publishRegistry: 'https://npm.example.com',
-      packageName: '@acme.skill/my-skill',
-      version: '1.2.0',
-      displayName: 'my-skill',
-      description: 'A valid skill',
-      components: ['commands'],
-      errors: [],
-    });
-    vi.mocked(packLocalSkillDirectory).mockResolvedValueOnce({
-      bundlePath: join(testDir, 'packed.tgz'),
-      manifestDigest: 'sha256:packed',
-      cleanup: vi.fn(),
-    });
-    fetchMock
-      .mockResolvedValueOnce(
-        new Response(null, {
-          status: 404,
-        })
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        })
-      );
-
-    await runPublishWorkflow({
-      path: testDir,
-    });
-
-    expect(runPackagingSession).toHaveBeenCalledWith({
-      path: testDir,
-      registry: undefined,
-      strict: undefined,
-    });
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      'https://skills.sh/api/v1/skills/%40acme.skill%2Fmy-skill/versions/1.2.0/release-record',
-      expect.objectContaining({ method: 'PUT' })
-    );
+    await expect(runPublishWorkflow({ path: testDir })).rejects.toThrow(/registry URL is required/);
+    expect(runPackagingSession).not.toHaveBeenCalled();
   });
 
   it('returns packaging session errors without calling pack or publish', async () => {

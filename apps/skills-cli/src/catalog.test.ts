@@ -41,10 +41,10 @@ describe('catalog client', () => {
     expect(getRegistryBaseUrl()).toBe('https://catalog.example.com');
   });
 
-  it('does not fall back to the removed SKILLS_API_URL alias', () => {
+  it('requires an explicit registry instead of falling back to a public URL', () => {
     vi.stubEnv('SKILLS_REGISTRY_URL', '');
     vi.stubEnv('SKILLS_API_URL', 'https://legacy.example.com/');
-    expect(getRegistryBaseUrl()).toBe('https://skills.sh');
+    expect(() => getRegistryBaseUrl()).toThrow(/registry URL is required/);
   });
 
   it('searches the catalog with q against /api/v1/skills', async () => {

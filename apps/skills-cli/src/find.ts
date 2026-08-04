@@ -383,7 +383,7 @@ ${DIM}  2) npx skills add <package_name>${RESET}`;
   );
 
   console.log();
-  console.log(`${DIM}Discover more skills at${RESET} ${TEXT}https://skills.sh${RESET}`);
+  console.log(`${DIM}Discover more skills in the configured catalog.${RESET}`);
   console.log();
 }
 
