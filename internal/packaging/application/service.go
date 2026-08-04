@@ -31,9 +31,6 @@ func NewServiceWithWorkspaceStore(tempRoot string, store persist.WorkspaceStore)
 }
 
 func (s *Service) ConfigurePublishWorkflow(repo ReleaseRecordCreator, publisher PackagePublisher) {
-	if s.publishService == nil {
-		s.publishService = NewPublishService(s.workspaceService)
-	}
 	s.publishService.Configure(repo, publisher)
 }
 
@@ -42,9 +39,6 @@ func (s *Service) Review(input packagingdomain.ImportReviewRequest) (packagingdo
 }
 
 func (s *Service) ReviewContext(ctx context.Context, input packagingdomain.ImportReviewRequest) (packagingdomain.ImportReviewResponse, error) {
-	if s.importReview == nil {
-		s.importReview = NewImportReviewService(s.workspaceService)
-	}
 	return s.importReview.ReviewContext(ctx, input)
 }
 
@@ -53,9 +47,6 @@ func (s *Service) Publish(input packagingdomain.PublishRequest) (packagingdomain
 }
 
 func (s *Service) PublishContext(ctx context.Context, input packagingdomain.PublishRequest) (packagingdomain.PublishResponse, error) {
-	if s.publishService == nil {
-		s.publishService = NewPublishService(s.workspaceService)
-	}
 	return s.publishService.Publish(ctx, input)
 }
 

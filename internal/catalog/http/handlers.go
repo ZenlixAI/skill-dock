@@ -40,10 +40,6 @@ type Handlers struct {
 	PublicInstallTarget  PublicInstallTargetFunc
 }
 
-func New(config Handlers) Handlers {
-	return config
-}
-
 func (h Handlers) Skills(context *gin.Context) {
 	query, err := BindSkillsQuery(context)
 	if err != nil {

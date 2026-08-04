@@ -43,10 +43,6 @@ type Config struct {
 	VersionGovernance gin.HandlerFunc
 }
 
-func New(config Handlers) Handlers {
-	return config
-}
-
 func RegisterRoutes(engine *gin.Engine, config Config) {
 	if config.ServesReadRoutes {
 		registerHeadCompatibleRoute(engine, "/api/v1/governance-changes", config.GovernanceChanges)

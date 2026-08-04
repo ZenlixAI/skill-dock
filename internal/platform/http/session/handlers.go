@@ -36,10 +36,6 @@ type logoutResponse struct {
 	OK bool `json:"ok"`
 }
 
-func New(config Handlers) Handlers {
-	return config
-}
-
 func (h Handlers) Current(context *gin.Context) {
 	current := auth.PrincipalFromContext(context.Request.Context())
 	if !principalPresent(current) && h.Authenticate != nil {

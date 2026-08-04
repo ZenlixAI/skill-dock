@@ -95,7 +95,7 @@ func NewRuntime(ctx context.Context, config Config) (*Runtime, error) {
 		return nil, err
 	}
 
-	packagingService := newPackagingService(config.SharedWorkspaceRoot, storeSet.Workspace)
+	packagingService := packagingapplication.NewServiceWithWorkspaceStore(config.SharedWorkspaceRoot, storeSet.Workspace)
 	packagingService.ConfigurePublishWorkflow(
 		runtimeRepository,
 		platformartifact.NewNPMPublisher(
@@ -138,10 +138,6 @@ func configureDBPool(db *sql.DB, config DBPoolConfig) {
 	db.SetMaxIdleConns(config.MaxIdleConns)
 	db.SetConnMaxLifetime(config.ConnMaxLifetime)
 	db.SetConnMaxIdleTime(config.ConnMaxIdleTime)
-}
-
-func newPackagingService(root string, store platformpersist.WorkspaceStore) *packagingapplication.Service {
-	return packagingapplication.NewServiceWithWorkspaceStore(root, store)
 }
 
 func sqlDriverNameForURL(databaseURL string) string {

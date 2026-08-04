@@ -53,9 +53,7 @@ func NewMemoryRepository(data catalogdomain.SampleCatalogData, options ...Memory
 	}
 
 	return NewRepository(RepositoryConfig{
-		StateStore: NewMemoryAggregateStateStore(data, MemoryAggregateStateStoreOptions{
-			AggregateStore: config.AggregateStore,
-		}),
+		StateStore:     NewMemoryAggregateStateStore(data, config.AggregateStore),
 		ArtifactSource: artifactSource,
 	})
 }
@@ -143,12 +141,4 @@ func (r *CatalogRepository) ApplyVersionGovernanceChange(ctx context.Context, pa
 
 func (r *CatalogRepository) Seed(ctx context.Context, data catalogdomain.SampleCatalogData) error {
 	return r.writes.Seed(ctx, data)
-}
-
-func (r *CatalogRepository) CatalogReadService() *catalogapp.ReadService {
-	return r.reads
-}
-
-func (r *CatalogRepository) CatalogWriteService() *catalogapp.WriteService {
-	return r.writes
 }

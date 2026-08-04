@@ -12,10 +12,6 @@ import (
 	catalogdomain "skill_registry/internal/catalog/domain"
 )
 
-type MemoryAggregateStateStoreOptions struct {
-	AggregateStore catalogdomain.AggregateStore
-}
-
 type MemoryAggregateStateStore struct {
 	mu             sync.RWMutex
 	aggregates     map[string]catalogdomain.AgentSkillAggregate
@@ -63,10 +59,10 @@ func (s *JSONAggregateStore) SaveAggregates(_ context.Context, aggregates []cata
 	return os.Rename(tempPath, s.path)
 }
 
-func NewMemoryAggregateStateStore(data catalogdomain.SampleCatalogData, options MemoryAggregateStateStoreOptions) *MemoryAggregateStateStore {
+func NewMemoryAggregateStateStore(data catalogdomain.SampleCatalogData, aggregateStore catalogdomain.AggregateStore) *MemoryAggregateStateStore {
 	store := &MemoryAggregateStateStore{
 		aggregates:     make(map[string]catalogdomain.AgentSkillAggregate),
-		aggregateStore: options.AggregateStore,
+		aggregateStore: aggregateStore,
 	}
 	if store.aggregateStore != nil {
 		aggregates, err := store.aggregateStore.LoadAggregates(context.Background())

@@ -12,7 +12,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	catalogapp "skill_registry/internal/catalog/application"
 	catalog "skill_registry/internal/catalog/domain"
 	internalcataloghttp "skill_registry/internal/catalog/http"
 	internalgovernancehttp "skill_registry/internal/governance/http"
@@ -123,15 +122,15 @@ func NewServer(config ServerConfig) *Server {
 
 	catalogReadService := config.CatalogReadService
 	if catalogReadService == nil {
-		catalogReadService = resolveCatalogReadService(config.Repository)
+		catalogReadService = config.Repository
 	}
 	catalogMutationService := config.CatalogMutationService
 	if catalogMutationService == nil {
-		catalogMutationService = resolveCatalogWriteService(config.Repository)
+		catalogMutationService = config.Repository
 	}
 	catalogGovernanceService := config.CatalogGovernanceService
 	if catalogGovernanceService == nil {
-		catalogGovernanceService = resolveCatalogGovernanceService(config.Repository)
+		catalogGovernanceService = config.Repository
 	}
 
 	server := &Server{
@@ -170,27 +169,6 @@ func NewServer(config ServerConfig) *Server {
 		internalsystemhttp.NamedDependency{Name: "idempotency", Pinger: internalsystemhttp.DependencyPinger(config.Idempotency)},
 	)
 	return server
-}
-
-func resolveCatalogReadService(repository catalog.Repository) catalogReadService {
-	if provider, ok := repository.(catalogapp.ServiceProvider); ok && provider.CatalogReadService() != nil {
-		return provider.CatalogReadService()
-	}
-	return repository
-}
-
-func resolveCatalogWriteService(repository catalog.Repository) catalogMutationService {
-	if provider, ok := repository.(catalogapp.ServiceProvider); ok && provider.CatalogWriteService() != nil {
-		return provider.CatalogWriteService()
-	}
-	return repository
-}
-
-func resolveCatalogGovernanceService(repository catalog.Repository) catalogGovernanceService {
-	if provider, ok := repository.(catalogapp.ServiceProvider); ok && provider.CatalogReadService() != nil {
-		return provider.CatalogReadService()
-	}
-	return repository
 }
 
 func (s *Server) authorizePackageAccess(writer http.ResponseWriter, request *http.Request, packageName string) bool {
@@ -271,7 +249,7 @@ func (s *Server) logAuditWriteFailure(request *http.Request, action string, err 
 
 func (s *Server) newEngine() *gin.Engine {
 	systemHTTPHandlers := internalsystemhttp.New(s.systemModule.Readyz, s.metrics.RenderPrometheus)
-	sessionHTTPHandlers := platformsessionhttp.New(platformsessionhttp.Handlers{
+	sessionHTTPHandlers := platformsessionhttp.Handlers{
 		Authenticate:    s.authenticateRequest,
 		AuthorizeAction: s.accessWorkflow.AuthorizeAction,
 		CurrentFunc: func(principal auth.Principal) any {
@@ -295,8 +273,8 @@ func (s *Server) newEngine() *gin.Engine {
 		Enabled: func() bool {
 			return s.sessionModule != nil && s.sessionModule.Enabled()
 		},
-	})
-	catalogHTTPHandlers := internalcataloghttp.New(internalcataloghttp.Handlers{
+	}
+	catalogHTTPHandlers := internalcataloghttp.Handlers{
 		AuthorizePackage:     s.authorizePackageAccess,
 		ServeCachedReadJSON:  s.serveCachedReadJSON,
 		ReadListCacheTTL:     s.readListCacheTTL,
@@ -311,8 +289,8 @@ func (s *Server) newEngine() *gin.Engine {
 		PublicInstallTarget: func(response catalog.InstallResolution) catalog.InstallResolution {
 			return internalcataloghttp.RewritePublicInstallTarget(response, s.publicNPMRegistryURL)
 		},
-	})
-	governanceHTTPHandlers := internalgovernancehttp.New(internalgovernancehttp.Handlers{
+	}
+	governanceHTTPHandlers := internalgovernancehttp.Handlers{
 		ServeCachedReadJSON: s.serveCachedReadJSON,
 		ReadListCacheTTL:    s.readListCacheTTL,
 		AuthorizePackage:    s.authorizePackageAccess,
@@ -330,8 +308,8 @@ func (s *Server) newEngine() *gin.Engine {
 		ApplyVersionGovernance: func(request *http.Request, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error) {
 			return s.governanceWorkflow.ApplyVersionGovernanceChange(request.Context(), principal, packageName, versionPath, rawBody)
 		},
-	})
-	packagingHTTPHandlers := internalpackaginghttp.New(internalpackaginghttp.Handlers{
+	}
+	packagingHTTPHandlers := internalpackaginghttp.Handlers{
 		HasPackaging: func() bool {
 			return s.packaging != nil
 		},
@@ -352,7 +330,7 @@ func (s *Server) newEngine() *gin.Engine {
 			return s.packaging.PublishContext(ctx, payload)
 		},
 		RecordMutationAudit: s.recordMutationAudit,
-	})
+	}
 
 	engine := platformhttp.NewEngine([]gin.HandlerFunc{
 		platformmiddleware.WithCORS(),

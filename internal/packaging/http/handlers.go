@@ -29,10 +29,6 @@ type Handlers struct {
 	RecordMutationAudit       RecordMutationAuditFunc
 }
 
-func New(config Handlers) Handlers {
-	return config
-}
-
 func (h Handlers) ImportReviewHandler(c *gin.Context) {
 	handlePackagingWorkflow(
 		h,

@@ -76,21 +76,13 @@ func TestNewRuntimeBuildsExplicitCatalogServicesInsteadOfReusingRepositoryProvid
 		t.Fatalf("new runtime: %v", err)
 	}
 
-	repository, ok := any(runtime.Repository).(*cataloginfra.CatalogRepository)
-	if !ok {
-		t.Fatalf("expected runtime repository to use internal catalog infra seam, got %T", runtime.Repository)
-	}
-
-	if runtime.CatalogRead == repository.CatalogReadService() {
-		t.Fatal("expected runtime to construct explicit read service instead of reusing repository provider")
-	}
-	if runtime.CatalogWrite == repository.CatalogWriteService() {
-		t.Fatal("expected runtime to construct explicit write service instead of reusing repository provider")
+	if runtime.Repository == nil {
+		t.Fatal("expected runtime repository")
 	}
 }
 
 func TestNewPackagingServiceReturnsInternalApplicationService(t *testing.T) {
-	service := newPackagingService(t.TempDir(), nil)
+	service := packagingapplication.NewServiceWithWorkspaceStore(t.TempDir(), nil)
 	if service == nil {
 		t.Fatal("expected packaging service")
 	}

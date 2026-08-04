@@ -157,15 +157,11 @@ func TestServerRoutesHeadSkillsThroughCatalogReadModule(t *testing.T) {
 	}
 }
 
-func TestNewServerPrefersCatalogApplicationServicesFromRepositoryProvider(t *testing.T) {
-	provider := &repositoryApplicationProviderStub{
-		Repository:   cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		readService:  internalapp.NewReadService(serverQueryStoreStub{}),
-		writeService: internalapp.NewWriteService(serverAggregateStateStoreStub{}, serverArtifactSourceStub{}),
-	}
+func TestNewServerUsesRepositoryWhenCatalogServicesAreOmitted(t *testing.T) {
+	repository := cataloginfra.NewMemoryRepository(cataloginfra.SampleData())
 
 	server := NewServer(ServerConfig{
-		Repository:     provider,
+		Repository:     repository,
 		ReaderToken:    "reader-secret",
 		PublisherToken: "publisher-secret",
 	})
@@ -174,29 +170,30 @@ func TestNewServerPrefersCatalogApplicationServicesFromRepositoryProvider(t *tes
 	if !ok {
 		t.Fatalf("expected concrete internal catalog read module, got %T", server.catalogReadModule)
 	}
-	if readModule.Service() != provider.readService {
-		t.Fatal("expected server to wire repository-provided catalog read service")
+	if readModule.Service() != repository {
+		t.Fatal("expected server to use repository as the default catalog read service")
 	}
 
-	if server.catalogMutationService != provider.writeService {
-		t.Fatal("expected server to wire repository-provided catalog write service")
+	if server.catalogMutationService != repository {
+		t.Fatal("expected server to use repository as the default catalog write service")
 	}
 
-	if server.catalogGovernanceService != provider.readService {
-		t.Fatal("expected server to wire repository-provided governance read service")
+	if server.catalogGovernanceService != repository {
+		t.Fatal("expected server to use repository as the default governance read service")
 	}
 }
 
 func TestServerRoutesCatalogDetailReadsThroughCatalogApplicationService(t *testing.T) {
 	store := &serverDetailReadServiceStoreStub{}
-	provider := &repositoryApplicationProviderStub{
-		Repository:   cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		readService:  internalapp.NewReadService(store),
-		writeService: internalapp.NewWriteService(serverAggregateStateStoreStub{}, serverArtifactSourceStub{}),
-	}
+	repository := cataloginfra.NewMemoryRepository(cataloginfra.SampleData())
+	readService := internalapp.NewReadService(store)
+	writeService := internalapp.NewWriteService(serverAggregateStateStoreStub{}, serverArtifactSourceStub{})
 	server := NewServer(ServerConfig{
-		Repository:  provider,
-		ReaderToken: "reader-secret",
+		Repository:               repository,
+		CatalogReadService:       readService,
+		CatalogMutationService:   writeService,
+		CatalogGovernanceService: readService,
+		ReaderToken:              "reader-secret",
 	})
 
 	requests := []struct {
@@ -351,20 +348,6 @@ func TestPlatformEnginePreservesRawPathSettings(t *testing.T) {
 	if recorder.Header().Get("X-Trace-Id") == "" {
 		t.Fatal("expected X-Trace-Id response header")
 	}
-}
-
-type repositoryApplicationProviderStub struct {
-	catalog.Repository
-	readService  *internalapp.ReadService
-	writeService *internalapp.WriteService
-}
-
-func (s *repositoryApplicationProviderStub) CatalogReadService() *internalapp.ReadService {
-	return s.readService
-}
-
-func (s *repositoryApplicationProviderStub) CatalogWriteService() *internalapp.WriteService {
-	return s.writeService
 }
 
 type serverQueryStoreStub struct{}

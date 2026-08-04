@@ -88,18 +88,11 @@ func TestServerWriteModeDoesNotRegisterCatalogListRoutes(t *testing.T) {
 }
 
 func TestNewServerUsesExplicitWorkflowServicesWhenProvided(t *testing.T) {
-	providerRead := internalapp.NewReadService(serverQueryStoreStub{})
-	providerWrite := internalapp.NewWriteService(serverAggregateStateStoreStub{}, serverArtifactSourceStub{})
 	explicitRead := internalapp.NewReadService(serverQueryStoreStub{})
 	explicitWrite := internalapp.NewWriteService(serverAggregateStateStoreStub{}, serverArtifactSourceStub{})
-	provider := &repositoryApplicationProviderStub{
-		Repository:   cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		readService:  providerRead,
-		writeService: providerWrite,
-	}
 
 	server := NewServer(ServerConfig{
-		Repository:               provider,
+		Repository:               cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 		CatalogReadService:       explicitRead,
 		CatalogMutationService:   explicitWrite,
 		CatalogGovernanceService: explicitRead,
@@ -110,15 +103,15 @@ func TestNewServerUsesExplicitWorkflowServicesWhenProvided(t *testing.T) {
 		t.Fatalf("expected concrete internal catalog read module, got %T", server.catalogReadModule)
 	}
 	if readModule.Service() != explicitRead {
-		t.Fatal("expected explicit catalog read service to win over repository provider")
+		t.Fatal("expected explicit catalog read service to be used")
 	}
 
 	if server.catalogMutationService != explicitWrite {
-		t.Fatal("expected explicit catalog mutation service to win over repository provider")
+		t.Fatal("expected explicit catalog mutation service to be used")
 	}
 
 	if server.catalogGovernanceService != explicitRead {
-		t.Fatal("expected explicit governance service to win over repository provider")
+		t.Fatal("expected explicit governance service to be used")
 	}
 }
 

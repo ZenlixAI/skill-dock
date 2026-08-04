@@ -19,7 +19,7 @@ func TestGovernanceChangesUsesGovernanceHandlerBehavior(t *testing.T) {
 	var gotQuery catalog.GovernanceQuery
 	var gotPrincipal auth.Principal
 
-	handlers := New(Handlers{
+	handlers := Handlers{
 		AuthorizePackage: func(http.ResponseWriter, *http.Request, string) bool {
 			return true
 		},
@@ -36,7 +36,7 @@ func TestGovernanceChangesUsesGovernanceHandlerBehavior(t *testing.T) {
 			gotQuery = query
 			return catalog.GovernancePage{}, nil
 		},
-	})
+	}
 
 	engine := gin.New()
 	engine.GET("/api/v1/governance-changes", func(ctx *gin.Context) {
