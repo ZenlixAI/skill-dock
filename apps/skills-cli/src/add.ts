@@ -27,7 +27,7 @@ import {
   saveSelectedAgents,
 } from './skill-lock.ts';
 import type { AgentType, ParsedSource, Skill } from './types.ts';
-import { runRegistryInstallWorkflow } from './registry-install-workflow.ts';
+import { materializeRegistrySkill, runRegistryInstallWorkflow } from './registry-install-workflow.ts';
 import { addSkillToLocalLock, computeSkillFolderHash } from './local-lock.ts';
 import { cleanupTempDir } from './git.ts';
 import { resolveExternalSourceSkills } from './external-source.ts';
@@ -277,6 +277,8 @@ export interface AddOptions {
   dangerouslyAcceptOpenclawRisks?: boolean;
   version?: string;
   registry?: string;
+  outputDir?: string;
+  json?: boolean;
 }
 
 const PACKAGE_NAME_RE = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
@@ -517,6 +519,21 @@ export async function installRegistryPackage(
   spinner: ReturnType<typeof p.spinner>
 ): Promise<void> {
   validateRegistryAddOptions(options);
+  if (options.outputDir) {
+    if (!options.json) {
+      throw new Error('--output-dir requires --json');
+    }
+    const manifest = await materializeRegistrySkill({
+      packageName,
+      version: options.version,
+      registry: options.registry,
+      outputDir: options.outputDir,
+      cwd: process.cwd(),
+    });
+    console.log(JSON.stringify(manifest));
+    return;
+  }
+
   const targetAgents = await resolveTargetAgentsForAdd(options, spinner);
   const { installGlobally, installMode } = await resolveScopeAndModeForAdd(options, targetAgents);
   const cwd = process.cwd();
@@ -931,6 +948,12 @@ export function parseAddOptions(args: string[]): { source: string[]; options: Ad
       if (i + 1 < args.length) {
         options.registry = args[++i];
       }
+    } else if (arg === '--output-dir') {
+      if (i + 1 < args.length) {
+        options.outputDir = args[++i];
+      }
+    } else if (arg === '--json') {
+      options.json = true;
     } else if (arg === '-l' || arg === '--list') {
       options.list = true;
     } else if (arg === '--all') {

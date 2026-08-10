@@ -84,6 +84,8 @@ ${BOLD}Add Options:${RESET}
   --version <version>    Install an exact published version for registry installs
   --copy                 Copy files instead of symlinking to agent directories
   --verbose              Show per-agent install results instead of a compact summary
+  --output-dir <path>    Materialize a registry skill into an explicit directory (requires --json)
+  --json                 Print machine-readable output
 
 ${BOLD}Remove Options:${RESET}
   -g, --global           Remove from global scope
@@ -191,6 +193,8 @@ ${BOLD}Options:${RESET}
   --registry <url>       Catalog base URL override (default env: SKILLS_REGISTRY_URL)
   --version <version>    Install an exact version from the registry
   --copy                 Copy files instead of symlinking to agent directories
+  --output-dir <path>    Materialize a registry skill into an explicit directory (requires --json)
+  --json                 Print machine-readable output
 
 ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} skills add @company.skill/pdf-skill

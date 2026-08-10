@@ -1,3 +1,6 @@
+import { cp, mkdir, mkdtemp, rename, rm, writeFile } from 'fs/promises';
+import { dirname, join, resolve } from 'path';
+
 import { addSkillToLocalLock, computeSkillFolderHash, readLocalLock } from './local-lock.ts';
 import { addSkillToLock, readSkillLock } from './skill-lock.ts';
 import { getRegistryBaseUrl, resolveInstallTarget, type InstallTarget } from './catalog.ts';
@@ -45,6 +48,15 @@ export interface RegistryInstallWorkflowResult {
       error?: string;
     };
   }>;
+}
+
+export interface MaterializedRegistrySkillManifest {
+  packageName: string;
+  requestedVersion?: string;
+  resolvedVersion: string;
+  installName: string;
+  integrity: string;
+  manifestDigest?: string;
 }
 
 function buildFallbackInstallName(packageName: string): string {
@@ -164,4 +176,54 @@ export async function runRegistryInstallWorkflow(
   } finally {
     await bundle.cleanup();
   }
+}
+
+/**
+ * Materializes one registry skill into a caller-owned directory.
+ * This mode deliberately does not select agents or write project/global locks;
+ * it exposes the resolved package contract to runtime callers such as sidecars.
+ */
+export async function materializeRegistrySkill(options: {
+  packageName: string;
+  version?: string;
+  registry?: string;
+  outputDir: string;
+  cwd?: string;
+}): Promise<MaterializedRegistrySkillManifest> {
+  const target = await resolveInstallTarget(options.packageName, {
+    registry: options.registry,
+    version: options.version,
+  });
+  const bundle = await downloadRegistrySkillBundle(target, { cwd: options.cwd });
+  const outputDir = resolve(options.outputDir);
+  const parentDir = dirname(outputDir);
+  let tempDir: string | undefined;
+
+  try {
+    await mkdir(parentDir, { recursive: true });
+    tempDir = await mkdtemp(join(parentDir, `.${basenameForTemp(outputDir)}-`));
+    await cp(bundle.extractedPath, tempDir, { recursive: true });
+    const manifest: MaterializedRegistrySkillManifest = {
+      packageName: target.packageName,
+      requestedVersion: options.version,
+      resolvedVersion: target.version,
+      installName: bundle.skill.installName || deriveInstallName(target.packageName),
+      integrity: target.integrity,
+      manifestDigest: target.skillManifestDigest,
+    };
+    await writeFile(join(tempDir, '.skill-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+    await rm(outputDir, { recursive: true, force: true });
+    await rename(tempDir, outputDir);
+    tempDir = undefined;
+    return manifest;
+  } finally {
+    if (tempDir) {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+    await bundle.cleanup();
+  }
+}
+
+function basenameForTemp(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).pop() || 'skill';
 }

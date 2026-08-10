@@ -1,5 +1,8 @@
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { runRegistryInstallWorkflow } from './registry-install-workflow.ts';
+import { materializeRegistrySkill, runRegistryInstallWorkflow } from './registry-install-workflow.ts';
 import * as catalog from './catalog.ts';
 import * as registryBundle from './registry-bundle.ts';
 import * as installer from './installer.ts';
@@ -40,6 +43,55 @@ vi.mock('./local-lock.ts', () => ({
 describe('runRegistryInstallWorkflow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('materializes a verified registry bundle with a machine-readable manifest', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'skills-materialize-test-'));
+    const source = join(root, 'source');
+    const output = join(root, 'output');
+    await mkdir(source);
+    await writeFile(join(source, 'SKILL.md'), '# PDF\n');
+    const cleanup = vi.fn(() => Promise.resolve());
+
+    vi.mocked(catalog.resolveInstallTarget).mockResolvedValue({
+      packageName: '@platform.skill/pdf-skill',
+      version: '1.2.0',
+      npmRegistry: 'https://npm.example.com',
+      tarballUrl: 'https://npm.example.com/pdf-skill.tgz',
+      integrity: 'sha512-test',
+      skillManifestDigest: 'sha256-manifest',
+      versionStatus: 'published',
+    });
+    vi.mocked(registryBundle.downloadRegistrySkillBundle).mockResolvedValue({
+      extractedPath: source,
+      cleanup,
+      skill: {
+        name: 'pdf-skill',
+        packageName: '@platform.skill/pdf-skill',
+        installName: 'pdf-skill',
+        path: source,
+        description: 'PDF skill',
+      },
+    });
+
+    try {
+      const manifest = await materializeRegistrySkill({
+        packageName: '@platform.skill/pdf-skill',
+        version: '1.2.0',
+        outputDir: output,
+      });
+
+      expect(manifest).toMatchObject({
+        packageName: '@platform.skill/pdf-skill',
+        resolvedVersion: '1.2.0',
+        installName: 'pdf-skill',
+      });
+      expect(await readFile(join(output, 'SKILL.md'), 'utf-8')).toBe('# PDF\n');
+      expect(JSON.parse(await readFile(join(output, '.skill-manifest.json'), 'utf-8'))).toEqual(manifest);
+      expect(cleanup).toHaveBeenCalled();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it('stores a real global skillFolderHash for registry installs', async () => {

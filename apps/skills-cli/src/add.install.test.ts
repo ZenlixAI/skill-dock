@@ -5,6 +5,14 @@ import * as workflow from './registry-install-workflow.ts';
 import * as agentRegistry from './agents.ts';
 
 vi.mock('./registry-install-workflow.ts', () => ({
+  materializeRegistrySkill: vi.fn(() =>
+    Promise.resolve({
+      packageName: '@platform.skill/pdf-skill',
+      resolvedVersion: '1.2.0',
+      installName: 'pdf-skill',
+      integrity: 'sha512-test',
+    })
+  ),
   runRegistryInstallWorkflow: vi.fn(() =>
     Promise.resolve({
       packageName: '@platform.skill/pdf-skill',
@@ -120,6 +128,29 @@ describe('runAdd registry installs', () => {
         targetAgents: ['codex', 'cursor'],
       })
     );
+  });
+
+  it('materializes an explicit output directory without selecting agents', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await runAdd(['@platform.skill/pdf-skill'], {
+        outputDir: '/tmp/sidecar-cache/item-000',
+        json: true,
+        version: '1.2.0',
+      });
+
+      expect(workflow.materializeRegistrySkill).toHaveBeenCalledWith({
+        packageName: '@platform.skill/pdf-skill',
+        version: '1.2.0',
+        registry: undefined,
+        outputDir: '/tmp/sidecar-cache/item-000',
+        cwd: process.cwd(),
+      });
+      expect(workflow.runRegistryInstallWorkflow).not.toHaveBeenCalled();
+      expect(log).toHaveBeenCalledWith(expect.stringContaining('"installName":"pdf-skill"'));
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it('shows a compact success summary by default', async () => {
