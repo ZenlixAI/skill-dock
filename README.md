@@ -1,257 +1,168 @@
-# skill_registry
+# Skill Registry
 
-`skill_registry` 的本地运行路径现在只保留一条 production-oriented 流程：
+[English](README.md) | [简体中文](README.zh-CN.md)
 
-- `kind`
-- `catalog`
-- `skills-web`
-- `postgres`
-- `nexus`
+> An open-source registry and distribution platform for reusable agent skills.
 
-不再提供细粒度的交互式 CLI / kind 生命周期 Make 包装。Makefile 只保留顶层环境工作流，以及 CLI 的 test / type-check / 包发布入口。
+Skill Registry helps teams publish, discover, install, and govern reusable capabilities for coding agents. It combines a catalog API, a web interface, a command-line client, and an npm-compatible artifact repository into one self-hostable platform.
 
-## 常用命令
+An **agent skill** is a reusable capability packaged around a `SKILL.md` file and its supporting resources. Skill Registry gives each published skill a stable package name, versioned releases, searchable metadata, and a controlled installation path.
+
+## Why Skill Registry?
+
+Agent skills are easy to share as folders and difficult to operate as a reliable ecosystem. Skill Registry provides the missing operational layer:
+
+- **Discoverability** — search and browse skills through the catalog or web UI.
+- **Reproducible installation** — resolve an exact package and version, then install it through the `skills` CLI.
+- **Authoring and publishing** — validate, package, and publish local or imported skills.
+- **Lifecycle governance** — deprecate, yank, or retire skills and versions without silently deleting history.
+- **Self-hosting** — use a deployment's own database, authentication, and npm-compatible artifact repository.
+- **Agent compatibility** — install skills into the directories used by supported coding agents.
+
+## Project Status
+
+Skill Registry is under active development. The core workflows are implemented, while deployment contracts, APIs, and user-facing features may continue to evolve. Treat the current API and package format as versioned project interfaces, not as a promise of backwards compatibility for every pre-release build.
+
+## Architecture
+
+The project deliberately separates product truth from artifact storage:
+
+| Component | Responsibility |
+| --- | --- |
+| **Catalog API** | Owns discovery, metadata, version visibility, install resolution, and governance state. |
+| **Skills CLI** | Installs, searches, lists, updates, synchronizes, validates, imports, and publishes skills. |
+| **Web UI** | Provides catalog browsing and authoring/import workflows. |
+| **Artifact repository** | Stores immutable skill bundles in an npm-compatible repository such as Nexus or Artifact Keeper. |
+| **Database** | Persists catalog state, release records, governance changes, audit data, and workflow state. |
+
+The catalog is the source of truth for what users can discover and install. The npm-compatible repository stores the bundle; an artifact existing in that repository is not considered a published release until it has a corresponding catalog release record.
+
+## Design Principles
+
+- **One public identity:** a skill is addressed by its npm-compatible **Package Name**.
+- **Immutable releases:** each published version is a distinct release that can be resolved and verified.
+- **Explicit governance:** lifecycle changes record an action and a reason.
+- **Separated concerns:** discovery and policy belong to the catalog; bundle storage belongs to the artifact repository.
+- **Portable source intake:** skills can be authored locally or imported from a local archive or Git source.
+- **Operationally observable:** authentication, readiness endpoints, idempotent publishing, and audit records are part of the platform boundary.
+
+## Quick Start
+
+### Prerequisites
+
+For the local development stack, install:
+
+- Docker
+- [kind](https://kind.sigs.k8s.io/)
+- [kubectl](https://kubernetes.io/docs/tasks/tools/)
+- Go 1.26 or later
+- Node.js 18 or later and npm
+- [uv](https://docs.astral.sh/uv/)
+
+### Start the local stack
+
+The supported local path runs the web UI, Catalog, PostgreSQL, and Nexus in kind:
+
+```bash
+make dev
+make verify
+```
+
+To rebuild and deploy changed local images into an existing cluster:
+
+```bash
+make build
+make deploy
+```
+
+The default local endpoints are:
+
+| Service | URL |
+| --- | --- |
+| Web UI | <http://127.0.0.1:8080> |
+| Nexus UI / API | <http://127.0.0.1:8081> |
+| Catalog API | <http://127.0.0.1:18080> |
+| npm-compatible repository | <http://127.0.0.1:8081/repository/skills-npm/> |
+
+### Use the CLI against the local stack
+
+Set the Catalog and npm authentication contexts separately:
+
+```bash
+export SKILLS_REGISTRY_URL=http://127.0.0.1:18080
+export SKILLS_REGISTRY_TOKEN=reader-secret
+export NPM_CONFIG_USERCONFIG=/private/tmp/skill-registry-nexus/.npmrc
+export npm_config_registry=http://127.0.0.1:8081/repository/skills-npm/
+
+skills find pdf
+skills add @company.skill/your-skill -y
+```
+
+Publishing requires a publisher-capable Catalog token:
+
+```bash
+export SKILLS_REGISTRY_TOKEN=publisher-secret
+skills publish /absolute/path/to/your-skill
+```
+
+The CLI also supports importing local and Git sources, updating registry-installed skills, and synchronizing source-installed skills. Run `skills --help` for the complete command surface.
+
+## Common Development Commands
 
 ```bash
 make help
-make dev
-make deploy
-make build
-make verify
 make test-go
 make test-web
 make test-cli
 make typecheck-cli
-make publish-cli NPM_CONFIG_USERCONFIG=/abs/path/to/.npmrc
-make publish-cli-snapshot NPM_CONFIG_USERCONFIG=/abs/path/to/.npmrc
 make build-web
-make clean-dev
-```
-
-含义：
-
-- `make dev`：构建本地镜像，确保 kind 集群存在，部署开发栈，初始化 Nexus，并等待服务 Ready
-- `make deploy`：把最新本地镜像部署到现有 kind 环境
-- `make build`：构建本地 `catalog` / `skills-web` 镜像
-- `make verify`：执行顶层校验，包括 Go、Web、CLI test 和 CLI type-check
-- `make test-cli`：在 `apps/skills-cli` 里跑测试
-- `make typecheck-cli`：在 `apps/skills-cli` 里跑类型检查
-- `make publish-cli` / `make publish-cli-snapshot`：把 CLI 包发布到当前配置的 npm 仓
-- `make clean-dev`：删除本地 Nexus bootstrap 状态目录
-
-## 本地开发
-
-首次启动：
-
-```bash
-make dev
 make verify
 ```
 
-代码改完后重新部署本地环境：
+The root `Makefile` owns the top-level environment workflow and verification entry points. Interactive skill operations remain commands of the standalone `skills` CLI.
 
-```bash
-make build
-make deploy
-```
+## Documentation
 
-严格鉴权模式：
+- [Local kind and Nexus E2E runbook](docs/local-nexus-e2e.zh-CN.md) — Chinese
+- [Artifact Keeper npm integration](docs/artifact-keeper-npm.zh-CN.md) — Chinese
+- [Batch skill import](docs/batch-import-skills.zh-CN.md) — Chinese
+- [Local Web and Catalog E2E](docs/local-web-catalog-e2e.zh-CN.md) — Chinese
+- [Architecture decision records](docs/adr/)
+- [Catalog API contract](docs/superpowers/specs/2026-05-28-agent-skill-registry-catalog-api.openapi.yaml)
+- [Product introduction deck](docs/skill-registry-product-intro/)
 
-```bash
-make dev STRICT=1
-```
+The root README is the default English introduction. Operational runbooks are currently maintained in Chinese; contributions that add English counterparts are welcome.
 
-默认本地入口：
+## Configuration
 
-- Web: <http://127.0.0.1:8080>
-- Nexus UI / API: <http://127.0.0.1:8081>
-- Catalog API: <http://127.0.0.1:18080>
-- Nexus npm repository: <http://127.0.0.1:8081/repository/skills-npm/>
-- Nexus `.npmrc`: `/private/tmp/skill-registry-nexus/.npmrc`
+A deployment commonly configures the following environment variables:
 
-相关清单：
+| Variable | Purpose |
+| --- | --- |
+| `SKILL_REGISTRY_ADDR` | Catalog listen address. |
+| `SKILL_REGISTRY_DATABASE_URL` | SQLite or PostgreSQL database URL. |
+| `SKILL_REGISTRY_NPM_REGISTRY_URL` | Artifact repository used by the Catalog for metadata and bundle access. |
+| `SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL` | Artifact repository URL reachable by CLI and browser clients. |
+| `SKILL_REGISTRY_READER_TOKEN` | Token for catalog read operations. |
+| `SKILL_REGISTRY_AUTHORING_TOKEN` | Token for authoring and packaging workflows. |
+| `SKILL_REGISTRY_PUBLISHER_TOKEN` | Token for publishing and governance operations. |
+| `SKILL_REGISTRY_NPM_READ_AUTHORIZATION` | Authorization header for private artifact-repository reads. |
+| `SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION` | Authorization header used for server-side publication. |
 
-- [zarf/k8s/dev/kind-config.yaml](zarf/k8s/dev/kind-config.yaml)
-- [zarf/k8s/dev/kind-stack.yaml](zarf/k8s/dev/kind-stack.yaml)
+See the local runbooks for complete examples, private registry authentication, and deployment-specific settings.
 
-## 本地 Nexus E2E
+## Contributing
 
-Makefile 不再包装交互式 CLI 子命令。需要 `find`、`add`、`publish`、`import-*`、`sync` 时，直接使用独立 `skills` CLI；仓库级 Make 只保留 CLI 的测试、类型检查和包发布入口。
+Contributions are welcome. Before submitting a change:
 
-```bash
-make dev
+1. Read the relevant architecture decision records and package contracts.
+2. Keep the Catalog, CLI, Web UI, and artifact-repository boundaries explicit.
+3. Add or update tests for behavioral changes.
+4. Run `make verify` and include any environment limitations in the pull request description.
+5. Keep documentation and examples in sync with the command or API being changed.
 
-export SKILLS_REGISTRY_URL=http://127.0.0.1:18080
-export SKILLS_REGISTRY_TOKEN=publisher-secret
-export NPM_CONFIG_USERCONFIG=/private/tmp/skill-registry-nexus/.npmrc
-export npm_config_registry=http://127.0.0.1:8081/repository/skills-npm/
+For changes to the public package model, install resolution, publishing workflow, or governance semantics, document the decision in `docs/adr/` or the relevant design document.
 
-skills publish /abs/path/to/skill
-skills find your-skill
-skills add @company.skill/your-skill -y
-skills import-local /abs/path/to/legacy-skill \
-  --package-name @company.skill/legacy-skill \
-  --version 0.1.0 \
-  --publish-registry http://127.0.0.1:8081/repository/skills-npm/
-```
+## License
 
-说明：
-
-- `publish` / `import-local` / `import-git` 需要可发布凭据，通常使用 `publisher-secret`
-- 只读查询可以把 `SKILLS_REGISTRY_TOKEN` 换成 `reader-secret`
-- `NPM_CONFIG_USERCONFIG` 指向 `make dev` / `make deploy` 生成的本地 Nexus `.npmrc`
-- 根 Makefile 的 `publish-cli` / `publish-cli-snapshot` 优先读取 `NPM_CONFIG_USERCONFIG`，未提供时才回退到 `NEXUS_NPMRC`
-- `skills add` 安装结果默认写入当前项目的 `./.agents/skills/`
-- source 安装后用 `skills sync` 刷新；registry 安装后用 `skills update`
-
-批量导入不再通过 Makefile 暴露，直接运行脚本：
-
-```bash
-uv run python zarf/tools/batch-import/batch_import_skills.py \
-  --manifest /abs/path/to/import.json \
-  --catalog-url http://127.0.0.1:18080 \
-  --npm-registry http://127.0.0.1:8081/repository/skills-npm/
-```
-
-详细步骤见 [docs/local-nexus-e2e.zh-CN.md](docs/local-nexus-e2e.zh-CN.md)、[docs/artifact-keeper-npm.zh-CN.md](docs/artifact-keeper-npm.zh-CN.md) 和 [docs/batch-import-skills.zh-CN.md](docs/batch-import-skills.zh-CN.md)。
-
-## Web UI
-
-常用命令：
-
-```bash
-npm --prefix apps/skills-web test
-npm --prefix apps/skills-web run build
-npm --prefix apps/skills-web run dev
-```
-
-直连本地 Catalog 调试：
-
-```bash
-make dev
-
-cd apps/skills-web
-VITE_SKILL_REGISTRY_URL=http://127.0.0.1:18080 \
-VITE_SKILL_REGISTRY_TOKEN=publisher-secret \
-npm run dev
-```
-
-Web 真实模式现在默认走生产路径：
-
-- 浏览器优先走 session / 真实 API
-- 导入页使用 `import-review` 和一次性 `publish`
-- Catalog 负责打包、npm 发布和 release-record
-
-Playwright 冒烟见 [docs/local-web-catalog-e2e.zh-CN.md](docs/local-web-catalog-e2e.zh-CN.md)。
-
-## 客户交付
-
-客户现场部署统一看：
-
-- [../../helm-charts/skills-registry/README.md](../../helm-charts/skills-registry/README.md)
-- [../../helm-charts/skills-registry/values.yaml](../../helm-charts/skills-registry/values.yaml)
-
-## 清理与重建
-
-只清理本地 Nexus bootstrap 状态：
-
-```bash
-make clean-dev
-```
-
-如果要完整重建本地 kind 环境：
-
-```bash
-kind delete cluster --name skill-registry
-make clean-dev
-make dev
-```
-
-## 关键配置
-
-CLI：
-
-- `SKILLS_REGISTRY_URL`
-- `SKILLS_REGISTRY_TOKEN`
-- `NPM_CONFIG_USERCONFIG`
-- `npm_config_registry`
-
-Catalog：
-
-- `SKILL_REGISTRY_ADDR`
-- `SKILL_REGISTRY_ARTIFACTS_PATH`
-- `SKILL_REGISTRY_DATABASE_URL`
-- `SKILL_REGISTRY_READER_TOKEN`
-- `SKILL_REGISTRY_AUTHORING_TOKEN`
-- `SKILL_REGISTRY_PUBLISHER_TOKEN`
-- `SKILL_REGISTRY_NPM_REGISTRY_URL`
-- `SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL`
-- `SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION`
-- `SKILL_REGISTRY_NPM_PUBLISH_TOKEN`
-- `SKILL_REGISTRY_NPM_READ_AUTHORIZATION`
-
-补充：
-
-- `SKILL_REGISTRY_ARTIFACTS_PATH` 用于显式指定离线 artifact 元数据文件
-- `SKILL_REGISTRY_NPM_REGISTRY_URL` 给 Catalog 后端自己读取 npm 元数据；私有仓库可通过 `SKILL_REGISTRY_NPM_READ_AUTHORIZATION` 配置认证
-- `SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL` 给 CLI / 浏览器下载 tarball
-- 运行时已收敛为单一生产路径，不再提供额外启动分支
-
-### `SKILL_REGISTRY_NPM_READ_AUTHORIZATION`
-
-用于 Catalog 后端访问私有 npm 仓库的 metadata 和 tarball。值是完整的 HTTP Authorization header，例如：
-
-```text
-Bearer <token>
-```
-
-如果未设置，Catalog 会回退使用 `SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION`。
-
-### `SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION`
-
-这个值给 Catalog 后端自己执行 server-side `npm publish` 使用，不是给浏览器，也不是给你本机 CLI。
-
-典型来源是 Nexus `.npmrc`：
-
-1. token 形式
-
-```ini
-//127.0.0.1:8081/repository/skills-npm/:_authToken=NpmToken.xxxxx
-```
-
-对应：
-
-```text
-Bearer NpmToken.xxxxx
-```
-
-2. basic 形式
-
-```ini
-//127.0.0.1:8081/repository/skills-npm/:_auth=base64xxxx
-```
-
-对应：
-
-```text
-Basic base64xxxx
-```
-
-### 本地 kind 与 Nexus bootstrap
-
-`make dev` 和 `make deploy` 会在部署流程里自动：
-
-1. 初始化集群内 Nexus 仓
-2. 重写 `/private/tmp/skill-registry-nexus/.npmrc`
-3. 从 `.npmrc` 提取可用的 Authorization 头
-4. patch `catalog-secrets.skill_registry_npm_publish_authorization`
-5. 重启并等待 `deployment/catalog`
-
-如果需要手工 patch：
-
-```bash
-AUTH_HEADER='Bearer NpmToken.xxxxx'
-kubectl -n skill-registry patch secret catalog-secrets --type merge -p "{\"stringData\":{\"skill_registry_npm_publish_authorization\":\"$AUTH_HEADER\"}}"
-kubectl -n skill-registry rollout restart deployment/catalog
-kubectl -n skill-registry rollout status deployment/catalog
-```
+This project is licensed under the [MIT License](LICENSE).
