@@ -49,6 +49,65 @@ func TestJSONArtifactSourceReadsArtifactsFile(t *testing.T) {
 	}
 }
 
+func TestAuthenticatedNPMRegistryArtifactSourceAddsAuthorization(t *testing.T) {
+	tarball := buildNPMPackageTarball(t, map[string]string{
+		"package/SKILL.md":     "---\nname: Test Skill\ndescription: Artifact source test\n---\n",
+		"package/package.json": `{"name":"@platform.skill/test-skill","version":"0.2.0"}`,
+	})
+	client := &http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			if request.Header.Get("Authorization") != "Bearer registry-token" {
+				return jsonResponse(http.StatusUnauthorized, `{}`), nil
+			}
+			if request.URL.Path == expectedPackageTarballPath("@platform.skill/test-skill", "0.2.0") {
+				return binaryResponse(http.StatusOK, tarball), nil
+			}
+			return jsonResponse(http.StatusOK, `{
+				"name":"@platform.skill/test-skill",
+				"time":{"0.2.0":"2026-05-30T13:00:00Z"},
+				"versions":{"0.2.0":{"name":"@platform.skill/test-skill","version":"0.2.0","dist":{"tarball":"https://registry.example.com/platform.skill/test-skill/-/test-skill-0.2.0.tgz","integrity":"sha512-020","shasum":"sha1-020"}}}
+			}`), nil
+		}),
+	}
+
+	source := NewAuthenticatedNPMRegistryArtifactSource("https://registry.example.com", "Bearer registry-token", client)
+	if _, err := source.FindReleaseArtifact(context.Background(), "@platform.skill/test-skill", "0.2.0"); err != nil {
+		t.Fatalf("expected authenticated metadata and tarball requests to succeed: %v", err)
+	}
+}
+func TestAuthenticatedNPMRegistryArtifactSourceAcceptsArtifactKeeperMetadata(t *testing.T) {
+	tarball := buildNPMPackageTarball(t, map[string]string{
+		"package/SKILL.md":     "---\nname: Test Skill\ndescription: Artifact source test\n---\n",
+		"package/package.json": `{"name":"@platform.skill/test-skill","version":"0.2.0"}`,
+	})
+	client := &http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			if request.Header.Get("Authorization") != "Bearer registry-token" {
+				return jsonResponse(http.StatusUnauthorized, `{}`), nil
+			}
+			if request.URL.Path == expectedPackageTarballPath("@platform.skill/test-skill", "0.2.0") {
+				return binaryResponse(http.StatusOK, tarball), nil
+			}
+			return jsonResponse(http.StatusOK, `{
+				"name":"@platform.skill/test-skill",
+				"dist-tags":{"latest":"0.2.0"},
+				"versions":{"0.2.0":{"name":"@platform.skill/test-skill","version":"0.2.0","dist":{"tarball":"https://registry.example.com/platform.skill/test-skill/-/test-skill-0.2.0.tgz","integrity":"sha256-test"}}}
+			}`), nil
+		}),
+	}
+
+	source := NewAuthenticatedNPMRegistryArtifactSource("https://registry.example.com", "Bearer registry-token", client)
+	artifact, err := source.FindReleaseArtifact(context.Background(), "@platform.skill/test-skill", "0.2.0")
+	if err != nil {
+		t.Fatalf("expected Artifact Keeper metadata to be accepted: %v", err)
+	}
+	if artifact.Version.Registry.Shasum == "" {
+		t.Fatal("expected shasum to be derived from the downloaded tarball")
+	}
+	if artifact.Version.PublishedAt.IsZero() {
+		t.Fatal("expected publication time fallback")
+	}
+}
 func TestNPMRegistryArtifactSourceReadsPackageMetadata(t *testing.T) {
 	skillContent := "---\nname: Test Skill\ndescription: Artifact source test\n---\n"
 	tarball := buildNPMPackageTarball(t, map[string]string{

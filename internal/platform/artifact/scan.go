@@ -17,6 +17,7 @@ type BundleScanResult struct {
 	Description    string
 	ManifestDigest string
 	Components     []string
+	Shasum         string
 }
 
 func scanNPMPackageTarball(reader io.Reader, expectedPackageName string, expectedVersion string) (BundleScanResult, string) {

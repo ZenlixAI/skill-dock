@@ -108,10 +108,12 @@ func TestConfiguredSessionUsersUseLoginCredentials(t *testing.T) {
 func TestConfiguredArtifactSourceUsesConfiguredNPMRegistry(t *testing.T) {
 	t.Setenv("SKILL_REGISTRY_ARTIFACTS_PATH", "")
 	t.Setenv("SKILL_REGISTRY_NPM_REGISTRY_URL", "https://registry.example.com")
+	t.Setenv("SKILL_REGISTRY_NPM_READ_AUTHORIZATION", "Bearer read-token")
 
 	source := configuredArtifactSource()
 
-	if _, ok := source.(*platformartifact.NPMRegistryArtifactSource); !ok {
+	_, ok := source.(*platformartifact.NPMRegistryArtifactSource)
+	if !ok {
 		t.Fatalf("expected NPM registry artifact source, got %T", source)
 	}
 }

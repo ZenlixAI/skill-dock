@@ -113,7 +113,7 @@ uv run python zarf/tools/batch-import/batch_import_skills.py \
   --npm-registry http://127.0.0.1:8081/repository/skills-npm/
 ```
 
-详细步骤见 [docs/local-nexus-e2e.zh-CN.md](docs/local-nexus-e2e.zh-CN.md) 和 [docs/batch-import-skills.zh-CN.md](docs/batch-import-skills.zh-CN.md)。
+详细步骤见 [docs/local-nexus-e2e.zh-CN.md](docs/local-nexus-e2e.zh-CN.md)、[docs/artifact-keeper-npm.zh-CN.md](docs/artifact-keeper-npm.zh-CN.md) 和 [docs/batch-import-skills.zh-CN.md](docs/batch-import-skills.zh-CN.md)。
 
 ## Web UI
 
@@ -188,13 +188,24 @@ Catalog：
 - `SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL`
 - `SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION`
 - `SKILL_REGISTRY_NPM_PUBLISH_TOKEN`
+- `SKILL_REGISTRY_NPM_READ_AUTHORIZATION`
 
 补充：
 
 - `SKILL_REGISTRY_ARTIFACTS_PATH` 用于显式指定离线 artifact 元数据文件
-- `SKILL_REGISTRY_NPM_REGISTRY_URL` 给 Catalog 后端自己读取 npm 元数据
+- `SKILL_REGISTRY_NPM_REGISTRY_URL` 给 Catalog 后端自己读取 npm 元数据；私有仓库可通过 `SKILL_REGISTRY_NPM_READ_AUTHORIZATION` 配置认证
 - `SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL` 给 CLI / 浏览器下载 tarball
 - 运行时已收敛为单一生产路径，不再提供额外启动分支
+
+### `SKILL_REGISTRY_NPM_READ_AUTHORIZATION`
+
+用于 Catalog 后端访问私有 npm 仓库的 metadata 和 tarball。值是完整的 HTTP Authorization header，例如：
+
+```text
+Bearer <token>
+```
+
+如果未设置，Catalog 会回退使用 `SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION`。
 
 ### `SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION`
 

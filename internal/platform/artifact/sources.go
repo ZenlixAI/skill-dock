@@ -61,16 +61,22 @@ func (s *JSONArtifactSource) FindReleaseArtifact(_ context.Context, packageName 
 
 type NPMRegistryArtifactSource struct {
 	baseURL           string
+	authorization     string
 	client            *http.Client
 	defaultSourceType catalog.SourceType
 }
 
 func NewNPMRegistryArtifactSource(baseURL string, client *http.Client) *NPMRegistryArtifactSource {
+	return NewAuthenticatedNPMRegistryArtifactSource(baseURL, "", client)
+}
+
+func NewAuthenticatedNPMRegistryArtifactSource(baseURL string, authorization string, client *http.Client) *NPMRegistryArtifactSource {
 	if client == nil {
 		client = http.DefaultClient
 	}
 	return &NPMRegistryArtifactSource{
 		baseURL:           strings.TrimRight(baseURL, "/"),
+		authorization:     strings.TrimSpace(authorization),
 		client:            client,
 		defaultSourceType: catalog.SourceTypeImported,
 	}
@@ -91,6 +97,10 @@ func (s *NPMRegistryArtifactSource) FindReleaseArtifact(ctx context.Context, pac
 			"packageName": packageName,
 			"version":     version,
 		})
+	}
+	request.Header.Set("Accept", "application/json")
+	if s.authorization != "" {
+		request.Header.Set("Authorization", s.authorization)
 	}
 
 	response, err := s.client.Do(request)
@@ -132,13 +142,17 @@ func (s *NPMRegistryArtifactSource) FindReleaseArtifact(ctx context.Context, pac
 		})
 	}
 
-	publishedAt, err := parseRegistryPublishedAt(metadata.Time[version])
-	if err != nil {
-		return catalog.ReleaseArtifact{}, catalog.NewError(503, "registry_unavailable", "Registry metadata is unreadable.", map[string]any{
-			"packageName": packageName,
-			"version":     version,
-			"field":       "time",
-		})
+	publishedAt := time.Now().UTC()
+	if rawPublishedAt := strings.TrimSpace(metadata.Time[version]); rawPublishedAt != "" {
+		parsedPublishedAt, parseErr := parseRegistryPublishedAt(rawPublishedAt)
+		if parseErr != nil {
+			return catalog.ReleaseArtifact{}, catalog.NewError(503, "registry_unavailable", "Registry metadata is unreadable.", map[string]any{
+				"packageName": packageName,
+				"version":     version,
+				"field":       "time",
+			})
+		}
+		publishedAt = parsedPublishedAt
 	}
 
 	artifact := catalog.ReleaseArtifact{
@@ -184,6 +198,9 @@ func (s *NPMRegistryArtifactSource) FindReleaseArtifact(ctx context.Context, pac
 	artifact.Version.Bundle = catalog.BundleMetadata{
 		SkillManifestDigest: scanResult.ManifestDigest,
 		Components:          scanResult.Components,
+	}
+	if strings.TrimSpace(artifact.Version.Registry.Shasum) == "" {
+		artifact.Version.Registry.Shasum = scanResult.Shasum
 	}
 	return artifact, nil
 }
@@ -235,8 +252,6 @@ func validateRegistryArtifactMetadata(packageName string, version string, metada
 		return "dist.tarball is required"
 	case strings.TrimSpace(artifact.Version.Registry.Integrity) == "":
 		return "dist.integrity is required"
-	case strings.TrimSpace(artifact.Version.Registry.Shasum) == "":
-		return "dist.shasum is required"
 	default:
 		return ""
 	}
@@ -289,6 +304,9 @@ func (s *NPMRegistryArtifactSource) scanTarball(ctx context.Context, tarballURL 
 			"version":     version,
 		})
 	}
+	if s.authorization != "" {
+		request.Header.Set("Authorization", s.authorization)
+	}
 
 	response, err := s.client.Do(request)
 	if err != nil {
@@ -316,5 +334,8 @@ func (s *NPMRegistryArtifactSource) scanTarball(ctx context.Context, tarballURL 
 	}
 
 	scanResult, validationError := scanNPMPackageTarball(bytes.NewReader(content), packageName, version)
+	if validationError == "" {
+		_, scanResult.Shasum = digestTarball(content)
+	}
 	return scanResult, validationError, nil
 }

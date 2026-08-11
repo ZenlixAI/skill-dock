@@ -46,7 +46,7 @@ func configuredArtifactSource() catalog.ArtifactSource {
 		return artifactadapter.NewJSONArtifactSource(path)
 	}
 	if registryURL := os.Getenv("SKILL_REGISTRY_NPM_REGISTRY_URL"); registryURL != "" {
-		return artifactadapter.NewNPMRegistryArtifactSource(registryURL, nil)
+		return artifactadapter.NewAuthenticatedNPMRegistryArtifactSource(registryURL, configuredNPMReadAuthorization(), nil)
 	}
 	return cataloginfra.NewStaticArtifactSource(nil)
 }
@@ -163,6 +163,13 @@ func envDurationOrDefault(key string, fallback time.Duration) time.Duration {
 		log.Fatalf("parse %s: expected duration value, got %q", key, value)
 	}
 	return parsed
+}
+
+func configuredNPMReadAuthorization() string {
+	if value := strings.TrimSpace(os.Getenv("SKILL_REGISTRY_NPM_READ_AUTHORIZATION")); value != "" {
+		return value
+	}
+	return configuredNPMPublishAuthorization()
 }
 
 func configuredNPMPublishAuthorization() string {
