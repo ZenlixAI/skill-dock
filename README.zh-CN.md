@@ -125,6 +125,7 @@ make verify
 
 - [本地 kind 与 Nexus E2E 操作手册](docs/local-nexus-e2e.zh-CN.md)
 - [使用 Artifact Keeper 作为 npm 仓库](docs/artifact-keeper-npm.zh-CN.md)
+- [Skills CLI 的 npx 执行与 npm 认证指南](docs/skills-cli-npx-auth.zh-CN.md)
 - [批量导入 Skill](docs/batch-import-skills.zh-CN.md)
 - [本地 Web 与 Catalog E2E](docs/local-web-catalog-e2e.zh-CN.md)
 - [架构决策记录](docs/adr/)
