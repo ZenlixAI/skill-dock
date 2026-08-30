@@ -10,7 +10,7 @@ vi.mock('../api/client', () => ({
   createReleaseRecord: vi.fn(),
   getRegistryClientConfig: vi.fn(() => ({
     mode: 'real',
-    baseUrl: null,
+    baseUrl: 'http://skills.test:31080',
     role: null,
     actor: null,
     hasToken: false,
@@ -27,7 +27,7 @@ afterEach(() => {
 
 describe('VersionDetailPage', () => {
   const expectedCommand =
-    `npx --registry ${window.location.origin}/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.0.0`;
+    'npx --registry http://skills.test:31080/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.0.0';
 
   it('consumes provider session posture without issuing a page-local session fetch', async () => {
     vi.mocked(client.getSession).mockResolvedValue({
@@ -132,10 +132,10 @@ describe('VersionDetailPage', () => {
     ).toBeInTheDocument();
     expect(screen.getAllByText('可直接安装').length).toBeGreaterThan(0);
     expect(screen.getAllByText('已发布').length).toBeGreaterThan(0);
-    expect(screen.getByText('仓库与打包产物')).toBeInTheDocument();
-    expect(screen.getAllByText('http://192.168.10.127:32081').length).toBeGreaterThan(0);
+    expect(screen.getByText('Catalog 与打包产物')).toBeInTheDocument();
+    expect(screen.getAllByText('http://skills.test:31080').length).toBeGreaterThan(0);
     expect(
-      screen.getAllByText('http://192.168.10.127:32081/@platform.skill/agent-notes/-/agent-notes-1.0.0.tgz').length
+      screen.getAllByText('http://skills.test:31080/@platform.skill/agent-notes/-/agent-notes-1.0.0.tgz').length
     ).toBeGreaterThan(0);
     expect(screen.getAllByText('完整性校验').length).toBeGreaterThan(0);
     expect(screen.getByText('校验摘要')).toBeInTheDocument();
@@ -243,10 +243,10 @@ describe('VersionDetailPage', () => {
     );
 
     expect(
-      await screen.findByText('等仓库元数据返回后，这里会显示可直接复制的版本安装命令。')
+      await screen.findByText('等 Catalog 解析结果返回后，这里会显示可直接复制的版本安装命令。')
     ).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '安装状态' })).toBeInTheDocument();
-    expect(screen.getByText('当前还没有可用的仓库安装信息。')).toBeInTheDocument();
+    expect(screen.getByText('当前还没有可用的 Catalog 安装信息。')).toBeInTheDocument();
   });
 
   it('keeps the shared install panel when registry install data is unavailable', async () => {
@@ -296,7 +296,7 @@ describe('VersionDetailPage', () => {
 
     expect(await screen.findByRole('heading', { name: '安装这个版本' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '安装状态' })).not.toBeInTheDocument();
-    expect(screen.getAllByText('待补充仓库 Host').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('http://skills.test:31080').length).toBeGreaterThan(0);
     expect(screen.getByDisplayValue(expectedCommand)).toBeInTheDocument();
     expect(screen.getByText('当前未返回制品包地址。')).toBeInTheDocument();
     expect(screen.getByText('当前未返回完整性校验值。')).toBeInTheDocument();
@@ -350,7 +350,7 @@ describe('VersionDetailPage', () => {
     const submitButton = await screen.findByRole('button', { name: '写入发布记录' });
     expect(submitButton).toBeDisabled();
 
-    fireEvent.click(screen.getByLabelText('我确认这个版本已经完成 npm publish 或一次性发布，可继续写入发布记录。'));
+    fireEvent.click(screen.getByLabelText('我确认这个版本已经完成 Catalog 发布或一次性发布，可继续写入发布记录。'));
 
     expect(submitButton).not.toBeDisabled();
   });

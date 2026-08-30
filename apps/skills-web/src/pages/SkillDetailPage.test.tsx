@@ -9,7 +9,7 @@ vi.mock('../api/client', () => ({
   applySkillGovernanceChange: vi.fn(),
   getRegistryClientConfig: vi.fn(() => ({
     mode: 'real',
-    baseUrl: null,
+    baseUrl: 'http://skills.test:31080',
     role: null,
     actor: null,
     hasToken: false,
@@ -28,7 +28,7 @@ afterEach(() => {
 
 describe('SkillDetailPage', () => {
   const expectedCommand =
-    `npx --registry ${window.location.origin}/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.0.0`;
+    'npx --registry http://skills.test:31080/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.0.0';
 
   it('consumes provider session posture without issuing a page-local session fetch', async () => {
     vi.mocked(client.getSession).mockResolvedValue({
@@ -154,9 +154,9 @@ describe('SkillDetailPage', () => {
     expect(
       screen.getByDisplayValue(expectedCommand)
     ).toBeInTheDocument();
-    expect(screen.getAllByText('http://192.168.10.127:32081').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('http://skills.test:31080').length).toBeGreaterThan(0);
     expect(
-      screen.getAllByText('http://192.168.10.127:32081/@platform.skill/agent-notes/-/agent-notes-1.0.0.tgz').length
+      screen.getAllByText('http://skills.test:31080/@platform.skill/agent-notes/-/agent-notes-1.0.0.tgz').length
     ).toBeGreaterThan(0);
     expect(screen.queryByText('http://192.168.10.127:32081/repository/skills-npm/')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '复制安装命令' })).toBeInTheDocument();
@@ -164,7 +164,7 @@ describe('SkillDetailPage', () => {
     expect(screen.getAllByText('已发布').length).toBeGreaterThan(0);
     expect(screen.getAllByText('原生').length).toBeGreaterThan(0);
     expect(screen.getAllByText('启用').length).toBeGreaterThan(0);
-    expect(screen.getByText('仓库安装态势')).toBeInTheDocument();
+    expect(screen.getByText('Catalog 安装态势')).toBeInTheDocument();
     expect(screen.queryByText('published')).not.toBeInTheDocument();
     expect(screen.queryByText('resolvable')).not.toBeInTheDocument();
     expect(screen.queryByText('native')).not.toBeInTheDocument();
@@ -376,7 +376,7 @@ describe('SkillDetailPage', () => {
       </SessionProvider>
     );
 
-    expect(await screen.findByText('等安装目标被仓库解析出来后，这里会显示可直接复制的命令。')).toBeInTheDocument();
+    expect(await screen.findByText('等 Catalog 解析结果返回后，这里会显示可直接复制的命令。')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '安装状态' })).toBeInTheDocument();
     expect(screen.getByText('当前还没有可用的安装目标。请先检查最新版本是否已经发布并可解析。')).toBeInTheDocument();
   });
@@ -444,7 +444,7 @@ describe('SkillDetailPage', () => {
 
     expect(await screen.findByRole('heading', { name: '安装这个技能' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '安装状态' })).not.toBeInTheDocument();
-    expect(screen.getAllByText('待补充仓库 Host').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('http://skills.test:31080').length).toBeGreaterThan(0);
     expect(screen.getByDisplayValue(expectedCommand)).toBeInTheDocument();
   });
 
@@ -522,7 +522,7 @@ describe('SkillDetailPage', () => {
     expect(installPanel).not.toBeNull();
     expect(
       within(installPanel as HTMLElement).getByDisplayValue(
-        `npx --registry ${window.location.origin}/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.9.0`
+        'npx --registry http://skills.test:31080/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.9.0'
       )
     ).toBeInTheDocument();
     expect(within(installPanel as HTMLElement).getByText('可直接安装')).toBeInTheDocument();

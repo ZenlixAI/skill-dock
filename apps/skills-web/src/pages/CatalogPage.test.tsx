@@ -30,6 +30,7 @@ describe('CatalogPage', () => {
     );
 
     expect(await screen.findByDisplayValue('pdf')).toBeInTheDocument();
+    expect(screen.getByText('当前视图没有匹配技能。')).toBeInTheDocument();
     expect(screen.getByText('请尝试更宽泛的能力词、包范围或来源筛选。')).toBeInTheDocument();
   });
 

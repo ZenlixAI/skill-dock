@@ -45,8 +45,24 @@ func configuredArtifactSource() catalog.ArtifactSource {
 	if path := os.Getenv("SKILL_REGISTRY_ARTIFACTS_PATH"); path != "" {
 		return artifactadapter.NewJSONArtifactSource(path)
 	}
-	if registryURL := os.Getenv("SKILL_REGISTRY_NPM_REGISTRY_URL"); registryURL != "" {
-		return artifactadapter.NewAuthenticatedNPMRegistryArtifactSource(registryURL, configuredNPMReadAuthorization(), nil)
+	artifactReadURL := strings.TrimSpace(os.Getenv("SKILL_REGISTRY_ARTIFACT_READ_URL"))
+	if artifactReadURL == "" {
+		artifactReadURL = strings.TrimSpace(os.Getenv("SKILL_REGISTRY_NPM_REGISTRY_URL"))
+	}
+	if artifactReadURL != "" {
+		artifactReadAuthorization := strings.TrimSpace(os.Getenv("SKILL_REGISTRY_ARTIFACT_READ_AUTHORIZATION"))
+		if artifactReadAuthorization == "" {
+			artifactReadAuthorization = strings.TrimSpace(os.Getenv("SKILL_REGISTRY_NPM_READ_AUTHORIZATION"))
+			if artifactReadAuthorization == "" {
+				artifactReadAuthorization = strings.TrimSpace(os.Getenv("SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION"))
+				if artifactReadAuthorization == "" {
+					if token := strings.TrimSpace(os.Getenv("SKILL_REGISTRY_NPM_PUBLISH_TOKEN")); token != "" {
+						artifactReadAuthorization = "Bearer " + token
+					}
+				}
+			}
+		}
+		return artifactadapter.NewAuthenticatedNPMRegistryArtifactSource(artifactReadURL, artifactReadAuthorization, nil)
 	}
 	return cataloginfra.NewStaticArtifactSource(nil)
 }
@@ -54,11 +70,40 @@ func configuredArtifactSource() catalog.ArtifactSource {
 func configuredRepositoryOptions(artifactSource catalog.ArtifactSource) cataloginfra.SQLRepositoryOptions {
 	return cataloginfra.SQLRepositoryOptions{
 		ArtifactSource: artifactSource,
-		DisableSeed:    true,
+		DisableSeed:    envBoolOrDefault("SKILL_REGISTRY_DISABLE_SEED", true),
 	}
 }
 
 func configuredRuntimeConfig() backend.Config {
+	artifactReadURL := strings.TrimSpace(os.Getenv("SKILL_REGISTRY_ARTIFACT_READ_URL"))
+	if artifactReadURL == "" {
+		artifactReadURL = strings.TrimSpace(os.Getenv("SKILL_REGISTRY_NPM_REGISTRY_URL"))
+	}
+	artifactReadAuthorization := strings.TrimSpace(os.Getenv("SKILL_REGISTRY_ARTIFACT_READ_AUTHORIZATION"))
+	if artifactReadAuthorization == "" {
+		artifactReadAuthorization = strings.TrimSpace(os.Getenv("SKILL_REGISTRY_NPM_READ_AUTHORIZATION"))
+		if artifactReadAuthorization == "" {
+			artifactReadAuthorization = strings.TrimSpace(os.Getenv("SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION"))
+			if artifactReadAuthorization == "" {
+				if token := strings.TrimSpace(os.Getenv("SKILL_REGISTRY_NPM_PUBLISH_TOKEN")); token != "" {
+					artifactReadAuthorization = "Bearer " + token
+				}
+			}
+		}
+	}
+	artifactPublishAuthorization := strings.TrimSpace(os.Getenv("SKILL_REGISTRY_ARTIFACT_PUBLISH_AUTHORIZATION"))
+	if artifactPublishAuthorization == "" {
+		artifactPublishAuthorization = strings.TrimSpace(os.Getenv("SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION"))
+		if artifactPublishAuthorization == "" {
+			if token := strings.TrimSpace(os.Getenv("SKILL_REGISTRY_NPM_PUBLISH_TOKEN")); token != "" {
+				artifactPublishAuthorization = "Bearer " + token
+			}
+		}
+	}
+	publicInstallURL := strings.TrimSpace(os.Getenv("SKILL_REGISTRY_PUBLIC_INSTALL_URL"))
+	if publicInstallURL == "" {
+		publicInstallURL = strings.TrimSpace(os.Getenv("SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL"))
+	}
 	artifactSource := configuredArtifactSource()
 
 	return backend.Config{
@@ -76,9 +121,10 @@ func configuredRuntimeConfig() backend.Config {
 			ReaderToken:                     os.Getenv("SKILL_REGISTRY_READER_TOKEN"),
 			AuthoringToken:                  os.Getenv("SKILL_REGISTRY_AUTHORING_TOKEN"),
 			PublisherToken:                  os.Getenv("SKILL_REGISTRY_PUBLISHER_TOKEN"),
-			NPMRegistryURL:                  os.Getenv("SKILL_REGISTRY_NPM_REGISTRY_URL"),
-			NPMRegistryPublishAuthorization: configuredNPMPublishAuthorization(),
-			PublicNPMRegistryURL:            os.Getenv("SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL"),
+			NPMRegistryURL:                  artifactReadURL,
+			NPMRegistryReadAuthorization:    artifactReadAuthorization,
+			NPMRegistryPublishAuthorization: artifactPublishAuthorization,
+			PublicNPMRegistryURL:            publicInstallURL,
 			AuthTokens:                      configuredAuthTokens(),
 			SessionSecret:                   os.Getenv("SKILL_REGISTRY_SESSION_SECRET"),
 			SessionUsers:                    configuredSessionUsers(),
@@ -165,21 +211,20 @@ func envDurationOrDefault(key string, fallback time.Duration) time.Duration {
 	return parsed
 }
 
-func configuredNPMReadAuthorization() string {
-	if value := strings.TrimSpace(os.Getenv("SKILL_REGISTRY_NPM_READ_AUTHORIZATION")); value != "" {
-		return value
+func envBoolOrDefault(key string, fallback bool) bool {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
 	}
-	return configuredNPMPublishAuthorization()
-}
-
-func configuredNPMPublishAuthorization() string {
-	if value := strings.TrimSpace(os.Getenv("SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION")); value != "" {
-		return value
+	switch strings.ToLower(value) {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		log.Fatalf("parse %s: expected boolean value, got %q", key, value)
+		return fallback
 	}
-	if token := strings.TrimSpace(os.Getenv("SKILL_REGISTRY_NPM_PUBLISH_TOKEN")); token != "" {
-		return "Bearer " + token
-	}
-	return ""
 }
 
 func serveHTTPServer(httpServer *http.Server) error {

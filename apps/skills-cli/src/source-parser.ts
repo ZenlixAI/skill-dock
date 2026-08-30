@@ -53,32 +53,36 @@ function parseGitHttpSource(value: string): ParsedSource | null {
 }
 
 export function parseSourceInput(value: string): ParsedSource | null {
-  if (existsSync(value)) {
+  const normalizedValue = value.trim();
+  const baseDir = process.env.INIT_CWD?.trim() || process.cwd();
+  const localPath = resolve(baseDir, normalizedValue);
+
+  if (existsSync(localPath)) {
     return {
       type: 'local',
-      url: resolve(value),
-      localPath: resolve(value),
+      url: localPath,
+      localPath,
     };
   }
 
-  const httpSource = parseGitHttpSource(value);
+  const httpSource = parseGitHttpSource(normalizedValue);
   if (httpSource) {
     return httpSource;
   }
 
   if (
-    value.startsWith('git@') ||
-    value.startsWith('ssh://') ||
-    value.startsWith('git://') ||
-    value.startsWith('git+ssh://')
+    normalizedValue.startsWith('git@') ||
+    normalizedValue.startsWith('ssh://') ||
+    normalizedValue.startsWith('git://') ||
+    normalizedValue.startsWith('git+ssh://')
   ) {
     return {
       type: 'git',
-      url: value,
+      url: normalizedValue,
     };
   }
 
-  const shorthandMatch = value.match(GITHUB_SHORTHAND_RE);
+  const shorthandMatch = normalizedValue.match(GITHUB_SHORTHAND_RE);
   if (shorthandMatch?.groups) {
     const owner = shorthandMatch.groups.owner;
     const repo = shorthandMatch.groups.repo;

@@ -8,13 +8,14 @@ test('runs prepare, validate, and pack against the live packaging backend', asyn
   await page.goto('/');
   await page.getByRole('link', { name: '导入' }).click();
   await expect(page).toHaveURL(/\/workbench\/import$/);
-  await expect(page.getByRole('button', { name: 'Prepare' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '检查并生成发布预览' })).toBeVisible();
 
-  const sourceTypeSelect = page.locator('select').nth(0);
-  const inlineFilesField = page.locator('textarea').nth(0);
-  const displayNameField = page.locator('input').nth(2);
-  const descriptionField = page.locator('textarea').nth(1);
-  const metadataSourceTypeSelect = page.locator('select').nth(1);
+  const importSection = page.locator('section').filter({ has: page.getByRole('heading', { name: '导入并发布 skill' }) });
+  const sourceTypeSelect = importSection.getByLabel('来源类型');
+  const inlineFilesField = page.getByLabel('当前文件内容', { exact: true });
+  const displayNameField = page.getByLabel('显示名', { exact: true });
+  const descriptionField = page.getByLabel('描述', { exact: true });
+  const metadataSourceTypeSelect = importSection.getByLabel('元数据来源类型');
 
   await sourceTypeSelect.selectOption('platform_authoring');
   await inlineFilesField.fill(
@@ -33,18 +34,15 @@ test('runs prepare, validate, and pack against the live packaging backend', asyn
   await descriptionField.fill('Playwright smoke test for the real packaging workflow.');
   await metadataSourceTypeSelect.selectOption('platform_created');
 
-  const packHandoffCard = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Pack 交接' }) }).first();
+  const packHandoffCard = page.locator('section').filter({ has: page.getByRole('heading', { name: '发布交接' }) }).first();
 
-  await page.getByRole('button', { name: 'Prepare' }).click();
-  await expect(packHandoffCard).toContainText('工作目录');
+  await page.getByRole('button', { name: '检查并生成发布预览' }).click();
+  await expect(packHandoffCard).toContainText('manifest 摘要');
   await expect(packHandoffCard).toContainText(packageName);
 
-  await page.getByRole('button', { name: 'Validate' }).click();
-  await expect(page.getByText('validate ok')).toBeVisible();
-  await expect(packHandoffCard).toContainText('manifest 摘要');
+  await page.getByRole('button', { name: '发布 skill' }).click();
+  await expect(page.getByRole('heading', { name: '发布结果' })).toBeVisible();
+  await expect(packHandoffCard).toContainText('catalog publish');
 
-  await page.getByRole('button', { name: 'Pack' }).click();
-  await expect(packHandoffCard).toContainText('bundle 路径');
-  await expect(packHandoffCard).toContainText('pack 已可进入发布交接');
-  await expect(packHandoffCard.getByRole('link', { name: '继续进入 release record' })).toBeVisible();
+  await expect(packHandoffCard.getByRole('link', { name: '打开版本详情' })).toBeVisible();
 });

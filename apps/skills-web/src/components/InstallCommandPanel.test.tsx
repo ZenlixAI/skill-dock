@@ -2,6 +2,16 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InstallCommandPanel } from './InstallCommandPanel';
 
+vi.mock('../api/client', () => ({
+  getRegistryClientConfig: vi.fn(() => ({
+    mode: 'real',
+    baseUrl: 'http://skills.test:31080',
+    role: null,
+    actor: null,
+    hasToken: false,
+  })),
+}));
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -9,7 +19,7 @@ afterEach(() => {
 
 describe('InstallCommandPanel', () => {
   const expectedCommand =
-    `npx --registry ${window.location.origin}/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.2.3`;
+    'npx --registry http://skills.test:31080/repository/skills-npm/ skills add @platform.skill/agent-notes --version 1.2.3';
 
   it('copies the generated install command', async () => {
     Object.defineProperty(window.navigator, 'clipboard', {
@@ -22,7 +32,6 @@ describe('InstallCommandPanel', () => {
         title="安装这个技能"
         packageName="@platform.skill/agent-notes"
         version="1.2.3"
-        npmRegistry="http://192.168.10.127:32081/repository/skills-npm/"
         installPolicy="resolvable"
         tarballUrl="https://npm.internal.example.com/@platform.skill/agent-notes/-/agent-notes-1.2.3.tgz"
       />
@@ -34,13 +43,13 @@ describe('InstallCommandPanel', () => {
       expect(window.navigator.clipboard.writeText).toHaveBeenCalledWith(expectedCommand)
     );
     expect(screen.getByDisplayValue(expectedCommand)).toBeInTheDocument();
-    expect(screen.getByText('已复制')).toBeInTheDocument();
-    expect(screen.getByText('制品包地址')).toBeInTheDocument();
+    expect(screen.getAllByText('http://skills.test:31080').length).toBeGreaterThan(0);
     expect(
-      screen.getByText('http://192.168.10.127:32081/@platform.skill/agent-notes/-/agent-notes-1.2.3.tgz')
+      screen.getByText('http://skills.test:31080/@platform.skill/agent-notes/-/agent-notes-1.2.3.tgz')
     ).toBeInTheDocument();
     expect(screen.getByText('完整性校验')).toBeInTheDocument();
     expect(screen.getByText('可直接安装')).toBeInTheDocument();
+    expect(screen.getByText('当前版本可直接作为 Catalog 安装目标，复制命令后即可在你自己的终端执行 `skills add`。')).toBeInTheDocument();
     expect(screen.queryByText('http://192.168.10.127:32081/repository/skills-npm/')).not.toBeInTheDocument();
   });
 
@@ -60,7 +69,6 @@ describe('InstallCommandPanel', () => {
         title="安装这个技能"
         packageName="@platform.skill/agent-notes"
         version="1.2.3"
-        npmRegistry="http://192.168.10.127:32081/repository/skills-npm/"
         installPolicy="resolvable"
       />
     );
@@ -87,7 +95,6 @@ describe('InstallCommandPanel', () => {
         title="安装这个技能"
         packageName="@platform.skill/agent-notes"
         version="1.2.3"
-        npmRegistry="http://192.168.10.127:32081/repository/skills-npm/"
         installPolicy="resolvable"
       />
     );
@@ -104,7 +111,6 @@ describe('InstallCommandPanel', () => {
         title="安装这个版本"
         packageName="@platform.skill/agent-notes"
         version="1.2.3"
-        npmRegistry="http://192.168.10.127:32081/repository/skills-npm/"
         installPolicy="blocked"
       />
     );
@@ -119,12 +125,11 @@ describe('InstallCommandPanel', () => {
         title="安装这个版本"
         packageName="@platform.skill/agent-notes"
         version="1.2.3"
-        npmRegistry=""
         installPolicy="catalog_only"
       />
     );
 
-    expect(screen.getAllByText('待补充仓库 Host').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('http://skills.test:31080').length).toBeGreaterThan(0);
     expect(
       screen.getByDisplayValue(expectedCommand)
     ).toBeInTheDocument();

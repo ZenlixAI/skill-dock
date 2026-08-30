@@ -18,12 +18,7 @@ import {
 } from '../features/version-detail/useVersionDetailActions';
 import { useVersionDetailSnapshot } from '../features/version-detail/useVersionDetailSnapshot';
 import { formatDate } from '../lib/format';
-import {
-  getGovernanceActionLabel,
-  getGovernanceTargetTypeLabel,
-  getInstallPolicyLabel,
-  getVersionStatusLabel,
-} from '../lib/installCommand';
+import { getGovernanceActionLabel, getGovernanceTargetTypeLabel, getInstallPolicyLabel, getVersionStatusLabel } from '../lib/installCommand';
 import { buildReleaseHandoffPath, readReleaseHandoff } from '../lib/releaseHandoff';
 import { useRegistrySession } from '../session/SessionProvider';
 
@@ -156,8 +151,8 @@ export function VersionDetailPage() {
 
     if (!detail.data) {
       return (
-        <SurfaceCard description="等仓库元数据返回后，这里会显示可直接复制的版本安装命令。" title="安装状态" variant="hero">
-          <div className="empty-box">当前还没有可用的仓库安装信息。</div>
+        <SurfaceCard description="等 Catalog 解析结果返回后，这里会显示可直接复制的版本安装命令。" title="安装状态" variant="hero">
+          <div className="empty-box">当前还没有可用的 Catalog 安装信息。</div>
         </SurfaceCard>
       );
     }
@@ -167,7 +162,6 @@ export function VersionDetailPage() {
         title="安装这个版本"
         packageName={decodedPackage}
         version={version}
-        npmRegistry={detail.data.registry.npmRegistry}
         installPolicy={detail.data.installPolicy || 'catalog_only'}
         tarballUrl={detail.data.registry.tarballUrl}
         integrity={detail.data.registry.integrity}
@@ -215,7 +209,7 @@ export function VersionDetailPage() {
         <article className="console-signal">
           <span>发布登记</span>
           <strong>{actionState.loading === 'release' ? '执行中' : '就绪'}</strong>
-          <p>用于在打包产物已经发布到 npm 仓库之后写入发布记录。</p>
+          <p>用于在打包产物已经发布到 Catalog 之后写入发布记录。</p>
         </article>
         <article className="console-signal">
           <span>治理动作</span>
@@ -263,7 +257,7 @@ export function VersionDetailPage() {
           </div>
         </SurfaceCard>
 
-        <SurfaceCard description="复制命令前，先核对仓库与打包产物摘要。" title="仓库与打包产物">
+        <SurfaceCard description="复制命令前，先核对 Catalog 与打包产物摘要。" title="Catalog 与打包产物">
           <dl className="property-list">
             <div>
               <dt>版本状态</dt>
@@ -282,7 +276,7 @@ export function VersionDetailPage() {
               <dd>{detail.data?.installPolicy ? getInstallPolicyLabel(detail.data.installPolicy) : '—'}</dd>
             </div>
             <div>
-              <dt>npm 仓库地址</dt>
+              <dt>Catalog proxy</dt>
               <dd>{detail.data ? installRegistryHost : '—'}</dd>
             </div>
             <div>
@@ -366,7 +360,7 @@ export function VersionDetailPage() {
           >
             <div className="stack-column">
               <label className="field">
-                <span>发布目标仓库</span>
+                <span>Catalog 发布入口</span>
                 <input
                   onChange={(event) => setPublishRegistry(event.target.value)}
                   placeholder={detail.data?.registry.npmRegistry || 'https://npm.internal.example.com'}
@@ -392,7 +386,7 @@ export function VersionDetailPage() {
               <div className="action-row">
                 <div className="action-row__copy">
                   <strong>登记这个打包产物</strong>
-                  <p>先确认这个版本已经完成 `npm publish` 或 Catalog 一次性发布，再为它写入目录发布记录。</p>
+                  <p>先确认这个版本已经完成 Catalog 发布或一次性发布，再为它写入目录发布记录。</p>
                 </div>
               </div>
               <div className="list-stack">
@@ -400,7 +394,7 @@ export function VersionDetailPage() {
                   <div className="list-card__head">
                     <div>
                       <strong>发布前检查清单</strong>
-                      <span>发布记录不会替你执行 `npm publish` 或一次性发布。</span>
+                      <span>发布记录不会替你执行 Catalog 发布或一次性发布。</span>
                     </div>
                     <StatusPill tone={publishConfirmed ? 'good' : 'warn'}>
                       {publishConfirmed ? '已确认' : '待确认'}
@@ -412,12 +406,12 @@ export function VersionDetailPage() {
               </div>
               <label className="checkbox-row">
                 <input
-                  aria-label="我确认这个版本已经完成 npm publish 或一次性发布，可继续写入发布记录。"
+                  aria-label="我确认这个版本已经完成 Catalog 发布或一次性发布，可继续写入发布记录。"
                   checked={publishConfirmed}
                   onChange={(event) => setPublishConfirmed(event.target.checked)}
                   type="checkbox"
                 />
-                <span>我确认这个版本已经完成 npm publish 或一次性发布，可继续写入发布记录。</span>
+                <span>我确认这个版本已经完成 Catalog 发布或一次性发布，可继续写入发布记录。</span>
               </label>
               <button
                 className="button button--primary"

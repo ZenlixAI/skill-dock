@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "skills": {
+    "@company.skill/my-aaa": {
+      "sourceType": "registry",
+      "computedHash": "c22a19a2a74dc4870d0e16e69836a41d98bf1aa86932fd95d8a5a4e3011f8f58",
+      "packageName": "@company.skill/my-aaa",
+      "installName": "my-aaa",
+      "version": "0.1.0",
+      "registry": "http://127.0.0.1:18080",
+      "integrity": "sha512-lvhqNVvDgQXAX8dqmhsFXT8pxRp05dNINzAgXfhNQf4BNBm0AJRkZIcHJTZdAO33eEiy3MoFgN7qxwZziiuS8g==",
+      "skillManifestDigest": "sha256:8ce13ffe74625f0af7321feb7ad3349707601c924087c6b8ee42da0ed98bc6e2"
+    }
+  }
+}

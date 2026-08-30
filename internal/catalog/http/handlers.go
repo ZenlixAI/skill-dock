@@ -23,7 +23,7 @@ type GetSkillFunc func(context.Context, string) (catalog.SkillDetail, error)
 type ListVersionsFunc func(context.Context, catalog.VersionQuery) (catalog.VersionsPage, error)
 type GetVersionFunc func(context.Context, string, string) (catalog.SkillVersionDetail, error)
 type ResolveInstallTargetFunc func(context.Context, string, string) (catalog.InstallResolution, error)
-type PublicInstallTargetFunc func(catalog.InstallResolution) catalog.InstallResolution
+type PublicInstallTargetFunc func(*stdhttp.Request, catalog.InstallResolution) catalog.InstallResolution
 
 type Handlers struct {
 	AuthorizePackage     AuthorizePackageFunc
@@ -248,7 +248,7 @@ func (h Handlers) InstallTarget(context *gin.Context) {
 			return nil, platformhttp.CatalogErrorFromError(resolveErr)
 		}
 		if h.PublicInstallTarget != nil {
-			return h.PublicInstallTarget(payload), nil
+			return h.PublicInstallTarget(context.Request, payload), nil
 		}
 		return payload, nil
 	})

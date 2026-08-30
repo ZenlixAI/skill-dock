@@ -2,14 +2,17 @@ import { defineConfig } from '@playwright/test';
 
 const catalogCommand = process.env.PLAYWRIGHT_CATALOG_COMMAND?.trim();
 const catalogPort = Number(process.env.PLAYWRIGHT_CATALOG_PORT || 0);
-const webServers = [
-  {
-    command: 'npm run preview:e2e',
-    port: 4174,
-    reuseExistingServer: process.env.CI ? false : true,
-    timeout: 120_000,
-  },
-];
+const baseURL = process.env.PLAYWRIGHT_BASE_URL?.trim() || 'http://127.0.0.1:4174';
+const webServers = process.env.PLAYWRIGHT_BASE_URL?.trim()
+  ? []
+  : [
+      {
+        command: 'npm run preview:e2e',
+        port: 4174,
+        reuseExistingServer: process.env.CI ? false : true,
+        timeout: 120_000,
+      },
+    ];
 
 if (catalogCommand) {
   if (!catalogPort) {
@@ -28,7 +31,7 @@ export default defineConfig({
   timeout: 45_000,
   workers: 1,
   use: {
-    baseURL: 'http://127.0.0.1:4174',
+    baseURL,
     trace: 'on-first-retry',
   },
   webServer: webServers,

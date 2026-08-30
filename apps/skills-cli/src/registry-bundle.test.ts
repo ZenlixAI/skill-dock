@@ -101,7 +101,7 @@ description: PDF processing workflow
     }
   });
 
-  it('attaches npm auth headers when the tarball url matches a local npmrc', async () => {
+  it('does not attach npm auth headers when downloading through the Catalog server', async () => {
     const fixture = createBundleFixture();
     const authDir = join(fixtureDir, 'auth');
     mkdirSync(authDir, { recursive: true });
@@ -136,7 +136,6 @@ description: PDF processing workflow
         expect.objectContaining({
           headers: {
             accept: 'application/octet-stream',
-            Authorization: 'Bearer fixture-token',
           },
         })
       );

@@ -61,10 +61,22 @@ export async function cloneRepo(url: string, ref?: string): Promise<string> {
     await git.clone(url, tempDir, cloneOptions);
     return tempDir;
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    if (errorMessage.includes('dumb http transport does not support shallow capabilities')) {
+      try {
+        await git.clone(url, tempDir, ref ? ['--branch', ref] : []);
+        return tempDir;
+      } catch (retryError) {
+        await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+        const retryMessage = retryError instanceof Error ? retryError.message : String(retryError);
+        throw new GitCloneError(`Failed to clone ${url}: ${retryMessage}`, url, false, false);
+      }
+    }
+
     // Clean up temp dir on failure
     await rm(tempDir, { recursive: true, force: true }).catch(() => {});
 
-    const errorMessage = error instanceof Error ? error.message : String(error);
     const isTimeout = errorMessage.includes('block timeout') || errorMessage.includes('timed out');
     const isAuthError =
       errorMessage.includes('Authentication failed') ||

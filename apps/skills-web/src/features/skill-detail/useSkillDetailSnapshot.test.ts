@@ -5,6 +5,13 @@ import { useSkillDetailSnapshot } from './useSkillDetailSnapshot';
 
 vi.mock('../../api/client', () => ({
   getInstallTarget: vi.fn(),
+  getRegistryClientConfig: vi.fn(() => ({
+    mode: 'real',
+    baseUrl: 'http://skills.test:31080',
+    role: null,
+    actor: null,
+    hasToken: false,
+  })),
   getSkillDetail: vi.fn(),
   getSkillVersions: vi.fn(),
   listGovernanceChanges: vi.fn(),
@@ -79,7 +86,6 @@ describe('useSkillDetailSnapshot', () => {
     expect(result.current.installTargetVersionItem?.version).toBe('1.9.0');
     expect(result.current.installTargetVersionItem?.installPolicy).toBe('resolvable');
     expect(result.current.installVersion).toBe('1.9.0');
-    expect(result.current.hasInstallTarget).toBe(true);
     expect(result.current.statusTone).toBe('good');
   });
 });

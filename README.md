@@ -61,18 +61,21 @@ For the local development stack, install:
 
 ### Start the local stack
 
-The supported local path runs the web UI, Catalog, PostgreSQL, and Nexus in kind:
+The supported local path runs the web UI, Catalog, and PostgreSQL in kind, while npm access is pointed at an Artifact Keeper repository running separately on `http://localhost:30080`:
 
 ```bash
 make dev
-make verify
+make down
 ```
 
-To rebuild and deploy changed local images into an existing cluster:
+By default, Catalog reads from `http://host.docker.internal:30080/`; CLI/browser installs use the Catalog proxy at `http://127.0.0.1:18080/repository/skills-npm/`.
+
+To override those URLs for a different Artifact Keeper host:
 
 ```bash
-make build
-make deploy
+ARTIFACTKEEPER_INTERNAL_NPM_URL=http://host.docker.internal:30080/ \
+ARTIFACTKEEPER_PUBLIC_NPM_URL=http://127.0.0.1:18080/repository/skills-npm/ \
+make dev
 ```
 
 The default local endpoints are:
@@ -80,9 +83,8 @@ The default local endpoints are:
 | Service | URL |
 | --- | --- |
 | Web UI | <http://127.0.0.1:8080> |
-| Nexus UI / API | <http://127.0.0.1:8081> |
 | Catalog API | <http://127.0.0.1:18080> |
-| npm-compatible repository | <http://127.0.0.1:8081/repository/skills-npm/> |
+| npm proxy (via Catalog) | <http://127.0.0.1:18080/repository/skills-npm/> |
 
 ### Use the CLI against the local stack
 
@@ -91,8 +93,6 @@ Set the Catalog and npm authentication contexts separately:
 ```bash
 export SKILLS_REGISTRY_URL=http://127.0.0.1:18080
 export SKILLS_REGISTRY_TOKEN=reader-secret
-export NPM_CONFIG_USERCONFIG=/private/tmp/skill-registry-nexus/.npmrc
-export npm_config_registry=http://127.0.0.1:8081/repository/skills-npm/
 
 skills find pdf
 skills add @company.skill/your-skill -y
@@ -116,14 +116,15 @@ make test-web
 make test-cli
 make typecheck-cli
 make build-web
-make verify
+make dev
+make down
 ```
 
 The root `Makefile` owns the top-level environment workflow and verification entry points. Interactive skill operations remain commands of the standalone `skills` CLI.
 
 ## Documentation
 
-- [Local kind and Nexus E2E runbook](docs/local-nexus-e2e.zh-CN.md) — Chinese
+- [Local kind and Artifact Keeper E2E runbook](docs/local-nexus-e2e.zh-CN.md) — Chinese
 - [Artifact Keeper npm integration](docs/artifact-keeper-npm.zh-CN.md) — Chinese
 - [Skills CLI npx execution and npm auth guide](docs/skills-cli-npx-auth.zh-CN.md) — Chinese
 - [Batch skill import](docs/batch-import-skills.zh-CN.md) — Chinese

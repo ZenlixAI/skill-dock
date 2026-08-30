@@ -41,6 +41,12 @@ describe('catalog client', () => {
     expect(getRegistryBaseUrl()).toBe('https://catalog.example.com');
   });
 
+  it('derives the catalog base URL from the npm registry env used by npx --registry', () => {
+    vi.stubEnv('SKILLS_REGISTRY_URL', '');
+    vi.stubEnv('npm_config_registry', 'http://127.0.0.1:18080/repository/skills-npm/');
+    expect(getRegistryBaseUrl()).toBe('http://127.0.0.1:18080');
+  });
+
   it('requires an explicit registry instead of falling back to a public URL', () => {
     vi.stubEnv('SKILLS_REGISTRY_URL', '');
     vi.stubEnv('SKILLS_API_URL', 'https://legacy.example.com/');

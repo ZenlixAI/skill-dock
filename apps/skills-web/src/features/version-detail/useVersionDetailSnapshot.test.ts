@@ -4,6 +4,13 @@ import * as client from '../../api/client';
 import { useVersionDetailSnapshot } from './useVersionDetailSnapshot';
 
 vi.mock('../../api/client', () => ({
+  getRegistryClientConfig: vi.fn(() => ({
+    mode: 'real',
+    baseUrl: 'http://skills.test:31080',
+    role: null,
+    actor: null,
+    hasToken: false,
+  })),
   getVersionDetail: vi.fn(),
   listGovernanceChanges: vi.fn(),
 }));
@@ -53,9 +60,9 @@ describe('useVersionDetailSnapshot', () => {
 
     expect(result.current.currentVersionStatus).toBe('deprecated');
     expect(result.current.versionTone).toBe('warn');
-    expect(result.current.installRegistryHost).toBe('http://192.168.10.127:32081');
+    expect(result.current.installRegistryHost).toBe('http://skills.test:31080');
     expect(result.current.installTarballUrl).toBe(
-      'http://192.168.10.127:32081/@platform.skill/agent-notes/-/agent-notes-1.2.0.tgz'
+      'http://skills.test:31080/@platform.skill/agent-notes/-/agent-notes-1.2.0.tgz'
     );
   });
 });

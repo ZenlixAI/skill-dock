@@ -53,6 +53,7 @@ type ServerConfig struct {
 	AuthoringToken                  string
 	PublisherToken                  string
 	NPMRegistryURL                  string
+	NPMRegistryReadAuthorization    string
 	NPMRegistryPublishAuthorization string
 	NPMRegistryPublishClient        *http.Client
 	PublicNPMRegistryURL            string
@@ -66,30 +67,33 @@ type ServerConfig struct {
 }
 
 type Server struct {
-	repo                     catalog.Repository
-	authorizer               *auth.Authorizer
-	sessionManager           *auth.SessionManager
-	accessWorkflow           platformaccess.Gate
-	catalogReadModule        internalcataloghttp.Workflow
-	auditQueryModule         auditQueryWorkflow
-	catalogMutationService   catalogMutationService
-	catalogGovernanceService catalogGovernanceService
-	governanceWorkflow       internalgovernancehttp.Workflow
-	oneShotPackagingWorkflow *internalpackaginghttp.OneShotWorkflow
-	sessionModule            platformsession.Workflow
-	systemModule             systemWorkflow
-	publicNPMRegistryURL     string
-	packaging                packagingApplication
-	auditRecorder            *platformaudit.Recorder
-	logger                   *log.Logger
-	metrics                  *observability.Collector
-	requestID                atomic.Uint64
-	mode                     ServerMode
-	readListCacheTTL         time.Duration
-	readDetailCacheTTL       time.Duration
-	readCache                *platformhttp.ReadCache
-	readLimiter              *platformhttp.RequestLimiter
-	writeLimiter             *platformhttp.RequestLimiter
+	repo                            catalog.Repository
+	authorizer                      *auth.Authorizer
+	sessionManager                  *auth.SessionManager
+	accessWorkflow                  platformaccess.Gate
+	catalogReadModule               internalcataloghttp.Workflow
+	auditQueryModule                auditQueryWorkflow
+	catalogMutationService          catalogMutationService
+	catalogGovernanceService        catalogGovernanceService
+	governanceWorkflow              internalgovernancehttp.Workflow
+	oneShotPackagingWorkflow        *internalpackaginghttp.OneShotWorkflow
+	sessionModule                   platformsession.Workflow
+	systemModule                    systemWorkflow
+	npmRegistryURL                  string
+	npmRegistryReadAuthorization    string
+	npmRegistryPublishAuthorization string
+	publicNPMRegistryURL            string
+	packaging                       packagingApplication
+	auditRecorder                   *platformaudit.Recorder
+	logger                          *log.Logger
+	metrics                         *observability.Collector
+	requestID                       atomic.Uint64
+	mode                            ServerMode
+	readListCacheTTL                time.Duration
+	readDetailCacheTTL              time.Duration
+	readCache                       *platformhttp.ReadCache
+	readLimiter                     *platformhttp.RequestLimiter
+	writeLimiter                    *platformhttp.RequestLimiter
 }
 
 func NewServer(config ServerConfig) *Server {
@@ -134,20 +138,23 @@ func NewServer(config ServerConfig) *Server {
 	}
 
 	server := &Server{
-		repo:                 config.Repository,
-		authorizer:           authorizer,
-		sessionManager:       sessionManager,
-		publicNPMRegistryURL: strings.TrimRight(strings.TrimSpace(config.PublicNPMRegistryURL), "/"),
-		packaging:            config.Packaging,
-		auditRecorder:        auditRecorder,
-		logger:               logger,
-		metrics:              observability.NewCollector(),
-		mode:                 mode,
-		readListCacheTTL:     readListCacheTTL,
-		readDetailCacheTTL:   readDetailCacheTTL,
-		readCache:            platformhttp.NewReadCache(),
-		readLimiter:          platformhttp.NewRequestLimiter(config.ReadMaxInFlight),
-		writeLimiter:         platformhttp.NewRequestLimiter(config.WriteMaxInFlight),
+		repo:                            config.Repository,
+		authorizer:                      authorizer,
+		sessionManager:                  sessionManager,
+		npmRegistryURL:                  strings.TrimSpace(config.NPMRegistryURL),
+		npmRegistryReadAuthorization:    strings.TrimSpace(config.NPMRegistryReadAuthorization),
+		npmRegistryPublishAuthorization: strings.TrimSpace(config.NPMRegistryPublishAuthorization),
+		publicNPMRegistryURL:            strings.TrimRight(strings.TrimSpace(config.PublicNPMRegistryURL), "/"),
+		packaging:                       config.Packaging,
+		auditRecorder:                   auditRecorder,
+		logger:                          logger,
+		metrics:                         observability.NewCollector(),
+		mode:                            mode,
+		readListCacheTTL:                readListCacheTTL,
+		readDetailCacheTTL:              readDetailCacheTTL,
+		readCache:                       platformhttp.NewReadCache(),
+		readLimiter:                     platformhttp.NewRequestLimiter(config.ReadMaxInFlight),
+		writeLimiter:                    platformhttp.NewRequestLimiter(config.WriteMaxInFlight),
 	}
 	server.catalogReadModule = internalcataloghttp.NewReadWorkflow(catalogReadService)
 	server.catalogMutationService = catalogMutationService
@@ -282,8 +289,8 @@ func (s *Server) newEngine() *gin.Engine {
 		ListVersionsFunc:     s.catalogReadModule.ListVersions,
 		GetVersionFunc:       s.catalogReadModule.GetVersion,
 		ResolveInstallTarget: s.catalogReadModule.ResolveInstallTarget,
-		PublicInstallTarget: func(response catalog.InstallResolution) catalog.InstallResolution {
-			return internalcataloghttp.RewritePublicInstallTarget(response, s.publicNPMRegistryURL)
+		PublicInstallTarget: func(request *http.Request, response catalog.InstallResolution) catalog.InstallResolution {
+			return internalcataloghttp.RewriteInstallTargetToProxy(request, response)
 		},
 	}
 	governanceHTTPHandlers := internalgovernancehttp.Handlers{
@@ -341,6 +348,10 @@ func (s *Server) newEngine() *gin.Engine {
 		Readyz:  systemHTTPHandlers.Readyz,
 		Metrics: systemHTTPHandlers.Metrics,
 	})
+
+	proxy := newNPMRegistryProxy(s.npmRegistryURL, s.publicNPMRegistryURL, s.npmRegistryReadAuthorization, s.npmRegistryPublishAuthorization)
+	engine.Any(npmRegistryMountPath, gin.WrapH(proxy))
+	engine.Any(npmRegistryMountPath+"/*path", gin.WrapH(proxy))
 
 	group := engine.Group("/api/v1/session")
 	group.GET("", sessionHTTPHandlers.Current)

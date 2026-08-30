@@ -432,7 +432,7 @@ export function ImportPage() {
               </select>
             </label>
             <label className="field">
-              <span>发布仓地址</span>
+              <span>Catalog 发布入口</span>
               <input onChange={(event) => setPublishRegistry(event.target.value)} value={publishRegistry} />
             </label>
 
@@ -626,7 +626,7 @@ export function ImportPage() {
                 title={publishResult ? '发布结果' : '发布交接'}
                 description={
                   publishResult
-                    ? '后端已经完成 registry publish 和 release record。'
+                    ? '后端已经完成 catalog publish 和 release record。'
                     : '发布前最后确认的导入审阅元数据。'
                 }
               >
@@ -642,7 +642,7 @@ export function ImportPage() {
                   {'publishedToRegistry' in reviewData ? (
                     <>
                       <div>
-                        <dt>registry publish</dt>
+                        <dt>catalog publish</dt>
                         <dd>{reviewData.publishedToRegistry ? '本次已执行' : '复用已有版本'}</dd>
                       </div>
                       <div>
@@ -664,7 +664,7 @@ export function ImportPage() {
                       <StatusPill tone="good">review 已可进入发布交接</StatusPill>
                     </div>
                     <p className="support-copy">
-                      这里不会暴露 workspace 或 bundle 路径；版本页和作者台只承接 manifest digest、components、publishRegistry。
+                      这里不会暴露 workspace 或 bundle 路径；版本页和作者台只承接 manifest digest、components 和发布入口。
                     </p>
                     <div className="authoring-actions">
                       <Link className="button button--primary" to={releaseHandoffPath}>

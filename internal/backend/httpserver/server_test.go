@@ -101,6 +101,162 @@ func TestServerUsesInternalHTTPHandlers(t *testing.T) {
 	}
 }
 
+func TestServerProxiesNPMRegistryRequests(t *testing.T) {
+	var receivedMethod string
+	var receivedPath string
+	var receivedRawPath string
+	var receivedQuery string
+	var receivedAuthorization string
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		receivedMethod = request.Method
+		receivedPath = request.URL.Path
+		receivedRawPath = request.URL.RawPath
+		receivedQuery = request.URL.RawQuery
+		receivedAuthorization = request.Header.Get("Authorization")
+		writer.Header().Set("Content-Type", "text/plain")
+		_, _ = writer.Write([]byte("proxied"))
+	}))
+	defer upstream.Close()
+	upstream.URL = strings.Replace(upstream.URL, "[::1]", "127.0.0.1", 1)
+
+	server := NewServer(ServerConfig{
+		Repository:                   cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		Packaging:                    packagingapplication.NewService(""),
+		NPMRegistryURL:               upstream.URL,
+		NPMRegistryReadAuthorization: "Bearer server-token",
+	})
+
+	srv := httptest.NewServer(server.Handler())
+	defer srv.Close()
+
+	response, err := http.Get(srv.URL + "/repository/skills-npm/%40platform.skill%2Fagent-notes?download=1")
+	if err != nil {
+		t.Fatalf("request proxy: %v", err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, response.StatusCode)
+	}
+	body, _ := io.ReadAll(response.Body)
+	if string(body) != "proxied" {
+		t.Fatalf("expected proxied response body, got %q", string(body))
+	}
+	if receivedAuthorization != "Bearer server-token" {
+		t.Fatalf("expected server artifact authorization, got %q", receivedAuthorization)
+	}
+	if receivedMethod != http.MethodGet {
+		t.Fatalf("expected upstream GET request, got %s", receivedMethod)
+	}
+	if receivedPath != "/@platform.skill/agent-notes" {
+		t.Fatalf("expected upstream path to strip the registry mount, got %q", receivedPath)
+	}
+	if receivedRawPath != "/%40platform.skill%2Fagent-notes" {
+		t.Fatalf("expected upstream raw path to strip the registry mount, got %q", receivedRawPath)
+	}
+	if receivedQuery != "download=1" {
+		t.Fatalf("expected upstream query string to preserve, got %q", receivedQuery)
+	}
+}
+
+func TestServerRewritesNPMRegistryMetadataToPublicProxy(t *testing.T) {
+	const internalTarballBase = "http://host.docker.internal:30080"
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"name":"skills","versions":{"1.6.9-snapshot.21":{"dist":{"tarball":"` + internalTarballBase + `/skills/-/skills-1.6.9-snapshot.21.tgz"}}}}`))
+	}))
+	defer upstream.Close()
+	upstream.URL = strings.Replace(upstream.URL, "[::1]", "127.0.0.1", 1)
+
+	server := NewServer(ServerConfig{
+		Repository:                   cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		Packaging:                    packagingapplication.NewService(""),
+		NPMRegistryURL:               upstream.URL,
+		PublicNPMRegistryURL:         "http://127.0.0.1:18080/repository/skills-npm/",
+		NPMRegistryReadAuthorization: "Bearer server-token",
+	})
+
+	srv := httptest.NewServer(server.Handler())
+	defer srv.Close()
+
+	response, err := http.Get(srv.URL + "/repository/skills-npm/%40platform.skill%2Fagent-notes")
+	if err != nil {
+		t.Fatalf("request proxy: %v", err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, response.StatusCode)
+	}
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	if strings.Contains(string(body), "host.docker.internal:30080") {
+		t.Fatalf("expected public metadata, got %s", string(body))
+	}
+	if !strings.Contains(string(body), "http://127.0.0.1:18080/repository/skills-npm/skills/-/skills-1.6.9-snapshot.21.tgz") {
+		t.Fatalf("expected rewritten tarball url, got %s", string(body))
+	}
+}
+
+func TestServerProxiesNPMRegistryPublishRequests(t *testing.T) {
+	var receivedMethod string
+	var receivedPath string
+	var receivedRawPath string
+	var receivedAuthorization string
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		receivedMethod = request.Method
+		receivedPath = request.URL.Path
+		receivedRawPath = request.URL.RawPath
+		receivedAuthorization = request.Header.Get("Authorization")
+		writer.WriteHeader(http.StatusCreated)
+	}))
+	defer upstream.Close()
+	upstream.URL = strings.Replace(upstream.URL, "[::1]", "127.0.0.1", 1)
+
+	server := NewServer(ServerConfig{
+		Repository:                      cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		Packaging:                       packagingapplication.NewService(""),
+		NPMRegistryURL:                  upstream.URL,
+		NPMRegistryPublishAuthorization: "Bearer publish-token",
+	})
+
+	srv := httptest.NewServer(server.Handler())
+	defer srv.Close()
+
+	request, err := http.NewRequest(http.MethodPut, srv.URL+"/repository/skills-npm/%40platform.skill%2Fagent-notes", strings.NewReader(`{"name":"@platform.skill/agent-notes"}`))
+	if err != nil {
+		t.Fatalf("create publish request: %v", err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+
+	response, err := srv.Client().Do(request)
+	if err != nil {
+		t.Fatalf("request proxy: %v", err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, response.StatusCode)
+	}
+	if receivedAuthorization != "Bearer publish-token" {
+		t.Fatalf("expected server publish authorization, got %q", receivedAuthorization)
+	}
+	if receivedMethod != http.MethodPut {
+		t.Fatalf("expected upstream PUT request, got %s", receivedMethod)
+	}
+	if receivedPath != "/@platform.skill/agent-notes" {
+		t.Fatalf("expected upstream path to strip the registry mount, got %q", receivedPath)
+	}
+	if receivedRawPath != "/%40platform.skill%2Fagent-notes" {
+		t.Fatalf("expected upstream raw path to strip the registry mount, got %q", receivedRawPath)
+	}
+}
+
 func TestSkillsRequiresAuthentication(t *testing.T) {
 	server := newTestServer()
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills", nil)
@@ -248,7 +404,9 @@ func TestServerRoutesCatalogDetailReadsThroughCatalogApplicationService(t *testi
 				if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 					t.Fatalf("decode install target response: %v", err)
 				}
-				if response.Version != "9.9.9" || response.TarballURL != "https://registry.example.com/service-only-skill-9.9.9.tgz" {
+				if response.Version != "9.9.9" ||
+					response.NPMRegistry != "http://example.com/repository/skills-npm" ||
+					response.TarballURL != "http://example.com/repository/skills-npm/service-only-skill-9.9.9.tgz" {
 					t.Fatalf("expected service-routed install target, got %+v", response)
 				}
 			},
@@ -2377,7 +2535,7 @@ func TestInstallTargetResolvesLatestPublishedVersion(t *testing.T) {
 	}
 }
 
-func TestInstallTargetUsesPublicRegistryURLWhenConfigured(t *testing.T) {
+func TestInstallTargetUsesServerProxyURL(t *testing.T) {
 	internalRegistry := "http://nexus.skill-registry.svc.cluster.local:8081/repository/skills-npm"
 	publicRegistry := "https://skills.example.com/repository/skills-npm"
 	server := NewServer(ServerConfig{
@@ -2401,11 +2559,11 @@ func TestInstallTargetUsesPublicRegistryURLWhenConfigured(t *testing.T) {
 		t.Fatalf("decode response: %v", err)
 	}
 
-	if response.NPMRegistry != publicRegistry {
-		t.Fatalf("expected npmRegistry %q, got %q", publicRegistry, response.NPMRegistry)
+	if response.NPMRegistry != "http://example.com/repository/skills-npm" {
+		t.Fatalf("expected server proxy npmRegistry, got %q", response.NPMRegistry)
 	}
 
-	wantTarballURL := publicRegistry + "/platform.skill/pdf-skill/-/pdf-skill-1.2.0.tgz"
+	wantTarballURL := "http://example.com/repository/skills-npm/platform.skill/pdf-skill/-/pdf-skill-1.2.0.tgz"
 	if response.TarballURL != wantTarballURL {
 		t.Fatalf("expected tarballUrl %q, got %q", wantTarballURL, response.TarballURL)
 	}

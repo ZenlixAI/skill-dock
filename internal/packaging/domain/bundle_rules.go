@@ -243,11 +243,6 @@ func scanWorkspaceComponents(workspacePath string) ([]string, bool, bool, error)
 		lowercasePaths[lowercasePath] = relativePath
 
 		if entry.IsDir() {
-			switch strings.Split(relativePath, "/")[0] {
-			case "commands", "agents", "hooks", "scripts", "docs":
-				componentSet[strings.Split(relativePath, "/")[0]] = struct{}{}
-				hasCapability = true
-			}
 			return nil
 		}
 
@@ -264,6 +259,12 @@ func scanWorkspaceComponents(workspacePath string) ([]string, bool, bool, error)
 		case "plugin.json":
 			componentSet["plugin"] = struct{}{}
 			hasCapability = true
+		default:
+			switch strings.Split(relativePath, "/")[0] {
+			case "commands", "agents", "hooks", "scripts", "docs":
+				componentSet[strings.Split(relativePath, "/")[0]] = struct{}{}
+				hasCapability = true
+			}
 		}
 		return nil
 	})

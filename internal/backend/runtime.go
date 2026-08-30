@@ -77,6 +77,10 @@ func NewRuntime(ctx context.Context, config Config) (*Runtime, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	if seedErr := catalogapp.NewWriteService(internalStateStore, repositoryOptions.ArtifactSource).Seed(ctx, cataloginfra.SampleData()); seedErr != nil {
+		_ = db.Close()
+		return nil, seedErr
+	}
 	catalogRead := catalogapp.NewReadService(internalStateStore)
 	catalogWrite := catalogapp.NewWriteService(internalStateStore, repositoryOptions.ArtifactSource)
 	repository := cataloginfra.NewRepository(cataloginfra.RepositoryConfig{

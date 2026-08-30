@@ -53,7 +53,7 @@ export function derivePackagingViewState({
       };
   const publishReadiness: WorkflowReadiness = publishResult
     ? {
-        detail: 'registry publish 和 release record 都已完成',
+        detail: 'catalog publish 和 release record 都已完成',
         tone: 'good',
         label: '已完成',
       }
@@ -76,7 +76,7 @@ export function derivePackagingViewState({
           };
   const releaseReadiness: WorkflowReadiness = publishResult
     ? {
-        detail: 'registry publish 和 release record 都已完成',
+        detail: 'catalog publish 和 release record 都已完成',
         tone: 'good',
         label: '已完成',
       }
@@ -96,7 +96,7 @@ export function derivePackagingViewState({
     currentStage,
     currentStageSummary:
       currentStage === 'published'
-        ? 'registry publish 和 release record 都已完成。'
+        ? 'catalog publish 和 release record 都已完成。'
         : currentStage === 'reviewed'
           ? '导入审阅已完成，可以继续发布。'
           : '先填写 source 和 target。',
@@ -105,7 +105,7 @@ export function derivePackagingViewState({
     releaseHandoffPath,
     releaseStatus: publishResult ? 'published' : releaseHandoffPath ? 'armed' : 'idle',
     releaseSummary: publishResult
-      ? '后端已经完成 registry publish 和 release record。'
+      ? '后端已经完成 catalog publish 和 release record。'
       : releaseHandoffPath
         ? '导入审阅结果已就绪，下一步是确认后执行一次性发布。'
         : '完成导入审阅后才会开放下游 handoff。',

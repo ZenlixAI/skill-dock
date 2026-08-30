@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync } from 'fs';
+import { mkdirSync, rmSync, mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -40,7 +40,7 @@ describe('source parser', () => {
   });
 
   it('parses local paths', () => {
-    const directory = join(tmpdir(), `skills-source-parser-${Date.now()}`);
+    const directory = mkdtempSync(join(tmpdir(), 'skills-source-parser-'));
     mkdirSync(directory, { recursive: true });
     tempDirs.push(directory);
 
@@ -49,5 +49,30 @@ describe('source parser', () => {
       url: directory,
       localPath: directory,
     });
+  });
+
+  it('resolves local paths from INIT_CWD when launched through npx', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'skills-source-parser-cwd-'));
+    const initCwd = mkdtempSync(join(tmpdir(), 'skills-source-parser-init-'));
+    const localDirName = 'my-aaa';
+    const localDir = join(initCwd, localDirName);
+    mkdirSync(cwd, { recursive: true });
+    mkdirSync(localDir, { recursive: true });
+    tempDirs.push(cwd, initCwd);
+
+    const previousCwd = process.cwd();
+    const previousInitCwd = process.env.INIT_CWD;
+    process.chdir(cwd);
+    process.env.INIT_CWD = initCwd;
+    try {
+      expect(parseSourceInput(localDirName)).toEqual({
+        type: 'local',
+        url: localDir,
+        localPath: localDir,
+      });
+    } finally {
+      process.chdir(previousCwd);
+      process.env.INIT_CWD = previousInitCwd;
+    }
   });
 });

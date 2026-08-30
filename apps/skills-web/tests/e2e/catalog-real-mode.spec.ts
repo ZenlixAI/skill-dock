@@ -11,7 +11,7 @@ test('browses the live catalog and drills into a version', async ({ page }) => {
 
   const skillCard = page.locator('article').filter({ hasText: FIXTURE_PACKAGE }).first();
   await expect(skillCard).toBeVisible();
-  await skillCard.getByRole('link', { name: '打开' }).click();
+  await skillCard.getByRole('link', { name: '查看技能' }).click();
 
   await expect(page).toHaveURL(new RegExp(`/skills/${encodeURIComponent(FIXTURE_PACKAGE)}$`));
   await expect(page.getByRole('heading', { name: 'PDF Skill' })).toBeVisible();
@@ -23,9 +23,9 @@ test('browses the live catalog and drills into a version', async ({ page }) => {
   await expect(page).toHaveURL(new RegExp(`/versions/${FIXTURE_VERSION}$`));
 
   await expect(page.getByRole('heading', { name: `${FIXTURE_PACKAGE} · ${FIXTURE_VERSION}` })).toBeVisible();
-  const registryBundleCard = page.locator('section').filter({ has: page.getByRole('heading', { name: '仓信息与 Bundle' }) }).first();
-  await expect(registryBundleCard).toContainText('published');
-  await expect(registryBundleCard).toContainText('resolvable');
+  const registryBundleCard = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Catalog 与打包产物' }) }).first();
+  await expect(registryBundleCard).toContainText('已发布');
+  await expect(registryBundleCard).toContainText('可直接安装');
   await expect(registryBundleCard).toContainText('commands, scripts');
   await expect(registryBundleCard).toContainText(/sha256:/);
 });

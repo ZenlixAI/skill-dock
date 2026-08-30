@@ -137,6 +137,11 @@ function packWorkspace(workspacePath: string): string {
     cwd: workspacePath,
     stdio: ['inherit', 'pipe', 'pipe'],
     encoding: 'utf-8',
+    env: {
+      ...process.env,
+      npm_config_cache:
+        process.env.npm_config_cache || join(tmpdir(), 'skills-cli-npm-cache'),
+    },
     shell: process.platform === 'win32',
   });
 

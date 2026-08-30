@@ -101,9 +101,9 @@ describe('packaging workflow view state', () => {
     });
 
     expect(state.currentStage).toBe('published');
-    expect(state.currentStageSummary).toBe('registry publish 和 release record 都已完成。');
+    expect(state.currentStageSummary).toBe('catalog publish 和 release record 都已完成。');
     expect(state.releaseReadiness).toEqual({
-      detail: 'registry publish 和 release record 都已完成',
+      detail: 'catalog publish 和 release record 都已完成',
       tone: 'good',
       label: '已完成',
     });

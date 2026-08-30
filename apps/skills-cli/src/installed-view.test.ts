@@ -549,4 +549,55 @@ describe('installed view projection', () => {
       ])
     );
   });
+
+  it('materializes a universal fallback link for a global canonical install', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'installed-view-global-universal-'));
+    roots.push(root);
+
+    vi.stubEnv('HOME', root);
+    vi.spyOn(agentsModule, 'detectInstalledAgents').mockResolvedValue([]);
+
+    mkdirSync(join(root, '.agents', 'skills', 'pdf-skill'), { recursive: true });
+    writeFileSync(
+      join(root, '.agents', 'skills', 'pdf-skill', 'SKILL.md'),
+      `---\nname: PDF Skill\ndescription: Read PDFs\n---\n`
+    );
+    mkdirSync(join(root, '.agents'), { recursive: true });
+    writeFileSync(
+      join(root, '.agents', '.skill-lock.json'),
+      JSON.stringify(
+        {
+          version: 3,
+          skills: {
+            '@platform.skill/pdf-skill': {
+              sourceType: 'local',
+              skillFolderHash: 'abc123',
+              packageName: '@platform.skill/pdf-skill',
+              installName: 'pdf-skill',
+            },
+          },
+        },
+        null,
+        2
+      )
+    );
+
+    const records = await listInstalledView({ scope: 'global', cwd: root });
+
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          packageName: '@platform.skill/pdf-skill',
+          agentLinks: expect.arrayContaining([
+            expect.objectContaining({
+              agent: 'universal',
+              kind: 'canonical',
+              path: join(root, '.agents', 'skills', 'pdf-skill'),
+            }),
+          ]),
+          orphaned: false,
+        }),
+      ])
+    );
+  });
 });

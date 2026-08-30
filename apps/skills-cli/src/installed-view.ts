@@ -63,6 +63,7 @@ interface AgentFact {
 
 interface CollectedScopeFacts {
   scope: InstalledViewScope;
+  allowUniversalFallback: boolean;
   canonicalBase: string;
   canonicalFacts: CanonicalFact[];
   agentFacts: AgentFact[];
@@ -94,6 +95,10 @@ export async function listInstalledView(
 ): Promise<InstalledSkillView[]> {
   const cwd = options.cwd || process.cwd();
   const scopes = options.scope ? [options.scope] : (['project', 'global'] as InstalledViewScope[]);
+  const allowUniversalFallback =
+    scopes.length === 1 &&
+    scopes[0] === 'global' &&
+    (options.agentFilter === undefined || options.agentFilter.some((agent) => isUniversalAgent(agent)));
   const detectedAgents = await detectInstalledAgents();
   const detectedVisibleAgents = options.agentFilter
     ? detectedAgents.filter((agent) => options.agentFilter!.includes(agent))
@@ -101,7 +106,9 @@ export async function listInstalledView(
   const inspectedAgents = options.agentFilter ?? (Object.keys(agents) as AgentType[]);
 
   const views = await Promise.all(
-    scopes.map((scope) => collectInstalledFacts(scope, cwd, inspectedAgents, detectedVisibleAgents))
+    scopes.map((scope) =>
+      collectInstalledFacts(scope, cwd, inspectedAgents, detectedVisibleAgents, allowUniversalFallback)
+    )
   );
 
   return views
@@ -117,7 +124,8 @@ async function collectInstalledFacts(
   scope: InstalledViewScope,
   cwd: string,
   inspectedAgents: AgentType[],
-  detectedVisibleAgents: AgentType[]
+  detectedVisibleAgents: AgentType[],
+  allowUniversalFallback: boolean
 ): Promise<CollectedScopeFacts> {
   const global = scope === 'global';
   const canonicalBase = getCanonicalSkillsDir(global, cwd);
@@ -156,6 +164,7 @@ async function collectInstalledFacts(
 
   return {
     scope,
+    allowUniversalFallback,
     canonicalBase,
     canonicalFacts,
     agentFacts,
@@ -324,6 +333,14 @@ function projectInstalledFacts(facts: CollectedScopeFacts): InstalledSkillView[]
 
       draft.agentLinks.set(agent, {
         agent,
+        path: draft.canonicalPath,
+        kind: 'canonical',
+      });
+    }
+
+    if (facts.allowUniversalFallback && draft.agentLinks.size === 0 && existsSync(draft.canonicalPath)) {
+      draft.agentLinks.set('universal', {
+        agent: 'universal',
         path: draft.canonicalPath,
         kind: 'canonical',
       });

@@ -14,9 +14,12 @@ stringData:
   skill_registry_reader_token: reader-secret
   skill_registry_authoring_token: authoring-secret
   skill_registry_publisher_token: publisher-secret
-  skill_registry_npm_registry_url: http://nexus.skill-registry.svc.cluster.local:8081/repository/skills-npm
+  skill_registry_artifact_read_url: http://host.docker.internal:30080/
+  skill_registry_artifact_read_authorization: ""
+  skill_registry_artifact_publish_authorization: ""
+  skill_registry_npm_read_authorization: ""
   skill_registry_npm_publish_authorization: ""
-  skill_registry_public_npm_registry_url: http://127.0.0.1:8081/repository/skills-npm
+  skill_registry_public_npm_registry_url: http://127.0.0.1:18080/repository/skills-npm/
   skill_registry_auth_tokens_json: ""
   skill_registry_session_secret: local-kind-session-secret
   skill_registry_session_users_json: |
@@ -95,62 +98,6 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nexus
-  namespace: skill-registry
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: nexus
-  template:
-    metadata:
-      labels:
-        app: nexus
-    spec:
-      containers:
-        - name: nexus
-          image: sonatype/nexus3:latest
-          ports:
-            - containerPort: 8081
-              name: http
-          env:
-            - name: INSTALL4J_ADD_VM_PARAMS
-              value: >-
-                -Xms1024m -Xmx1024m -XX:MaxDirectMemorySize=1024m
-                -Djava.util.prefs.userRoot=/nexus-data/javaprefs
-          volumeMounts:
-            - name: nexus-data
-              mountPath: /nexus-data
-          readinessProbe:
-            httpGet:
-              path: /service/rest/v1/status
-              port: http
-          livenessProbe:
-            httpGet:
-              path: /
-              port: http
-      volumes:
-        - name: nexus-data
-          emptyDir: {}
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: nexus
-  namespace: skill-registry
-spec:
-  type: NodePort
-  selector:
-    app: nexus
-  ports:
-    - name: http
-      port: 8081
-      targetPort: http
-      nodePort: 30081
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
   name: catalog
   namespace: skill-registry
 spec:
@@ -193,17 +140,24 @@ spec:
                 secretKeyRef:
                   name: catalog-secrets
                   key: skill_registry_publisher_token
-            - name: SKILL_REGISTRY_NPM_REGISTRY_URL
+            - name: SKILL_REGISTRY_DISABLE_SEED
+              value: "false"
+            - name: SKILL_REGISTRY_ARTIFACT_READ_URL
               valueFrom:
                 secretKeyRef:
                   name: catalog-secrets
-                  key: skill_registry_npm_registry_url
-            - name: SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION
+                  key: skill_registry_artifact_read_url
+            - name: SKILL_REGISTRY_ARTIFACT_READ_AUTHORIZATION
               valueFrom:
                 secretKeyRef:
                   name: catalog-secrets
-                  key: skill_registry_npm_publish_authorization
-            - name: SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL
+                  key: skill_registry_artifact_read_authorization
+            - name: SKILL_REGISTRY_ARTIFACT_PUBLISH_AUTHORIZATION
+              valueFrom:
+                secretKeyRef:
+                  name: catalog-secrets
+                  key: skill_registry_artifact_publish_authorization
+            - name: SKILL_REGISTRY_PUBLIC_INSTALL_URL
               valueFrom:
                 secretKeyRef:
                   name: catalog-secrets

@@ -81,6 +81,27 @@ func TestNewRuntimeBuildsExplicitCatalogServicesInsteadOfReusingRepositoryProvid
 	}
 }
 
+func TestNewRuntimeSeedsSampleCatalogOnEmptySQLStore(t *testing.T) {
+	root := t.TempDir()
+
+	runtime, err := NewRuntime(context.Background(), Config{
+		DatabaseURL:         "file:" + filepath.Join(root, "runtime.db"),
+		SharedWorkspaceRoot: filepath.Join(root, "workspaces"),
+		ArtifactSource:      cataloginfra.NewStaticArtifactSource(cataloginfra.SampleData().Artifacts),
+	})
+	if err != nil {
+		t.Fatalf("new runtime: %v", err)
+	}
+
+	skill, err := runtime.Repository.GetSkill(context.Background(), "@platform.skill/pdf-skill")
+	if err != nil {
+		t.Fatalf("expected seeded skill, got error: %v", err)
+	}
+	if skill.PackageName != "@platform.skill/pdf-skill" {
+		t.Fatalf("expected seeded skill package, got %q", skill.PackageName)
+	}
+}
+
 func TestNewPackagingServiceReturnsInternalApplicationService(t *testing.T) {
 	service := packagingapplication.NewServiceWithWorkspaceStore(t.TempDir(), nil)
 	if service == nil {

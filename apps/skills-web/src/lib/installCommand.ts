@@ -13,8 +13,9 @@ type InstallCommandInput = {
   version: string;
 };
 
-const INSTALL_REGISTRY_FALLBACK_LABEL = '待补充 npm 仓库地址';
-const INSTALL_HOST_FALLBACK_LABEL = '待补充仓库 Host';
+const INSTALL_REGISTRY_FALLBACK_LABEL = '待补充 Catalog proxy';
+const INSTALL_HOST_FALLBACK_LABEL = '待补充入口 Host';
+
 function parseUrl(value?: string | null): URL | null {
   const trimmedValue = value?.trim();
   if (!trimmedValue) {

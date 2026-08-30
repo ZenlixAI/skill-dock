@@ -133,6 +133,30 @@ func TestBundleRulesValidateAndBuildBundle(t *testing.T) {
 	}
 }
 
+func TestBundleRulesValidateIgnoresEmptyCapabilityDirectories(t *testing.T) {
+	workspacePath := t.TempDir()
+	target := Target{PackageName: "@platform.skill/empty-docs", Version: "1.0.0"}
+	writeSkillMarkdownFixture(t, workspacePath)
+	if err := os.MkdirAll(filepath.Join(workspacePath, "docs"), 0o755); err != nil {
+		t.Fatalf("create docs directory: %v", err)
+	}
+	if err := WritePackageJSON(workspacePath, target, Metadata{DisplayName: "Empty Docs", Description: "Broader context", SourceType: "imported"}, Options{}, false); err != nil {
+		t.Fatalf("write package.json: %v", err)
+	}
+
+	rules := NewBundleRules()
+	validation, err := rules.Validate(workspacePath, target)
+	if err != nil {
+		t.Fatalf("validate workspace: %v", err)
+	}
+	if len(validation.Errors) != 0 {
+		t.Fatalf("expected validation success, got %#v", validation.Errors)
+	}
+	if !reflect.DeepEqual(validation.Components, []string{}) {
+		t.Fatalf("unexpected components (-want +got):\nwant: %#v\ngot:  %#v", []string{}, validation.Components)
+	}
+}
+
 func writeSkillMarkdownFixture(t *testing.T, dir string) {
 	t.Helper()
 

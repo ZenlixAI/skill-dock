@@ -39,8 +39,8 @@ async function openGovernableFixture(page: Page) {
   await page.getByLabel('搜索').fill('code-review');
   const skillCard = page.locator('article').filter({ hasText: FIXTURE_PACKAGE }).first();
   await expect(skillCard).toBeVisible();
-  await skillCard.getByRole('link', { name: '打开' }).click();
-  await expect(page.getByRole('heading', { name: /code-review/ })).toBeVisible();
+  await skillCard.getByRole('link', { name: '查看技能' }).click();
+  await expect(page.getByRole('heading', { name: 'Code Review Accelerator' })).toBeVisible();
 
   const versionRow = page.locator('article').filter({ hasText: FIXTURE_VERSION }).first();
   await expect(versionRow).toBeVisible();
@@ -59,7 +59,7 @@ async function openGovernableFixture(page: Page) {
 }
 
 async function readCurrentVersionStatus(page: Page) {
-  const registryBundleCard = page.locator('section').filter({ has: page.getByRole('heading', { name: '仓信息与 Bundle' }) }).first();
+  const registryBundleCard = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Catalog 与打包产物' }) }).first();
   await expect
     .poll(
       async () => (await registryBundleCard.textContent()) ?? '',
@@ -67,10 +67,10 @@ async function readCurrentVersionStatus(page: Page) {
         message: 'Expected the version detail page to load a concrete version status before governance branching.',
       }
     )
-    .toMatch(/published|deprecated|yanked/);
+    .toMatch(/已发布|已弃用|已撤回/);
 
   const stripText = (await registryBundleCard.textContent()) ?? '';
-  for (const status of ['published', 'deprecated', 'yanked'] as const) {
+  for (const status of ['已发布', '已弃用', '已撤回'] as const) {
     if (stripText.includes(status)) {
       return status;
     }

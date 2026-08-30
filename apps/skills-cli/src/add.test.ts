@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { existsSync, rmSync, mkdirSync, writeFileSync } from 'fs';
+import { existsSync, rmSync, mkdirSync, writeFileSync, mkdtempSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { runCli, runCliOutput, stripLogo } from './test-utils.ts';
@@ -28,7 +28,7 @@ ${metadataBlock ? `${metadataBlock}\n` : ''}---
   }
 
   beforeEach(() => {
-    testDir = join(tmpdir(), `skills-add-test-${Date.now()}`);
+    testDir = mkdtempSync(join(tmpdir(), 'skills-add-test-'));
     mkdirSync(testDir, { recursive: true });
   });
 
@@ -64,6 +64,17 @@ ${metadataBlock ? `${metadataBlock}\n` : ''}---
 
     expect(result.stdout).toContain('Installation Summary');
     expect(result.stdout).toContain('zoom-out');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('should prefer an existing local path over registry parsing when the directory name looks like a package name', () => {
+    const localSkillDir = join(testDir, 'my-aaa');
+    writeSkill(localSkillDir, 'my-aaa', 'A brief description of what this skill does');
+
+    const result = runCli(['add', localSkillDir, '-y'], testDir);
+
+    expect(result.stdout).toContain('Installation Summary');
+    expect(result.stdout).toContain('my-aaa');
     expect(result.exitCode).toBe(0);
   });
 
@@ -303,5 +314,10 @@ describe('parseAddOptions', () => {
     expect(result.options.fullDepth).toBe(true);
     expect(result.options.list).toBe(true);
     expect(result.options.global).toBe(true);
+  });
+
+  it('should trim pasted whitespace from the source token', () => {
+    const result = parseAddOptions(['@company.skill/my-aaa\u3000']);
+    expect(result.source).toEqual(['@company.skill/my-aaa']);
   });
 });

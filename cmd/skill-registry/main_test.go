@@ -118,6 +118,52 @@ func TestConfiguredArtifactSourceUsesConfiguredNPMRegistry(t *testing.T) {
 	}
 }
 
+func TestConfiguredRepositoryOptionsEnableSeedForLocalDev(t *testing.T) {
+	t.Setenv("SKILL_REGISTRY_DISABLE_SEED", "false")
+
+	options := configuredRepositoryOptions(cataloginfra.NewStaticArtifactSource(nil))
+
+	if options.DisableSeed {
+		t.Fatal("expected local dev repository options to enable seeding")
+	}
+}
+
+func TestConfiguredArtifactSourceUsesArtifactReadURLAlias(t *testing.T) {
+	t.Setenv("SKILL_REGISTRY_ARTIFACT_READ_URL", "https://registry.example.com")
+	t.Setenv("SKILL_REGISTRY_ARTIFACT_READ_AUTHORIZATION", "Bearer read-token")
+	t.Setenv("SKILL_REGISTRY_NPM_REGISTRY_URL", "")
+	t.Setenv("SKILL_REGISTRY_NPM_READ_AUTHORIZATION", "")
+
+	source := configuredArtifactSource()
+
+	if _, ok := source.(*platformartifact.NPMRegistryArtifactSource); !ok {
+		t.Fatalf("expected NPM registry artifact source from alias, got %T", source)
+	}
+}
+
+func TestConfiguredRuntimeConfigUsesArtifactPublishAuthorizationAlias(t *testing.T) {
+	t.Setenv("SKILL_REGISTRY_ARTIFACT_PUBLISH_AUTHORIZATION", "Bearer publish-token")
+	t.Setenv("SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION", "")
+	t.Setenv("SKILL_REGISTRY_NPM_PUBLISH_TOKEN", "")
+
+	config := configuredRuntimeConfig()
+
+	if config.Server.NPMRegistryPublishAuthorization != "Bearer publish-token" {
+		t.Fatalf("expected publish authorization alias to win, got %q", config.Server.NPMRegistryPublishAuthorization)
+	}
+}
+
+func TestConfiguredRuntimeConfigUsesPublicInstallURLAlias(t *testing.T) {
+	t.Setenv("SKILL_REGISTRY_PUBLIC_INSTALL_URL", "https://skills.example.com/repository/skills-npm/")
+	t.Setenv("SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL", "")
+
+	config := configuredRuntimeConfig()
+
+	if config.Server.PublicNPMRegistryURL != "https://skills.example.com/repository/skills-npm/" {
+		t.Fatalf("expected public install URL alias to win, got %q", config.Server.PublicNPMRegistryURL)
+	}
+}
+
 func TestConfiguredArtifactSourceReturnsPlatformAdapter(t *testing.T) {
 	t.Setenv("SKILL_REGISTRY_NPM_REGISTRY_URL", "https://registry.example.com")
 
@@ -148,19 +194,6 @@ func TestConfiguredArtifactSourceFallsBackToEmptyStaticSource(t *testing.T) {
 	}
 	if catalogErr.Status != 404 {
 		t.Fatalf("expected 404 from empty static artifact source, got %d", catalogErr.Status)
-	}
-}
-
-func TestConfiguredRepositoryOptionsDisableSeedAndPreserveArtifactSource(t *testing.T) {
-	artifactSource := cataloginfra.NewStaticArtifactSource(nil)
-
-	options := configuredRepositoryOptions(artifactSource)
-
-	if options.ArtifactSource != artifactSource {
-		t.Fatalf("expected repository options to preserve artifact source, got %T", options.ArtifactSource)
-	}
-	if !options.DisableSeed {
-		t.Fatal("expected production repository options to disable seeding")
 	}
 }
 
@@ -196,6 +229,12 @@ func TestConfiguredRuntimeConfigUsesProductionOnlyStartupWiring(t *testing.T) {
 	}
 	if config.IdempotencyTTL != 10*time.Minute {
 		t.Fatalf("expected default idempotency TTL, got %v", config.IdempotencyTTL)
+	}
+	if config.RepositoryOptions.ArtifactSource != config.ArtifactSource {
+		t.Fatalf("expected repository options to preserve artifact source, got %T", config.RepositoryOptions.ArtifactSource)
+	}
+	if !config.RepositoryOptions.DisableSeed {
+		t.Fatal("expected production repository options to disable seeding")
 	}
 
 	var _ backend.Config = config

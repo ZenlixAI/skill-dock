@@ -26,7 +26,7 @@ describe('buildInstallCommand', () => {
   });
 
   it('falls back when the public install registry is missing', () => {
-    expect(getInstallHostLabel('')).toBe('待补充仓库 Host');
+    expect(getInstallHostLabel('')).toBe('待补充入口 Host');
     expect(
       buildInstallCommand({
         registryBaseUrl: '',
@@ -34,7 +34,7 @@ describe('buildInstallCommand', () => {
         version: '1.2.3',
       })
     ).toBe(
-      'npx --registry 待补充 npm 仓库地址 skills add @platform.skill/agent-notes --version 1.2.3'
+      'npx --registry 待补充 Catalog proxy skills add @platform.skill/agent-notes --version 1.2.3'
     );
   });
 

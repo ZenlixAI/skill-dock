@@ -34,7 +34,7 @@ export function AuthoringFlowPage() {
       <SectionHeading
         eyebrow="平台作者台"
         title="把外部导入、发布登记、治理审阅接成上层平台里的一个作者工作台。"
-        description="这个页面不是单独 registry 页签，而是模拟更上层 authoring / platform 入口该怎么承接 skills-web 的行为。"
+        description="这个页面不是单独的 Catalog 页签，而是模拟更上层 authoring / platform 入口该怎么承接 skills-web 的行为。"
         tone="backstage"
       />
 
@@ -68,7 +68,7 @@ export function AuthoringFlowPage() {
       <div className="metric-grid">
         <div className="metric-card">
           <strong>{skills.data?.items.length || '—'}</strong>
-          <span>Registry 包</span>
+          <span>Catalog 包</span>
         </div>
         <div className="metric-card">
           <strong>{audit.data?.items.filter((item) => item.action.startsWith('packaging.')).length || '—'}</strong>
@@ -195,7 +195,7 @@ export function AuthoringFlowPage() {
               {handoff.publishRegistry ? <StatusPill tone="accent">{handoff.publishRegistry}</StatusPill> : null}
             </div>
             <p className="support-copy">
-              这里承接 review 产出的 `manifestDigest`、`components`、`publishRegistry`，然后进入 `release-record` 写接口。
+              这里承接 review 产出的 `manifestDigest`、`components` 和发布入口，然后进入 `release-record` 写接口。
             </p>
           </div>
         </SurfaceCard>

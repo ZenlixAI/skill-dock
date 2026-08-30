@@ -905,13 +905,13 @@ export async function runAdd(args: string[], options: AddOptions = {}): Promise<
   try {
     const spinner = p.spinner();
 
-    if (isPackageName(source)) {
-      await installRegistryPackage(source, options, spinner);
-      return;
-    }
-
     const parsedSource = parseSourceInput(source);
     if (!parsedSource) {
+      if (isPackageName(source)) {
+        await installRegistryPackage(source, options, spinner);
+        return;
+      }
+
       showAddUsageError(
         'Unsupported source. Use a registry package_name, local path, owner/repo, or Git URL.'
       );
@@ -985,7 +985,7 @@ export function parseAddOptions(args: string[]): { source: string[]; options: Ad
     } else if (arg === '--dangerously-accept-openclaw-risks') {
       options.dangerouslyAcceptOpenclawRisks = true;
     } else if (arg && !arg.startsWith('-')) {
-      source.push(arg);
+      source.push(arg.trim());
     }
   }
 

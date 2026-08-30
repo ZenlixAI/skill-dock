@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import type { InstallPolicy } from '../api/types';
+import { getRegistryClientConfig } from '../api/client';
 import {
   buildInstallCommand,
   getInstallHostLabel,
@@ -13,7 +14,6 @@ interface InstallCommandPanelProps {
   title: string;
   packageName: string;
   version: string;
-  npmRegistry: string;
   installPolicy: InstallPolicy;
   tarballUrl?: string;
   integrity?: string;
@@ -31,13 +31,9 @@ function getInstallTone(installPolicy: InstallPolicy) {
   return 'bad';
 }
 
-function getInstallLabel(installPolicy: InstallPolicy) {
-  return getInstallPolicyLabel(installPolicy);
-}
-
 function getInstallGuidance(installPolicy: InstallPolicy) {
   if (installPolicy === 'resolvable') {
-    return '当前版本可直接作为 registry 安装目标，复制命令后即可在你自己的终端执行 `skills add`。';
+    return '当前版本可直接作为 Catalog 安装目标，复制命令后即可在你自己的终端执行 `skills add`。';
   }
 
   if (installPolicy === 'catalog_only') {
@@ -51,16 +47,18 @@ export function InstallCommandPanel({
   title,
   packageName,
   version,
-  npmRegistry,
   installPolicy,
   tarballUrl,
   integrity,
 }: InstallCommandPanelProps) {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const commandRef = useRef<HTMLTextAreaElement | null>(null);
-  const registryHost = getInstallHostLabel(npmRegistry);
-  const tarballLabel = rewriteInstallTarballUrl(tarballUrl, registryHost);
-  const publicInstallRegistry = new URL('/repository/skills-npm/', window.location.origin).toString();
+  const registryConfig = getRegistryClientConfig();
+  const publicInstallRegistry = registryConfig.baseUrl
+    ? new URL('/repository/skills-npm/', registryConfig.baseUrl).toString()
+    : '';
+  const registryHost = getInstallHostLabel(publicInstallRegistry);
+  const tarballLabel = rewriteInstallTarballUrl(tarballUrl, publicInstallRegistry);
   const command = buildInstallCommand({
     registryBaseUrl: publicInstallRegistry,
     packageName,
@@ -94,7 +92,7 @@ export function InstallCommandPanel({
 
   return (
     <SurfaceCard
-      action={<StatusPill tone={getInstallTone(installPolicy)}>{getInstallLabel(installPolicy)}</StatusPill>}
+      action={<StatusPill tone={getInstallTone(installPolicy)}>{getInstallPolicyLabel(installPolicy)}</StatusPill>}
       className="install-command-panel-card"
       description={getInstallGuidance(installPolicy)}
       title={title}
@@ -115,7 +113,7 @@ export function InstallCommandPanel({
         />
         <dl className="install-command-panel__meta">
           <div>
-            <dt>仓库地址</dt>
+            <dt>Catalog proxy</dt>
             <dd>{registryHost}</dd>
           </div>
           <div>

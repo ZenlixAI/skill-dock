@@ -21,9 +21,7 @@ import { formatDate } from '../lib/format';
 import {
   getGovernanceActionLabel,
   getGovernanceTargetTypeLabel,
-  getInstallHostLabel,
   getInstallPolicyLabel,
-  rewriteInstallTarballUrl,
   getSkillStatusLabel,
   getSourceTypeLabel,
   getVersionStatusLabel,
@@ -55,17 +53,13 @@ export function SkillDetailPage() {
     latestVersionItem,
     installTargetVersionItem,
     statusTone,
-    hasInstallTarget,
     installVersion,
+    installRegistryHost,
+    installTarballUrl,
   } = useSkillDetailSnapshot({
     packageName: decodedPackage,
     refreshKey,
   });
-  const installRegistryHost = getInstallHostLabel(installTarget.data?.npmRegistry);
-  const installTarballUrl = rewriteInstallTarballUrl(
-    installTarget.data?.tarballUrl,
-    installTarget.data?.npmRegistry
-  );
   const governancePosture = getPosture({
     packageName: decodedPackage,
     requiredAction: 'catalog.governance.skill.apply',
@@ -151,7 +145,7 @@ export function SkillDetailPage() {
 
     if (!installTarget.data) {
       return (
-        <SurfaceCard description="等安装目标被仓库解析出来后，这里会显示可直接复制的命令。" title="安装状态" variant="hero">
+        <SurfaceCard description="等 Catalog 解析结果返回后，这里会显示可直接复制的命令。" title="安装状态" variant="hero">
           <div className="empty-box">当前还没有可用的安装目标。请先检查最新版本是否已经发布并可解析。</div>
         </SurfaceCard>
       );
@@ -186,7 +180,6 @@ export function SkillDetailPage() {
         title="安装这个技能"
         packageName={decodedPackage}
         version={installTargetVersionItem.version}
-        npmRegistry={installTarget.data.npmRegistry}
         installPolicy={installTargetVersionItem.installPolicy}
         tarballUrl={installTarget.data.tarballUrl}
         integrity={installTarget.data.integrity}
@@ -283,8 +276,8 @@ export function SkillDetailPage() {
               <dd>{installVersion || '—'}</dd>
             </div>
             <div>
-              <dt>仓库地址</dt>
-              <dd>{hasInstallTarget ? installRegistryHost : '—'}</dd>
+              <dt>Catalog proxy</dt>
+              <dd>{detail.data ? installRegistryHost : '—'}</dd>
             </div>
             <div>
               <dt>制品包地址</dt>
@@ -409,7 +402,7 @@ export function SkillDetailPage() {
               <article className="list-card">
                 <div className="list-card__head">
                   <div>
-                    <strong>仓库安装态势</strong>
+                    <strong>Catalog 安装态势</strong>
                     <span>{installTarget.data?.version || '未解析'}</span>
                   </div>
                   <StatusPill tone={detail.data?.status === 'active' ? 'good' : 'bad'}>

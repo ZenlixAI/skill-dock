@@ -61,18 +61,19 @@ Catalog 是用户能够发现和安装哪些 Skill 的事实来源。兼容 npm 
 
 ### 启动本地环境
 
-当前支持的本地路径会在 kind 中运行 Web UI、Catalog、PostgreSQL 和 Nexus：
+当前支持的本地路径会在 kind 中运行 Web UI、Catalog 和 PostgreSQL；npm 仓库通过本机运行的 Artifact Keeper 根地址接入，默认入口是 `http://localhost:30080`：
 
 ```bash
 make dev
-make verify
+make down
 ```
 
-如果只想将修改后的本地镜像重新部署到已有集群：
+默认会把 Catalog 指向 `http://host.docker.internal:30080/`；CLI / 浏览器安装统一通过 Catalog proxy `http://127.0.0.1:18080/repository/skills-npm/`。如果你的 Artifact Keeper 不在默认内部地址，先用环境变量覆盖：
 
 ```bash
-make build
-make deploy
+ARTIFACTKEEPER_INTERNAL_NPM_URL=http://host.docker.internal:30080/ \
+ARTIFACTKEEPER_PUBLIC_NPM_URL=http://127.0.0.1:18080/repository/skills-npm/ \
+make dev
 ```
 
 默认本地入口：
@@ -80,9 +81,8 @@ make deploy
 | 服务 | 地址 |
 | --- | --- |
 | Web UI | <http://127.0.0.1:8080> |
-| Nexus UI / API | <http://127.0.0.1:8081> |
 | Catalog API | <http://127.0.0.1:18080> |
-| 兼容 npm 的仓库 | <http://127.0.0.1:8081/repository/skills-npm/> |
+| Catalog npm proxy | <http://127.0.0.1:18080/repository/skills-npm/> |
 
 ### 使用 CLI 连接本地环境
 
@@ -91,8 +91,6 @@ Catalog 鉴权和 npm 鉴权是两个独立的上下文：
 ```bash
 export SKILLS_REGISTRY_URL=http://127.0.0.1:18080
 export SKILLS_REGISTRY_TOKEN=reader-secret
-export NPM_CONFIG_USERCONFIG=/private/tmp/skill-registry-nexus/.npmrc
-export npm_config_registry=http://127.0.0.1:8081/repository/skills-npm/
 
 skills find pdf
 skills add @company.skill/your-skill -y
@@ -116,14 +114,15 @@ make test-web
 make test-cli
 make typecheck-cli
 make build-web
-make verify
+make dev
+make down
 ```
 
 根目录 `Makefile` 负责顶层环境工作流和校验入口；交互式 Skill 操作仍由独立的 `skills` CLI 提供。
 
 ## 文档
 
-- [本地 kind 与 Nexus E2E 操作手册](docs/local-nexus-e2e.zh-CN.md)
+- [本地 kind 与 Artifact Keeper E2E 操作手册](docs/local-nexus-e2e.zh-CN.md)
 - [使用 Artifact Keeper 作为 npm 仓库](docs/artifact-keeper-npm.zh-CN.md)
 - [Skills CLI 的 npx 执行与 npm 认证指南](docs/skills-cli-npx-auth.zh-CN.md)
 - [批量导入 Skill](docs/batch-import-skills.zh-CN.md)

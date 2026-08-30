@@ -155,7 +155,11 @@ function isImportReport(value: unknown): value is PackagingImportReport {
   );
 }
 
-function readRequiredStringField(payload: Record<string, unknown>, key: string, context: string): string {
+function readRequiredStringField(
+  payload: Record<string, unknown>,
+  key: string,
+  context: string
+): string {
   const value = payload[key];
   if (typeof value !== 'string') {
     throw new Error(`${context} response was malformed: ${key} must be a string`);
@@ -163,7 +167,11 @@ function readRequiredStringField(payload: Record<string, unknown>, key: string, 
   return value;
 }
 
-function readOptionalStringField(payload: Record<string, unknown>, key: string, context: string): string | undefined {
+function readOptionalStringField(
+  payload: Record<string, unknown>,
+  key: string,
+  context: string
+): string | undefined {
   const value = payload[key];
   if (value === undefined || value === null) {
     return undefined;
@@ -293,7 +301,13 @@ export class CatalogError extends Error {
 }
 
 export function getRegistryBaseUrl(explicit?: string): string {
-  const raw = explicit?.trim() || process.env.SKILLS_REGISTRY_URL?.trim();
+  const raw =
+    explicit?.trim() ||
+    process.env.SKILLS_REGISTRY_URL?.trim() ||
+    deriveCatalogBaseUrlFromNpmRegistry(
+      process.env.npm_config_registry?.trim() || process.env.NPM_CONFIG_REGISTRY?.trim()
+    );
+
   if (!raw) {
     throw new Error(
       'A registry URL is required in offline deployments. Set SKILLS_REGISTRY_URL or pass --registry.'
@@ -301,6 +315,22 @@ export function getRegistryBaseUrl(explicit?: string): string {
   }
 
   return raw.replace(/\/+$/, '');
+}
+
+function deriveCatalogBaseUrlFromNpmRegistry(registry?: string): string | undefined {
+  if (!registry) return undefined;
+
+  let url: URL;
+  try {
+    url = new URL(registry);
+  } catch {
+    return undefined;
+  }
+
+  const match = url.pathname.match(/^(.*)\/repository\/skills-npm\/?$/);
+  if (!match) return undefined;
+
+  return `${url.origin}${match[1]}`.replace(/\/+$/, '');
 }
 
 function getCatalogAuthHeaders(): Record<string, string> {

@@ -6,7 +6,6 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { parseSkillMd } from './skills.ts';
 import type { InstallTarget } from './catalog.ts';
-import { resolveNpmAuthHeaders } from './npm-auth.ts';
 import type { Skill } from './types.ts';
 
 export interface DownloadedRegistrySkill {
@@ -79,11 +78,9 @@ export async function downloadRegistrySkillBundle(
   };
 
   try {
-    const authHeaders = resolveNpmAuthHeaders(target.tarballUrl, options).headers;
     const response = await fetch(target.tarballUrl, {
       headers: {
         accept: 'application/octet-stream',
-        ...authHeaders,
       },
     });
 
