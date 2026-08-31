@@ -7,6 +7,7 @@ The CLI for the open agent skills ecosystem.
 For the current `skill_registry` monorepo deployment model, also read:
 
 - root repo runbook: [`../../README.md`](../../README.md)
+- current usage guide: [`../../docs/README.md`](../../docs/README.md)
 - local kind + Nexus E2E: [`../../docs/local-nexus-e2e.zh-CN.md`](../../docs/local-nexus-e2e.zh-CN.md)
 
 This README describes the generic CLI surface. In the current private-registry deployment:

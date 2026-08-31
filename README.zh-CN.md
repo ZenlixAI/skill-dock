@@ -122,6 +122,7 @@ make down
 
 ## 文档
 
+- [当前 Skill Registry 使用指南](docs/README.md)
 - [本地 kind 与 Artifact Keeper E2E 操作手册](docs/local-nexus-e2e.zh-CN.md)
 - [使用 Artifact Keeper 作为 npm 仓库](docs/artifact-keeper-npm.zh-CN.md)
 - [Skills CLI 的 npx 执行与 npm 认证指南](docs/skills-cli-npx-auth.zh-CN.md)
@@ -130,6 +131,8 @@ make down
 - [架构决策记录](docs/adr/)
 - [Catalog API 契约](docs/superpowers/specs/2026-05-28-agent-skill-registry-catalog-api.openapi.yaml)
 - [产品介绍演示文稿](docs/skill-registry-product-intro/)
+
+根目录 README 是默认的英文介绍；当前的操作手册主要保留中文版本，欢迎补充对应的英文版本。
 
 ## 配置
 

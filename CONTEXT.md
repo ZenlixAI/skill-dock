@@ -5,6 +5,7 @@ Defines the language for a lightweight registry that lets teams publish, discove
 Current authoritative docs live in:
 
 - `README.md`
+- `docs/README.md`
 - `docs/adr/`
 - `docs/superpowers/specs/2026-05-28-agent-skill-registry-overview.zh-CN.md`
 - `docs/superpowers/specs/2026-05-28-agent-skill-registry-api-cli-contracts.zh-CN.md`

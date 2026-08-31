@@ -1462,10 +1462,6 @@ func bindSQL(dialect string, query string) string {
 	return builder.String()
 }
 
-func BindSQL(dialect string, query string) string {
-	return bindSQL(dialect, query)
-}
-
 func nullStringPtr(value sql.NullString) *string {
 	if !value.Valid {
 		return nil

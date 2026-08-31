@@ -124,6 +124,7 @@ The root `Makefile` owns the top-level environment workflow and verification ent
 
 ## Documentation
 
+- [Current Skill Registry usage guide](docs/README.md) — Chinese
 - [Local kind and Artifact Keeper E2E runbook](docs/local-nexus-e2e.zh-CN.md) — Chinese
 - [Artifact Keeper npm integration](docs/artifact-keeper-npm.zh-CN.md) — Chinese
 - [Skills CLI npx execution and npm auth guide](docs/skills-cli-npx-auth.zh-CN.md) — Chinese

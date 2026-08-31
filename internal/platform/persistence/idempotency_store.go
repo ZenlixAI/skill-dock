@@ -47,10 +47,6 @@ func NewSQLIdempotencyStore(ctx context.Context, databaseURL string, ttl time.Du
 	return store, nil
 }
 
-func NewSQLIdempotencyStoreWithDB(db *sql.DB, dialect string, ttl time.Duration) *SQLIdempotencyStore {
-	return newSQLIdempotencyStore(db, dialect, ttl)
-}
-
 func newSQLIdempotencyStore(db *sql.DB, dialect string, ttl time.Duration) *SQLIdempotencyStore {
 	return &SQLIdempotencyStore{
 		db:      db,
@@ -167,10 +163,6 @@ func sqlDriverNameForURL(databaseURL string) string {
 	}
 }
 
-func SQLDriverNameForURL(databaseURL string) string {
-	return sqlDriverNameForURL(databaseURL)
-}
-
 func bindSQL(dialect string, query string) string {
 	if dialect != "pgx" {
 		return query
@@ -187,8 +179,4 @@ func bindSQL(dialect string, query string) string {
 		builder.WriteRune(r)
 	}
 	return builder.String()
-}
-
-func BindSQL(dialect string, query string) string {
-	return bindSQL(dialect, query)
 }
