@@ -74,6 +74,25 @@ func TestRewriteInstallTargetToProxyHandlesHostOnlyRegistry(t *testing.T) {
 	}
 }
 
+func TestRewriteInstallTargetToProxyStripsInternalRegistryPath(t *testing.T) {
+	request, err := http.NewRequest(http.MethodGet, "http://127.0.0.1:18080/api/v1/skills/%40platform.skill%2Fpdf-skill/install-target", nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+
+	response := RewriteInstallTargetToProxy(request, catalog.InstallResolution{
+		NPMRegistry: "https://npm.internal.example.com/repository/skills-npm",
+		TarballURL:  "https://npm.internal.example.com/repository/skills-npm/platform.skill/pdf-skill/-/pdf-skill-1.2.0.tgz",
+	})
+
+	if response.TarballURL != "http://127.0.0.1:18080/repository/skills-npm/platform.skill/pdf-skill/-/pdf-skill-1.2.0.tgz" {
+		t.Fatalf("unexpected tarball url: %q", response.TarballURL)
+	}
+	if response.NPMRegistry != "http://127.0.0.1:18080/repository/skills-npm" {
+		t.Fatalf("unexpected registry url: %q", response.NPMRegistry)
+	}
+}
+
 func parseImports(t *testing.T, path string) map[string]bool {
 	t.Helper()
 

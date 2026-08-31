@@ -62,7 +62,7 @@ dev: build
 	kubectl apply -f $(DEV_MANIFEST)
 	./zarf/scripts/start-artifact-keeper.sh
 	artifactkeeper_auth="$$(cat $(ARTIFACTKEEPER_TOKEN_FILE))"; \
-	kubectl -n skill-registry patch secret catalog-secrets --type merge -p "{\"stringData\":{\"skill_registry_artifact_read_url\":\"$(ARTIFACTKEEPER_INTERNAL_NPM_URL)\",\"skill_registry_artifact_read_authorization\":\"$$artifactkeeper_auth\",\"skill_registry_artifact_publish_authorization\":\"$$artifactkeeper_auth\",\"skill_registry_npm_read_authorization\":\"$$artifactkeeper_auth\",\"skill_registry_npm_publish_authorization\":\"$$artifactkeeper_auth\",\"skill_registry_public_npm_registry_url\":\"$(ARTIFACTKEEPER_PUBLIC_NPM_URL)\"}}"
+	kubectl -n skill-registry patch secret catalog-secrets --type merge -p "{\"stringData\":{\"skill_registry_artifact_read_url\":\"$(ARTIFACTKEEPER_INTERNAL_NPM_URL)\",\"skill_registry_artifact_read_authorization\":\"$$artifactkeeper_auth\",\"skill_registry_artifact_publish_authorization\":\"$$artifactkeeper_auth\",\"skill_registry_npm_read_authorization\":\"$$artifactkeeper_auth\",\"skill_registry_npm_publish_authorization\":\"$$artifactkeeper_auth\",\"skill_registry_public_install_url\":\"$(ARTIFACTKEEPER_PUBLIC_NPM_URL)\"}}"
 	kubectl -n skill-registry rollout restart deployment/postgres
 	kubectl -n skill-registry rollout status deployment/postgres
 	kubectl -n skill-registry rollout restart deployment/catalog

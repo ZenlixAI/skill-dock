@@ -18,23 +18,42 @@ func RewriteInstallTargetToProxy(request *http.Request, response catalog.Install
 	if err != nil {
 		return response
 	}
-	proxy := *request.URL
+
+	internalRegistryPath := ""
+	if internalRegistry, parseErr := url.Parse(strings.TrimSpace(response.NPMRegistry)); parseErr == nil {
+		internalRegistryPath = internalRegistry.Path
+	}
+
 	scheme := "http"
 	if request.TLS != nil {
 		scheme = "https"
 	}
+	proxyBase := strings.TrimRight(scheme+"://"+request.Host+installProxyPath, "/")
+	proxyPath := rewriteProxyPath(from.Path, internalRegistryPath)
+	proxyRawPath := rewriteProxyPath(from.RawPath, internalRegistryPath)
+
+	proxy := *request.URL
 	proxy.Scheme = scheme
 	proxy.Host = request.Host
-	proxy.Path = rewriteProxyPath(from.Path)
-	proxy.RawPath = rewriteProxyPath(from.RawPath)
+	proxy.Path = proxyPath
+	proxy.RawPath = proxyRawPath
 	proxy.RawQuery = from.RawQuery
-	response.NPMRegistry = strings.TrimRight(scheme+"://"+request.Host+installProxyPath, "/")
+	response.NPMRegistry = proxyBase
 	response.TarballURL = proxy.String()
 	return response
 }
 
-func rewriteProxyPath(path string) string {
+func rewriteProxyPath(path string, internalBasePath string) string {
 	path = strings.TrimSpace(path)
+	internalBasePath = normalizeRegistryPath(internalBasePath)
+	if internalBasePath != "" {
+		if path == internalBasePath {
+			path = ""
+		} else if strings.HasPrefix(path, internalBasePath+"/") {
+			path = strings.TrimPrefix(path, internalBasePath)
+		}
+	}
+
 	switch {
 	case path == "":
 		return installProxyPath
@@ -45,6 +64,17 @@ func rewriteProxyPath(path string) string {
 	default:
 		return installProxyPath + "/" + path
 	}
+}
+
+func normalizeRegistryPath(path string) string {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return ""
+	}
+	if !strings.HasPrefix(trimmed, "/") {
+		trimmed = "/" + trimmed
+	}
+	return strings.TrimRight(trimmed, "/")
 }
 
 func RewritePublicInstallTarget(response catalog.InstallResolution, publicRegistryURL string) catalog.InstallResolution {

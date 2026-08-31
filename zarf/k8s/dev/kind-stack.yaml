@@ -19,7 +19,7 @@ stringData:
   skill_registry_artifact_publish_authorization: ""
   skill_registry_npm_read_authorization: ""
   skill_registry_npm_publish_authorization: ""
-  skill_registry_public_npm_registry_url: http://127.0.0.1:18080/repository/skills-npm/
+  skill_registry_public_install_url: http://127.0.0.1:18080/repository/skills-npm/
   skill_registry_auth_tokens_json: ""
   skill_registry_session_secret: local-kind-session-secret
   skill_registry_session_users_json: |
@@ -161,7 +161,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: catalog-secrets
-                  key: skill_registry_public_npm_registry_url
+                  key: skill_registry_public_install_url
             - name: SKILL_REGISTRY_AUTH_TOKENS_JSON
               valueFrom:
                 secretKeyRef:
