@@ -19,26 +19,26 @@ describe('init command', () => {
   });
 
   it('should initialize a skill and create SKILL.md', () => {
-    const output = stripLogo(runCliOutput(['init', 'my-test-skill'], testDir));
+    const output = stripLogo(runCliOutput(['init', 'sample-skill'], testDir));
     expect(output).toMatchInlineSnapshot(`
-      "Initialized skill: my-test-skill
+      "Initialized skill: sample-skill
 
       Created:
-        my-test-skill/SKILL.md
-        my-test-skill/package.json
-        my-test-skill/commands/
+        sample-skill/SKILL.md
+        sample-skill/package.json
+        sample-skill/commands/
 
       Next:
-        - Edit my-test-skill/SKILL.md
+        - Edit sample-skill/SKILL.md
         - Run skills inspect
         - Run skills publish
 
       "
     `);
 
-    const skillPath = join(testDir, 'my-test-skill', 'SKILL.md');
-    const packageJsonPath = join(testDir, 'my-test-skill', 'package.json');
-    const commandsPath = join(testDir, 'my-test-skill', 'commands');
+    const skillPath = join(testDir, 'sample-skill', 'SKILL.md');
+    const packageJsonPath = join(testDir, 'sample-skill', 'package.json');
+    const commandsPath = join(testDir, 'sample-skill', 'commands');
     expect(existsSync(skillPath)).toBe(true);
     expect(existsSync(packageJsonPath)).toBe(true);
     expect(existsSync(commandsPath)).toBe(true);
@@ -46,11 +46,11 @@ describe('init command', () => {
     const content = readFileSync(skillPath, 'utf-8');
     expect(content).toMatchInlineSnapshot(`
       "---
-      name: my-test-skill
+      name: sample-skill
       description: A brief description of what this skill does
       ---
 
-      # my-test-skill
+      # sample-skill
 
       Instructions for the agent to follow when this skill is activated.
 
@@ -68,7 +68,7 @@ describe('init command', () => {
 
     const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
     expect(packageJson).toEqual({
-      name: '@company.skill/my-test-skill',
+      name: '@company.skill/sample-skill',
       version: '0.1.0',
     });
   });

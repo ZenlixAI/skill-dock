@@ -60,4 +60,18 @@ publish_skill() {
 }
 
 wait_for_registry
-publish_skill "$repo_root/my-test-skill"
+
+skill_fixtures_dir=${SKILL_FIXTURES_DIR:-$repo_root/zarf/data/runtime-test-skills}
+if [ ! -d "$skill_fixtures_dir" ] && [ -d /runtime-test-skills ]; then
+  skill_fixtures_dir=/runtime-test-skills
+fi
+
+if [ ! -d "$skill_fixtures_dir" ]; then
+  echo "test skill fixtures directory not found at ${skill_fixtures_dir}" >&2
+  exit 1
+fi
+
+for fixture_path in "$skill_fixtures_dir"/*; do
+  [ -d "$fixture_path" ] || continue
+  publish_skill "$fixture_path"
+done
