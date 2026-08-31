@@ -88,7 +88,7 @@ The default local endpoints are:
 
 ### Use the CLI against the local stack
 
-Set the Catalog and npm authentication contexts separately:
+Set the Catalog endpoint and auth token separately:
 
 ```bash
 export SKILLS_REGISTRY_URL=http://127.0.0.1:18080
@@ -124,17 +124,8 @@ The root `Makefile` owns the top-level environment workflow and verification ent
 
 ## Documentation
 
-- [Current Skill Registry usage guide](docs/README.md) — Chinese
-- [Local kind and Artifact Keeper E2E runbook](docs/local-nexus-e2e.zh-CN.md) — Chinese
-- [Artifact Keeper npm integration](docs/artifact-keeper-npm.zh-CN.md) — Chinese
-- [Skills CLI npx execution and npm auth guide](docs/skills-cli-npx-auth.zh-CN.md) — Chinese
-- [Batch skill import](docs/batch-import-skills.zh-CN.md) — Chinese
-- [Local Web and Catalog E2E](docs/local-web-catalog-e2e.zh-CN.md) — Chinese
-- [Architecture decision records](docs/adr/)
-- [Catalog API contract](docs/superpowers/specs/2026-05-28-agent-skill-registry-catalog-api.openapi.yaml)
-- [Product introduction deck](docs/skill-registry-product-intro/)
-
-The root README is the default English introduction. Operational runbooks are currently maintained in Chinese; contributions that add English counterparts are welcome.
+- [Current usage guide](docs/README.md) — Chinese
+- [skills CLI reference](apps/skills-cli/README.md) — English
 
 ## Configuration
 

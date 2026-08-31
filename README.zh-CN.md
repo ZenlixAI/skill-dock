@@ -61,7 +61,7 @@ Catalog 是用户能够发现和安装哪些 Skill 的事实来源。兼容 npm 
 
 ### 启动本地环境
 
-当前支持的本地路径会在 kind 中运行 Web UI、Catalog 和 PostgreSQL；npm 仓库通过本机运行的 Artifact Keeper 根地址接入，默认入口是 `http://localhost:30080`：
+本仓库支持的本地开发栈会一起拉起：
 
 ```bash
 make dev
@@ -86,7 +86,7 @@ make dev
 
 ### 使用 CLI 连接本地环境
 
-Catalog 鉴权和 npm 鉴权是两个独立的上下文：
+Catalog 入口和 token 需要单独设置：
 
 ```bash
 export SKILLS_REGISTRY_URL=http://127.0.0.1:18080
@@ -122,17 +122,10 @@ make down
 
 ## 文档
 
-- [当前 Skill Registry 使用指南](docs/README.md)
-- [本地 kind 与 Artifact Keeper E2E 操作手册](docs/local-nexus-e2e.zh-CN.md)
-- [使用 Artifact Keeper 作为 npm 仓库](docs/artifact-keeper-npm.zh-CN.md)
-- [Skills CLI 的 npx 执行与 npm 认证指南](docs/skills-cli-npx-auth.zh-CN.md)
-- [批量导入 Skill](docs/batch-import-skills.zh-CN.md)
-- [本地 Web 与 Catalog E2E](docs/local-web-catalog-e2e.zh-CN.md)
-- [架构决策记录](docs/adr/)
-- [Catalog API 契约](docs/superpowers/specs/2026-05-28-agent-skill-registry-catalog-api.openapi.yaml)
-- [产品介绍演示文稿](docs/skill-registry-product-intro/)
+- [当前使用指南](docs/README.md)
+- [skills CLI 参考](apps/skills-cli/README.md)
 
-根目录 README 是默认的英文介绍；当前的操作手册主要保留中文版本，欢迎补充对应的英文版本。
+根目录 README 是默认的中文入口。
 
 ## 配置
 
