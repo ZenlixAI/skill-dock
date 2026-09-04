@@ -34,7 +34,6 @@ type Action string
 const (
 	ActionReadCatalog            Action = "catalog.read"
 	ActionReadAuditEvents        Action = "audit.read"
-	ActionReadSession            Action = "session.read"
 	ActionReadHealthz            Action = "system.healthz.read"
 	ActionReadReadyz             Action = "system.readyz.read"
 	ActionReadMetrics            Action = "system.metrics.read"
@@ -277,12 +276,6 @@ func defaultCapabilities() map[Action]map[string]struct{} {
 		},
 		ActionReadAuditEvents: {
 			"reader":    {},
-			"publisher": {},
-			"operator":  {},
-		},
-		ActionReadSession: {
-			"reader":    {},
-			"authoring": {},
 			"publisher": {},
 			"operator":  {},
 		},

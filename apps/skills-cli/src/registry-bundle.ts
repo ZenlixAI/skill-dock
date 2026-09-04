@@ -24,9 +24,115 @@ interface RegistryPackageJson {
   version?: unknown;
 }
 
+interface NpmRcAuthEntry {
+  host: string;
+  pathPrefix: string;
+  token: string;
+}
+
 function packageBasename(packageName: string): string {
   const parts = packageName.split('/');
   return parts[parts.length - 1] || packageName;
+}
+
+function resolveUserConfigPath(options: DownloadRegistrySkillBundleOptions): string | undefined {
+  if (options.userConfigPath && options.userConfigPath.trim() !== '') {
+    return options.userConfigPath.trim();
+  }
+
+  const envConfigPath = process.env.NPM_CONFIG_USERCONFIG?.trim();
+  if (envConfigPath) {
+    return envConfigPath;
+  }
+
+  if (options.cwd && options.cwd.trim() !== '') {
+    return join(options.cwd, '.npmrc');
+  }
+
+  return undefined;
+}
+
+function parseNpmRcAuthEntries(content: string): NpmRcAuthEntry[] {
+  const entries: NpmRcAuthEntry[] = [];
+
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#') || line.startsWith(';')) {
+      continue;
+    }
+
+    const tokenMarker = ':_authToken=';
+    const markerIndex = line.indexOf(tokenMarker);
+    if (!line.startsWith('//') || markerIndex < 0) {
+      continue;
+    }
+
+    const registryPart = line.slice(2, markerIndex);
+    const token = line.slice(markerIndex + tokenMarker.length).trim();
+    if (!registryPart || token === '') {
+      continue;
+    }
+
+    const slashIndex = registryPart.indexOf('/');
+    const host = slashIndex >= 0 ? registryPart.slice(0, slashIndex) : registryPart;
+    if (!host) {
+      continue;
+    }
+
+    const pathPrefixRaw = slashIndex >= 0 ? registryPart.slice(slashIndex) : '/';
+    const normalizedPathPrefix = pathPrefixRaw.startsWith('/') ? pathPrefixRaw : `/${pathPrefixRaw}`;
+    const pathPrefix = normalizedPathPrefix === '/' ? '/' : `${normalizedPathPrefix.replace(/\/+$/, '')}/`;
+
+    entries.push({
+      host,
+      pathPrefix,
+      token,
+    });
+  }
+
+  return entries;
+}
+
+function selectNpmRcAuth(targetURL: string, content: string): string | undefined {
+  let parsed: URL;
+  try {
+    parsed = new URL(targetURL);
+  } catch {
+    return undefined;
+  }
+
+  const entries = parseNpmRcAuthEntries(content)
+    .filter((entry) => entry.host === parsed.host && parsed.pathname.startsWith(entry.pathPrefix))
+    .sort((left, right) => right.pathPrefix.length - left.pathPrefix.length);
+
+  const token = entries[0]?.token;
+  if (!token) {
+    return undefined;
+  }
+
+  return `Bearer ${token}`;
+}
+
+function resolveRegistryAccessMode(target: InstallTarget): string {
+  return String(target.registryAccessMode || '').trim().toLowerCase();
+}
+
+function loadRegistryAuthorization(
+  target: InstallTarget,
+  options: DownloadRegistrySkillBundleOptions = {}
+): Promise<string | undefined> {
+  if (resolveRegistryAccessMode(target) !== 'direct') {
+    return Promise.resolve(undefined);
+  }
+
+  const configPath = resolveUserConfigPath(options);
+  if (!configPath) {
+    return Promise.resolve(undefined);
+  }
+
+  return readFile(configPath, 'utf-8')
+    .then((content) => selectNpmRcAuth(target.tarballUrl, content))
+    .catch(() => undefined);
 }
 
 function verifyTarballIntegrity(target: InstallTarget, tarball: Buffer): void {
@@ -78,10 +184,16 @@ export async function downloadRegistrySkillBundle(
   };
 
   try {
+    const authorization = await loadRegistryAuthorization(target, options);
+    const headers: Record<string, string> = {
+      accept: 'application/octet-stream',
+    };
+    if (authorization) {
+      headers.Authorization = authorization;
+    }
+
     const response = await fetch(target.tarballUrl, {
-      headers: {
-        accept: 'application/octet-stream',
-      },
+      headers,
     });
 
     if (!response.ok) {

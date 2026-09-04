@@ -88,6 +88,22 @@ func (s *capturingCatalogReadService) GetVersion(context.Context, string, string
 	return catalog.SkillVersionDetail{}, nil
 }
 
+func (s *capturingCatalogReadService) GetLatestResolvableVersion(context.Context, string) (catalog.SkillVersionDetail, error) {
+	return catalog.SkillVersionDetail{}, nil
+}
+
+func (s *capturingCatalogReadService) ListGovernanceChanges(context.Context, catalog.GovernanceQuery) (catalog.GovernancePage, error) {
+	return catalog.GovernancePage{}, nil
+}
+
+func (s *capturingCatalogReadService) ListPackageVersions(context.Context, string) ([]catalog.SkillVersionDetail, error) {
+	return nil, nil
+}
+
+func (s *capturingCatalogReadService) ListPackageGovernance(context.Context, string, catalog.GovernanceTargetType, *string) ([]catalog.GovernanceRecord, error) {
+	return nil, nil
+}
+
 func (s *capturingCatalogReadService) ResolveInstallTarget(context.Context, string, string) (catalog.InstallResolution, error) {
 	return catalog.InstallResolution{}, nil
 }

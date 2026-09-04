@@ -9,13 +9,18 @@ import (
 )
 
 type SkillsQuery struct {
-	Query          string `form:"q"`
-	PackageName    string `form:"package_name"`
-	SourceType     string `form:"source_type"`
-	IncludeRetired string `form:"include_retired"`
-	Sort           string `form:"sort"`
-	PageSize       string `form:"pageSize"`
-	Cursor         string `form:"cursor"`
+	Query           string `form:"q"`
+	PackageName     string `form:"package_name"`
+	SourceType      string `form:"source_type"`
+	IncludeRetired  string `form:"include_retired"`
+	IncludeExternal string `form:"include_external"`
+	Source          string `form:"source"`
+	Registry        string `form:"registry"`
+	Scope           string `form:"scope"`
+	Origin          string `form:"origin"`
+	Sort            string `form:"sort"`
+	PageSize        string `form:"pageSize"`
+	Cursor          string `form:"cursor"`
 }
 
 type CuratedSkillsQuery struct {

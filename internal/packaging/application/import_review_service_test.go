@@ -12,7 +12,7 @@ func TestImportReviewServiceReviewReturnsReviewDataAndCleansWorkspace(t *testing
 	root := t.TempDir()
 	service := NewImportReviewService(NewWorkspaceService(root, nil))
 
-	response, err := service.Review(context.Background(), packagingdomain.ImportReviewRequest{
+	response, err := service.ReviewContext(context.Background(), packagingdomain.ImportReviewRequest{
 		Source: packagingdomain.Source{
 			Type: "platform_authoring",
 			Files: map[string]string{
@@ -66,7 +66,7 @@ func TestImportReviewServiceReviewIncludesBundleWhenRequested(t *testing.T) {
 	root := t.TempDir()
 	service := NewImportReviewService(NewWorkspaceService(root, nil))
 
-	response, err := service.Review(context.Background(), packagingdomain.ImportReviewRequest{
+	response, err := service.ReviewContext(context.Background(), packagingdomain.ImportReviewRequest{
 		Source: packagingdomain.Source{
 			Type: "platform_authoring",
 			Files: map[string]string{

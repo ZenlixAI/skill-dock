@@ -1,6 +1,6 @@
 SHELL := /bin/zsh
 
-WEB_DIR := apps/skills-web
+SITE_DIR := apps/site
 CLI_DIR := apps/skills-cli
 CLI_PNPM := npx -y pnpm@10.17.1
 GO_CACHE ?= /private/tmp/go-cache
@@ -11,9 +11,9 @@ DEV_KIND_CONFIG ?= zarf/k8s/dev/kind-config.yaml
 DEV_MANIFEST ?= zarf/k8s/dev/kind-stack.yaml
 
 CATALOG_IMAGE ?= skill-registry-catalog:dev
-WEB_IMAGE ?= skill-registry-web:dev
+SITE_IMAGE ?= skill-registry-site:dev
 CATALOG_DOCKERFILE ?= zarf/docker/local/Dockerfile
-WEB_DOCKERFILE ?= zarf/docker/local/skills-web.Dockerfile
+SITE_DOCKERFILE ?= zarf/docker/local/site.Dockerfile
 POSTGRES_IMAGE ?= postgres:17
 POSTGRES_IMAGE_ARCHIVE ?= /private/tmp/postgres-17.tar
 POSTGRES_PLATFORM ?= linux/arm64/v8
@@ -37,17 +37,17 @@ CLI_PUBLISH_VERSION_STATE ?= $(ARTIFACTKEEPER_STATE_DIR)/cli-snapshot.version
 CLI_PUBLISH_DIST_TAG ?= latest
 CLI_PUBLISH_REGISTRY ?= http://127.0.0.1:18080/repository/skills-npm/
 
-.PHONY: test build dev down publish-cli-snapshot
+.PHONY: test build dev dev-update down publish-cli-snapshot
 
 test:
 	env GOCACHE=$(GO_CACHE) go test ./...
-	npm --prefix $(WEB_DIR) test
+	npm --prefix $(SITE_DIR) test
 	$(CLI_PNPM) --dir $(CLI_DIR) test
 	$(CLI_PNPM) --dir $(CLI_DIR) type-check
 
 build:
 	docker build --pull=false -f $(CATALOG_DOCKERFILE) -t $(CATALOG_IMAGE) .
-	docker build --pull=false -f $(WEB_DOCKERFILE) -t $(WEB_IMAGE) .
+	docker build --pull=false -f $(SITE_DOCKERFILE) -t $(SITE_IMAGE) .
 
 dev: build
 	@if kind get clusters | grep -qx '$(KIND_CLUSTER)'; then \
@@ -58,7 +58,7 @@ dev: build
 	docker save --platform $(POSTGRES_PLATFORM) -o $(POSTGRES_IMAGE_ARCHIVE) $(POSTGRES_IMAGE)
 	kind load image-archive $(POSTGRES_IMAGE_ARCHIVE) --name $(KIND_CLUSTER)
 	kind load docker-image $(CATALOG_IMAGE) --name $(KIND_CLUSTER)
-	kind load docker-image $(WEB_IMAGE) --name $(KIND_CLUSTER)
+	kind load docker-image $(SITE_IMAGE) --name $(KIND_CLUSTER)
 	kubectl apply -f $(DEV_MANIFEST)
 	./zarf/scripts/start-artifact-keeper.sh
 	artifactkeeper_auth="$$(cat $(ARTIFACTKEEPER_TOKEN_FILE))"; \
@@ -67,11 +67,28 @@ dev: build
 	kubectl -n skill-registry rollout status deployment/postgres
 	kubectl -n skill-registry rollout restart deployment/catalog
 	kubectl -n skill-registry rollout status deployment/catalog
-	kubectl -n skill-registry rollout status deployment/skills-web
+	kubectl -n skill-registry rollout status deployment/site
 	SKILLS_REGISTRY_URL=http://127.0.0.1:18080 \
 	SKILLS_REGISTRY_TOKEN=publisher-secret \
 	./zarf/scripts/initialize-test-skills.sh
 
+
+dev-update: build
+	@if ! kind get clusters | grep -qx '$(KIND_CLUSTER)'; then \
+		echo "kind cluster $(KIND_CLUSTER) does not exist; run make dev first"; \
+		exit 1; \
+	fi
+	kubectl apply -f $(DEV_MANIFEST)
+	docker save --platform $(POSTGRES_PLATFORM) -o $(POSTGRES_IMAGE_ARCHIVE) $(POSTGRES_IMAGE)
+	kind load image-archive $(POSTGRES_IMAGE_ARCHIVE) --name $(KIND_CLUSTER)
+	kind load docker-image $(CATALOG_IMAGE) --name $(KIND_CLUSTER)
+	kind load docker-image $(SITE_IMAGE) --name $(KIND_CLUSTER)
+	kubectl -n skill-registry rollout restart deployment/postgres
+	kubectl -n skill-registry rollout status deployment/postgres
+	kubectl -n skill-registry rollout restart deployment/catalog
+	kubectl -n skill-registry rollout status deployment/catalog
+	kubectl -n skill-registry rollout restart deployment/site
+	kubectl -n skill-registry rollout status deployment/site
 
 publish-cli-snapshot:
 	CLI_PUBLISH_CLI_DIR="$(CLI_DIR)" \

@@ -2,161 +2,106 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-> An open-source registry and distribution platform for reusable agent skills.
+> A self-hosted registry control plane for reusable agent skills.
 
-Skill Registry helps teams publish, discover, install, and govern reusable capabilities for coding agents. It combines a catalog API, a web interface, a command-line client, and an npm-compatible artifact repository into one self-hostable platform.
+Skill Registry documents the server and CLI that manage reusable skills across an organization. The system keeps the catalog authoritative, stores bundles in an external npm-compatible repository, and exposes a CLI for install, refresh, publish, and import workflows.
 
-An **agent skill** is a reusable capability packaged around a `SKILL.md` file and its supporting resources. Skill Registry gives each published skill a stable package name, versioned releases, searchable metadata, and a controlled installation path.
+## What is in scope
 
-## Why Skill Registry?
+This documentation set focuses on:
 
-Agent skills are easy to share as folders and difficult to operate as a reliable ecosystem. Skill Registry provides the missing operational layer:
+- the **skills server** as the source of truth for discovery, release records, visibility, and governance
+- the **`skills` CLI** as the user-facing contract for install and publish workflows
+- the **external artifact repository** as replaceable bundle storage
+- deployment and configuration needed to run those two pieces together
 
-- **Discoverability** — search and browse skills through the catalog or web UI.
-- **Reproducible installation** — resolve an exact package and version, then install it through the `skills` CLI.
-- **Authoring and publishing** — validate, package, and publish local or imported skills.
-- **Lifecycle governance** — deprecate, yank, or retire skills and versions without silently deleting history.
-- **Self-hosting** — use a deployment's own database, authentication, and npm-compatible artifact repository.
-- **Agent compatibility** — install skills into the directories used by supported coding agents.
+UI details are intentionally omitted from this document set.
 
-## Project Status
+## Product shape
 
-Skill Registry is under active development. The core workflows are implemented, while deployment contracts, APIs, and user-facing features may continue to evolve. Treat the current API and package format as versioned project interfaces, not as a promise of backwards compatibility for every pre-release build.
+- **Catalog/server** — owns search, metadata, release visibility, and lifecycle state
+- **CLI** — installs, refreshes, publishes, and imports skills
+- **Artifact repository** — stores immutable bundles
+- **Database** — persists catalog state, releases, and audit data
 
-## Architecture
+A skill is addressed by its package name and versioned release. The server decides what is published and installable; the artifact repository stores the bundle.
 
-The project deliberately separates product truth from artifact storage:
+## Core workflows
 
-| Component | Responsibility |
-| --- | --- |
-| **Catalog API** | Owns discovery, metadata, version visibility, install resolution, and governance state. |
-| **Skills CLI** | Installs, searches, lists, updates, synchronizes, validates, imports, and publishes skills. |
-| **Web UI** | Provides catalog browsing and authoring/import workflows. |
-| **Artifact repository** | Stores immutable skill bundles in an npm-compatible repository such as Nexus or Artifact Keeper. |
-| **Database** | Persists catalog state, release records, governance changes, audit data, and workflow state. |
+- Discover skills with `skills find`
+- Install skills with `skills add`
+- Refresh registry installs with `skills update`
+- Refresh source installs with `skills sync`
+- Publish local skills with `skills publish`
+- Import local or git sources with `skills import-local` and `skills import-git`
+- Inspect and scaffold skills with `skills inspect` and `skills init`
 
-The catalog is the source of truth for what users can discover and install. The npm-compatible repository stores the bundle; an artifact existing in that repository is not considered a published release until it has a corresponding catalog release record.
+## Install behavior
 
-## Design Principles
+Registry-backed installs can be resolved in two access modes:
 
-- **One public identity:** a skill is addressed by its npm-compatible **Package Name**.
-- **Immutable releases:** each published version is a distinct release that can be resolved and verified.
-- **Explicit governance:** lifecycle changes record an action and a reason.
-- **Separated concerns:** discovery and policy belong to the catalog; bundle storage belongs to the artifact repository.
-- **Portable source intake:** skills can be authored locally or imported from a local archive or Git source.
-- **Operationally observable:** authentication, readiness endpoints, idempotent publishing, and audit records are part of the platform boundary.
+- `proxy` — the server rewrites tarball URLs to its own npm proxy mount
+- `direct` — the server returns upstream npm-compatible registry URLs unchanged, so the CLI can use the user's own npm configuration and credentials
 
-## Quick Start
+This is a transport choice for install resolution, not a separate skill identity model. When the server returns `direct`, the CLI may read npm auth from the user's npm config file (`NPM_CONFIG_USERCONFIG` or the local `.npmrc`) to download the tarball. It does not use npm config for `proxy` targets.
 
-### Prerequisites
+## Local development
 
-For the local development stack, install:
-
-- Docker
-- [kind](https://kind.sigs.k8s.io/)
-- [kubectl](https://kubernetes.io/docs/tasks/tools/)
-- Go 1.26 or later
-- Node.js 18 or later and npm
-- [uv](https://docs.astral.sh/uv/)
-
-### Start the local stack
-
-The supported local path runs the web UI, Catalog, and PostgreSQL in kind, while npm access is pointed at an Artifact Keeper repository running separately on `http://localhost:30080`:
+The supported local path uses the repository's development scripts.
 
 ```bash
 make dev
+make dev-images
 make down
 ```
 
-By default, Catalog reads from `http://host.docker.internal:30080/`; CLI/browser installs use the Catalog proxy at `http://127.0.0.1:18080/repository/skills-npm/`.
+Use `make dev` to create the local stack and initialize sample data. Use `make dev-images` when the kind cluster already exists and you only need to reload rebuilt service images without re-running the data initialization step.
 
-To override those URLs for a different Artifact Keeper host:
-
-```bash
-ARTIFACTKEEPER_INTERNAL_NPM_URL=http://host.docker.internal:30080/ \
-ARTIFACTKEEPER_PUBLIC_NPM_URL=http://127.0.0.1:18080/repository/skills-npm/ \
-make dev
-```
-
-The default local endpoints are:
-
-| Service | URL |
-| --- | --- |
-| Web UI | <http://127.0.0.1:8080> |
-| Catalog API | <http://127.0.0.1:18080> |
-| npm proxy (via Catalog) | <http://127.0.0.1:18080/repository/skills-npm/> |
-
-### Use the CLI against the local stack
-
-Set the Catalog endpoint and auth token separately:
-
-```bash
-export SKILLS_REGISTRY_URL=http://127.0.0.1:18080
-export SKILLS_REGISTRY_TOKEN=reader-secret
-
-skills find pdf
-skills add @company.skill/your-skill -y
-```
-
-Publishing requires a publisher-capable Catalog token:
-
-```bash
-export SKILLS_REGISTRY_TOKEN=publisher-secret
-skills publish /absolute/path/to/your-skill
-```
-
-The CLI also supports importing local and Git sources, updating registry-installed skills, and synchronizing source-installed skills. Run `skills --help` for the complete command surface.
-
-## Common Development Commands
-
-```bash
-make help
-make test-go
-make test-web
-make test-cli
-make typecheck-cli
-make build-web
-make dev
-make down
-```
-
-The root `Makefile` owns the top-level environment workflow and verification entry points. Interactive skill operations remain commands of the standalone `skills` CLI.
+The default local stack uses the catalog server, PostgreSQL, and an external Artifact Keeper repository.
 
 ## Documentation
 
-- [Current usage guide](docs/README.md) — Chinese
-- [skills CLI reference](apps/skills-cli/README.md) — English
+- [Product direction and scope](docs/00-product-direction.md)
+- [Server architecture and configuration](docs/01-server-architecture.md)
+- [CLI contract and command model](docs/02-cli-contract.md)
+- [Deployment and local runtime](docs/03-deployment.md)
+- [Auth and access](docs/04-auth-and-access.md)
+- [Package and release model](docs/05-package-and-release-model.md)
+- [Artifact resolution](docs/06-artifact-resolution.md)
+- [Publish and import workflows](docs/07-publish-and-import-workflows.md)
+- [Install resolution and refresh](docs/08-install-resolution-and-refresh.md)
+- [Governance and visibility](docs/09-governance-and-visibility.md)
+- [External sources, migration, and search](10-external-sources-and-search.md)
+- [CLI and API extension plan for external sources](11-cli-and-api-extension-plan.md)
+- [CLI command and parameter specification](12-cli-command-spec.md)
+- [API endpoint specification for external sources](13-api-endpoint-spec.md)
+- [CLI reference](apps/skills-cli/README.md)
 
-## Configuration
+## Configuration quick look
 
-A deployment commonly configures the following environment variables:
+### Server
 
 | Variable | Purpose |
 | --- | --- |
-| `SKILL_REGISTRY_ADDR` | Catalog listen address. |
-| `SKILL_REGISTRY_DATABASE_URL` | SQLite or PostgreSQL database URL. |
-| `SKILL_REGISTRY_NPM_REGISTRY_URL` | Artifact repository used by the Catalog for metadata and bundle access. |
-| `SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL` | Artifact repository URL reachable by CLI and browser clients. |
-| `SKILL_REGISTRY_READER_TOKEN` | Token for catalog read operations. |
-| `SKILL_REGISTRY_AUTHORING_TOKEN` | Token for authoring and packaging workflows. |
-| `SKILL_REGISTRY_PUBLISHER_TOKEN` | Token for publishing and governance operations. |
-| `SKILL_REGISTRY_NPM_READ_AUTHORIZATION` | Authorization header for private artifact-repository reads. |
-| `SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION` | Authorization header used for server-side publication. |
+| `SKILL_REGISTRY_ADDR` | Server listen address |
+| `SKILL_REGISTRY_DATABASE_URL` | Database URL |
+| `SKILL_REGISTRY_NPM_REGISTRY_URL` | Artifact repository used by the server |
+| `SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL` | Artifact repository URL visible to clients |
+| `SKILL_REGISTRY_READER_TOKEN` | Read token |
+| `SKILL_REGISTRY_AUTHORING_TOKEN` | Authoring token |
+| `SKILL_REGISTRY_PUBLISHER_TOKEN` | Publisher token |
+| `SKILL_REGISTRY_NPM_READ_AUTHORIZATION` | Authorization header for private registry reads |
+| `SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION` | Authorization header for server-side publication |
+| `SKILL_REGISTRY_INSTALL_TARGET_MODE` | Install target mode returned by the server (`proxy` or `direct`) |
 
-See the local runbooks for complete examples, private registry authentication, and deployment-specific settings.
+### CLI
 
-## Contributing
-
-Contributions are welcome. Before submitting a change:
-
-1. Read the relevant architecture decision records and package contracts.
-2. Keep the Catalog, CLI, Web UI, and artifact-repository boundaries explicit.
-3. Add or update tests for behavioral changes.
-4. Run `make verify` and include any environment limitations in the pull request description.
-5. Keep documentation and examples in sync with the command or API being changed.
-
-For changes to the public package model, install resolution, publishing workflow, or governance semantics, document the decision in `docs/adr/` or the relevant design document.
+| Variable | Purpose |
+| --- | --- |
+| `SKILLS_REGISTRY_URL` | Catalog base URL |
+| `SKILLS_REGISTRY_TOKEN` | Bearer token for CLI requests |
+| `SKILLS_REGISTRY_ROLE` | Optional role header for role-based local auth |
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+MIT

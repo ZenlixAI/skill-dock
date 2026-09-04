@@ -28,14 +28,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	internalapp "skill_registry/internal/catalog/application"
 	catalog "skill_registry/internal/catalog/domain"
 	internalcataloghttp "skill_registry/internal/catalog/http"
 	cataloginfra "skill_registry/internal/catalog/infra"
 	internalgovernancehttp "skill_registry/internal/governance/http"
 	packagingapplication "skill_registry/internal/packaging/application"
 	packaging "skill_registry/internal/packaging/domain"
-	internalpackaginghttp "skill_registry/internal/packaging/http"
 	artifactadapter "skill_registry/internal/platform/artifact"
 	"skill_registry/internal/platform/auth"
 	platformhttp "skill_registry/internal/platform/http"
@@ -51,7 +49,6 @@ func TestServerUsesInternalHTTPHandlers(t *testing.T) {
 	}
 	var _ internalcataloghttp.Handlers
 	var _ internalgovernancehttp.Handlers
-	var _ internalpackaginghttp.Handlers
 	var _ internalsystemhttp.Handlers
 
 	fileSet := token.NewFileSet()
@@ -69,13 +66,9 @@ func TestServerUsesInternalHTTPHandlers(t *testing.T) {
 	for _, importPath := range []string{
 		"skill_registry/internal/catalog/http",
 		"skill_registry/internal/governance/http",
-		"skill_registry/internal/packaging/http",
 		"skill_registry/internal/platform/audit",
 		"skill_registry/internal/platform/http",
 		"skill_registry/internal/platform/http/access",
-		"skill_registry/internal/platform/http/middleware",
-		"skill_registry/internal/platform/http/session",
-		"skill_registry/internal/platform/session",
 		"skill_registry/internal/system/http",
 	} {
 		if !imports[importPath] {
@@ -87,7 +80,6 @@ func TestServerUsesInternalHTTPHandlers(t *testing.T) {
 		"skill_registry/app/catalogapi/handlers/catalog",
 		"skill_registry/app/catalogapi/handlers/governance",
 		"skill_registry/app/catalogapi/handlers/packaging",
-		"skill_registry/app/catalogapi/handlers/session",
 		"skill_registry/app/catalogapi/handlers/system",
 		"skill_registry/app/catalogapi/audit",
 		"skill_registry/app/catalogapi/access_workflow",
@@ -122,7 +114,8 @@ func TestServerProxiesNPMRegistryRequests(t *testing.T) {
 
 	server := NewServer(ServerConfig{
 		Repository:                   cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		Packaging:                    packagingapplication.NewService(""),
+		ImportReview:                 newImportReviewFuncForTest(),
+		Publish:                      newPublishFuncForTest(),
 		NPMRegistryURL:               upstream.URL,
 		NPMRegistryReadAuthorization: "Bearer server-token",
 	})
@@ -171,7 +164,8 @@ func TestServerRewritesNPMRegistryMetadataToPublicProxy(t *testing.T) {
 
 	server := NewServer(ServerConfig{
 		Repository:                   cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		Packaging:                    packagingapplication.NewService(""),
+		ImportReview:                 newImportReviewFuncForTest(),
+		Publish:                      newPublishFuncForTest(),
 		NPMRegistryURL:               upstream.URL,
 		PublicNPMRegistryURL:         "http://127.0.0.1:18080/repository/skills-npm/",
 		NPMRegistryReadAuthorization: "Bearer server-token",
@@ -220,7 +214,8 @@ func TestServerProxiesNPMRegistryPublishRequests(t *testing.T) {
 
 	server := NewServer(ServerConfig{
 		Repository:                      cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		Packaging:                       packagingapplication.NewService(""),
+		ImportReview:                    newImportReviewFuncForTest(),
+		Publish:                         newPublishFuncForTest(),
 		NPMRegistryURL:                  upstream.URL,
 		NPMRegistryPublishAuthorization: "Bearer publish-token",
 	})
@@ -279,8 +274,7 @@ func TestSkillsRequiresAuthentication(t *testing.T) {
 
 func TestServerRoutesSkillsThroughCatalogReadModule(t *testing.T) {
 	module := newCatalogReadModuleStubForTest(t)
-	server := newTestServer()
-	server.catalogReadModule = module
+	server := newTestServerWithCatalogReadModule(t, module)
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills", nil)
 	request.Header.Set("X-Role", "reader")
 	recorder := httptest.NewRecorder()
@@ -297,8 +291,7 @@ func TestServerRoutesSkillsThroughCatalogReadModule(t *testing.T) {
 
 func TestServerRoutesHeadSkillsThroughCatalogReadModule(t *testing.T) {
 	module := newCatalogReadModuleStubForTest(t)
-	server := newTestServer()
-	server.catalogReadModule = module
+	server := newTestServerWithCatalogReadModule(t, module)
 	request := httptest.NewRequest(http.MethodHead, "/api/v1/skills", nil)
 	request.Header.Set("X-Role", "reader")
 	recorder := httptest.NewRecorder()
@@ -310,135 +303,6 @@ func TestServerRoutesHeadSkillsThroughCatalogReadModule(t *testing.T) {
 	}
 	if got := module.listSkillsCallCount(); got != 1 {
 		t.Fatalf("expected catalog read module to handle one HEAD list request, got %d", got)
-	}
-}
-
-func TestNewServerUsesRepositoryWhenCatalogServicesAreOmitted(t *testing.T) {
-	repository := cataloginfra.NewMemoryRepository(cataloginfra.SampleData())
-
-	server := NewServer(ServerConfig{
-		Repository:     repository,
-		ReaderToken:    "reader-secret",
-		PublisherToken: "publisher-secret",
-	})
-
-	readModule, ok := server.catalogReadModule.(*internalcataloghttp.ReadModule)
-	if !ok {
-		t.Fatalf("expected concrete internal catalog read module, got %T", server.catalogReadModule)
-	}
-	if readModule.Service() != repository {
-		t.Fatal("expected server to use repository as the default catalog read service")
-	}
-
-	if server.catalogMutationService != repository {
-		t.Fatal("expected server to use repository as the default catalog write service")
-	}
-
-	if server.catalogGovernanceService != repository {
-		t.Fatal("expected server to use repository as the default governance read service")
-	}
-}
-
-func TestServerRoutesCatalogDetailReadsThroughCatalogApplicationService(t *testing.T) {
-	store := &serverDetailReadServiceStoreStub{}
-	repository := cataloginfra.NewMemoryRepository(cataloginfra.SampleData())
-	readService := internalapp.NewReadService(store)
-	writeService := internalapp.NewWriteService(serverAggregateStateStoreStub{}, serverArtifactSourceStub{})
-	server := NewServer(ServerConfig{
-		Repository:               repository,
-		CatalogReadService:       readService,
-		CatalogMutationService:   writeService,
-		CatalogGovernanceService: readService,
-		ReaderToken:              "reader-secret",
-	})
-
-	requests := []struct {
-		name   string
-		path   string
-		decode func(*testing.T, *httptest.ResponseRecorder)
-	}{
-		{
-			name: "skill detail",
-			path: "/api/v1/skills/%40service%2Fonly-skill",
-			decode: func(t *testing.T, recorder *httptest.ResponseRecorder) {
-				var response catalog.SkillDetail
-				if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-					t.Fatalf("decode skill detail response: %v", err)
-				}
-				if response.PackageName != "@service/only-skill" {
-					t.Fatalf("expected service-routed package name, got %q", response.PackageName)
-				}
-			},
-		},
-		{
-			name: "version list",
-			path: "/api/v1/skills/%40service%2Fonly-skill/versions",
-			decode: func(t *testing.T, recorder *httptest.ResponseRecorder) {
-				var response catalog.VersionsPage
-				if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-					t.Fatalf("decode version list response: %v", err)
-				}
-				if len(response.Items) != 1 || response.Items[0].Version != "9.9.9" {
-					t.Fatalf("expected service-routed versions payload, got %+v", response.Items)
-				}
-			},
-		},
-		{
-			name: "version detail",
-			path: "/api/v1/skills/%40service%2Fonly-skill/versions/9.9.9",
-			decode: func(t *testing.T, recorder *httptest.ResponseRecorder) {
-				var response catalog.SkillVersionDetail
-				if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-					t.Fatalf("decode version detail response: %v", err)
-				}
-				if response.Version != "9.9.9" {
-					t.Fatalf("expected service-routed version detail, got %q", response.Version)
-				}
-			},
-		},
-		{
-			name: "install target",
-			path: "/api/v1/skills/%40service%2Fonly-skill/install-target",
-			decode: func(t *testing.T, recorder *httptest.ResponseRecorder) {
-				var response catalog.InstallResolution
-				if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-					t.Fatalf("decode install target response: %v", err)
-				}
-				if response.Version != "9.9.9" ||
-					response.NPMRegistry != "http://example.com/repository/skills-npm" ||
-					response.TarballURL != "http://example.com/repository/skills-npm/service-only-skill-9.9.9.tgz" {
-					t.Fatalf("expected service-routed install target, got %+v", response)
-				}
-			},
-		},
-	}
-
-	for _, tc := range requests {
-		t.Run(tc.name, func(t *testing.T) {
-			request := httptest.NewRequest(http.MethodGet, tc.path, nil)
-			request.Header.Set("Authorization", "Bearer reader-secret")
-			recorder := httptest.NewRecorder()
-
-			server.Handler().ServeHTTP(recorder, request)
-
-			if recorder.Code != http.StatusOK {
-				t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
-			}
-			tc.decode(t, recorder)
-		})
-	}
-
-	if store.getSkillCalls != 2 {
-		t.Fatalf("expected read service GetSkill to be called twice, got %d", store.getSkillCalls)
-	}
-	if store.listVersionsCalls != 1 {
-		t.Fatalf("expected read service ListVersions to be called once, got %d", store.listVersionsCalls)
-	}
-	if store.getVersionCalls != 1 {
-		t.Fatalf("expected read service GetVersion to be called once, got %d", store.getVersionCalls)
-	}
-	if store.getLatestResolvableVersionCalls != 1 {
-		t.Fatalf("expected read service GetLatestResolvableVersion to be called once, got %d", store.getLatestResolvableVersionCalls)
 	}
 }
 
@@ -546,120 +410,6 @@ func (serverQueryStoreStub) ListPackageGovernance(context.Context, string, catal
 	return nil, nil
 }
 
-type serverDetailReadServiceStoreStub struct {
-	getSkillCalls                   int
-	listVersionsCalls               int
-	getVersionCalls                 int
-	getLatestResolvableVersionCalls int
-}
-
-func (s *serverDetailReadServiceStoreStub) ListSkills(context.Context, catalog.SkillQuery) (catalog.SkillsPage, error) {
-	return catalog.SkillsPage{}, nil
-}
-
-func (s *serverDetailReadServiceStoreStub) ListCuratedSkills(context.Context, catalog.CuratedSkillQuery) (catalog.CuratedSkillsPage, error) {
-	return catalog.CuratedSkillsPage{}, nil
-}
-
-func (s *serverDetailReadServiceStoreStub) GetSkill(context.Context, string) (catalog.SkillDetail, error) {
-	s.getSkillCalls++
-	latestVersion := "9.9.9"
-	return catalog.SkillDetail{
-		SkillSummary: catalog.SkillSummary{
-			PackageName:   "@service/only-skill",
-			DisplayName:   "Service Only Skill",
-			Description:   "served by the read service",
-			SourceType:    catalog.SourceTypeImported,
-			Status:        catalog.SkillStatusActive,
-			LatestVersion: &latestVersion,
-		},
-		CreatedAt: time.Unix(1, 0).UTC(),
-	}, nil
-}
-
-func (s *serverDetailReadServiceStoreStub) ListVersions(context.Context, catalog.VersionQuery) (catalog.VersionsPage, error) {
-	s.listVersionsCalls++
-	return catalog.VersionsPage{
-		Items: []catalog.SkillVersionSummary{
-			{
-				PackageName:   "@service/only-skill",
-				Version:       "9.9.9",
-				VersionStatus: catalog.VersionStatusPublished,
-				InstallPolicy: catalog.InstallPolicyResolvable,
-				PublishedAt:   time.Unix(2, 0).UTC(),
-			},
-		},
-	}, nil
-}
-
-func (s *serverDetailReadServiceStoreStub) GetVersion(context.Context, string, string) (catalog.SkillVersionDetail, error) {
-	s.getVersionCalls++
-	return serverDetailReadServiceVersion(), nil
-}
-
-func (s *serverDetailReadServiceStoreStub) GetLatestResolvableVersion(context.Context, string) (catalog.SkillVersionDetail, error) {
-	s.getLatestResolvableVersionCalls++
-	return serverDetailReadServiceVersion(), nil
-}
-
-func (s *serverDetailReadServiceStoreStub) ListGovernanceChanges(context.Context, catalog.GovernanceQuery) (catalog.GovernancePage, error) {
-	return catalog.GovernancePage{}, nil
-}
-
-func (s *serverDetailReadServiceStoreStub) ListPackageVersions(context.Context, string) ([]catalog.SkillVersionDetail, error) {
-	return nil, nil
-}
-
-func (s *serverDetailReadServiceStoreStub) ListPackageGovernance(context.Context, string, catalog.GovernanceTargetType, *string) ([]catalog.GovernanceRecord, error) {
-	return nil, nil
-}
-
-func serverDetailReadServiceVersion() catalog.SkillVersionDetail {
-	return catalog.SkillVersionDetail{
-		SkillVersionSummary: catalog.SkillVersionSummary{
-			PackageName:   "@service/only-skill",
-			Version:       "9.9.9",
-			VersionStatus: catalog.VersionStatusPublished,
-			InstallPolicy: catalog.InstallPolicyResolvable,
-			PublishedAt:   time.Unix(2, 0).UTC(),
-		},
-		Registry: catalog.RegistryMetadata{
-			NPMRegistry: "https://registry.example.com",
-			TarballURL:  "https://registry.example.com/service-only-skill-9.9.9.tgz",
-			Integrity:   "sha512-service",
-			Shasum:      "service",
-			PublishedAt: time.Unix(2, 0).UTC(),
-		},
-		Bundle: catalog.BundleMetadata{
-			SkillManifestDigest: "sha256:service",
-		},
-	}
-}
-
-type serverAggregateStateStoreStub struct{}
-
-func (serverAggregateStateStoreStub) IsEmpty(context.Context) (bool, error) {
-	return true, nil
-}
-
-func (serverAggregateStateStoreStub) GetAggregate(context.Context, string) (catalog.AgentSkillAggregate, error) {
-	return catalog.AgentSkillAggregate{}, nil
-}
-
-func (serverAggregateStateStoreStub) PutAggregate(context.Context, catalog.AgentSkillAggregate, uint64) error {
-	return nil
-}
-
-func (serverAggregateStateStoreStub) Ping(context.Context) error {
-	return nil
-}
-
-type serverArtifactSourceStub struct{}
-
-func (serverArtifactSourceStub) FindReleaseArtifact(context.Context, string, string) (catalog.ReleaseArtifact, error) {
-	return catalog.ReleaseArtifact{}, nil
-}
-
 func TestBearerTokenAuthUsesConfiguredRoleMapping(t *testing.T) {
 	server := NewServer(ServerConfig{
 		Repository:     cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
@@ -717,365 +467,6 @@ func TestBearerTokenAuthRejectsXRoleOverrideWhenMappingConfigured(t *testing.T) 
 	}
 
 	assertErrorCode(t, recorder, "forbidden")
-}
-
-func TestSessionEndpointReturnsCurrentPrincipal(t *testing.T) {
-	server := NewServer(ServerConfig{
-		Repository:     cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		ReaderToken:    "reader-secret",
-		PublisherToken: "publisher-secret",
-	})
-
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/session", nil)
-	request.Header.Set("Authorization", "Bearer publisher-secret")
-	recorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
-	}
-
-	var raw map[string]any
-	if err := json.Unmarshal(recorder.Body.Bytes(), &raw); err != nil {
-		t.Fatalf("decode raw response: %v", err)
-	}
-	allowedPackagesRaw, ok := raw["allowedPackages"]
-	if !ok {
-		t.Fatalf("expected allowedPackages field in response body: %s", recorder.Body.String())
-	}
-	allowedPackagesArray, ok := allowedPackagesRaw.([]any)
-	if !ok {
-		t.Fatalf("expected allowedPackages to be a JSON array, got %T", allowedPackagesRaw)
-	}
-
-	var response struct {
-		Role            string   `json:"role"`
-		Actor           string   `json:"actor"`
-		AuthMechanism   string   `json:"authMechanism"`
-		AllowedActions  []string `json:"allowedActions"`
-		AllowedPackages []string `json:"allowedPackages"`
-	}
-	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-
-	if response.Role != "publisher" {
-		t.Fatalf("expected role publisher, got %q", response.Role)
-	}
-	if response.Actor != "publisher" {
-		t.Fatalf("expected actor publisher, got %q", response.Actor)
-	}
-	if response.AuthMechanism != "legacy_token" {
-		t.Fatalf("expected auth mechanism legacy_token, got %q", response.AuthMechanism)
-	}
-	if len(response.AllowedActions) == 0 {
-		t.Fatal("expected allowed actions to be returned")
-	}
-	if len(response.AllowedPackages) != 0 {
-		t.Fatalf("expected no package restrictions, got %v", response.AllowedPackages)
-	}
-	if len(allowedPackagesArray) != 0 {
-		t.Fatalf("expected allowedPackages JSON array to be empty, got %v", allowedPackagesArray)
-	}
-}
-
-func TestSessionEndpointRequiresAuthentication(t *testing.T) {
-	server := NewServer(ServerConfig{
-		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-	})
-
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/session", nil)
-	recorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
-	}
-	if strings.TrimSpace(recorder.Body.String()) != "null" {
-		t.Fatalf("expected null session body, got %s", recorder.Body.String())
-	}
-}
-
-func TestSessionEndpointAllowsAuthoringPrincipal(t *testing.T) {
-	server := NewServer(ServerConfig{
-		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		AuthTokens: map[string]auth.TokenConfig{
-			"authoring-secret": {
-				Role:  "authoring",
-				Actor: "svc-authoring",
-			},
-		},
-	})
-
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/session", nil)
-	request.Header.Set("Authorization", "Bearer authoring-secret")
-	recorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
-	}
-
-	var response struct {
-		Role           string   `json:"role"`
-		AllowedActions []string `json:"allowedActions"`
-	}
-	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-
-	if response.Role != "authoring" {
-		t.Fatalf("expected role authoring, got %q", response.Role)
-	}
-	if !reflect.DeepEqual(response.AllowedActions, []string{"packaging.pack", "packaging.prepare", "packaging.validate", "session.read"}) {
-		t.Fatalf("unexpected allowed actions: %v", response.AllowedActions)
-	}
-}
-
-func TestSessionEndpointHandlesLocalOperatorPreflight(t *testing.T) {
-	server := NewServer(ServerConfig{
-		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-	})
-
-	request := httptest.NewRequest(http.MethodOptions, "/api/v1/session", nil)
-	request.Header.Set("Origin", "http://127.0.0.1:4174")
-	request.Header.Set("Access-Control-Request-Method", http.MethodGet)
-	recorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusNoContent {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusNoContent, recorder.Code, recorder.Body.String())
-	}
-	if got := recorder.Header().Get("Access-Control-Allow-Origin"); got != "http://127.0.0.1:4174" {
-		t.Fatalf("expected allow origin header, got %q", got)
-	}
-	if got := recorder.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(got, "Authorization") {
-		t.Fatalf("expected Authorization in allow headers, got %q", got)
-	}
-}
-
-func TestSkillsEndpointHandlesLocalOperatorPreflight(t *testing.T) {
-	server := NewServer(ServerConfig{
-		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-	})
-
-	request := httptest.NewRequest(http.MethodOptions, "/api/v1/skills", nil)
-	request.Header.Set("Origin", "http://127.0.0.1:4174")
-	request.Header.Set("Access-Control-Request-Method", http.MethodGet)
-	recorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusNoContent {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusNoContent, recorder.Code, recorder.Body.String())
-	}
-	if got := recorder.Header().Get("Access-Control-Allow-Origin"); got != "http://127.0.0.1:4174" {
-		t.Fatalf("expected allow origin header, got %q", got)
-	}
-	if got := recorder.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(got, "Authorization") {
-		t.Fatalf("expected Authorization in allow headers, got %q", got)
-	}
-}
-
-func TestSessionEndpointAddsCORSHeadersForLocalOperatorOrigin(t *testing.T) {
-	server := NewServer(ServerConfig{
-		Repository:     cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		PublisherToken: "publisher-secret",
-	})
-
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/session", nil)
-	request.Header.Set("Origin", "http://localhost:4174")
-	request.Header.Set("Authorization", "Bearer publisher-secret")
-	recorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
-	}
-	if got := recorder.Header().Get("Access-Control-Allow-Origin"); got != "http://localhost:4174" {
-		t.Fatalf("expected allow origin header, got %q", got)
-	}
-}
-
-func TestSessionEndpointReturnsAllowedPackagesForScopedPrincipal(t *testing.T) {
-	server := NewServer(ServerConfig{
-		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		AuthTokens: map[string]auth.TokenConfig{
-			"publisher-secret": {
-				Role:            "publisher",
-				Actor:           "svc-publisher",
-				AllowedPackages: []string{"@platform.skill/code-review", "@platform.skill/agent-notes"},
-			},
-		},
-	})
-
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/session", nil)
-	request.Header.Set("Authorization", "Bearer publisher-secret")
-	recorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
-	}
-
-	var response struct {
-		AllowedPackages []string `json:"allowedPackages"`
-	}
-	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-
-	if !reflect.DeepEqual(response.AllowedPackages, []string{"@platform.skill/code-review", "@platform.skill/agent-notes"}) {
-		t.Fatalf("unexpected allowed packages: %v", response.AllowedPackages)
-	}
-}
-
-func TestSessionLoginSetsCookieAndReturnsOperatorSession(t *testing.T) {
-	server := NewServer(ServerConfig{
-		Repository:    cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		SessionSecret: "session-secret",
-		SessionUsers: map[string]auth.SessionUserConfig{
-			"operator": {
-				Password: "op-secret",
-				Role:     "operator",
-			},
-		},
-	})
-
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/session/login", strings.NewReader(`{"username":"operator","password":"op-secret"}`))
-	request.Header.Set("Content-Type", "application/json")
-	recorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
-	}
-	cookies := recorder.Result().Cookies()
-	if len(cookies) == 0 {
-		t.Fatal("expected session cookie to be set")
-	}
-
-	var response struct {
-		Role string `json:"role"`
-	}
-	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if response.Role != "operator" {
-		t.Fatalf("expected role operator, got %q", response.Role)
-	}
-}
-
-func TestSessionLoginRejectsInvalidJSON(t *testing.T) {
-	server := NewServer(ServerConfig{
-		Repository:    cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		SessionSecret: "session-secret",
-		SessionUsers: map[string]auth.SessionUserConfig{
-			"operator": {
-				Password: "op-secret",
-				Role:     "operator",
-			},
-		},
-	})
-
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/session/login", strings.NewReader(`{"username":"operator"`))
-	request.Header.Set("Content-Type", "application/json")
-	recorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusBadRequest, recorder.Code, recorder.Body.String())
-	}
-	assertErrorCode(t, recorder, "invalid_request")
-}
-
-func TestSessionEndpointAcceptsCookieAuthentication(t *testing.T) {
-	server := NewServer(ServerConfig{
-		Repository:    cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		SessionSecret: "session-secret",
-		SessionUsers: map[string]auth.SessionUserConfig{
-			"reader": {
-				Password: "reader-secret",
-				Role:     "reader",
-			},
-		},
-	})
-
-	loginRequest := httptest.NewRequest(http.MethodPost, "/api/v1/session/login", strings.NewReader(`{"username":"reader","password":"reader-secret"}`))
-	loginRequest.Header.Set("Content-Type", "application/json")
-	loginRecorder := httptest.NewRecorder()
-	server.Handler().ServeHTTP(loginRecorder, loginRequest)
-	if loginRecorder.Code != http.StatusOK {
-		t.Fatalf("expected login status %d, got %d body=%s", http.StatusOK, loginRecorder.Code, loginRecorder.Body.String())
-	}
-	cookies := loginRecorder.Result().Cookies()
-	if len(cookies) == 0 {
-		t.Fatal("expected session cookie after login")
-	}
-
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/session", nil)
-	request.AddCookie(cookies[0])
-	recorder := httptest.NewRecorder()
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
-	}
-
-	var response struct {
-		Role           string   `json:"role"`
-		AuthMechanism  string   `json:"authMechanism"`
-		AllowedActions []string `json:"allowedActions"`
-	}
-	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if response.Role != "reader" {
-		t.Fatalf("expected role reader, got %q", response.Role)
-	}
-	if response.AuthMechanism != "session_cookie" {
-		t.Fatalf("expected session_cookie auth, got %q", response.AuthMechanism)
-	}
-	if !reflect.DeepEqual(response.AllowedActions, []string{"audit.read", "catalog.read", "session.read"}) {
-		t.Fatalf("unexpected allowed actions: %v", response.AllowedActions)
-	}
-}
-
-func TestSessionLogoutClearsCookie(t *testing.T) {
-	server := NewServer(ServerConfig{
-		Repository:    cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		SessionSecret: "session-secret",
-		SessionUsers: map[string]auth.SessionUserConfig{
-			"reader": {
-				Password: "reader-secret",
-				Role:     "reader",
-			},
-		},
-	})
-
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/session/logout", strings.NewReader(`{}`))
-	request.Header.Set("Content-Type", "application/json")
-	recorder := httptest.NewRecorder()
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
-	}
-	cookies := recorder.Result().Cookies()
-	if len(cookies) == 0 {
-		t.Fatal("expected logout cookie to be written")
-	}
-	if cookies[0].MaxAge != -1 {
-		t.Fatalf("expected logout cookie max age -1, got %d", cookies[0].MaxAge)
-	}
 }
 
 func TestPackageLevelAuthzRejectsUnauthorizedReleaseRecord(t *testing.T) {
@@ -1224,75 +615,6 @@ func TestMockRegistryRouteIsNotRegistered(t *testing.T) {
 	}
 }
 
-func TestServerCanonicalizesRepeatedSlashesBeforeRouting(t *testing.T) {
-	server := newTestServer()
-
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills//foo", nil)
-	recorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusTemporaryRedirect {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusTemporaryRedirect, recorder.Code, recorder.Body.String())
-	}
-	if got := recorder.Header().Get("Location"); got != "/api/v1/skills/foo" {
-		t.Fatalf("expected redirect location /api/v1/skills/foo, got %q", got)
-	}
-}
-
-func TestServerCanonicalRedirectIncludesMetadataAndLocalCORS(t *testing.T) {
-	var logBuffer bytes.Buffer
-	server := NewServer(ServerConfig{
-		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		Packaging:  packagingapplication.NewService(""),
-		Logger:     log.New(&logBuffer, "", 0),
-	})
-
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills//foo", nil)
-	request.Header.Set("Origin", "http://127.0.0.1:4174")
-	recorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusTemporaryRedirect {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusTemporaryRedirect, recorder.Code, recorder.Body.String())
-	}
-	if got := recorder.Header().Get("Location"); got != "/api/v1/skills/foo" {
-		t.Fatalf("expected redirect location /api/v1/skills/foo, got %q", got)
-	}
-
-	requestID := recorder.Header().Get("X-Request-Id")
-	if requestID == "" {
-		t.Fatal("expected X-Request-Id response header")
-	}
-
-	traceID := recorder.Header().Get("X-Trace-Id")
-	if traceID == "" {
-		t.Fatal("expected X-Trace-Id response header")
-	}
-
-	if got := recorder.Header().Get("Access-Control-Allow-Origin"); got != "http://127.0.0.1:4174" {
-		t.Fatalf("expected allow origin header, got %q", got)
-	}
-	if got := recorder.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(got, "Authorization") {
-		t.Fatalf("expected Authorization in allow headers, got %q", got)
-	}
-
-	payload := findLoggedEvent(t, logBuffer.String(), "http_request")
-	if payload["status"] != float64(http.StatusTemporaryRedirect) {
-		t.Fatalf("expected redirect status in request log, got %+v", payload)
-	}
-	if payload["path"] != "/api/v1/skills//foo" {
-		t.Fatalf("expected original redirect path in request log, got %+v", payload)
-	}
-	if payload["requestId"] != requestID {
-		t.Fatalf("expected logged requestId %q, got %+v", requestID, payload)
-	}
-	if payload["traceId"] != traceID {
-		t.Fatalf("expected logged traceId %q, got %+v", traceID, payload)
-	}
-}
-
 func TestSkillPackagingImportReviewReturnsReviewDataWithoutWorkspacePath(t *testing.T) {
 	server := newTestServer()
 	fixtureDir := createPackagingFixture(t)
@@ -1340,18 +662,16 @@ func TestSkillPackagingPublishUsesStatelessInput(t *testing.T) {
 	registryBaseURL := registry.baseURL()
 	registryClient := registry.client()
 
-	packagingService := packagingapplication.NewService("")
 	repository := cataloginfra.NewMemoryRepository(cataloginfra.SampleData(), cataloginfra.MemoryRepositoryOptions{
 		ArtifactSource: artifactadapter.NewNPMRegistryArtifactSource(registryBaseURL, registryClient),
 	})
-	packagingService.ConfigurePublishWorkflow(
-		repository,
-		artifactadapter.NewNPMPublisher(registryBaseURL, "", registryClient),
-	)
+	publisher := artifactadapter.NewNPMPublisher(registryBaseURL, "", registryClient)
+	workspaceService := packagingapplication.NewWorkspaceService("", nil)
 
 	catalogServer := NewServer(ServerConfig{
 		Repository:               repository,
-		Packaging:                packagingService,
+		ImportReview:             packagingapplication.NewImportReviewService(workspaceService).ReviewContext,
+		Publish:                  packagingapplication.NewPublishService(workspaceService, repository.CreateReleaseRecord, publisher.PublishPackage).PublishContext,
 		NPMRegistryURL:           registryBaseURL,
 		NPMRegistryPublishClient: registryClient,
 	})
@@ -1405,18 +725,16 @@ func TestSkillPackagingPublishRejectsMismatchedReviewSummary(t *testing.T) {
 	registryBaseURL := registry.baseURL()
 	registryClient := registry.client()
 
-	packagingService := packagingapplication.NewService("")
 	repository := cataloginfra.NewMemoryRepository(cataloginfra.SampleData(), cataloginfra.MemoryRepositoryOptions{
 		ArtifactSource: artifactadapter.NewNPMRegistryArtifactSource(registryBaseURL, registryClient),
 	})
-	packagingService.ConfigurePublishWorkflow(
-		repository,
-		artifactadapter.NewNPMPublisher(registryBaseURL, "", registryClient),
-	)
+	publisher := artifactadapter.NewNPMPublisher(registryBaseURL, "", registryClient)
+	workspaceService := packagingapplication.NewWorkspaceService("", nil)
 
 	catalogServer := NewServer(ServerConfig{
 		Repository:               repository,
-		Packaging:                packagingService,
+		ImportReview:             packagingapplication.NewImportReviewService(workspaceService).ReviewContext,
+		Publish:                  packagingapplication.NewPublishService(workspaceService, repository.CreateReleaseRecord, publisher.PublishPackage).PublishContext,
 		NPMRegistryURL:           registryBaseURL,
 		NPMRegistryPublishClient: registryClient,
 	})
@@ -1445,18 +763,16 @@ func TestSkillPackagingPublishPublishesAndCreatesReleaseRecord(t *testing.T) {
 	registryBaseURL := registry.baseURL()
 	registryClient := registry.client()
 
-	packagingService := packagingapplication.NewService("")
 	repository := cataloginfra.NewMemoryRepository(cataloginfra.SampleData(), cataloginfra.MemoryRepositoryOptions{
 		ArtifactSource: artifactadapter.NewNPMRegistryArtifactSource(registryBaseURL, registryClient),
 	})
-	packagingService.ConfigurePublishWorkflow(
-		repository,
-		artifactadapter.NewNPMPublisher(registryBaseURL, "", registryClient),
-	)
+	publisher := artifactadapter.NewNPMPublisher(registryBaseURL, "", registryClient)
+	workspaceService := packagingapplication.NewWorkspaceService("", nil)
 
 	catalogServer := NewServer(ServerConfig{
 		Repository:               repository,
-		Packaging:                packagingService,
+		ImportReview:             packagingapplication.NewImportReviewService(workspaceService).ReviewContext,
+		Publish:                  packagingapplication.NewPublishService(workspaceService, repository.CreateReleaseRecord, publisher.PublishPackage).PublishContext,
 		NPMRegistryURL:           registryBaseURL,
 		NPMRegistryPublishClient: registryClient,
 	})
@@ -1963,9 +1279,10 @@ func TestSkillPackagingImportReviewIdempotencyPersistsAcrossServerInstances(t *t
 	}
 
 	serverOne := NewServer(ServerConfig{
-		Repository:  cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		Packaging:   packagingapplication.NewService(""),
-		Idempotency: store,
+		Repository:   cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		ImportReview: newImportReviewFuncForTest(),
+		Publish:      newPublishFuncForTest(),
+		Idempotency:  store,
 	})
 
 	requestBody := `{
@@ -1986,9 +1303,10 @@ func TestSkillPackagingImportReviewIdempotencyPersistsAcrossServerInstances(t *t
 		t.Fatalf("reopen idempotency store: %v", err)
 	}
 	serverTwo := NewServer(ServerConfig{
-		Repository:  cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		Packaging:   packagingapplication.NewService(""),
-		Idempotency: storeReloaded,
+		Repository:   cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		ImportReview: newImportReviewFuncForTest(),
+		Publish:      newPublishFuncForTest(),
+		Idempotency:  storeReloaded,
 	})
 
 	secondRequest := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/import-review", requestBody)
@@ -2053,8 +1371,9 @@ func TestSkillPackagingImportReviewRejectsMultipleJSONObjects(t *testing.T) {
 
 func TestSkillPackagingImportReviewRejectsRemovedLocalSourceType(t *testing.T) {
 	server := NewServer(ServerConfig{
-		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		Packaging:  packagingapplication.NewService(""),
+		Repository:   cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		ImportReview: newImportReviewFuncForTest(),
+		Publish:      newPublishFuncForTest(),
 	})
 	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/import-review", `{
 		"source":{"type":"local","location":"/tmp"},
@@ -2075,9 +1394,10 @@ func TestSkillPackagingImportReviewRejectsRemovedLocalSourceType(t *testing.T) {
 func TestSkillPackagingImportReviewReturnsInternalErrorWhenIdempotencyLookupFails(t *testing.T) {
 	fixtureDir := createPackagingFixture(t)
 	server := NewServer(ServerConfig{
-		Repository:  cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		Packaging:   packagingapplication.NewService(""),
-		Idempotency: stubIdempotencyStore{lookupErr: errors.New("lookup failed")},
+		Repository:   cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		ImportReview: newImportReviewFuncForTest(),
+		Publish:      newPublishFuncForTest(),
+		Idempotency:  stubIdempotencyStore{lookupErr: errors.New("lookup failed")},
 	})
 	request := jsonRequest(http.MethodPost, "/api/v1/skill-packaging/import-review", `{
 		"idempotencyKey":"import-review-error",
@@ -2195,8 +1515,9 @@ func TestSQLRepositoryBackedServerSupportsCatalogFlows(t *testing.T) {
 	}
 
 	server := NewServer(ServerConfig{
-		Repository: repository,
-		Packaging:  packagingapplication.NewService(""),
+		Repository:   repository,
+		ImportReview: newImportReviewFuncForTest(),
+		Publish:      newPublishFuncForTest(),
 	})
 
 	listRequest := httptest.NewRequest(http.MethodGet, "/api/v1/skills?q=pdf", nil)
@@ -2540,7 +1861,8 @@ func TestInstallTargetUsesServerProxyURL(t *testing.T) {
 	publicRegistry := "https://skills.example.com/repository/skills-npm"
 	server := NewServer(ServerConfig{
 		Repository:           cataloginfra.NewMemoryRepository(cataloginfra.SampleDataWithRegistryBase(internalRegistry)),
-		Packaging:            packagingapplication.NewService(""),
+		ImportReview:         newImportReviewFuncForTest(),
+		Publish:              newPublishFuncForTest(),
 		PublicNPMRegistryURL: publicRegistry,
 	})
 
@@ -2559,11 +1881,50 @@ func TestInstallTargetUsesServerProxyURL(t *testing.T) {
 		t.Fatalf("decode response: %v", err)
 	}
 
+	if response.RegistryAccessMode != string(InstallTargetModeProxy) {
+		t.Fatalf("expected proxy registry access mode, got %q", response.RegistryAccessMode)
+	}
 	if response.NPMRegistry != "http://example.com/repository/skills-npm" {
 		t.Fatalf("expected server proxy npmRegistry, got %q", response.NPMRegistry)
 	}
 
 	wantTarballURL := "http://example.com/repository/skills-npm/platform.skill/pdf-skill/-/pdf-skill-1.2.0.tgz"
+	if response.TarballURL != wantTarballURL {
+		t.Fatalf("expected tarballUrl %q, got %q", wantTarballURL, response.TarballURL)
+	}
+}
+
+func TestInstallTargetUsesDirectRegistryURLWithoutProxyRewrite(t *testing.T) {
+	internalRegistry := "http://nexus.skill-registry.svc.cluster.local:8081/repository/skills-npm"
+	server := NewServer(ServerConfig{
+		Repository:        cataloginfra.NewMemoryRepository(cataloginfra.SampleDataWithRegistryBase(internalRegistry)),
+		ImportReview:      newImportReviewFuncForTest(),
+		Publish:           newPublishFuncForTest(),
+		InstallTargetMode: InstallTargetModeDirect,
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills/%40platform.skill%2Fpdf-skill/install-target", nil)
+	request.Header.Set("X-Role", "reader")
+	recorder := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+
+	var response catalog.InstallResolution
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if response.RegistryAccessMode != string(InstallTargetModeDirect) {
+		t.Fatalf("expected direct registry access mode, got %q", response.RegistryAccessMode)
+	}
+	if response.NPMRegistry != internalRegistry {
+		t.Fatalf("expected direct npmRegistry, got %q", response.NPMRegistry)
+	}
+	wantTarballURL := internalRegistry + "/platform.skill/pdf-skill/-/pdf-skill-1.2.0.tgz"
 	if response.TarballURL != wantTarballURL {
 		t.Fatalf("expected tarballUrl %q, got %q", wantTarballURL, response.TarballURL)
 	}
@@ -3087,9 +2448,10 @@ func TestVersionGovernanceRejectsNonSemverVersionPath(t *testing.T) {
 func TestRequestLoggingIncludesRequestMetadata(t *testing.T) {
 	var logBuffer bytes.Buffer
 	server := NewServer(ServerConfig{
-		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		Packaging:  packagingapplication.NewService(""),
-		Logger:     log.New(&logBuffer, "", 0),
+		Repository:   cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		ImportReview: newImportReviewFuncForTest(),
+		Publish:      newPublishFuncForTest(),
+		Logger:       log.New(&logBuffer, "", 0),
 	})
 
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills", nil)
@@ -3138,9 +2500,10 @@ func TestRequestLoggingIncludesRequestMetadata(t *testing.T) {
 func TestRequestLoggingIncludesTraceIDAndResponseHeader(t *testing.T) {
 	var logBuffer bytes.Buffer
 	server := NewServer(ServerConfig{
-		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		Packaging:  packagingapplication.NewService(""),
-		Logger:     log.New(&logBuffer, "", 0),
+		Repository:   cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		ImportReview: newImportReviewFuncForTest(),
+		Publish:      newPublishFuncForTest(),
+		Logger:       log.New(&logBuffer, "", 0),
 	})
 
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills", nil)
@@ -3170,9 +2533,10 @@ func TestRequestLoggingIncludesTraceIDAndResponseHeader(t *testing.T) {
 func TestRequestMetadataMiddlewareGeneratesTraceIDAndLogsHeaders(t *testing.T) {
 	var logBuffer bytes.Buffer
 	server := NewServer(ServerConfig{
-		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		Packaging:  packagingapplication.NewService(""),
-		Logger:     log.New(&logBuffer, "", 0),
+		Repository:   cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		ImportReview: newImportReviewFuncForTest(),
+		Publish:      newPublishFuncForTest(),
+		Logger:       log.New(&logBuffer, "", 0),
 	})
 
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills", nil)
@@ -3211,8 +2575,9 @@ func TestRequestMetadataMiddlewareGeneratesTraceIDAndLogsHeaders(t *testing.T) {
 
 func TestMetricsEndpointReportsRequests(t *testing.T) {
 	server := NewServer(ServerConfig{
-		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		Packaging:  packagingapplication.NewService(""),
+		Repository:   cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		ImportReview: newImportReviewFuncForTest(),
+		Publish:      newPublishFuncForTest(),
 	})
 
 	okRequest := httptest.NewRequest(http.MethodGet, "/api/v1/skills", nil)
@@ -3253,8 +2618,9 @@ func TestMetricsEndpointReportsRequests(t *testing.T) {
 
 func TestHealthAndReadinessEndpointsReturnOK(t *testing.T) {
 	server := NewServer(ServerConfig{
-		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		Packaging:  packagingapplication.NewService(""),
+		Repository:   cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		ImportReview: newImportReviewFuncForTest(),
+		Publish:      newPublishFuncForTest(),
 	})
 
 	for _, path := range []string{"/healthz", "/readyz"} {
@@ -3282,7 +2648,8 @@ func TestReadyzReturnsDegradedWhenDependenciesFail(t *testing.T) {
 			Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
 			err:        errors.New("repository unavailable"),
 		},
-		Packaging: packagingapplication.NewService(""),
+		ImportReview: newImportReviewFuncForTest(),
+		Publish:      newPublishFuncForTest(),
 		Audit: stubAuditStore{
 			pingErr: errors.New("audit unavailable"),
 		},
@@ -3412,8 +2779,9 @@ func TestReleaseRecordRejectsMultipleJSONObjects(t *testing.T) {
 func TestRecordMutationAuditLogsWriteFailure(t *testing.T) {
 	var logBuffer bytes.Buffer
 	server := NewServer(ServerConfig{
-		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		Packaging:  packagingapplication.NewService(""),
+		Repository:   cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		ImportReview: newImportReviewFuncForTest(),
+		Publish:      newPublishFuncForTest(),
 		Audit: stubAuditStore{
 			appendErr: errors.New("append failed"),
 		},
@@ -3448,8 +2816,9 @@ func TestRecordMutationAuditLogsWriteFailure(t *testing.T) {
 func TestAuthenticationDeniedAuditLogsWriteFailure(t *testing.T) {
 	var logBuffer bytes.Buffer
 	server := NewServer(ServerConfig{
-		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		Packaging:  packagingapplication.NewService(""),
+		Repository:   cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		ImportReview: newImportReviewFuncForTest(),
+		Publish:      newPublishFuncForTest(),
 		Audit: stubAuditStore{
 			appendErr: errors.New("append failed"),
 		},
@@ -3483,9 +2852,10 @@ func TestAuthenticationDeniedAuditLogsWriteFailure(t *testing.T) {
 func TestLogAuditWriteFailureIgnoresNilError(t *testing.T) {
 	var logBuffer bytes.Buffer
 	server := NewServer(ServerConfig{
-		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		Packaging:  packagingapplication.NewService(""),
-		Logger:     log.New(&logBuffer, "", 0),
+		Repository:   cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		ImportReview: newImportReviewFuncForTest(),
+		Publish:      newPublishFuncForTest(),
+		Logger:       log.New(&logBuffer, "", 0),
 	})
 
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/skills", nil)
@@ -3500,8 +2870,10 @@ func TestLogAuditWriteFailureIgnoresNilError(t *testing.T) {
 
 func newTestServer() *Server {
 	return NewServer(ServerConfig{
-		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		Packaging:  packagingapplication.NewService(""),
+		Repository:   cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		ImportReview: newImportReviewFuncForTest(),
+		Publish:      newPublishFuncForTest(),
+		Idempotency:  newMemoryIdempotencyStore(),
 	})
 }
 

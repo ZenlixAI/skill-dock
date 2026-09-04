@@ -7,20 +7,12 @@ import (
 	packagingdomain "skill_registry/internal/packaging/domain"
 )
 
-type ReviewService interface {
-	ReviewContext(ctx context.Context, input packagingdomain.ImportReviewRequest) (packagingdomain.ImportReviewResponse, error)
-}
-
 type ImportReviewService struct {
 	workspace *WorkspaceService
 }
 
 func NewImportReviewService(workspace *WorkspaceService) *ImportReviewService {
 	return &ImportReviewService{workspace: workspace}
-}
-
-func (s *ImportReviewService) Review(ctx context.Context, input packagingdomain.ImportReviewRequest) (packagingdomain.ImportReviewResponse, error) {
-	return s.ReviewContext(ctx, input)
 }
 
 func (s *ImportReviewService) ReviewContext(ctx context.Context, input packagingdomain.ImportReviewRequest) (packagingdomain.ImportReviewResponse, error) {

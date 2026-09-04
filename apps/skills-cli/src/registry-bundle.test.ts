@@ -80,6 +80,7 @@ description: PDF processing workflow
       integrity: sha512Integrity(fixture.tarball),
       skillManifestDigest: skillManifestDigest(fixture.skillContent),
       versionStatus: 'published',
+      registryAccessMode: 'proxy',
     });
 
     try {
@@ -94,6 +95,51 @@ description: PDF processing workflow
           headers: {
             accept: 'application/octet-stream',
           },
+        })
+      );
+    } finally {
+      await bundle.cleanup();
+    }
+  });
+
+  it('attaches npm auth headers when downloading a direct registry bundle', async () => {
+    const fixture = createBundleFixture();
+    const authDir = join(fixtureDir, 'auth');
+    mkdirSync(authDir, { recursive: true });
+    writeFileSync(join(authDir, '.npmrc'), '//npm.example.com/private/:_authToken=fixture-token\n');
+
+    globalThis.fetch = vi.fn(async () => {
+      return new Response(fixture.tarball, {
+        status: 200,
+        headers: { 'content-type': 'application/octet-stream' },
+      });
+    }) as unknown as typeof globalThis.fetch;
+
+    const bundle = await downloadRegistrySkillBundle(
+      {
+        packageName: '@platform.skill/pdf-skill',
+        version: '1.2.0',
+        npmRegistry: 'https://npm.example.com/private',
+        tarballUrl:
+          'https://npm.example.com/private/@platform.skill/pdf-skill/-/pdf-skill-1.2.0.tgz',
+        integrity: sha512Integrity(fixture.tarball),
+        skillManifestDigest: skillManifestDigest(fixture.skillContent),
+        versionStatus: 'published',
+        registryAccessMode: 'direct',
+      },
+      {
+        cwd: authDir,
+      }
+    );
+
+    try {
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        'https://npm.example.com/private/@platform.skill/pdf-skill/-/pdf-skill-1.2.0.tgz',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            accept: 'application/octet-stream',
+            Authorization: 'Bearer fixture-token',
+          }),
         })
       );
     } finally {
@@ -124,6 +170,7 @@ description: PDF processing workflow
         integrity: sha512Integrity(fixture.tarball),
         skillManifestDigest: skillManifestDigest(fixture.skillContent),
         versionStatus: 'published',
+        registryAccessMode: 'proxy',
       },
       {
         cwd: authDir,
@@ -163,6 +210,7 @@ description: PDF processing workflow
         integrity: 'sha512-invalid',
         skillManifestDigest: skillManifestDigest(fixture.skillContent),
         versionStatus: 'published',
+        registryAccessMode: 'proxy',
       })
     ).rejects.toThrow('Resolved bundle failed integrity verification');
   });
@@ -186,6 +234,7 @@ description: PDF processing workflow
         integrity: sha512Integrity(fixture.tarball),
         skillManifestDigest: 'sha256:invalid',
         versionStatus: 'published',
+        registryAccessMode: 'proxy',
       })
     ).rejects.toThrow('Resolved bundle failed manifest digest verification');
   });
@@ -209,6 +258,7 @@ description: PDF processing workflow
         integrity: sha512Integrity(fixture.tarball),
         skillManifestDigest: skillManifestDigest(fixture.skillContent),
         versionStatus: 'published',
+        registryAccessMode: 'proxy',
       })
     ).rejects.toThrow('Resolved bundle package metadata does not match the install target');
   });

@@ -9,6 +9,20 @@ import * as skills from './skills.ts';
 import * as git from './git.ts';
 import * as localLock from './local-lock.ts';
 
+vi.mock('./catalog.ts', () => ({
+  resolveInstallTarget: vi.fn(async (packageName: string) => ({
+    packageName,
+    version: '1.2.0',
+    npmRegistry: 'https://npm.example.com',
+    tarballUrl:
+      'https://npm.example.com/@platform.skill/pdf-skill/-/pdf-skill-1.2.0.tgz',
+    integrity: 'sha512-test',
+    skillManifestDigest: 'sha256-manifest',
+    versionStatus: 'published',
+    registryAccessMode: 'proxy',
+  })),
+}));
+
 vi.mock('./registry-install-workflow.ts', () => ({
   runRegistryInstallWorkflow: vi.fn(),
 }));

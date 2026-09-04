@@ -8,12 +8,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	internalapp "skill_registry/internal/catalog/application"
 	catalog "skill_registry/internal/catalog/domain"
-	internalcataloghttp "skill_registry/internal/catalog/http"
 	cataloginfra "skill_registry/internal/catalog/infra"
-	packagingapplication "skill_registry/internal/packaging/application"
-	packaging "skill_registry/internal/packaging/domain"
 	"skill_registry/internal/platform/auth"
 	platformhttp "skill_registry/internal/platform/http"
 	internalsystemhttp "skill_registry/internal/system/http"
@@ -22,7 +18,7 @@ import (
 func TestServerRoutesAuditEventsThroughAuditQueryModule(t *testing.T) {
 	module := newAuditQueryModuleStubForTest(t)
 	server := newTestServer()
-	server.auditQueryModule = module
+	server.auditListEvents = module.ListEvents
 
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/audit-events", nil)
 	request.Header.Set("X-Role", "publisher")
@@ -87,47 +83,6 @@ func TestServerWriteModeDoesNotRegisterCatalogListRoutes(t *testing.T) {
 	}
 }
 
-func TestNewServerUsesExplicitWorkflowServicesWhenProvided(t *testing.T) {
-	explicitRead := internalapp.NewReadService(serverQueryStoreStub{})
-	explicitWrite := internalapp.NewWriteService(serverAggregateStateStoreStub{}, serverArtifactSourceStub{})
-
-	server := NewServer(ServerConfig{
-		Repository:               cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		CatalogReadService:       explicitRead,
-		CatalogMutationService:   explicitWrite,
-		CatalogGovernanceService: explicitRead,
-	})
-
-	readModule, ok := server.catalogReadModule.(*internalcataloghttp.ReadModule)
-	if !ok {
-		t.Fatalf("expected concrete internal catalog read module, got %T", server.catalogReadModule)
-	}
-	if readModule.Service() != explicitRead {
-		t.Fatal("expected explicit catalog read service to be used")
-	}
-
-	if server.catalogMutationService != explicitWrite {
-		t.Fatal("expected explicit catalog mutation service to be used")
-	}
-
-	if server.catalogGovernanceService != explicitRead {
-		t.Fatal("expected explicit governance service to be used")
-	}
-}
-
-func TestNewServerDoesNotConfigurePackagingPublishWorkflow(t *testing.T) {
-	packagingService := &packagingApplicationStub{}
-
-	NewServer(ServerConfig{
-		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
-		Packaging:  packagingService,
-	})
-
-	if packagingService.configurePublishWorkflowCalls != 0 {
-		t.Fatalf("expected server construction not to configure packaging publish workflow, got %d calls", packagingService.configurePublishWorkflowCalls)
-	}
-}
-
 func TestNewServerUsesInternalPlatformCacheAndLimiterTypes(t *testing.T) {
 	server := NewServer(ServerConfig{
 		Repository: cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
@@ -163,7 +118,7 @@ func TestServerReadModeDoesNotServeReleaseRecordMutation(t *testing.T) {
 func TestServerRoutesReadyzThroughSystemModule(t *testing.T) {
 	module := &systemModuleStub{}
 	server := newTestServer()
-	server.systemModule = module
+	server.systemReadyz = module.Readyz
 
 	request := httptest.NewRequest(http.MethodGet, "/readyz", nil)
 	recorder := httptest.NewRecorder()
@@ -265,29 +220,6 @@ func TestServerLegacyPackagingWorkspaceRoutesReturnNotFound(t *testing.T) {
 	}
 }
 
-func TestServerSessionDeniedPathUsesSharedAccessWorkflow(t *testing.T) {
-	workflow := newAccessWorkflowStubForTest(t, false)
-	server := newTestServer()
-	server.accessWorkflow = workflow
-
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/session", nil)
-	request.Header.Set("X-Role", "publisher")
-	recorder := httptest.NewRecorder()
-
-	server.Handler().ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusForbidden {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusForbidden, recorder.Code, recorder.Body.String())
-	}
-	if got := workflow.denyCallCount(); got != 1 {
-		t.Fatalf("expected shared access workflow to deny once, got %d", got)
-	}
-}
-
-type packagingApplicationStub struct {
-	configurePublishWorkflowCalls int
-}
-
 type governanceWorkflowAdapter struct {
 	stub *catalogMutationWorkflowStub
 }
@@ -306,18 +238,6 @@ func (a governanceWorkflowAdapter) ApplySkillGovernanceChange(ctx context.Contex
 
 func (a governanceWorkflowAdapter) ApplyVersionGovernanceChange(ctx context.Context, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error) {
 	return a.stub.applyVersionGovernanceChange(ctx, principal, packageName, versionPath, rawBody)
-}
-
-func (s *packagingApplicationStub) ReviewContext(context.Context, packaging.ImportReviewRequest) (packaging.ImportReviewResponse, error) {
-	return packaging.ImportReviewResponse{}, nil
-}
-
-func (s *packagingApplicationStub) PublishContext(context.Context, packaging.PublishRequest) (packaging.PublishResponse, error) {
-	return packaging.PublishResponse{}, nil
-}
-
-func (s *packagingApplicationStub) ConfigurePublishWorkflow(packagingapplication.ReleaseRecordCreator, packagingapplication.PackagePublisher) {
-	s.configurePublishWorkflowCalls++
 }
 
 type systemModuleStub struct {

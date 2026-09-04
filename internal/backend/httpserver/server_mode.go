@@ -4,10 +4,15 @@ import "strings"
 
 type ServerMode string
 
+type InstallTargetMode string
+
 const (
 	ServerModeAll   ServerMode = "all"
 	ServerModeRead  ServerMode = "read"
 	ServerModeWrite ServerMode = "write"
+
+	InstallTargetModeProxy  InstallTargetMode = "proxy"
+	InstallTargetModeDirect InstallTargetMode = "direct"
 )
 
 func normalizeServerMode(raw ServerMode) ServerMode {
@@ -18,6 +23,15 @@ func normalizeServerMode(raw ServerMode) ServerMode {
 		return ServerModeWrite
 	default:
 		return ServerModeAll
+	}
+}
+
+func normalizeInstallTargetMode(raw InstallTargetMode) InstallTargetMode {
+	switch InstallTargetMode(strings.ToLower(strings.TrimSpace(string(raw)))) {
+	case InstallTargetModeDirect:
+		return InstallTargetModeDirect
+	default:
+		return InstallTargetModeProxy
 	}
 }
 

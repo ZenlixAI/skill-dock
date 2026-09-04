@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"skill_registry/internal/backend/httpserver"
-	catalogapp "skill_registry/internal/catalog/application"
 	catalog "skill_registry/internal/catalog/domain"
 	cataloginfra "skill_registry/internal/catalog/infra"
 	packagingapplication "skill_registry/internal/packaging/application"
@@ -37,14 +36,12 @@ type Config struct {
 }
 
 type Runtime struct {
-	DB           *sql.DB
-	Repository   catalog.Repository
-	StoreSet     *platformpersist.SQLStoreSet
-	CatalogRead  *catalogapp.ReadService
-	CatalogWrite *catalogapp.WriteService
-	Server       *httpserver.Server
-	Handler      http.Handler
-	HTTPServer   *http.Server
+	DB         *sql.DB
+	Repository catalog.Repository
+	StoreSet   *platformpersist.SQLStoreSet
+	Server     *httpserver.Server
+	Handler    http.Handler
+	HTTPServer *http.Server
 }
 
 func NewRuntime(ctx context.Context, config Config) (*Runtime, error) {
@@ -56,7 +53,10 @@ func NewRuntime(ctx context.Context, config Config) (*Runtime, error) {
 	if databaseURL == "" {
 		databaseURL = "file:" + filepath.Join("data", "skill-registry.db")
 	}
-	driverName := sqlDriverNameForURL(databaseURL)
+	driverName := "sqlite"
+	if strings.HasPrefix(databaseURL, "postgres://") || strings.HasPrefix(databaseURL, "postgresql://") {
+		driverName = "pgx"
+	}
 
 	db, err := sql.Open(driverName, databaseURL)
 	if err != nil {
@@ -77,17 +77,17 @@ func NewRuntime(ctx context.Context, config Config) (*Runtime, error) {
 		_ = db.Close()
 		return nil, err
 	}
-	if seedErr := catalogapp.NewWriteService(internalStateStore, repositoryOptions.ArtifactSource).Seed(ctx, cataloginfra.SampleData()); seedErr != nil {
-		_ = db.Close()
-		return nil, seedErr
-	}
-	catalogRead := catalogapp.NewReadService(internalStateStore)
-	catalogWrite := catalogapp.NewWriteService(internalStateStore, repositoryOptions.ArtifactSource)
 	repository := cataloginfra.NewRepository(cataloginfra.RepositoryConfig{
 		StateStore:     internalStateStore,
 		ArtifactSource: repositoryOptions.ArtifactSource,
 	})
 	runtimeRepository := catalog.Repository(repository)
+	if !repositoryOptions.DisableSeed {
+		if seedErr := repository.Seed(ctx, cataloginfra.SampleData()); seedErr != nil {
+			_ = db.Close()
+			return nil, seedErr
+		}
+	}
 
 	idempotencyTTL := config.IdempotencyTTL
 	if idempotencyTTL <= 0 {
@@ -99,22 +99,26 @@ func NewRuntime(ctx context.Context, config Config) (*Runtime, error) {
 		return nil, err
 	}
 
-	packagingService := packagingapplication.NewServiceWithWorkspaceStore(config.SharedWorkspaceRoot, storeSet.Workspace)
-	packagingService.ConfigurePublishWorkflow(
-		runtimeRepository,
-		platformartifact.NewNPMPublisher(
-			strings.TrimRight(strings.TrimSpace(config.Server.NPMRegistryURL), "/"),
-			strings.TrimSpace(config.Server.NPMRegistryPublishAuthorization),
-			config.Server.NPMRegistryPublishClient,
-		),
+	publisher := platformartifact.NewNPMPublisher(
+		strings.TrimRight(strings.TrimSpace(config.Server.NPMRegistryURL), "/"),
+		strings.TrimSpace(config.Server.NPMRegistryPublishAuthorization),
+		config.Server.NPMRegistryPublishClient,
+	)
+	workspaceService := packagingapplication.NewWorkspaceService(
+		config.SharedWorkspaceRoot,
+		storeSet.Workspace,
+	)
+	importReviewService := packagingapplication.NewImportReviewService(workspaceService)
+	publishService := packagingapplication.NewPublishService(
+		workspaceService,
+		runtimeRepository.CreateReleaseRecord,
+		publisher.PublishPackage,
 	)
 
 	serverConfig := config.Server
 	serverConfig.Repository = runtimeRepository
-	serverConfig.CatalogReadService = catalogRead
-	serverConfig.CatalogMutationService = catalogWrite
-	serverConfig.CatalogGovernanceService = catalogRead
-	serverConfig.Packaging = packagingService
+	serverConfig.ImportReview = importReviewService.ReviewContext
+	serverConfig.Publish = publishService.PublishContext
 	serverConfig.Idempotency = storeSet.Idempotency
 	serverConfig.Audit = storeSet.Audit
 
@@ -123,14 +127,12 @@ func NewRuntime(ctx context.Context, config Config) (*Runtime, error) {
 	httpServer := httpserver.NewHTTPServer(config.Addr, handler, config.HTTPServer)
 
 	return &Runtime{
-		DB:           db,
-		Repository:   runtimeRepository,
-		StoreSet:     storeSet,
-		CatalogRead:  catalogRead,
-		CatalogWrite: catalogWrite,
-		Server:       server,
-		Handler:      handler,
-		HTTPServer:   httpServer,
+		DB:         db,
+		Repository: runtimeRepository,
+		StoreSet:   storeSet,
+		Server:     server,
+		Handler:    handler,
+		HTTPServer: httpServer,
 	}, nil
 }
 
@@ -142,13 +144,4 @@ func configureDBPool(db *sql.DB, config DBPoolConfig) {
 	db.SetMaxIdleConns(config.MaxIdleConns)
 	db.SetConnMaxLifetime(config.ConnMaxLifetime)
 	db.SetConnMaxIdleTime(config.ConnMaxIdleTime)
-}
-
-func sqlDriverNameForURL(databaseURL string) string {
-	switch {
-	case strings.HasPrefix(databaseURL, "postgres://"), strings.HasPrefix(databaseURL, "postgresql://"):
-		return "pgx"
-	default:
-		return "sqlite"
-	}
 }

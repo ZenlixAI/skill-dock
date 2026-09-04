@@ -39,7 +39,7 @@ stringData:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: web-secrets
+  name: site-secrets
   namespace: skill-registry
 type: Opaque
 stringData:
@@ -204,21 +204,21 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: skills-web
+  name: site
   namespace: skill-registry
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: skills-web
+      app: site
   template:
     metadata:
       labels:
-        app: skills-web
+        app: site
     spec:
       containers:
-        - name: skills-web
-          image: skill-registry-web:dev
+        - name: site
+          image: skill-registry-site:dev
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
@@ -229,7 +229,7 @@ spec:
             - name: CATALOG_AUTHORIZATION_HEADER
               valueFrom:
                 secretKeyRef:
-                  name: web-secrets
+                  name: site-secrets
                   key: catalog_authorization_header
           readinessProbe:
             httpGet:
@@ -243,12 +243,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: skills-web
+  name: site
   namespace: skill-registry
 spec:
   type: NodePort
   selector:
-    app: skills-web
+    app: site
   ports:
     - name: http
       port: 8080

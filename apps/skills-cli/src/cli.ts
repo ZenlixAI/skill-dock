@@ -12,6 +12,7 @@ import { flushTelemetry } from './telemetry.ts';
 import { runInspect } from './inspect.ts';
 import { runImportGit } from './import-git.ts';
 import { runImportLocal } from './import-local.ts';
+import { runImportNpm } from './import-npm.ts';
 import { runPublish } from './publish.ts';
 import { runSync } from './sync.ts';
 import { runUpdate } from './update.ts';
@@ -71,6 +72,7 @@ ${BOLD}Project:${RESET}
   publish [path]       Validate, pack, and publish a local skill directory
   import-local [path]  Upload a local source directory for Catalog one-shot publish
   import-git <src>     Clone a git source and publish a discovered skill through Catalog
+  import-npm <pkg>     Import a package from an npm-compatible registry
 
 ${BOLD}Add Options:${RESET}
   -g, --global           Install skill globally (user-level) instead of project-level
@@ -139,6 +141,7 @@ ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} skills publish
   ${DIM}$${RESET} skills import-local ./legacy-skill --package-name @company.skill/legacy-skill --version 0.1.0
   ${DIM}$${RESET} skills import-git owner/repo --skill pdf
+  ${DIM}$${RESET} skills import-npm @scope/skill-name --registry https://registry.npmjs.org
   ${DIM}$${RESET} skills find pdf --json                ${DIM}# machine-readable search results${RESET}
 `);
 }
@@ -237,6 +240,8 @@ ${BOLD}Description:${RESET}
 
 ${BOLD}Options:${RESET}
   --registry <url>       Catalog base URL override (default env: SKILLS_REGISTRY_URL)
+  --include-external     Include skills.sh results alongside the catalog
+  --source <kind>        Limit search to catalog, skills.sh, npm, git, local, or all
   --json                 Output query results as JSON
 
 ${BOLD}Examples:${RESET}
@@ -351,6 +356,29 @@ ${BOLD}Examples:${RESET}
 `);
 }
 
+function showImportNpmHelp(): void {
+  console.log(`
+${BOLD}Usage:${RESET} skills import-npm <package> [options]
+
+${BOLD}Description:${RESET}
+  Import a package from an npm-compatible registry and publish it through Catalog one-shot import.
+
+${BOLD}Arguments:${RESET}
+  package               Required package name
+
+${BOLD}Options:${RESET}
+  --registry <url>       Source npm registry URL
+  --version <version>    Import a specific version
+  --hosted              Promote the imported result into the hosted catalog model
+  --strict              Disable imported workspace normalization during import
+
+${BOLD}Examples:${RESET}
+  ${DIM}$${RESET} skills import-npm @scope/skill-name
+  ${DIM}$${RESET} skills import-npm @scope/skill-name --version 1.2.3
+  ${DIM}$${RESET} skills import-npm @scope/skill-name --registry https://registry.npmjs.org
+`);
+}
+
 function showImportGitHelp(): void {
   console.log(`
 ${BOLD}Usage:${RESET} skills import-git <source> [options]
@@ -376,6 +404,7 @@ ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} skills import-git https://github.com/owner/repo?path=skills/pdf
 `);
 }
+
 
 function showInitHelp(): void {
   console.log(`
@@ -521,6 +550,13 @@ async function main(): Promise<void> {
         break;
       }
       await runImportLocal(restArgs);
+      break;
+    case 'import-npm':
+      if (restArgs.includes('--help') || restArgs.includes('-h')) {
+        showImportNpmHelp();
+        break;
+      }
+      await runImportNpm(restArgs);
       break;
     case 'import-git':
       if (restArgs.includes('--help') || restArgs.includes('-h')) {

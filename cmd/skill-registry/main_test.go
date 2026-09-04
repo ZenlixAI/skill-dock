@@ -89,22 +89,6 @@ func TestConfiguredAuthTokensUsePlatformTypes(t *testing.T) {
 	var _ platformauth.TokenConfig = tokens["reader-token"]
 }
 
-func TestConfiguredSessionUsersUseLoginCredentials(t *testing.T) {
-	t.Setenv("SKILL_REGISTRY_LOGIN_USERNAME", "operator")
-	t.Setenv("SKILL_REGISTRY_LOGIN_PASSWORD", "operator-password")
-	users := configuredSessionUsers()
-	operator, ok := users["operator"]
-	if !ok {
-		t.Fatal("expected operator session user")
-	}
-	if operator.Password != "operator-password" || operator.Role != "operator" || operator.Actor != "operator" {
-		t.Fatalf("unexpected operator session user: %+v", operator)
-	}
-	if len(users) != 1 {
-		t.Fatalf("expected one configured session user, got %d", len(users))
-	}
-}
-
 func TestConfiguredArtifactSourceUsesConfiguredNPMRegistry(t *testing.T) {
 	t.Setenv("SKILL_REGISTRY_ARTIFACTS_PATH", "")
 	t.Setenv("SKILL_REGISTRY_NPM_REGISTRY_URL", "https://registry.example.com")
@@ -197,6 +181,16 @@ func TestConfiguredArtifactSourceFallsBackToEmptyStaticSource(t *testing.T) {
 	}
 }
 
+func TestConfiguredRuntimeConfigDefaultsInstallTargetModeToProxy(t *testing.T) {
+	t.Setenv("SKILL_REGISTRY_INSTALL_TARGET_MODE", "")
+
+	config := configuredRuntimeConfig()
+
+	if config.Server.InstallTargetMode != httpserver.InstallTargetModeProxy {
+		t.Fatalf("expected proxy install target mode by default, got %q", config.Server.InstallTargetMode)
+	}
+}
+
 func TestConfiguredRuntimeConfigUsesProductionOnlyStartupWiring(t *testing.T) {
 	t.Setenv("SKILL_REGISTRY_DATABASE_URL", "file:test.db")
 	t.Setenv("SKILL_REGISTRY_SHARED_WORKSPACE_ROOT", "packaging-root")
@@ -215,8 +209,11 @@ func TestConfiguredRuntimeConfigUsesProductionOnlyStartupWiring(t *testing.T) {
 	if config.Server.Repository != nil {
 		t.Fatalf("expected runtime config to defer repository assembly, got %T", config.Server.Repository)
 	}
-	if config.Server.Packaging != nil {
-		t.Fatalf("expected runtime config to defer packaging assembly, got %T", config.Server.Packaging)
+	if config.Server.ImportReview != nil {
+		t.Fatalf("expected runtime config to defer import review assembly, got %T", config.Server.ImportReview)
+	}
+	if config.Server.Publish != nil {
+		t.Fatalf("expected runtime config to defer publish assembly, got %T", config.Server.Publish)
 	}
 	if config.Server.Idempotency != nil {
 		t.Fatalf("expected runtime config to defer idempotency assembly, got %T", config.Server.Idempotency)

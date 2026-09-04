@@ -3,6 +3,15 @@ export interface CatalogSkillSummary {
   displayName: string;
   description: string;
   latestVersion?: string;
+  sourceKind?: string;
+  originRegistryUrl?: string;
+  originRepositoryUrl?: string;
+  originRevision?: string;
+  importMode?: string;
+  learnMoreUrl?: string;
+  installable?: boolean;
+  hosted?: boolean;
+  mirrored?: boolean;
 }
 
 export interface CatalogPageInfo {
@@ -23,6 +32,7 @@ export interface InstallTarget {
   integrity: string;
   skillManifestDigest: string;
   versionStatus: string;
+  registryAccessMode?: string;
 }
 
 export interface PackagingSource {
@@ -394,7 +404,15 @@ export async function searchCatalogSkills(
 
 export async function searchCatalogSkillsPage(
   query: string,
-  options: { registry?: string; pageSize?: number; cursor?: string } = {}
+  options: {
+    registry?: string;
+    pageSize?: number;
+    cursor?: string;
+    includeExternal?: boolean;
+    source?: string;
+    scope?: string;
+    origin?: string;
+  } = {}
 ): Promise<CatalogSkillsPage> {
   const url = buildCatalogUrl(
     '/api/v1/skills',
@@ -403,6 +421,10 @@ export async function searchCatalogSkillsPage(
       pageSize: String(options.pageSize ?? 10),
       cursor: options.cursor,
       sort: query ? 'relevance' : 'updated_at_desc',
+      ...(options.includeExternal ? { include_external: true } : {}),
+      ...(options.source ? { source: options.source } : {}),
+      ...(options.scope ? { scope: options.scope } : {}),
+      ...(options.origin ? { origin: options.origin } : {}),
     },
     options.registry
   );
@@ -424,6 +446,15 @@ export async function searchCatalogSkillsPage(
       displayName?: string;
       description?: string;
       latestVersion?: string;
+      sourceKind?: string;
+      originRegistryUrl?: string;
+      originRepositoryUrl?: string;
+      originRevision?: string;
+      importMode?: string;
+      learnMoreUrl?: string;
+      installable?: boolean;
+      hosted?: boolean;
+      mirrored?: boolean;
     }>;
     pageInfo?: {
       nextCursor?: string | null;
@@ -437,6 +468,15 @@ export async function searchCatalogSkillsPage(
       displayName: item.displayName || item.packageName,
       description: item.description || '',
       latestVersion: item.latestVersion,
+      sourceKind: item.sourceKind,
+      originRegistryUrl: item.originRegistryUrl,
+      originRepositoryUrl: item.originRepositoryUrl,
+      originRevision: item.originRevision,
+      importMode: item.importMode,
+      learnMoreUrl: item.learnMoreUrl,
+      installable: item.installable,
+      hosted: item.hosted,
+      mirrored: item.mirrored,
     })),
     pageInfo: {
       nextCursor: payload.pageInfo?.nextCursor ?? null,

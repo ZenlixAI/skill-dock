@@ -17,11 +17,22 @@ export interface SearchSkill {
   displayName: string;
   description: string;
   latestVersion?: string;
+  sourceKind?: string;
+  originRegistryUrl?: string;
+  originRepositoryUrl?: string;
+  learnMoreUrl?: string;
+  installable?: boolean;
+  hosted?: boolean;
+  mirrored?: boolean;
 }
 
 interface FindOptions {
   query: string;
   registry?: string;
+  includeExternal?: boolean;
+  source?: 'catalog' | 'skills.sh' | 'npm' | 'git' | 'local' | 'all';
+  scope?: string;
+  origin?: string;
   json?: boolean;
 }
 
@@ -33,12 +44,33 @@ interface SearchSkillsResult {
 export function parseFindOptions(args: string[]): FindOptions {
   const queryParts: string[] = [];
   let registry: string | undefined;
+  let includeExternal = false;
+  let source: FindOptions['source'];
+  let scope: string | undefined;
+  let origin: string | undefined;
   let json = false;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === '--registry' && i + 1 < args.length) {
       registry = args[++i];
+      continue;
+    }
+    if (arg === '--include-external') {
+      includeExternal = true;
+      continue;
+    }
+    if (arg === '--source' && i + 1 < args.length) {
+      const value = args[++i] as FindOptions['source'];
+      source = value;
+      continue;
+    }
+    if (arg === '--scope' && i + 1 < args.length) {
+      scope = args[++i];
+      continue;
+    }
+    if (arg === '--origin' && i + 1 < args.length) {
+      origin = args[++i];
       continue;
     }
     if (arg === '--json') {
@@ -53,19 +85,27 @@ export function parseFindOptions(args: string[]): FindOptions {
     query: queryParts.join(' ').trim(),
     registry,
     json,
+    ...(includeExternal ? { includeExternal } : {}),
+    ...(source ? { source } : {}),
+    ...(scope ? { scope } : {}),
+    ...(origin ? { origin } : {}),
   };
 }
 
-async function searchSkillsCatalog(query: string, registry?: string): Promise<SearchSkillsResult> {
+async function searchSkillsCatalog(query: string, options: FindOptions): Promise<SearchSkillsResult> {
   const results: SearchSkill[] = [];
   let cursor: string | undefined;
   let hasMoreCatalogResults = false;
 
   for (let page = 0; page < 3; page++) {
     const response = await searchCatalogSkillsPage(query, {
-      registry,
+      registry: options.registry,
       pageSize: 10,
       cursor,
+      ...(options.includeExternal ? { includeExternal: true } : {}),
+      ...(options.source ? { source: options.source } : {}),
+      ...(options.scope ? { scope: options.scope } : {}),
+      ...(options.origin ? { origin: options.origin } : {}),
     });
 
     results.push(
@@ -74,6 +114,13 @@ async function searchSkillsCatalog(query: string, registry?: string): Promise<Se
         displayName: sanitizeMetadata(item.displayName),
         description: sanitizeMetadata(item.description || ''),
         latestVersion: item.latestVersion ? sanitizeMetadata(item.latestVersion) : undefined,
+        sourceKind: item.sourceKind || 'catalog',
+        originRegistryUrl: item.originRegistryUrl,
+        originRepositoryUrl: item.originRepositoryUrl,
+        learnMoreUrl: item.learnMoreUrl,
+        installable: item.installable ?? true,
+        hosted: item.hosted ?? true,
+        mirrored: item.mirrored ?? false,
       }))
     );
 
@@ -89,8 +136,12 @@ async function searchSkillsCatalog(query: string, registry?: string): Promise<Se
 }
 
 export async function searchSkillsAPI(query: string, registry?: string): Promise<SearchSkill[]> {
-  const result = await searchSkillsCatalog(query, registry);
+  const result = await searchSkillsCatalog(query, { registry });
   return result.items;
+}
+
+async function searchSkills(query: string, options: FindOptions): Promise<SearchSkillsResult> {
+  return searchSkillsCatalog(query, options);
 }
 
 const HIDE_CURSOR = '\x1b[?25l';
@@ -99,7 +150,7 @@ const CLEAR_DOWN = '\x1b[J';
 const MOVE_UP = (n: number) => `\x1b[${n}A`;
 const MOVE_TO_COL = (n: number) => `\x1b[${n}G`;
 
-async function runSearchPrompt(initialQuery = '', registry?: string): Promise<SearchSkill | null> {
+async function runSearchPrompt(initialQuery = '', options: FindOptions): Promise<SearchSkill | null> {
   let results: SearchSkill[] = [];
   let selectedIndex = 0;
   let query = initialQuery;
@@ -141,7 +192,8 @@ async function runSearchPrompt(initialQuery = '', registry?: string): Promise<Se
           : `${TEXT}${skill.displayName}${RESET}`;
         const pkg = `${DIM}${skill.packageName}${RESET}`;
         const version = skill.latestVersion ? ` ${CYAN}v${skill.latestVersion}${RESET}` : '';
-        lines.push(`  ${arrow} ${label} ${pkg}${version}`);
+        const source = skill.sourceKind && skill.sourceKind !== 'catalog' ? ` ${DIM}[${skill.sourceKind}]${RESET}` : '';
+        lines.push(`  ${arrow} ${label} ${pkg}${source}${version}`);
         if (skill.description) {
           lines.push(`    ${DIM}${skill.description}${RESET}`);
         }
@@ -178,7 +230,7 @@ async function runSearchPrompt(initialQuery = '', registry?: string): Promise<Se
 
     debounceTimer = setTimeout(async () => {
       try {
-        results = await searchSkillsAPI(nextQuery, registry);
+        results = (await searchSkills(query, options)).items;
         selectedIndex = 0;
       } catch {
         results = [];
@@ -264,7 +316,7 @@ ${DIM}  2) npx skills add <package_name>${RESET}`;
   if (query) {
     let searchResult: SearchSkillsResult;
     try {
-      searchResult = await searchSkillsCatalog(query, options.registry);
+      searchResult = await searchSkills(query, options);
     } catch (error) {
       process.exitCode = 1;
       if (options.json) {
@@ -331,7 +383,8 @@ ${DIM}  2) npx skills add <package_name>${RESET}`;
 
     for (const skill of results.slice(0, MAX_QUERY_RESULTS_DISPLAY)) {
       const version = skill.latestVersion ? ` ${CYAN}v${skill.latestVersion}${RESET}` : '';
-      console.log(`${TEXT}${skill.packageName}${RESET}${version}`);
+      const source = skill.sourceKind && skill.sourceKind !== 'catalog' ? ` ${DIM}[${skill.sourceKind}]${RESET}` : '';
+      console.log(`${TEXT}${skill.packageName}${RESET}${source}${version}`);
       if (skill.description) {
         console.log(`${DIM}└ ${skill.description}${RESET}`);
       }
@@ -351,12 +404,12 @@ ${DIM}  2) npx skills add <package_name>${RESET}`;
   if (isNonInteractive || (await isRunningInAgent())) {
     console.log(agentTip);
     console.log();
-    console.log(`${DIM}Usage: npx skills find <query> [--registry <url>] [--json]${RESET}`);
+    console.log(`${DIM}Usage: npx skills find <query> [--registry <url>] [--include-external] [--source <catalog|skills.sh|npm|all>] [--json]${RESET}`);
     console.log(`${DIM}Default catalog env:${RESET} SKILLS_REGISTRY_URL`);
     return;
   }
 
-  const selected = await runSearchPrompt(query, options.registry);
+  const selected = await runSearchPrompt(query, options);
 
   track({
     event: 'find',

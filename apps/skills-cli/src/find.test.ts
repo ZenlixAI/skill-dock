@@ -104,12 +104,20 @@ describe('find command error handling', () => {
         displayName: 'PDF Skill',
         description: 'PDF processing workflow',
         latestVersion: '1.2.0',
+        sourceKind: 'catalog',
+        installable: true,
+        hosted: true,
+        mirrored: false,
       },
       {
         packageName: '@platform.skill/code-review',
         displayName: 'Code Review Accelerator',
         description: 'Structured code review prompts and checklists',
         latestVersion: '0.9.0',
+        sourceKind: 'catalog',
+        installable: true,
+        hosted: true,
+        mirrored: false,
       },
     ]);
 
@@ -123,6 +131,43 @@ describe('find command error handling', () => {
       pageSize: 10,
       cursor: 'cursor_1',
     });
+  });
+
+  it('includes skills.sh matches when external search is enabled', async () => {
+    vi.mocked(searchCatalogSkillsPage).mockResolvedValueOnce({
+      items: [
+        {
+          packageName: 'vercel-labs/agent-skills/react-best-practices',
+          displayName: 'React Best Practices',
+          description: 'React guidance from skills.sh',
+          latestVersion: '1.0.0',
+          sourceKind: 'skills.sh',
+          originRegistryUrl: 'https://skills.sh',
+          learnMoreUrl: 'https://skills.sh/vercel-labs/agent-skills/react-best-practices',
+          installable: false,
+          hosted: false,
+          mirrored: false,
+        },
+      ],
+      pageInfo: {
+        nextCursor: null,
+        hasNextPage: false,
+      },
+    });
+
+    await runFind(['react', '--include-external']);
+
+    expect(searchCatalogSkillsPage).toHaveBeenCalledWith('react', {
+      registry: undefined,
+      pageSize: 10,
+      cursor: undefined,
+      includeExternal: true,
+      source: undefined,
+      scope: undefined,
+      origin: undefined,
+    });
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('[skills.sh]'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('vercel-labs/agent-skills/react-best-practices'));
   });
 
   it('prints catalog failures instead of pretending no results exist', async () => {
@@ -245,7 +290,11 @@ describe('find command error handling', () => {
       "packageName": "@platform.skill/pdf-skill",
       "displayName": "PDF Skill",
       "description": "PDF processing workflow",
-      "latestVersion": "1.2.0"
+      "latestVersion": "1.2.0",
+      "sourceKind": "catalog",
+      "installable": true,
+      "hosted": true,
+      "mirrored": false
     }
   ],
   "total": 1,
@@ -275,7 +324,7 @@ describe('find command error handling', () => {
     const output = stripLogo(runCliOutput(['find', '--help']));
     expect(output).toContain('Usage: skills find [query] [options]');
     expect(output).toContain('Search for skills interactively or by keyword');
-    expect(output).toContain('--json');
-    expect(output).toContain('skills find typescript');
+    expect(output).toContain('--include-external');
+    expect(output).toContain('skills.sh');
   });
 });

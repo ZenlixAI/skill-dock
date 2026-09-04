@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	catalog "skill_registry/internal/catalog/domain"
 	packagingdomain "skill_registry/internal/packaging/domain"
 	packaginginfra "skill_registry/internal/packaging/infra"
 	persist "skill_registry/internal/platform/persistence"
@@ -227,4 +228,18 @@ func (r *WorkspaceService) PruneExpiredWorkspaces(ctx context.Context, ttl time.
 		return err
 	}
 	return r.adapter.PruneExpired(ctx, ttl)
+}
+
+func packagingContextError(ctx context.Context) error {
+	if ctx == nil {
+		return nil
+	}
+	switch err := ctx.Err(); {
+	case err == nil:
+		return nil
+	case err == context.DeadlineExceeded:
+		return catalog.NewError(504, "request_timeout", "Request context deadline exceeded during packaging.", nil)
+	default:
+		return catalog.NewError(499, "request_canceled", "Request context was canceled during packaging.", nil)
+	}
 }

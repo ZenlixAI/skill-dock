@@ -1,10 +1,5 @@
 import { resolve } from 'path';
-import {
-  getRegistryBaseUrl,
-  publishSkillPackaging,
-  type PackagingImportReport,
-  type PackagingWarningDetail,
-} from './catalog.ts';
+import { getRegistryBaseUrl, publishSkillPackaging, type PackagingImportReport, type PackagingWarningDetail } from './catalog.ts';
 import { packLocalSkillDirectory } from './local-packaging.ts';
 import { runPackagingSession } from './packaging-session.ts';
 import { createSourceArchiveBase64 } from './source-archive.ts';
@@ -32,11 +27,11 @@ export interface PublishWorkflowFailureResult {
 
 export type PublishWorkflowResult = PublishWorkflowSuccessResult | PublishWorkflowFailureResult;
 
-interface PackedSkill {
+type PackedSkill = {
   bundlePath: string;
   manifestDigest: string;
   cleanup: () => void;
-}
+};
 
 function failure(errors: string[]): PublishWorkflowFailureResult {
   return { ok: false, errors };

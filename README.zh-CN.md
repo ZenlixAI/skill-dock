@@ -2,161 +2,105 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-> 面向可复用 Agent Skill 的开源注册、分发与治理平台。
+> 面向可复用 Agent Skill 的自托管注册中心控制平面。
 
-Skill Registry 帮助团队发布、发现、安装和治理可复用的 Agent Skill。它将 Catalog API、Web 界面、命令行客户端以及兼容 npm 的制品仓库组合成一套可自托管的平台。
+Skill Registry 文档只聚焦两个部分：**skills server** 和 **`skills` CLI**。系统保持 Catalog 作为事实来源，Bundle 存在外部 npm 兼容制品仓库中，CLI 负责安装、刷新、发布和导入。
 
-**Agent Skill** 是围绕 `SKILL.md` 及其配套资源组织的可复用能力。Skill Registry 为每个已发布的 Skill 提供稳定的 Package Name、版本化发布、可搜索元数据和受控安装路径。
+## 文档范围
 
-## 为什么需要 Skill Registry？
+本文档集只讨论：
 
-Agent Skill 以目录形式分享很容易，但要形成可靠的生态还需要额外的运行治理能力。Skill Registry 提供这层基础设施：
+- **skills server**：发现、元数据、发布记录、可见性、治理
+- **`skills` CLI**：安装、刷新、发布、导入
+- **外部制品仓库**：可替换的 bundle 存储
+- 运行这些组件所需的部署和配置
 
-- **可发现**：通过 Catalog 或 Web UI 搜索和浏览 Skill。
-- **可复现安装**：解析精确的 Package Name 和版本，再通过 `skills` CLI 安装。
-- **创作与发布**：校验、打包并发布本地 Skill，或导入外部 Skill。
-- **生命周期治理**：弃用、撤回或退休 Skill 及其版本，而不静默删除历史。
-- **可自托管**：使用部署自己的数据库、鉴权和兼容 npm 的制品仓库。
-- **兼容多种 Agent**：将 Skill 安装到受支持编码 Agent 使用的目录中。
+本组文档不展开 UI 细节。
 
-## 项目状态
+## 产品形态
 
-Skill Registry 正在积极开发中。核心工作流已经实现，但部署契约、API 和用户侧功能仍可能持续演进。当前 API 和包格式应视为带版本管理的项目接口；对于预发布版本，不承诺所有行为都向后兼容。
+- **Catalog / server**：负责搜索、元数据、发布可见性和生命周期状态
+- **CLI**：负责安装、刷新、发布和导入
+- **制品仓库**：负责存放不可变 bundle
+- **数据库**：负责持久化 catalog 状态、发布历史和审计数据
 
-## 架构
+一个 skill 以 package name 和 versioned release 作为身份标识。Server 决定什么可以发布、可见和可安装；制品仓库只负责存储 bundle。
 
-项目有意将产品事实与制品存储分离：
+## 核心工作流
 
-| 组件 | 职责 |
-| --- | --- |
-| **Catalog API** | 负责发现、元数据、版本可见性、安装解析和治理状态。 |
-| **Skills CLI** | 负责安装、搜索、列出、更新、同步、校验、导入和发布 Skill。 |
-| **Web UI** | 提供 Catalog 浏览和创作/导入工作流。 |
-| **制品仓库** | 在 Nexus、Artifact Keeper 等兼容 npm 的仓库中存储不可变 Skill Bundle。 |
-| **数据库** | 持久化 Catalog 状态、发布记录、治理变更、审计数据和工作流状态。 |
+- 通过 `skills find` 发现技能
+- 通过 `skills add` 安装技能
+- 通过 `skills update` 刷新 registry 安装
+- 通过 `skills sync` 刷新 source 安装
+- 通过 `skills publish` 发布本地技能
+- 通过 `skills import-local` 和 `skills import-git` 导入本地或 Git 来源
+- 通过 `skills inspect` 和 `skills init` 检查和初始化技能目录
 
-Catalog 是用户能够发现和安装哪些 Skill 的事实来源。兼容 npm 的仓库只负责存储 Bundle；只有在 Catalog 中成功创建对应的 release record 后，制品才被视为已发布版本。
+## 安装行为
 
-## 设计原则
+registry 安装可以分成两种访问模式：
 
-- **单一公共身份**：Skill 使用兼容 npm 的 **Package Name** 作为唯一标识。
-- **不可变发布**：每个已发布版本都是可单独解析和校验的版本。
-- **显式治理**：生命周期变更会记录操作和原因。
-- **职责分离**：发现和策略由 Catalog 负责，Bundle 存储由制品仓库负责。
-- **可运输的源输入**：支持本地创作，也支持从本地归档或 Git 源导入。
-- **可观测的运行边界**：鉴权、就绪检查、幂等发布和审计记录属于平台能力。
+- `proxy`：server 会把 tarball URL 改写成自己的 npm proxy mount
+- `direct`：server 会原样返回上游 npm 兼容 registry URL，因此 CLI 可以使用用户自己的 npm 配置和凭据
 
-## 快速开始
+这只是安装解析的传输选择，不是新的 skill 身份模型。当 server 返回 `direct` 时，CLI 可以读取用户 npm 配置文件（`NPM_CONFIG_USERCONFIG` 或工作目录下的 `.npmrc`）来下载 tarball。对于 `proxy` 目标，CLI 不会使用 npm 配置。
 
-### 前置条件
+## 本地开发
 
-启动本地开发栈需要安装：
-
-- Docker
-- [kind](https://kind.sigs.k8s.io/)
-- [kubectl](https://kubernetes.io/docs/tasks/tools/)
-- Go 1.26 或更高版本
-- Node.js 18 或更高版本及 npm
-- [uv](https://docs.astral.sh/uv/)
-
-### 启动本地环境
-
-本仓库支持的本地开发栈会一起拉起：
+推荐使用仓库提供的开发脚本。
 
 ```bash
 make dev
+make dev-images
 make down
 ```
 
-默认会把 Catalog 指向 `http://host.docker.internal:30080/`；CLI / 浏览器安装统一通过 Catalog proxy `http://127.0.0.1:18080/repository/skills-npm/`。如果你的 Artifact Keeper 不在默认内部地址，先用环境变量覆盖：
+`make dev` 会创建本地环境并初始化示例数据。`make dev-images` 适用于 kind 集群已经存在、但你只想重新加载已构建的服务镜像而不重新执行数据初始化的场景。
 
-```bash
-ARTIFACTKEEPER_INTERNAL_NPM_URL=http://host.docker.internal:30080/ \
-ARTIFACTKEEPER_PUBLIC_NPM_URL=http://127.0.0.1:18080/repository/skills-npm/ \
-make dev
-```
-
-默认本地入口：
-
-| 服务 | 地址 |
-| --- | --- |
-| Web UI | <http://127.0.0.1:8080> |
-| Catalog API | <http://127.0.0.1:18080> |
-| Catalog npm proxy | <http://127.0.0.1:18080/repository/skills-npm/> |
-
-### 使用 CLI 连接本地环境
-
-Catalog 入口和 token 需要单独设置：
-
-```bash
-export SKILLS_REGISTRY_URL=http://127.0.0.1:18080
-export SKILLS_REGISTRY_TOKEN=reader-secret
-
-skills find pdf
-skills add @company.skill/your-skill -y
-```
-
-发布需要具备发布权限的 Catalog token：
-
-```bash
-export SKILLS_REGISTRY_TOKEN=publisher-secret
-skills publish /absolute/path/to/your-skill
-```
-
-CLI 同时支持导入本地和 Git 源、更新 registry 安装的 Skill，以及同步源安装的 Skill。完整命令请运行 `skills --help`。
-
-## 常用开发命令
-
-```bash
-make help
-make test-go
-make test-web
-make test-cli
-make typecheck-cli
-make build-web
-make dev
-make down
-```
-
-根目录 `Makefile` 负责顶层环境工作流和校验入口；交互式 Skill 操作仍由独立的 `skills` CLI 提供。
+默认本地栈使用 catalog server、PostgreSQL 和外部 Artifact Keeper 制品仓库。
 
 ## 文档
 
-- [当前使用指南](docs/README.md)
-- [skills CLI 参考](apps/skills-cli/README.md)
+- [产品方向与范围](docs/00-product-direction.md)
+- [Server 架构与配置](docs/01-server-architecture.md)
+- [CLI 协议与命令模型](docs/02-cli-contract.md)
+- [部署与本地运行](docs/03-deployment.md)
+- [认证与访问](docs/04-auth-and-access.md)
+- [包与发布模型](docs/05-package-and-release-model.md)
+- [制品解析](docs/06-artifact-resolution.md)
+- [发布与导入工作流](docs/07-publish-and-import-workflows.md)
+- [安装解析与刷新](docs/08-install-resolution-and-refresh.md)
+- [治理与可见性](docs/09-governance-and-visibility.md)
+- [外部来源、迁移与搜索](docs/10-external-sources-and-search.md)
+- [外部来源的 CLI 与 API 扩展方案](docs/11-cli-and-api-extension-plan.md)
+- [CLI 命令与参数规范](docs/12-cli-command-spec.md)
+- [外部来源的 API 端点规范](docs/13-api-endpoint-spec.md)
+- [CLI 参考](apps/skills-cli/README.md)
 
-根目录 README 是默认的中文入口。
+## 配置速览
 
-## 配置
-
-一个部署通常需要配置以下环境变量：
+### 服务端
 
 | 变量 | 用途 |
 | --- | --- |
-| `SKILL_REGISTRY_ADDR` | Catalog 监听地址。 |
-| `SKILL_REGISTRY_DATABASE_URL` | SQLite 或 PostgreSQL 数据库地址。 |
-| `SKILL_REGISTRY_NPM_REGISTRY_URL` | Catalog 使用的制品仓库地址，用于读取元数据和 Bundle。 |
-| `SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL` | CLI 和浏览器客户端可访问的制品仓库地址。 |
-| `SKILL_REGISTRY_READER_TOKEN` | Catalog 只读操作 token。 |
-| `SKILL_REGISTRY_AUTHORING_TOKEN` | 创作和打包工作流 token。 |
-| `SKILL_REGISTRY_PUBLISHER_TOKEN` | 发布和治理操作 token。 |
-| `SKILL_REGISTRY_NPM_READ_AUTHORIZATION` | 访问私有制品仓库时使用的 Authorization header。 |
-| `SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION` | 服务端发布时使用的 Authorization header。 |
+| `SKILL_REGISTRY_ADDR` | 服务监听地址 |
+| `SKILL_REGISTRY_DATABASE_URL` | 数据库地址 |
+| `SKILL_REGISTRY_NPM_REGISTRY_URL` | Server 使用的制品仓库地址 |
+| `SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL` | 客户端可访问的制品仓库地址 |
+| `SKILL_REGISTRY_READER_TOKEN` | 只读 token |
+| `SKILL_REGISTRY_AUTHORING_TOKEN` | 创作 token |
+| `SKILL_REGISTRY_PUBLISHER_TOKEN` | 发布 token |
+| `SKILL_REGISTRY_NPM_READ_AUTHORIZATION` | 访问私有仓库时的 Authorization header |
+| `SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION` | Server 侧发布时使用的 Authorization header |
 
-完整示例、私有仓库鉴权和部署相关设置请参阅对应操作手册。
+### CLI
 
-## 参与贡献
-
-欢迎贡献代码、文档和 Skill。提交修改前请：
-
-1. 阅读相关架构决策记录和包契约。
-2. 保持 Catalog、CLI、Web UI 与制品仓库之间的边界清晰。
-3. 为行为变更新增或更新测试。
-4. 运行 `make verify`，并在 Pull Request 中说明环境限制。
-5. 让文档和示例与实际命令或 API 保持同步。
-
-如果修改公共包模型、安装解析、发布流程或治理语义，请在 `docs/adr/` 或对应设计文档中记录决策。
+| 变量 | 用途 |
+| --- | --- |
+| `SKILLS_REGISTRY_URL` | Catalog 基地址 |
+| `SKILLS_REGISTRY_TOKEN` | CLI 请求使用的 Bearer token |
+| `SKILLS_REGISTRY_ROLE` | 可选角色头，用于基于角色的本地认证 |
 
 ## 许可证
 
-本项目采用 [MIT License](LICENSE) 许可。
+MIT

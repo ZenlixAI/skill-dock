@@ -1,12 +1,16 @@
 package domain
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 type SourceType string
 
 const (
 	SourceTypeNative          SourceType = "native"
 	SourceTypeImported        SourceType = "imported"
+	SourceTypeExternal        SourceType = "external"
 	SourceTypePlatformCreated SourceType = "platform_created"
 )
 
@@ -57,6 +61,16 @@ type SkillSummary struct {
 	LatestVersion       *string     `json:"latestVersion"`
 	LatestVersionStatus *string     `json:"latestVersionStatus"`
 	UpdatedAt           time.Time   `json:"updatedAt"`
+	SourceKind          string      `json:"sourceKind,omitempty"`
+	SourceLocator       string      `json:"sourceLocator,omitempty"`
+	OriginRegistryURL   string      `json:"originRegistryUrl,omitempty"`
+	OriginRepositoryURL string      `json:"originRepositoryUrl,omitempty"`
+	OriginRevision      string      `json:"originRevision,omitempty"`
+	ImportMode          string      `json:"importMode,omitempty"`
+	LearnMoreURL        string      `json:"learnMoreUrl,omitempty"`
+	Installable         bool        `json:"installable,omitempty"`
+	Hosted              bool        `json:"hosted,omitempty"`
+	Mirrored            bool        `json:"mirrored,omitempty"`
 }
 
 type SkillDetail struct {
@@ -84,11 +98,20 @@ type BundleMetadata struct {
 }
 
 type SkillVersionSummary struct {
-	PackageName   string        `json:"packageName"`
-	Version       string        `json:"version"`
-	VersionStatus VersionStatus `json:"versionStatus"`
-	InstallPolicy InstallPolicy `json:"installPolicy"`
-	PublishedAt   time.Time     `json:"publishedAt"`
+	PackageName         string        `json:"packageName"`
+	Version             string        `json:"version"`
+	VersionStatus       VersionStatus `json:"versionStatus"`
+	InstallPolicy       InstallPolicy `json:"installPolicy"`
+	PublishedAt         time.Time     `json:"publishedAt"`
+	SourceKind          string        `json:"sourceKind,omitempty"`
+	SourceLocator       string        `json:"sourceLocator,omitempty"`
+	OriginRegistryURL   string        `json:"originRegistryUrl,omitempty"`
+	OriginRepositoryURL string        `json:"originRepositoryUrl,omitempty"`
+	OriginRevision      string        `json:"originRevision,omitempty"`
+	ImportMode          string        `json:"importMode,omitempty"`
+	Installable         bool          `json:"installable,omitempty"`
+	Hosted              bool          `json:"hosted,omitempty"`
+	Mirrored            bool          `json:"mirrored,omitempty"`
 }
 
 type SkillVersionDetail struct {
@@ -123,6 +146,16 @@ type InstallResolution struct {
 	TarballURL          string        `json:"tarballUrl"`
 	SkillManifestDigest string        `json:"skillManifestDigest"`
 	VersionStatus       VersionStatus `json:"versionStatus"`
+	RegistryAccessMode  string        `json:"registryAccessMode,omitempty"`
+	SourceKind          string        `json:"sourceKind,omitempty"`
+	SourceLocator       string        `json:"sourceLocator,omitempty"`
+	OriginRegistryURL   string        `json:"originRegistryUrl,omitempty"`
+	OriginRepositoryURL string        `json:"originRepositoryUrl,omitempty"`
+	OriginRevision      string        `json:"originRevision,omitempty"`
+	ImportMode          string        `json:"importMode,omitempty"`
+	Installable         bool          `json:"installable,omitempty"`
+	Hosted              bool          `json:"hosted,omitempty"`
+	Mirrored            bool          `json:"mirrored,omitempty"`
 }
 
 type ReleaseRecordResult struct {
@@ -170,11 +203,28 @@ type SkillQuery struct {
 	Query           string
 	PackageName     string
 	SourceType      string
-	AllowedPackages []string
 	IncludeRetired  bool
+	IncludeExternal bool
+	Source          string
+	Registry        string
+	Scope           string
+	Origin          string
 	Sort            string
+	AllowedPackages []string
 	PageSize        int
 	Cursor          int
+}
+
+type ExternalSearchQuery struct {
+	Query    string
+	PageSize int
+	Registry string
+	Scope    string
+	Origin   string
+}
+
+type ExternalSkillSearcher interface {
+	SearchSkills(ctx context.Context, query ExternalSearchQuery) (SkillsPage, error)
 }
 
 type CuratedSkillQuery struct {

@@ -9,41 +9,15 @@ import (
 	platformhttp "skill_registry/internal/platform/http"
 )
 
-type ReadService interface {
-	ListSkills(ctx context.Context, query catalog.SkillQuery) (catalog.SkillsPage, error)
-	ListCuratedSkills(ctx context.Context, query catalog.CuratedSkillQuery) (catalog.CuratedSkillsPage, error)
-	GetSkill(ctx context.Context, packageName string) (catalog.SkillDetail, error)
-	ListVersions(ctx context.Context, query catalog.VersionQuery) (catalog.VersionsPage, error)
-	GetVersion(ctx context.Context, packageName string, version string) (catalog.SkillVersionDetail, error)
-	ResolveInstallTarget(ctx context.Context, packageName string, version string) (catalog.InstallResolution, error)
-}
-
-type Workflow interface {
-	ListSkills(ctx context.Context, principal auth.Principal, query SkillsQuery) (catalog.SkillsPage, *catalog.Error)
-	ListCuratedSkills(ctx context.Context, principal auth.Principal, pageSize int, cursor int) (catalog.CuratedSkillsPage, *catalog.Error)
-	GetSkill(ctx context.Context, packageName string) (catalog.SkillDetail, error)
-	ListVersions(ctx context.Context, query catalog.VersionQuery) (catalog.VersionsPage, error)
-	GetVersion(ctx context.Context, packageName string, version string) (catalog.SkillVersionDetail, error)
-	ResolveInstallTarget(ctx context.Context, packageName string, version string) (catalog.InstallResolution, error)
-}
-
 type ReadModule struct {
-	service ReadService
+	service catalog.ReadRepository
 }
 
-func NewReadWorkflow(service ReadService) *ReadModule {
+func NewReadWorkflow(service catalog.ReadRepository) *ReadModule {
 	return &ReadModule{service: service}
 }
 
-func (m *ReadModule) Service() ReadService {
-	return m.service
-}
-
 func (m *ReadModule) ListSkills(ctx context.Context, principal auth.Principal, query SkillsQuery) (catalog.SkillsPage, *catalog.Error) {
-	sourceType, sourceTypeErr := parseSourceTypeFilter(query.SourceType)
-	if sourceTypeErr != nil {
-		return catalog.SkillsPage{}, sourceTypeErr
-	}
 	includeRetired, includeRetiredErr := ParseBooleanQueryParam(query.IncludeRetired, "include_retired", false)
 	if includeRetiredErr != nil {
 		return catalog.SkillsPage{}, includeRetiredErr
@@ -61,14 +35,35 @@ func (m *ReadModule) ListSkills(ctx context.Context, principal auth.Principal, q
 		return catalog.SkillsPage{}, cursorErr
 	}
 
+	includeExternal, includeExternalErr := ParseBooleanQueryParam(query.IncludeExternal, "include_external", false)
+	if includeExternalErr != nil {
+		return catalog.SkillsPage{}, includeExternalErr
+	}
+	sourceTypeFilter, sourceTypeErr := parseSourceTypeFilter(query.SourceType)
+	if sourceTypeErr != nil {
+		return catalog.SkillsPage{}, sourceTypeErr
+	}
+	source := strings.TrimSpace(query.Source)
+	registry := strings.TrimSpace(query.Registry)
+	scope := strings.TrimSpace(query.Scope)
+	origin := strings.TrimSpace(query.Origin)
+	if includeExternal && source == "catalog" {
+		source = "all"
+	}
+
 	skillQuery := catalog.SkillQuery{
-		Query:          query.Query,
-		PackageName:    query.PackageName,
-		SourceType:     sourceType,
-		IncludeRetired: includeRetired,
-		Sort:           sortValue,
-		PageSize:       pageSize,
-		Cursor:         cursor,
+		Query:           query.Query,
+		PackageName:     query.PackageName,
+		SourceType:      sourceTypeFilter,
+		IncludeRetired:  includeRetired,
+		IncludeExternal: includeExternal,
+		Source:          source,
+		Registry:        registry,
+		Scope:           scope,
+		Origin:          origin,
+		Sort:            sortValue,
+		PageSize:        pageSize,
+		Cursor:          cursor,
 	}
 	skillQuery.AllowedPackages = append([]string(nil), principal.AllowedPackages...)
 
@@ -120,7 +115,7 @@ func parseSkillsSort(raw string) (string, *catalog.Error) {
 func parseSourceTypeFilter(raw string) (string, *catalog.Error) {
 	value := strings.TrimSpace(raw)
 	switch value {
-	case "", string(catalog.SourceTypeNative), string(catalog.SourceTypeImported), string(catalog.SourceTypePlatformCreated):
+	case "", string(catalog.SourceTypeNative), string(catalog.SourceTypeImported), string(catalog.SourceTypeExternal), string(catalog.SourceTypePlatformCreated):
 		return value, nil
 	default:
 		return "", catalog.NewError(400, "invalid_request", "source_type is invalid.", map[string]any{"source_type": value})

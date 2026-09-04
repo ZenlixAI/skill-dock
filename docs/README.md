@@ -1,106 +1,15 @@
-# 当前 Skill Registry 使用指南
+# docs index
 
-本文介绍当前仓库里的 Skill Registry：如何启动本地环境、如何连接 CLI，以及当前设计下的 `add`、`update`、`sync`、`publish`、`import-local` 和 `import-git` 的使用方式。
-
-## 当前设计
-
-本地开发栈会一起启动：
-
-- Web UI
-- Catalog API
-- PostgreSQL
-- 独立运行的 Artifact Keeper（npm 兼容制品仓库）
-
-在这个设计里：
-
-- `SKILLS_REGISTRY_URL` 指向 Catalog 的公共入口
-- 制品仍然存放在 npm 兼容仓库里，但 CLI 只需要配置 Catalog 入口
-- `publish`、`import-local`、`import-git` 都通过 Catalog 完成发布
-- `update` 只更新 registry 安装的 Skill
-- `sync` 只刷新从本地路径或 Git 来源安装的 Skill
-
-## 1. 启动本地环境
-
-```bash
-make dev
-make down
-```
-
-默认本地地址如下：
-
-| 服务 | 地址 |
-| --- | --- |
-| Web UI | <http://127.0.0.1:8080> |
-| Catalog API | <http://127.0.0.1:18080> |
-| npm proxy（通过 Catalog） | <http://127.0.0.1:18080/repository/skills-npm/> |
-
-如果你的 Artifact Keeper 不在默认内部地址，可以覆盖下面两个变量再启动：
-
-```bash
-ARTIFACTKEEPER_INTERNAL_NPM_URL=http://host.docker.internal:30080/ \
-ARTIFACTKEEPER_PUBLIC_NPM_URL=http://127.0.0.1:18080/repository/skills-npm/ \
-make dev
-```
-
-## 2. 配置 CLI 连接
-
-最常用的是把 Catalog 入口和 token 单独设置好：
-
-```bash
-export SKILLS_REGISTRY_URL=http://127.0.0.1:18080
-export SKILLS_REGISTRY_TOKEN=reader-secret
-```
-
-- `reader-secret` 可以做搜索、查看和安装
-- `publisher-secret` 可以做发布和治理操作
-- 如果本地 registry 需要额外的角色头，可以再设置 `SKILLS_REGISTRY_ROLE`
-
-## 3. 常见操作
-
-### 搜索和安装
-
-```bash
-skills find pdf
-skills add @company.skill/your-skill -y
-skills add @company.skill/pdf-skill --version 1.2.0
-```
-
-### 发布本地 Skill
-
-```bash
-export SKILLS_REGISTRY_TOKEN=publisher-secret
-skills publish /absolute/path/to/your-skill
-```
-
-### 导入外部来源
-
-```bash
-skills import-local ./legacy-skill --package-name @company.skill/legacy-skill --version 0.1.0
-skills import-git owner/repo --skill pdf
-```
-
-### 更新或同步已安装 Skill
-
-```bash
-skills update @company.skill/pdf-skill
-skills sync legacy-skill
-```
-
-简单记忆：
-
-- `update`：只管 registry 已安装的 Skill
-- `sync`：只管本地路径或 Git 来源安装的 Skill
-- `remove`：只做本地移除，不改 Catalog
-- `publish`：本地校验和打包后通过 Catalog 发布
-- `import-local` / `import-git`：把外部来源通过 Catalog 一次性发布进去
-
-## 4. 排查常见问题
-
-- `skills find` / `skills add` 返回 401：检查 `SKILLS_REGISTRY_TOKEN`
-- `skills publish` 失败：确认使用的是 `publisher-secret` 或等价权限
-- 安装后看不到 Skill：确认 `SKILLS_REGISTRY_URL` 指向的是 Catalog 入口，而不是 npm 仓库本身
-- `sync` 失败：确认原始本地路径或 Git 来源仍然能找到同一个 `SKILL.md`
-
-## 5. 相关文档
-
-- 根目录 README: [`../README.md`](../README.md)
+1. [Product direction and scope](00-product-direction.md)
+2. [Server architecture and configuration](01-server-architecture.md)
+3. [CLI contract and command model](02-cli-contract.md)
+4. [Deployment and local runtime](03-deployment.md)
+5. [Auth and access](04-auth-and-access.md)
+6. [Package and release model](05-package-and-release-model.md)
+7. [Artifact resolution](06-artifact-resolution.md)
+8. [Publish and import workflows](07-publish-and-import-workflows.md)
+9. [Install resolution and refresh](08-install-resolution-and-refresh.md)
+10. [Governance and visibility](09-governance-and-visibility.md)
+11. [External sources, migration, and search](10-external-sources-and-search.md)
+12. [CLI and API extension plan for external sources](11-cli-and-api-extension-plan.md)
+13. [CLI command and parameter specification](12-cli-command-spec.md)

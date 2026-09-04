@@ -4,6 +4,20 @@ import { runAdd } from './add.ts';
 import * as workflow from './registry-install-workflow.ts';
 import * as agentRegistry from './agents.ts';
 
+vi.mock('./catalog.ts', () => ({
+  resolveInstallTarget: vi.fn(async (packageName: string) => ({
+    packageName,
+    version: '1.2.0',
+    npmRegistry: 'https://npm.example.com',
+    tarballUrl:
+      'https://npm.example.com/@platform.skill/pdf-skill/-/pdf-skill-1.2.0.tgz',
+    integrity: 'sha512-test',
+    skillManifestDigest: 'sha256-manifest',
+    versionStatus: 'published',
+    registryAccessMode: 'proxy',
+  })),
+}));
+
 vi.mock('./registry-install-workflow.ts', () => ({
   materializeRegistrySkill: vi.fn(() =>
     Promise.resolve({
@@ -139,13 +153,17 @@ describe('runAdd registry installs', () => {
         version: '1.2.0',
       });
 
-      expect(workflow.materializeRegistrySkill).toHaveBeenCalledWith({
+    expect(workflow.materializeRegistrySkill).toHaveBeenCalledWith({
+      packageName: '@platform.skill/pdf-skill',
+      version: '1.2.0',
+      registry: undefined,
+      target: expect.objectContaining({
         packageName: '@platform.skill/pdf-skill',
         version: '1.2.0',
-        registry: undefined,
-        outputDir: '/tmp/sidecar-cache/item-000',
-        cwd: process.cwd(),
-      });
+      }),
+      outputDir: '/tmp/sidecar-cache/item-000',
+      cwd: process.cwd(),
+    });
       expect(workflow.runRegistryInstallWorkflow).not.toHaveBeenCalled();
       expect(log).toHaveBeenCalledWith(expect.stringContaining('"installName":"pdf-skill"'));
     } finally {

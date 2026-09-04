@@ -8,11 +8,11 @@ import (
 
 	catalog "skill_registry/internal/catalog/domain"
 	internalcataloghttp "skill_registry/internal/catalog/http"
+	packagingapplication "skill_registry/internal/packaging/application"
 	"skill_registry/internal/platform/auth"
 	platformhttp "skill_registry/internal/platform/http"
 	platformaccess "skill_registry/internal/platform/http/access"
 	persist "skill_registry/internal/platform/persistence"
-	platformsession "skill_registry/internal/platform/session"
 )
 
 func contextWithRequestMetadataForTest(ctx context.Context, requestID string, traceID string) context.Context {
@@ -28,10 +28,23 @@ func newCatalogReadModuleStubForTest(_ interface{ Helper() }) *catalogReadModule
 	return &catalogReadModuleStub{}
 }
 
-func newTestServerWithCatalogReadModule(_ interface{ Helper() }, module internalcataloghttp.Workflow) *Server {
+func newTestServerWithCatalogReadModule(_ interface{ Helper() }, module *catalogReadModuleStub) *Server {
 	server := newTestServer()
-	server.catalogReadModule = module
+	server.listSkillsFunc = module.ListSkills
+	server.listCuratedSkillsFunc = module.ListCuratedSkills
+	server.getSkillFunc = module.GetSkill
+	server.listVersionsFunc = module.ListVersions
+	server.getVersionFunc = module.GetVersion
+	server.resolveInstallTargetFunc = module.ResolveInstallTarget
 	return server
+}
+
+func newImportReviewFuncForTest() ImportReviewFunc {
+	return packagingapplication.NewImportReviewService(packagingapplication.NewWorkspaceService("", nil)).ReviewContext
+}
+
+func newPublishFuncForTest() PublishFunc {
+	return packagingapplication.NewPublishService(packagingapplication.NewWorkspaceService("", nil), nil, nil).PublishContext
 }
 
 func (m *catalogReadModuleStub) ListSkills(context.Context, auth.Principal, internalcataloghttp.SkillsQuery) (catalog.SkillsPage, *catalog.Error) {
@@ -61,63 +74,6 @@ func (m *catalogReadModuleStub) ResolveInstallTarget(context.Context, string, st
 
 func (m *catalogReadModuleStub) listSkillsCallCount() int {
 	return int(m.listSkillsCalls.Load())
-}
-
-type sessionModuleStub struct {
-	currentCalls atomic.Int64
-	loginCalls   atomic.Int64
-	logoutCalls  atomic.Int64
-}
-
-func newSessionModuleStubForTest(_ interface{ Helper() }) *sessionModuleStub {
-	return &sessionModuleStub{}
-}
-
-func newTestServerWithSessionModule(_ interface{ Helper() }, module platformsession.Workflow) *Server {
-	server := newTestServer()
-	server.sessionModule = module
-	return server
-}
-
-func (m *sessionModuleStub) Current(auth.Principal) platformsession.Response {
-	m.currentCalls.Add(1)
-	return platformsession.Response{
-		Role:            "publisher",
-		Actor:           "delegated",
-		AuthMechanism:   "delegated_session",
-		AllowedActions:  []string{"delegated.action"},
-		AllowedPackages: []string{},
-	}
-}
-
-func (m *sessionModuleStub) Login(_ *http.Request, _, _ string) (auth.Principal, *http.Cookie, bool) {
-	m.loginCalls.Add(1)
-	return auth.Principal{
-		Role:          "publisher",
-		Actor:         "delegated",
-		AuthMechanism: "delegated_session",
-	}, &http.Cookie{Name: auth.SessionCookieName, Value: "delegated-cookie", Path: "/"}, true
-}
-
-func (m *sessionModuleStub) LogoutCookie(_ *http.Request) *http.Cookie {
-	m.logoutCalls.Add(1)
-	return &http.Cookie{Name: auth.SessionCookieName, Value: "", Path: "/", MaxAge: -1}
-}
-
-func (m *sessionModuleStub) Enabled() bool {
-	return true
-}
-
-func (m *sessionModuleStub) currentCallCount() int {
-	return int(m.currentCalls.Load())
-}
-
-func (m *sessionModuleStub) loginCallCount() int {
-	return int(m.loginCalls.Load())
-}
-
-func (m *sessionModuleStub) logoutCallCount() int {
-	return int(m.logoutCalls.Load())
 }
 
 type accessWorkflowStub struct {

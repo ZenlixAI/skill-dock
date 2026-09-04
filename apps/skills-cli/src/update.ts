@@ -205,6 +205,7 @@ async function updateRegistryEntries(
         packageName,
         version: target.version,
         registry: skill.registry,
+        target: target,
         targetAgents,
         installGlobally: global,
         installMode: resolveInstallModeForUpdate(targetAgents),

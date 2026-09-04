@@ -17,6 +17,7 @@ export interface RegistryInstallWorkflowOptions {
   packageName: string;
   version?: string;
   registry?: string;
+  target?: InstallTarget;
   targetAgents: AgentType[];
   installGlobally: boolean;
   installMode: InstallMode;
@@ -98,10 +99,12 @@ export async function runRegistryInstallWorkflow(
   options: RegistryInstallWorkflowOptions
 ): Promise<RegistryInstallWorkflowResult> {
   const cwd = options.cwd || process.cwd();
-  const target = await resolveInstallTarget(options.packageName, {
-    registry: options.registry,
-    version: options.version,
-  });
+	const target =
+		options.target ||
+		(await resolveInstallTarget(options.packageName, {
+			registry: options.registry,
+			version: options.version,
+		}));
   const bundle = await downloadRegistrySkillBundle(target, { cwd });
 
   try {
@@ -187,13 +190,16 @@ export async function materializeRegistrySkill(options: {
   packageName: string;
   version?: string;
   registry?: string;
+  target?: InstallTarget;
   outputDir: string;
   cwd?: string;
 }): Promise<MaterializedRegistrySkillManifest> {
-  const target = await resolveInstallTarget(options.packageName, {
-    registry: options.registry,
-    version: options.version,
-  });
+  const target =
+    options.target ||
+    (await resolveInstallTarget(options.packageName, {
+      registry: options.registry,
+      version: options.version,
+    }));
   const bundle = await downloadRegistrySkillBundle(target, { cwd: options.cwd });
   const outputDir = resolve(options.outputDir);
   const parentDir = dirname(outputDir);

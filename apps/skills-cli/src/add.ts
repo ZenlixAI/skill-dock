@@ -28,6 +28,7 @@ import {
 } from './skill-lock.ts';
 import type { AgentType, ParsedSource, Skill } from './types.ts';
 import { materializeRegistrySkill, runRegistryInstallWorkflow } from './registry-install-workflow.ts';
+import { resolveInstallTarget } from './catalog.ts';
 import { addSkillToLocalLock, computeSkillFolderHash } from './local-lock.ts';
 import { cleanupTempDir } from './git.ts';
 import { resolveExternalSourceSkills } from './external-source.ts';
@@ -523,10 +524,15 @@ export async function installRegistryPackage(
     if (!options.json) {
       throw new Error('--output-dir requires --json');
     }
+    const target = await resolveInstallTarget(packageName, {
+      registry: options.registry,
+      version: options.version,
+    });
     const manifest = await materializeRegistrySkill({
       packageName,
       version: options.version,
       registry: options.registry,
+      target,
       outputDir: options.outputDir,
       cwd: process.cwd(),
     });

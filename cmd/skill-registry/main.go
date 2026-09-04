@@ -74,6 +74,14 @@ func configuredRepositoryOptions(artifactSource catalog.ArtifactSource) catalogi
 	}
 }
 
+func configuredExternalSkillSearcher() catalog.ExternalSkillSearcher {
+	skillsShURL := strings.TrimSpace(os.Getenv("SKILL_REGISTRY_SKILLS_SH_URL"))
+	if skillsShURL == "" {
+		skillsShURL = "https://skills.sh"
+	}
+	return cataloginfra.NewSkillsShSearchSource(skillsShURL, nil)
+}
+
 func configuredRuntimeConfig() backend.Config {
 	artifactReadURL := strings.TrimSpace(os.Getenv("SKILL_REGISTRY_ARTIFACT_READ_URL"))
 	if artifactReadURL == "" {
@@ -106,6 +114,11 @@ func configuredRuntimeConfig() backend.Config {
 	}
 	artifactSource := configuredArtifactSource()
 
+	installTargetMode := httpserver.InstallTargetMode(os.Getenv("SKILL_REGISTRY_INSTALL_TARGET_MODE"))
+	if strings.TrimSpace(string(installTargetMode)) == "" {
+		installTargetMode = httpserver.InstallTargetModeProxy
+	}
+
 	return backend.Config{
 		Addr:                envOrDefault("SKILL_REGISTRY_ADDR", ":8080"),
 		DatabaseURL:         envOrDefault("SKILL_REGISTRY_DATABASE_URL", "file:"+filepath.Join("data", "skill-registry.db")),
@@ -114,6 +127,7 @@ func configuredRuntimeConfig() backend.Config {
 		RepositoryOptions:   configuredRepositoryOptions(artifactSource),
 		Server: httpserver.ServerConfig{
 			Mode:                            httpserver.ServerMode(os.Getenv("SKILL_REGISTRY_SERVER_MODE")),
+			InstallTargetMode:               installTargetMode,
 			ReadListCacheTTL:                envDurationOrDefault("SKILL_REGISTRY_READ_CACHE_LIST_TTL", 2*time.Second),
 			ReadDetailCacheTTL:              envDurationOrDefault("SKILL_REGISTRY_READ_CACHE_DETAIL_TTL", 5*time.Second),
 			ReadMaxInFlight:                 envIntOrDefault("SKILL_REGISTRY_READ_MAX_IN_FLIGHT", 64),
@@ -126,8 +140,7 @@ func configuredRuntimeConfig() backend.Config {
 			NPMRegistryPublishAuthorization: artifactPublishAuthorization,
 			PublicNPMRegistryURL:            publicInstallURL,
 			AuthTokens:                      configuredAuthTokens(),
-			SessionSecret:                   os.Getenv("SKILL_REGISTRY_SESSION_SECRET"),
-			SessionUsers:                    configuredSessionUsers(),
+			ExternalSkillSearcher:           configuredExternalSkillSearcher(),
 			Logger:                          log.New(os.Stderr, "", 0),
 		},
 		HTTPServer: httpserver.HTTPServerConfig{
@@ -157,34 +170,6 @@ func configuredAuthTokens() map[string]auth.TokenConfig {
 		log.Fatalf("parse SKILL_REGISTRY_AUTH_TOKENS_JSON: %v", err)
 	}
 	return authTokens
-}
-
-func configuredSessionUsers() map[string]auth.SessionUserConfig {
-	username := strings.TrimSpace(os.Getenv("SKILL_REGISTRY_LOGIN_USERNAME"))
-	password := strings.TrimSpace(os.Getenv("SKILL_REGISTRY_LOGIN_PASSWORD"))
-	if username != "" || password != "" {
-		if username == "" || password == "" {
-			log.Fatal("SKILL_REGISTRY_LOGIN_USERNAME and SKILL_REGISTRY_LOGIN_PASSWORD must be set together")
-		}
-		return map[string]auth.SessionUserConfig{
-			username: {
-				Password: password,
-				Role:     "operator",
-				Actor:    username,
-			},
-		}
-	}
-
-	raw := os.Getenv("SKILL_REGISTRY_SESSION_USERS_JSON")
-	if raw == "" {
-		return nil
-	}
-
-	var sessionUsers map[string]auth.SessionUserConfig
-	if err := json.Unmarshal([]byte(raw), &sessionUsers); err != nil {
-		log.Fatalf("parse SKILL_REGISTRY_SESSION_USERS_JSON: %v", err)
-	}
-	return sessionUsers
 }
 
 func envIntOrDefault(key string, fallback int) int {

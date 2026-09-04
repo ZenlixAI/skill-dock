@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 
 	catalog "skill_registry/internal/catalog/domain"
 	packagingdomain "skill_registry/internal/packaging/domain"
@@ -42,34 +43,25 @@ type packagePublishAttempt struct {
 	err   error
 }
 
-type ReleaseRecordCreator interface {
-	CreateReleaseRecord(ctx context.Context, packageName string, version string, input catalog.ReleaseRecordInput) (catalog.ReleaseRecordResult, error)
-}
-
-type PackagePublisher interface {
-	PublishPackage(ctx context.Context, input artifactadapter.NPMPublishInput) error
-}
-
 type PublishService struct {
-	runtime        *WorkspaceService
-	releaseRecords ReleaseRecordCreator
-	publisher      PackagePublisher
+	runtime               *WorkspaceService
+	createReleaseRecordFn func(context.Context, string, string, catalog.ReleaseRecordInput) (catalog.ReleaseRecordResult, error)
+	publishPackageFn      func(context.Context, artifactadapter.NPMPublishInput) error
 }
 
-func NewPublishService(runtime *WorkspaceService) *PublishService {
-	return &PublishService{runtime: runtime}
+func NewPublishService(runtime *WorkspaceService, createReleaseRecord func(context.Context, string, string, catalog.ReleaseRecordInput) (catalog.ReleaseRecordResult, error), publishPackage func(context.Context, artifactadapter.NPMPublishInput) error) *PublishService {
+	return &PublishService{
+		runtime:               runtime,
+		createReleaseRecordFn: createReleaseRecord,
+		publishPackageFn:      publishPackage,
+	}
 }
 
-func (w *PublishService) Configure(repo ReleaseRecordCreator, publisher PackagePublisher) {
-	w.releaseRecords = repo
-	w.publisher = publisher
-}
-
-func (w *PublishService) Publish(ctx context.Context, input packagingdomain.PublishRequest) (packagingdomain.PublishResponse, error) {
+func (w *PublishService) PublishContext(ctx context.Context, input packagingdomain.PublishRequest) (packagingdomain.PublishResponse, error) {
 	if err := packagingContextError(ctx); err != nil {
 		return packagingdomain.PublishResponse{}, err
 	}
-	if w == nil || w.runtime == nil || w.releaseRecords == nil || w.publisher == nil {
+	if w == nil || w.runtime == nil || w.createReleaseRecordFn == nil || w.publishPackageFn == nil {
 		return packagingdomain.PublishResponse{}, catalog.NewError(500, "internal_error", "Publish workflow is not configured.", nil)
 	}
 
@@ -95,7 +87,7 @@ func (w *PublishService) Publish(ctx context.Context, input packagingdomain.Publ
 		ManifestDigest: stringPtr(packResponse.ManifestDigest),
 		Components:     packResponse.Components,
 	}
-	releaseAttempt := w.createReleaseRecord(ctx, input.Target.PackageName, input.Target.Version, releaseInput)
+	releaseAttempt := w.createReleaseRecordAttempt(ctx, input.Target.PackageName, input.Target.Version, releaseInput)
 	switch releaseAttempt.state {
 	case ReleaseRecordWorkflowStateReady:
 		return publishResponseFromPack(packResponse, releaseAttempt.result, false), nil
@@ -103,7 +95,7 @@ func (w *PublishService) Publish(ctx context.Context, input packagingdomain.Publ
 		return packagingdomain.PublishResponse{}, releaseAttempt.err
 	}
 
-	publishAttempt := w.publishPackage(ctx, artifactadapter.NPMPublishInput{
+	publishAttempt := w.publishPackageAttempt(ctx, artifactadapter.NPMPublishInput{
 		PackageName: input.Target.PackageName,
 		Version:     input.Target.Version,
 		Description: material.metadata.Description,
@@ -113,7 +105,7 @@ func (w *PublishService) Publish(ctx context.Context, input packagingdomain.Publ
 	})
 	switch publishAttempt.state {
 	case PackagePublishWorkflowStateArtifactAlreadyExists:
-		releaseAttempt = w.createReleaseRecord(ctx, input.Target.PackageName, input.Target.Version, releaseInput)
+		releaseAttempt = w.createReleaseRecordAttempt(ctx, input.Target.PackageName, input.Target.Version, releaseInput)
 		if releaseAttempt.state == ReleaseRecordWorkflowStateReady {
 			return publishResponseFromPack(packResponse, releaseAttempt.result, false), nil
 		}
@@ -122,15 +114,51 @@ func (w *PublishService) Publish(ctx context.Context, input packagingdomain.Publ
 		return packagingdomain.PublishResponse{}, publishAttempt.err
 	}
 
-	releaseAttempt = w.createReleaseRecord(ctx, input.Target.PackageName, input.Target.Version, releaseInput)
+	releaseAttempt = w.createReleaseRecordAttempt(ctx, input.Target.PackageName, input.Target.Version, releaseInput)
 	if releaseAttempt.state != ReleaseRecordWorkflowStateReady {
 		return packagingdomain.PublishResponse{}, releaseAttempt.err
 	}
 	return publishResponseFromPack(packResponse, releaseAttempt.result, true), nil
 }
 
-func (w *PublishService) createReleaseRecord(ctx context.Context, packageName string, version string, input catalog.ReleaseRecordInput) releaseRecordAttempt {
-	result, err := w.releaseRecords.CreateReleaseRecord(ctx, packageName, version, input)
+func publishResponseFromPack(packResponse packagingdomain.PackResponse, releaseResult catalog.ReleaseRecordResult, publishedToRegistry bool) packagingdomain.PublishResponse {
+	return packagingdomain.PublishResponse{
+		PackageName:         packResponse.PackageName,
+		Version:             packResponse.Version,
+		ManifestDigest:      packResponse.ManifestDigest,
+		Components:          packResponse.Components,
+		PublishedToRegistry: publishedToRegistry,
+		Created:             releaseResult.Created,
+		IdempotentReplay:    releaseResult.IdempotentReplay,
+		VersionStatus:       releaseResult.VersionStatus,
+		InstallPolicy:       releaseResult.InstallPolicy,
+		Warnings:            append([]string(nil), packResponse.Warnings...),
+		WarningDetails:      append([]packagingdomain.WarningDetail(nil), packResponse.WarningDetails...),
+		ImportReport:        packResponse.ImportReport,
+		Errors:              append([]string(nil), packResponse.Errors...),
+	}
+}
+
+func packagingCatalogError(err error) *catalog.Error {
+	if err == nil {
+		return nil
+	}
+	var catalogErr *catalog.Error
+	if errors.As(err, &catalogErr) {
+		return catalogErr
+	}
+	return catalog.NewError(500, "internal_error", "Internal server error.", nil)
+}
+
+func stringPtr(value string) *string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return &value
+}
+
+func (w *PublishService) createReleaseRecordAttempt(ctx context.Context, packageName string, version string, input catalog.ReleaseRecordInput) releaseRecordAttempt {
+	result, err := w.createReleaseRecordFn(ctx, packageName, version, input)
 	if err == nil {
 		return releaseRecordAttempt{result: result, state: ReleaseRecordWorkflowStateReady}
 	}
@@ -138,8 +166,8 @@ func (w *PublishService) createReleaseRecord(ctx context.Context, packageName st
 	return releaseRecordAttempt{state: state, err: catalogErr}
 }
 
-func (w *PublishService) publishPackage(ctx context.Context, input artifactadapter.NPMPublishInput) packagePublishAttempt {
-	err := w.publisher.PublishPackage(ctx, input)
+func (w *PublishService) publishPackageAttempt(ctx context.Context, input artifactadapter.NPMPublishInput) packagePublishAttempt {
+	err := w.publishPackageFn(ctx, input)
 	if err == nil {
 		return packagePublishAttempt{state: PackagePublishWorkflowStatePublished}
 	}
