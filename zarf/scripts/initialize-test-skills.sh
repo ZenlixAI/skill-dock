@@ -39,7 +39,7 @@ publish_skill() {
   fi
   tarball_url=$(printf '%s' "$install_payload" | node -e 'const fs = require("node:fs"); const raw = fs.readFileSync(0, "utf8"); const data = JSON.parse(raw); process.stdout.write(data.tarballUrl || "")')
   if [ -n "$tarball_url" ]; then
-    tarball_status=$(curl -sS -o /dev/null -w '%{http_code}' -I "$tarball_url")
+    tarball_status=$(curl -sS -L -o /dev/null -w '%{http_code}' "$tarball_url")
     if [ "$tarball_status" = "200" ]; then
       echo "Skipping existing fixture from ${fixture_path}"
       return 0
