@@ -31,12 +31,12 @@ export function AppShell({ children }: PropsWithChildren) {
             <div className="brand-lockup__mark">SR</div>
             <div className="brand-lockup__copy">
               <p className="brand-lockup__eyebrow">Skill Registry</p>
-              <h1>Skill Registry</h1>
+              <span className="brand-lockup__name" role="heading" aria-level={2}>Skill Registry</span>
               <p className="brand-lockup__subtitle">Official website for the product, with quick links to features and setup guidance.</p>
             </div>
           </Link>
 
-          <nav aria-label="Primary" className="shell-header__nav">
+          <nav aria-label="Primary" className="shell-header__nav" id="primary-navigation">
             {portalNavItems.map((item) => (
               <NavLink
                 className={({ isActive }) => clsx('nav-chip', isActive && 'nav-chip--active')}

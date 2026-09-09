@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom';
 import { SectionHeading } from '../components/SectionHeading';
 import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
@@ -6,11 +5,11 @@ import { SurfaceCard } from '../components/SurfaceCard';
 const REQUIRED_SERVER_ENV = [
   'POSTGRES_DB=skill_registry',
   'POSTGRES_USER=skill_registry',
-  'POSTGRES_PASSWORD=skill_registry_change_me',
+  'POSTGRES_PASSWORD=<generate-a-secure-password>',
   'CATALOG_PORT=8080',
-  'SKILL_REGISTRY_READER_TOKEN=reader-token-change-me',
-  'SKILL_REGISTRY_AUTHORING_TOKEN=authoring-token-change-me',
-  'SKILL_REGISTRY_PUBLISHER_TOKEN=publisher-token-change-me',
+  'SKILL_REGISTRY_READER_TOKEN=<generate-a-reader-token>',
+  'SKILL_REGISTRY_AUTHORING_TOKEN=<generate-an-authoring-token>',
+  'SKILL_REGISTRY_PUBLISHER_TOKEN=<generate-a-publisher-token>',
   'SKILL_REGISTRY_INSTALL_TARGET_MODE=proxy',
 ].join('\n');
 
@@ -20,6 +19,15 @@ const OPTIONAL_SERVER_ENV = [
   'SKILL_REGISTRY_ARTIFACT_PUBLISH_AUTHORIZATION=Basic ...',
   'SKILL_REGISTRY_PUBLIC_INSTALL_URL=http://127.0.0.1:8080/repository/skills-npm/',
   'SKILL_REGISTRY_AUTH_TOKENS_JSON={...}',
+].join('\n');
+
+const CLI_SYNC_CONFIG = [
+  '{',
+  '  "syncOnAdd": true,',
+  '  "packageNamePrefix": "@acme.skill/",',
+  '  "defaultVersion": "0.1.0",',
+  '  "registry": "http://127.0.0.1:8080"',
+  '}',
 ].join('\n');
 
 const DEPLOY_STEPS = [
@@ -40,26 +48,24 @@ const DEPLOY_STEPS = [
 export function DocsPage() {
   return (
     <div className="page-grid page-grid--detail docs-page">
+      <nav className="docs-page__toc" aria-label="On this page">
+        <strong>On this page</strong>
+        <a href="#deploy">Deploy</a>
+        <a href="#server">Server config</a>
+        <a href="#cli">CLI config</a>
+        <a href="#sync">Source sync</a>
+      </nav>
       <section className="hero-shell hero-shell--split docs-page__hero">
         <div className="hero-shell__copy docs-page__copy">
           <SectionHeading
             title="Get started"
             description="Deploy the backend, connect the storage, and point the CLI at the same service."
             tone="detail"
-            actions={
-              <>
-                <Link className="button button--primary" to="/">
-                  Return home
-                </Link>
-                <Link className="button button--ghost" to="/features">
-                  Read features
-                </Link>
-              </>
-            }
           />
 
           <p className="docs-page__lede">
-            Start with the deployment path, then copy the environment values that keep the backend, storage, and CLI aligned.
+            Start with the deployment path, then copy the environment values that keep the backend, storage, CLI, and
+            source-sync behavior aligned.
           </p>
 
           <div className="context-strip">
@@ -68,10 +74,9 @@ export function DocsPage() {
             <StatusPill>Backend</StatusPill>
           </div>
         </div>
-
       </section>
 
-      <section className="docs-page__section">
+      <section className="docs-page__section" id="deploy">
         <div className="docs-page__section-head">
           <h2>Deploy the backend in three steps</h2>
           <p>Keep the production stack, the private storage, and the CLI pointed at one backend.</p>
@@ -88,7 +93,7 @@ export function DocsPage() {
         </div>
       </section>
 
-      <section className="docs-page__section docs-page__section--grid">
+      <section className="docs-page__section docs-page__section--grid" id="server">
         <div className="docs-page__section-head">
           <h2>Configure the server</h2>
           <p>Set the backend through explicit environment variables instead of hidden image defaults.</p>
@@ -99,6 +104,7 @@ export function DocsPage() {
             <pre className="docs-page__code-block">
               <code>{REQUIRED_SERVER_ENV}</code>
             </pre>
+            <p className="docs-page__security-note"><strong>Before production:</strong> replace every placeholder with a unique secret. Keep reader, authoring, and publisher tokens scoped to their role and rotate them when access changes.</p>
           </SurfaceCard>
 
           <SurfaceCard className="docs-page__panel" description="Use these only when the artifact repository needs its own credentials or overrides." title="Repository and auth overrides" variant="subtle">
@@ -112,10 +118,10 @@ export function DocsPage() {
         </div>
       </section>
 
-      <section className="docs-page__section">
+      <section className="docs-page__section" id="cli">
         <div className="docs-page__section-head">
           <h2>Configure the CLI</h2>
-          <p>Point local installs, search, publish, and import at the same backend.</p>
+          <p>Point local installs, search, publish, import, and sync at the same backend.</p>
         </div>
 
         <SurfaceCard description="Use the same backend URL and token in the shell that runs the CLI." title="CLI runtime" variant="subtle">
@@ -126,13 +132,38 @@ export function DocsPage() {
             </div>
             <div className="docs-page__cli-block">
               <span>Reader token</span>
-              <code>export SKILLS_REGISTRY_TOKEN=reader-token-change-me</code>
+              <code>export SKILLS_REGISTRY_TOKEN=&lt;your-reader-token&gt;</code>
             </div>
           </div>
           <p className="docs-page__panel-note">
             If the server returns `direct` install targets, also make the relevant npm credentials available through
             `NPM_CONFIG_USERCONFIG` or a local `.npmrc`.
           </p>
+        </SurfaceCard>
+      </section>
+
+      <section className="docs-page__section" id="sync">
+        <div className="docs-page__section-head">
+          <h2>Sync source installs automatically</h2>
+          <p>
+            Source installs sync through the backend import flow by default. Add this project-level file when a package
+            name prefix, default version, or registry needs to fill missing source metadata.
+          </p>
+        </div>
+
+        <SurfaceCard
+          className="docs-page__sync-card"
+          description="Place this file in the directory where you run the CLI."
+          title="skills.config.json"
+          variant="subtle"
+        >
+          <pre className="docs-page__code-block">
+            <code>{CLI_SYNC_CONFIG}</code>
+          </pre>
+          <div className="docs-page__sync-details">
+            <p><code>syncOnAdd: true</code> makes the default explicit; set it to <code>false</code> to keep installs local only.</p>
+            <p><code>packageNamePrefix</code> and <code>defaultVersion</code> fill missing source metadata.</p>
+          </div>
         </SurfaceCard>
       </section>
 

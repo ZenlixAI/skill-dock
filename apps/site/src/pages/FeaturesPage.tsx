@@ -1,3 +1,4 @@
+import { RefreshCw } from 'lucide-react';
 import { SectionHeading } from '../components/SectionHeading';
 import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
@@ -15,10 +16,18 @@ const STORAGE_POINTS = [
 ] as const;
 
 const CLI_POINTS = [
-  'Keeps discovery, install, publish, and import simple.',
+  'Keeps discovery, install, publish, import, and sync simple.',
   'Resolves registry-backed installs through the server first.',
   'Stays thin and predictable.',
 ] as const;
+
+const SYNC_CONFIG = [
+  '{',
+  '  "syncOnAdd": true,',
+  '  "packageNamePrefix": "@acme.skill/",',
+  '  "defaultVersion": "0.1.0"',
+  '}',
+].join('\n');
 
 export function FeaturesPage() {
   return (
@@ -32,8 +41,8 @@ export function FeaturesPage() {
           />
 
           <p className="features-page__lede">
-            Keep discovery, governance, and bundle storage cleanly separated so the product is easy to run and easy to
-            trust.
+            Keep discovery, governance, and bundle storage cleanly separated while giving source installs a direct path
+            back to the backend.
           </p>
 
           <div className="context-strip">
@@ -60,7 +69,7 @@ export function FeaturesPage() {
             </div>
             <div>
               <dt>CLI</dt>
-              <dd>A thin command layer for discovery, install, publish, and import.</dd>
+              <dd>A thin command layer for discovery, install, publish, import, and automatic source sync.</dd>
             </div>
           </dl>
         </SurfaceCard>
@@ -69,7 +78,7 @@ export function FeaturesPage() {
       <section className="features-page__section">
         <div className="features-page__section-head">
           <h2>One product, three responsibilities</h2>
-          <p>Control, storage, and command execution stay separate so the experience stays clear.</p>
+          <p>Control, storage, and command execution stay separate; source installs still have a clear path back to the backend.</p>
         </div>
 
         <div className="features-page__matrix">
@@ -98,10 +107,66 @@ export function FeaturesPage() {
             </ul>
           </article>
         </div>
+        <div className="features-page__architecture" aria-label="Skill Registry architecture">
+          <div><strong>CLI</strong><span>find · add · publish</span></div>
+          <span className="features-page__architecture-arrow" aria-hidden="true">→</span>
+          <div><strong>Registry API</strong><span>catalog truth · auth · governance</span></div>
+          <span className="features-page__architecture-arrow" aria-hidden="true">↘</span>
+          <div><strong>Private npm storage</strong><span>versioned skill bundles</span></div>
+        </div>
       </section>
 
-      <section className="features-page__closing">
-        <p>Built to stay self-hosted, predictable, and easy to explain.</p>
+      <section className="features-page__section features-page__section--sync">
+        <div className="features-page__section-head">
+          <div className="features-page__sync-heading">
+            <RefreshCw aria-hidden="true" size={18} strokeWidth={1.8} />
+            <h2>Keep source installs connected</h2>
+          </div>
+          <p>
+            Use <code>skills add</code> for local paths and git sources as usual. Successful installs are sent through
+            the existing backend import flow without a second command.
+          </p>
+        </div>
+
+        <div className="features-page__sync-grid">
+          <ol className="features-page__sync-flow" aria-label="Automatic sync flow">
+            <li>
+              <span>1</span>
+              <div>
+                <strong>Install</strong>
+                <p>Run <code>skills add ./my-skill</code> or install from a git source.</p>
+              </div>
+            </li>
+            <li>
+              <span>2</span>
+              <div>
+                <strong>Sync</strong>
+                <p><code>syncOnAdd</code> sends the installed source through the existing backend workflow.</p>
+              </div>
+            </li>
+            <li>
+              <span>3</span>
+              <div>
+                <strong>Keep defaults consistent</strong>
+                <p>Use a package prefix and version when the source does not supply package metadata.</p>
+              </div>
+            </li>
+          </ol>
+
+          <SurfaceCard
+            className="features-page__sync-config"
+            description="Set the control variable in the directory where you run the CLI."
+            title="skills.config.json"
+            variant="subtle"
+          >
+            <pre className="features-page__code-block">
+              <code>{SYNC_CONFIG}</code>
+            </pre>
+            <p className="features-page__sync-note">
+              Set <code>syncOnAdd</code> to <code>false</code> when an installation should remain local only.
+            </p>
+          </SurfaceCard>
+        </div>
       </section>
     </div>
   );

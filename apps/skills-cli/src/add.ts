@@ -21,15 +21,12 @@ import {
 } from './agents.ts';
 import { setVersion } from './telemetry.ts';
 import { detectAgent, getAgentType } from './detect-agent.ts';
-import {
-  addSkillToLock,
-  getLastSelectedAgents,
-  saveSelectedAgents,
-} from './skill-lock.ts';
+import { addSkillToLock, getLastSelectedAgents, saveSelectedAgents } from './skill-lock.ts';
 import type { AgentType, ParsedSource, Skill } from './types.ts';
 import { materializeRegistrySkill, runRegistryInstallWorkflow } from './registry-install-workflow.ts';
 import { resolveInstallTarget } from './catalog.ts';
 import { addSkillToLocalLock, computeSkillFolderHash } from './local-lock.ts';
+import { syncAddedSkillToBackend } from './add-sync.ts';
 import { cleanupTempDir } from './git.ts';
 import { resolveExternalSourceSkills } from './external-source.ts';
 import { parseSourceInput } from './source-parser.ts';
@@ -571,7 +568,25 @@ export async function installRegistryPackage(
     cwd,
   });
   spinner.stop('Installation complete');
-
+  if (successful.length > 0) {
+    const primary = successful[0]!;
+    try {
+      const syncError = await syncAddedSkillToBackend(primary.result.canonicalPath || primary.result.path, {
+        cwd,
+        registry: options.registry,
+        nameHint: packageName,
+      });
+      if (syncError) {
+        p.log.warn(pc.yellow(`Backend sync failed for ${packageName}: ${syncError}`));
+      }
+    } catch (error) {
+      p.log.warn(
+        pc.yellow(
+          `Backend sync failed for ${packageName}: ${error instanceof Error ? error.message : String(error)}`
+        )
+      );
+    }
+  }
   const resultLines = buildInstallResultLines(successful, cwd, options.verbose === true);
 
   p.note(
@@ -824,6 +839,23 @@ async function installSourceReference(
             },
           },
           cwd
+        );
+      }
+
+      try {
+        const syncError = await syncAddedSkillToBackend(skill.path, {
+          cwd,
+          registry: options.registry,
+          nameHint: skill.name,
+        });
+        if (syncError) {
+          p.log.warn(pc.yellow(`Backend sync failed for ${skill.name}: ${syncError}`));
+        }
+      } catch (error) {
+        p.log.warn(
+          pc.yellow(
+            `Backend sync failed for ${skill.name}: ${error instanceof Error ? error.message : String(error)}`
+          )
         );
       }
     }

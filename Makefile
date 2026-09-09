@@ -90,7 +90,7 @@ dev-update: build
 	kubectl -n skill-registry rollout restart deployment/site
 	kubectl -n skill-registry rollout status deployment/site
 
-publish-cli-snapshot:
+publish-cli:
 	CLI_PUBLISH_CLI_DIR="$(CLI_DIR)" \
 	CLI_PUBLISH_DIST_TAG="$(CLI_PUBLISH_DIST_TAG)" \
 	CLI_PUBLISH_NPM_CACHE="$(CLI_PUBLISH_NPM_CACHE)" \

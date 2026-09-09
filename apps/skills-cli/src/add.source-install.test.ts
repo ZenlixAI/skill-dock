@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdirSync, rmSync } from 'fs';
+import { mkdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { runAdd } from './add.ts';
@@ -37,6 +37,10 @@ vi.mock('./skills.ts', () => ({
 vi.mock('./git.ts', () => ({
   cloneRepo: vi.fn(),
   cleanupTempDir: vi.fn(() => Promise.resolve()),
+}));
+
+vi.mock('./add-sync.ts', () => ({
+  syncAddedSkillToBackend: vi.fn(() => Promise.resolve(null)),
 }));
 
 vi.mock('./local-lock.ts', () => ({
@@ -113,22 +117,43 @@ vi.mock('@clack/prompts', () => ({
 
 describe('runAdd source installs', () => {
   let localSourceDir: string;
+  let remoteRepoDir: string;
 
   beforeEach(() => {
     vi.clearAllMocks();
     localSourceDir = join(tmpdir(), `skills-add-source-${Date.now()}`);
-    mkdirSync(localSourceDir, { recursive: true });
+    remoteRepoDir = join(tmpdir(), `skills-add-remote-${Date.now()}`);
+    mkdirSync(join(localSourceDir, 'skills', 'zoom-out'), { recursive: true });
+    mkdirSync(join(remoteRepoDir, 'skills', 'zoom-out'), { recursive: true });
+    writeFileSync(
+      join(localSourceDir, 'skills', 'zoom-out', 'SKILL.md'),
+      ['---', 'name: zoom-out', 'description: Broader context', '---', '', '# zoom-out'].join('\n')
+    );
+    writeFileSync(
+      join(localSourceDir, 'skills', 'zoom-out', 'package.json'),
+      JSON.stringify({ name: '@acme.skill/zoom-out', version: '0.1.0' }, null, 2)
+    );
+    writeFileSync(
+      join(remoteRepoDir, 'skills', 'zoom-out', 'SKILL.md'),
+      ['---', 'name: zoom-out', 'description: Broader context', '---', '', '# zoom-out'].join('\n')
+    );
+    writeFileSync(
+      join(remoteRepoDir, 'skills', 'zoom-out', 'package.json'),
+      JSON.stringify({ name: '@acme.skill/zoom-out', version: '0.1.0' }, null, 2)
+    );
     vi.mocked(skills.discoverSkills).mockResolvedValue([
       {
         name: 'zoom-out',
         description: 'Broader context',
-        path: '/tmp/source/skills/zoom-out',
+        path: join(localSourceDir, 'skills', 'zoom-out'),
+        packageName: '@acme.skill/zoom-out',
       },
     ]);
   });
 
   afterEach(() => {
     rmSync(localSourceDir, { recursive: true, force: true });
+    rmSync(remoteRepoDir, { recursive: true, force: true });
   });
 
   it('installs a skill from a local path without using the registry workflow', async () => {

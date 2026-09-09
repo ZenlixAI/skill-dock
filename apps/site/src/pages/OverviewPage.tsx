@@ -15,9 +15,9 @@ const FEATURE_BANDS = [
   },
   {
     icon: Package,
-    label: 'Release',
-    title: 'Publish versioned bundles with confidence.',
-    description: 'Keep the command, package, and release moving together.',
+    label: 'Install',
+    title: 'Use `skills add` for registry and source installs.',
+    description: 'Automatic source sync with one control: keep installs connected to the backend without another command.',
   },
   {
     icon: ShieldCheck,
@@ -54,13 +54,16 @@ export function OverviewPage() {
           <h1 className="hero-title hero-title--landing">Ship the skills your agents rely on.</h1>
 
           <p className="hero-description">
-            Find, publish, and govern reusable skills from a single product surface. Skills live in any self-hosted
-            npm-compatible private artifact repository, so teams can keep the release path they already trust.
+            Self-hosted registry for discovering, versioning, and governing the AI agent skills your team relies on.
+            Find, install, publish, and sync from one predictable <code>skills add</code> workflow.
           </p>
 
           <div className="hero-actions">
             <Link className="button button--primary" to="/features">
               See how it works
+            </Link>
+            <Link className="button button--ghost" to="/docs">
+              Get started
             </Link>
             <span className="hero-actions__note">
               Open with <code>{SEARCH_COMMAND}</code> or copy it from the panel.
@@ -79,12 +82,13 @@ export function OverviewPage() {
             >
               <Copy aria-hidden="true" size={14} strokeWidth={2} />
             </button>
-          }
+            }
           className="hero-shell__panel hero-shell__panel--landing home-command-card"
           description="Skills live in a self-hosted npm-compatible private artifact repository, so the command resolves from the same private release path."
           title="Built for private npm storage"
           variant="hero"
         >
+          <span className="sr-only" aria-live="polite">{copyState === 'copied' ? 'Command copied to clipboard.' : copyState === 'failed' ? 'Copy failed. Select the command manually.' : ''}</span>
           <div className="home-command-card__command">
             <code>{SEARCH_COMMAND}</code>
           </div>
@@ -112,6 +116,13 @@ export function OverviewPage() {
               </article>
             );
           })}
+          <div className="home-feature-bands__callout">
+            <StatusPill tone="accent">syncOnAdd</StatusPill>
+            <p>
+              Successful source installs sync through the existing backend import flow by default. Set{' '}
+              <code>syncOnAdd: false</code> when an installation should remain local only.
+            </p>
+          </div>
         </section>
       </section>
     </div>

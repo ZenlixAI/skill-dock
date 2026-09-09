@@ -22,10 +22,13 @@ describe('FeaturesPage', () => {
     expect(screen.getByText('Private npm-compatible storage')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Designed around clear boundaries' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'One product, three responsibilities' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Skill Registry architecture')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Control' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Storage' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'CLI' })).toBeInTheDocument();
-    expect(screen.getByText(/Built to stay self-hosted, predictable, and easy to explain\./i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Keep source installs connected' })).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Automatic sync flow' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'skills.config.json' })).toBeInTheDocument();
+    expect(screen.getByText(/syncOnAdd.*true/i, { selector: 'code' })).toBeInTheDocument();
     expect(screen.queryByText('Deployment is explicit')).not.toBeInTheDocument();
     expect(screen.queryByText('Explore catalog')).not.toBeInTheDocument();
   });

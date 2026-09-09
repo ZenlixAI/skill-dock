@@ -10,7 +10,8 @@ export function getRouteMeta(pathname: string): RouteMeta {
   if (pathname === '/') {
     return {
       title: 'Skill Registry · official website',
-      description: 'Discover the product, read the docs, and follow the release path that keeps the site and backend aligned.',
+      description:
+        'A self-hosted registry for discovering, versioning, and governing the AI agent skills your team relies on.',
       section: 'portal',
     };
   }
@@ -18,7 +19,8 @@ export function getRouteMeta(pathname: string): RouteMeta {
   if (pathname === '/features') {
     return {
       title: 'Features · Skill Registry',
-      description: 'See how Skill Registry keeps the website focused, the backend self-hosted, and the deployment path clear.',
+      description:
+        'See how Skill Registry separates catalog control, private artifact storage, and a predictable CLI workflow.',
       section: 'portal',
     };
   }
