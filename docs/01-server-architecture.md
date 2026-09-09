@@ -2,76 +2,84 @@
 
 ## Responsibilities
 
-The server is the source of truth for the registry.
+The catalog server is the authority for:
 
-It owns:
+- catalog listing and search
+- skill and release metadata
+- install-target resolution
+- packaging review and publish workflows
+- visibility and lifecycle governance
+- audit and idempotency records
 
-- skill discovery and metadata
-- release records and visibility
-- publish and import workflows
-- install resolution
-- governance and audit data
-- private repository integration
+It uses an external npm-compatible artifact repository for package metadata and bundle bytes, and a database for catalog and operational state.
 
-Bundles remain in an external npm-compatible artifact repository.
+## HTTP surfaces
 
-## Runtime model
+Read routes are served under `/api/v1`:
 
-The server runs with a database and an artifact repository.
+- `GET /skills`
+- `GET /skills/search`
+- `GET /skills/curated`
+- `GET /skills/:package`
+- `GET /skills/:package/versions`
+- `GET /skills/:package/versions/:version`
+- `GET /skills/:package/install-target`
 
-### Required server configuration
+Packaging routes are:
+
+- `POST /skill-packaging/import-review`
+- `POST /skill-packaging/publish`
+
+Governance routes create release and lifecycle records. See the [API endpoint reference](13-api-endpoint-spec.md).
+
+## Required runtime configuration
 
 | Variable | Purpose |
 | --- | --- |
-| `SKILL_REGISTRY_ADDR` | Server listen address |
+| `SKILL_REGISTRY_ADDR` | Server listen address; default `:8080` |
 | `SKILL_REGISTRY_DATABASE_URL` | SQLite or PostgreSQL URL |
-| `SKILL_REGISTRY_NPM_REGISTRY_URL` | Artifact repository used for metadata and bundle access |
-| `SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL` | Artifact repository URL visible to clients |
-| `SKILL_REGISTRY_READER_TOKEN` | Read token |
-| `SKILL_REGISTRY_AUTHORING_TOKEN` | Authoring token |
-| `SKILL_REGISTRY_PUBLISHER_TOKEN` | Publisher token |
-| `SKILL_REGISTRY_NPM_READ_AUTHORIZATION` | Authorization header for private repository reads |
-| `SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION` | Authorization header for server-side publication |
-| `SKILL_REGISTRY_INSTALL_TARGET_MODE` | Install target mode returned by the server (`proxy` or `direct`) |
+| `SKILL_REGISTRY_NPM_REGISTRY_URL` | Internal npm-compatible artifact repository URL |
+| `SKILL_REGISTRY_READER_TOKEN` | Read access token |
+| `SKILL_REGISTRY_AUTHORING_TOKEN` | Authoring and packaging token |
+| `SKILL_REGISTRY_PUBLISHER_TOKEN` | Publishing and governance token |
 
-### Optional server configuration
+The public artifact URL and private repository authorization are deployment-dependent. Do not expose private backend credentials in install targets.
+
+## Optional runtime configuration
 
 | Variable | Purpose |
 | --- | --- |
-| `SKILL_REGISTRY_ARTIFACTS_PATH` | JSON artifact source override used in tests or local setups |
-| `SKILL_REGISTRY_ARTIFACT_READ_URL` | Explicit artifact read URL override |
-| `SKILL_REGISTRY_ARTIFACT_READ_AUTHORIZATION` | Explicit read authorization override |
-| `SKILL_REGISTRY_ARTIFACT_PUBLISH_AUTHORIZATION` | Explicit publish authorization override |
+| `SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL` | Artifact URL returned to clients |
 | `SKILL_REGISTRY_PUBLIC_INSTALL_URL` | Explicit public install URL override |
-| `SKILL_REGISTRY_SHARED_WORKSPACE_ROOT` | Workspace root for packaging flows |
-| `SKILL_REGISTRY_DISABLE_SEED` | Disable repository seed data |
-| `SKILL_REGISTRY_SESSION_SECRET` | Session secret for local auth flows |
-| `SKILL_REGISTRY_LOGIN_USERNAME` / `SKILL_REGISTRY_LOGIN_PASSWORD` | Bootstrap login credentials |
-| `SKILL_REGISTRY_SESSION_USERS_JSON` | JSON session user map |
-| `SKILL_REGISTRY_AUTH_TOKENS_JSON` | JSON token map for API auth |
+| `SKILL_REGISTRY_ARTIFACTS_PATH` | JSON artifact source for tests or local setups |
+| `SKILL_REGISTRY_ARTIFACT_READ_URL` | Explicit artifact read URL |
+| `SKILL_REGISTRY_ARTIFACT_READ_AUTHORIZATION` | Explicit artifact read authorization |
+| `SKILL_REGISTRY_ARTIFACT_PUBLISH_AUTHORIZATION` | Explicit artifact publish authorization |
+| `SKILL_REGISTRY_NPM_READ_AUTHORIZATION` | npm read authorization fallback |
+| `SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION` | npm publish authorization |
+| `SKILL_REGISTRY_NPM_PUBLISH_TOKEN` | Bearer-token publish fallback |
+| `SKILL_REGISTRY_SHARED_WORKSPACE_ROOT` | Writable packaging workspace root |
+| `SKILL_REGISTRY_DISABLE_SEED` | Disable sample catalog seed data |
+| `SKILL_REGISTRY_SKILLS_SH_URL` | External search provider URL; default `https://skills.sh` |
+| `SKILL_REGISTRY_INSTALL_TARGET_MODE` | `proxy` or `direct`; default `proxy` |
+| `SKILL_REGISTRY_AUTH_TOKENS_JSON` | Additional token-to-role mappings |
+| `SKILL_REGISTRY_SESSION_SECRET` | Session auth secret |
+| `SKILL_REGISTRY_LOGIN_USERNAME` / `SKILL_REGISTRY_LOGIN_PASSWORD` | Bootstrap session credentials |
+| `SKILL_REGISTRY_SESSION_USERS_JSON` | Session user map |
+
+Read and publish authorization use explicit artifact variables first, then the corresponding npm variables. The artifact source uses `SKILL_REGISTRY_ARTIFACTS_PATH`, then an explicit read URL, then `SKILL_REGISTRY_NPM_REGISTRY_URL`.
+
+## External search
+
+The runtime configures one external search adapter for `skills.sh`. External results are opt-in through `include_external=true` or `source=skills.sh|all`; catalog results remain available without the adapter. The server does not currently aggregate arbitrary npm registries, git repositories, or local directories.
 
 ## Install target modes
 
-The server can expose install targets in either of two modes:
+- `proxy` rewrites the tarball URL to the server's npm proxy mount;
+- `direct` returns the upstream npm-compatible URL unchanged.
 
-- `proxy`: rewrite tarball URLs to the server's npm proxy mount
-- `direct`: return the upstream npm-compatible registry URLs unchanged
-
-`proxy` is the default. `direct` is useful when the caller should connect to the registry configured in the catalog record or deployment metadata.
-
-## Reading order
-
-If you want the server model in smaller pieces, read these next:
-
-1. [Auth and access](04-auth-and-access.md)
-2. [Package and release model](05-package-and-release-model.md)
-3. [Artifact resolution](06-artifact-resolution.md)
-4. [Publish and import workflows](07-publish-and-import-workflows.md)
-5. [Install resolution and refresh](08-install-resolution-and-refresh.md)
-6. [Governance and visibility](09-governance-and-visibility.md)
+The mode affects only tarball retrieval. It is not a release or identity mode.
 
 ## Design rule
 
-Prefer explicit configuration over hidden behavior.
-
-If a deployment needs a different artifact backend, it should change configuration, not the server contract.
+Keep the server authoritative for hosted catalog truth and keep storage replaceable through configuration.

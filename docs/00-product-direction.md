@@ -1,75 +1,73 @@
 # Product direction and scope
 
-Skill Registry is a self-hosted control plane for reusable agent skills.
+Skill Registry is a self-hosted control plane for reusable agent skills. It makes skills discoverable and governable without taking ownership of the npm-compatible repository that stores bundle bytes.
 
-The product takes the same broad shape as SkillHub, but keeps the storage boundary lighter:
+## Product boundaries
 
-- the **server** is authoritative for search, metadata, release records, visibility, and governance
-- the **CLI** is the main user interface for install and publish workflows
-- the **artifact repository** stays external and replaceable
-- the **database** stores catalog state, releases, and audit data
+- **Catalog server** owns catalog truth, release records, install resolution, visibility, governance, audit, and server-side packaging.
+- **`skills` CLI** owns the command surface, local and git source discovery, local materialization, lock files, and client-side npm package download for `import-npm`.
+- **Artifact repository** owns npm metadata and immutable bundle storage.
+- **Database** persists catalog, release, governance, audit, packaging workspace, and idempotency state.
+
+The server is authoritative for hosted releases. The artifact repository is not a second catalog.
 
 ## Why this product exists
 
-Agent skills are easy to share as folders and hard to operate as a reliable ecosystem. The product closes that gap by providing:
+Agent skills are easy to share as folders but difficult to operate as a reliable ecosystem. The product provides:
 
-- discovery and search
-- reproducible installs
-- publishing and import workflows
-- lifecycle governance
+- catalog discovery and search
+- reproducible registry installs
+- local and git source installs
+- registry and source refresh workflows
+- validation, packaging, publishing, and importing
+- visibility and lifecycle governance
 - auditability
-- private repository integration
+- private npm-compatible repository integration
 
 ## Non-goals
 
-This document set does not try to define:
+This documentation does not define:
 
-- UI behavior
-- a new artifact storage backend
-- a social marketplace
+- web UI behavior
+- a replacement artifact storage backend
+- a social marketplace or ranking system
 - per-agent runtime policy
 - execution tracing for skill consumers
+- server-side aggregation of arbitrary npm registries, git repositories, or local directories
 
-## Product principles
+## Core identity and release contract
 
-- Keep the server authoritative.
-- Keep bundles external.
-- Keep the CLI aligned with server contracts.
-- Make governance visible.
-- Prefer replaceable integrations over hard dependencies.
-- Only add new concepts when they improve policy, visibility, or review.
+A hosted skill is identified by a scoped npm-compatible package name. A release is identified by that package name and an exact semver version.
 
-## Core contract
+- package identity is stable;
+- a published version is immutable;
+- the server decides whether a release is published, visible, and installable;
+- a bundle without an accepted release record is not a published release;
+- governance changes are explicit and auditable;
+- install resolution does not guess a fallback version.
 
-A skill is identified by its package name and a versioned release.
+## Current workflows
 
-- the server decides what is published and installable
-- the artifact repository stores the bundle
-- the CLI resolves the server contract and performs local install or publish actions
+- `find` searches the server catalog and can opt into the configured `skills.sh` external search provider;
+- `add` installs a registry package or discovers skills from a local path, GitHub shorthand, or git URL;
+- `list` and `remove` operate on local installed state;
+- `update` refreshes registry-installed skills;
+- `sync` refreshes source-installed skills from their recorded source;
+- `init` and `inspect` support local authoring;
+- `publish`, `import-local`, and `import-git` package and publish through the server;
+- `import-npm` downloads an npm package in the CLI and submits the extracted source through the server import flow.
 
-## Install contract
+## Automatic source import on add
 
-The server may return install targets in one of two access modes:
+A successful local or git source installation runs a best-effort server import by default. The CLI reads `skills.config.json` from the current working directory for:
 
-- `proxy`: the caller should fetch the tarball through the server's npm proxy mount
-- `direct`: the caller should fetch the tarball from the upstream npm-compatible registry directly
+- `syncOnAdd` — set to `false` to disable the automatic import;
+- `packageNamePrefix` — supplies a scoped package prefix when source metadata has no package name;
+- `defaultVersion` — supplies an exact version when source metadata has no version;
+- `registry` — selects the catalog server for the automatic import.
 
-This is a transport detail of install resolution, not a new catalog identity model. The same package can resolve to either mode depending on deployment policy.
+The automatic import does not change the local source lock entry or the meaning of `skills sync`. If it fails, the local installation remains installed and the CLI reports a warning.
 
-## Current boundaries
+## Install transport
 
-Supported workflows today:
-
-- `find`
-- `add`
-- `list`
-- `remove`
-- `update`
-- `sync`
-- `init`
-- `inspect`
-- `publish`
-- `import-local`
-- `import-git`
-
-These are the workflows the rest of the docs describe and the CLI help output should preserve.
+The server may return a `proxy` or `direct` install target. This is only a tarball transport decision; both modes resolve the same server-owned release contract.

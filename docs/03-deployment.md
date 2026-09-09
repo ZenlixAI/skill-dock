@@ -1,18 +1,5 @@
 # Deployment and local runtime
 
-## Local development
-
-The supported local path uses the repository's development scripts.
-
-```bash
-make dev
-make dev-images
-make down
-```
-
-Use `make dev` to create the local stack and initialize sample data.
-Use `make dev-images` when the kind cluster already exists and you only need to reload rebuilt service images without re-running the data initialization step.
-
 ## Requirements
 
 - Docker
@@ -22,13 +9,23 @@ Use `make dev-images` when the kind cluster already exists and you only need to 
 - Node.js 18 or later
 - uv
 
-## Default local services
+## Local development
 
-- catalog server
-- PostgreSQL
-- external artifact repository
+```bash
+make dev
+make dev-images
+make down
+```
 
-## Default local endpoints
+`make dev` creates the local stack and initializes sample data. Use `make dev-images` when the kind cluster already exists and only rebuilt service images need to be reloaded. `make down` tears down the local stack.
+
+## Local services and endpoints
+
+The default stack contains:
+
+- catalog server;
+- PostgreSQL;
+- external Artifact Keeper npm repository.
 
 | Service | URL |
 | --- | --- |
@@ -37,7 +34,7 @@ Use `make dev-images` when the kind cluster already exists and you only need to 
 
 ## Artifact repository overrides
 
-Use these variables when the artifact repository is not running at the default local address:
+When the artifact repository is not available at its default local address:
 
 ```bash
 ARTIFACTKEEPER_INTERNAL_NPM_URL=http://host.docker.internal:30080/ \
@@ -45,32 +42,26 @@ ARTIFACTKEEPER_PUBLIC_NPM_URL=http://127.0.0.1:18080/repository/skills-npm/ \
 make dev
 ```
 
-## CLI runtime
+The internal URL is used by server-side reads and publication. The public URL is used in client-facing install targets.
 
-Set the registry endpoint and token before using the CLI:
+## CLI configuration
 
 ```bash
 export SKILLS_REGISTRY_URL=http://127.0.0.1:18080
-export SKILLS_REGISTRY_TOKEN=reader-secret
+export SKILLS_REGISTRY_TOKEN=<reader-token>
 ```
 
-If your server returns `direct` install targets, also make the relevant npm credentials available to the CLI. By default it reads the npm config file pointed to by `NPM_CONFIG_USERCONFIG`, or a local `.npmrc` in the working directory.
-
-Use a publisher token for publish flows:
+Use a publisher token for packaging and publication:
 
 ```bash
-export SKILLS_REGISTRY_TOKEN=publisher-secret
+export SKILLS_REGISTRY_TOKEN=<publisher-token>
 skills publish /absolute/path/to/your-skill
 ```
 
-## Operational idea
+For `direct` install targets and `import-npm`, the CLI reads npm credentials from `NPM_CONFIG_USERCONFIG` or a `.npmrc` in the current working directory. `proxy` targets use the URL returned by the server and do not use npm config for the tarball request.
 
-Keep deployment packaging boring:
+## Production posture
 
-- server process
-- database
-- artifact repository
-- explicit environment variables
-- no hidden registry assumptions
+Replace every sample or placeholder secret with a unique secret before deployment. Keep the database, packaging workspace, and private artifact repository writable only by the services that need them. Expose only the server's public endpoint and the configured public artifact URL to CLI clients.
 
-If a deployment needs a different artifact backend, it should be configured, not hard-coded into the docs or the CLI contract.
+See [Server architecture and configuration](01-server-architecture.md) and [Auth and access](04-auth-and-access.md) for the complete configuration and authorization model.

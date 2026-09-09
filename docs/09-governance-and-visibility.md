@@ -1,49 +1,30 @@
 # Governance and visibility
 
-## Purpose
+## Responsibility
 
-Governance makes registry state explicit.
+The server owns skill and release lifecycle state. Governance is independent of bundle storage and remains visible through catalog and audit APIs.
 
-The server should be able to explain what is visible, what is installable, and why a release or skill changed state.
+## Governed state
 
-## What governance covers
+A skill can be active or retired. A release can be published, deprecated, or yanked, with an install policy such as `catalog_only`, `resolvable`, or `blocked`.
 
-- visibility changes
-- lifecycle changes
-- release history retention
-- audit records
-- latest published resolution
+Governance operations include:
 
-## Core ideas
+- retiring a skill;
+- deprecating a version;
+- yanking a version;
+- recording a reason and optional replacement recommendation.
 
-- a skill release should not disappear silently
-- a visibility change should be explicit
-- a governance action should leave an audit trail
-- the latest published release should be discoverable without scanning all history
+## Rules
 
-## Operational meaning
+- state changes are explicit;
+- release history is not deleted to represent a lifecycle change;
+- the artifact repository does not decide visibility or installability;
+- the latest published or resolvable version is exposed by server resolution;
+- governance mutations leave an audit record with actor, target, reason, and time.
 
-Governance is the layer that decides whether a skill is:
+## API surfaces
 
-- visible
-- installable
-- archived
-- unpublished or yanked
+The server exposes skill-level and version-level governance mutation routes, plus audit-event reads. Read responses include status, version status, install policy, and provenance fields where applicable.
 
-## What not to do
-
-- do not fold governance into bundle storage
-- do not let the artifact repository decide visibility
-- do not delete history to represent state changes unless the contract explicitly says so
-
-## Scope of this document
-
-This document is the governance companion to:
-
-- [Package and release model](05-package-and-release-model.md)
-- [Publish and import workflows](07-publish-and-import-workflows.md)
-- [Install resolution and refresh](08-install-resolution-and-refresh.md)
-
-## Design rule
-
-Treat governance as part of the registry contract, not as an implementation detail.
+A deprecated or yanked release must not be silently selected as a replacement. If no installable release can be resolved, the server returns an explicit error.
