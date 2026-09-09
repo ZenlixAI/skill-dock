@@ -421,7 +421,7 @@ export async function searchCatalogSkillsPage(
       pageSize: String(options.pageSize ?? 10),
       cursor: options.cursor,
       sort: query ? 'relevance' : 'updated_at_desc',
-      ...(options.includeExternal ? { include_external: true } : {}),
+      ...(options.includeExternal ? { include_external: 'true' } : {}),
       ...(options.source ? { source: options.source } : {}),
       ...(options.scope ? { scope: options.scope } : {}),
       ...(options.origin ? { origin: options.origin } : {}),

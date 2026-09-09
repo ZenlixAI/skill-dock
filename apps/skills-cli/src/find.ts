@@ -36,6 +36,8 @@ interface FindOptions {
   json?: boolean;
 }
 
+type FindSearchOptions = Omit<FindOptions, 'query'>;
+
 interface SearchSkillsResult {
   items: SearchSkill[];
   hasMoreCatalogResults: boolean;
@@ -92,7 +94,10 @@ export function parseFindOptions(args: string[]): FindOptions {
   };
 }
 
-async function searchSkillsCatalog(query: string, options: FindOptions): Promise<SearchSkillsResult> {
+async function searchSkillsCatalog(
+  query: string,
+  options: FindSearchOptions
+): Promise<SearchSkillsResult> {
   const results: SearchSkill[] = [];
   let cursor: string | undefined;
   let hasMoreCatalogResults = false;
@@ -150,7 +155,10 @@ const CLEAR_DOWN = '\x1b[J';
 const MOVE_UP = (n: number) => `\x1b[${n}A`;
 const MOVE_TO_COL = (n: number) => `\x1b[${n}G`;
 
-async function runSearchPrompt(initialQuery = '', options: FindOptions): Promise<SearchSkill | null> {
+async function runSearchPrompt(
+  initialQuery = '',
+  options: FindOptions
+): Promise<SearchSkill | null> {
   let results: SearchSkill[] = [];
   let selectedIndex = 0;
   let query = initialQuery;
@@ -192,7 +200,10 @@ async function runSearchPrompt(initialQuery = '', options: FindOptions): Promise
           : `${TEXT}${skill.displayName}${RESET}`;
         const pkg = `${DIM}${skill.packageName}${RESET}`;
         const version = skill.latestVersion ? ` ${CYAN}v${skill.latestVersion}${RESET}` : '';
-        const source = skill.sourceKind && skill.sourceKind !== 'catalog' ? ` ${DIM}[${skill.sourceKind}]${RESET}` : '';
+        const source =
+          skill.sourceKind && skill.sourceKind !== 'catalog'
+            ? ` ${DIM}[${skill.sourceKind}]${RESET}`
+            : '';
         lines.push(`  ${arrow} ${label} ${pkg}${source}${version}`);
         if (skill.description) {
           lines.push(`    ${DIM}${skill.description}${RESET}`);
@@ -228,18 +239,21 @@ async function runSearchPrompt(initialQuery = '', options: FindOptions): Promise
     loading = true;
     render();
 
-    debounceTimer = setTimeout(async () => {
-      try {
-        results = (await searchSkills(query, options)).items;
-        selectedIndex = 0;
-      } catch {
-        results = [];
-      } finally {
-        loading = false;
-        debounceTimer = null;
-        render();
-      }
-    }, Math.max(150, 350 - nextQuery.length * 50));
+    debounceTimer = setTimeout(
+      async () => {
+        try {
+          results = (await searchSkills(query, options)).items;
+          selectedIndex = 0;
+        } catch {
+          results = [];
+        } finally {
+          loading = false;
+          debounceTimer = null;
+          render();
+        }
+      },
+      Math.max(150, 350 - nextQuery.length * 50)
+    );
   }
 
   if (initialQuery) {
@@ -383,7 +397,10 @@ ${DIM}  2) npx skills add <package_name>${RESET}`;
 
     for (const skill of results.slice(0, MAX_QUERY_RESULTS_DISPLAY)) {
       const version = skill.latestVersion ? ` ${CYAN}v${skill.latestVersion}${RESET}` : '';
-      const source = skill.sourceKind && skill.sourceKind !== 'catalog' ? ` ${DIM}[${skill.sourceKind}]${RESET}` : '';
+      const source =
+        skill.sourceKind && skill.sourceKind !== 'catalog'
+          ? ` ${DIM}[${skill.sourceKind}]${RESET}`
+          : '';
       console.log(`${TEXT}${skill.packageName}${RESET}${source}${version}`);
       if (skill.description) {
         console.log(`${DIM}└ ${skill.description}${RESET}`);
@@ -404,7 +421,9 @@ ${DIM}  2) npx skills add <package_name>${RESET}`;
   if (isNonInteractive || (await isRunningInAgent())) {
     console.log(agentTip);
     console.log();
-    console.log(`${DIM}Usage: npx skills find <query> [--registry <url>] [--include-external] [--source <catalog|skills.sh|npm|all>] [--json]${RESET}`);
+    console.log(
+      `${DIM}Usage: npx skills find <query> [--registry <url>] [--include-external] [--source <catalog|skills.sh|npm|all>] [--json]${RESET}`
+    );
     console.log(`${DIM}Default catalog env:${RESET} SKILLS_REGISTRY_URL`);
     return;
   }
@@ -430,10 +449,7 @@ ${DIM}  2) npx skills add <package_name>${RESET}`;
   );
   console.log();
 
-  await runAdd(
-    [selected.packageName],
-    options.registry ? { registry: options.registry } : {}
-  );
+  await runAdd([selected.packageName], options.registry ? { registry: options.registry } : {});
 
   console.log();
   console.log(`${DIM}Discover more skills in the configured catalog.${RESET}`);
