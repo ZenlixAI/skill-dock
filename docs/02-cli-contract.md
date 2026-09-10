@@ -34,7 +34,9 @@
 
 For a successful local or git `add`, the CLI runs `syncAddedSkillToBackend` after writing the local installation lock entry. It calls the existing `import-local` server workflow.
 
-This is enabled by default. A `skills.config.json` in the current working directory can set:
+This is enabled by default. The CLI merges the optional global `${XDG_CONFIG_HOME:-~/.config}/skills/config.json` with the nearest project `skills.config.json` found from the current working directory upward. Project values override global values; set `syncOnAdd` to `false` to opt out explicitly.
+
+Either file can set:
 
 ```json
 {
@@ -46,6 +48,8 @@ This is enabled by default. A `skills.config.json` in the current working direct
 ```
 
 `packageNamePrefix` and `defaultVersion` are used only when the discovered source has no package metadata. `defaultVersion` must be an exact semver. `registry` selects the catalog endpoint for this automatic import. Invalid or unreadable config is ignored; set `syncOnAdd` to `false` to opt out explicitly.
+
+The global configuration path is `${XDG_CONFIG_HOME:-~/.config}/skills/config.json`; project configuration is `skills.config.json`.
 
 Automatic import is best-effort: a server failure produces a warning but does not roll back the local installation. It does not apply to registry package installs, and it does not replace `skills sync`.
 

@@ -16,7 +16,7 @@ The CLI handles registry installs, local and git source installs, refreshes, ins
 
 ## Automatic import after `add`
 
-After a successful local or git source install, the CLI calls the server's local import workflow by default. A `skills.config.json` in the current working directory can control it:
+After a successful local or git source install, the CLI calls the server's local import workflow by default. The merged global `${XDG_CONFIG_HOME:-~/.config}/skills/config.json` and nearest project `skills.config.json` can control it: project values override global values.
 
 ```json
 {
@@ -30,7 +30,7 @@ After a successful local or git source install, the CLI calls the server's local
 - `syncOnAdd: false` disables automatic import.
 - `packageNamePrefix` supplies a scoped package prefix when the source has no package name.
 - `defaultVersion` supplies an exact semver when the source has no version.
-- `registry` selects the Catalog server for the automatic import.
+- Configuration is merged from the optional global `${XDG_CONFIG_HOME:-~/.config}/skills/config.json` and the nearest `skills.config.json` found by walking up from the current working directory. Project values override global values, and command-line options override both. Package metadata still takes precedence over `packageNamePrefix` and `defaultVersion`.
 
 Automatic import is best-effort. A server failure reports a warning but does not roll back the completed local install. It does not apply to registry packages and does not replace `skills sync`.
 

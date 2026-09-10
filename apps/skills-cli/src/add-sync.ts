@@ -1,6 +1,7 @@
 import { existsSync } from 'fs';
 import { readFile } from 'fs/promises';
-import { basename, join } from 'path';
+import { homedir } from 'os';
+import { basename, dirname, join, resolve } from 'path';
 import { inspectImportSourceDirectory } from './import-source.ts';
 import { runImportLocalWorkflow } from './import-local-workflow.ts';
 import { sanitizeName } from './installer.ts';
@@ -19,15 +20,33 @@ interface AddSyncConfig {
   registry?: string;
 }
 
-const CONFIG_FILE = 'skills.config.json';
+const PROJECT_CONFIG_FILE = 'skills.config.json';
+const GLOBAL_CONFIG_FILE = 'config.json';
 
-function resolveConfigPath(cwd?: string): string {
-  return join(cwd || process.cwd(), CONFIG_FILE);
+function resolveGlobalConfigPath(): string {
+  const configHome = process.env.XDG_CONFIG_HOME?.trim() || join(homedir(), '.config');
+  return join(configHome, 'skills', GLOBAL_CONFIG_FILE);
 }
 
-async function readAddSyncConfig(cwd?: string): Promise<AddSyncConfig | null> {
-  const configPath = resolveConfigPath(cwd);
-  if (!existsSync(configPath)) {
+function findProjectConfigPath(cwd: string): string | null {
+  let directory = resolve(cwd);
+
+  while (true) {
+    const configPath = join(directory, PROJECT_CONFIG_FILE);
+    if (existsSync(configPath)) {
+      return configPath;
+    }
+
+    const parent = dirname(directory);
+    if (parent === directory) {
+      return null;
+    }
+    directory = parent;
+  }
+}
+
+async function readConfigFile(configPath: string | null): Promise<AddSyncConfig | null> {
+  if (!configPath || !existsSync(configPath)) {
     return null;
   }
 
@@ -36,6 +55,20 @@ async function readAddSyncConfig(cwd?: string): Promise<AddSyncConfig | null> {
   } catch {
     return null;
   }
+}
+
+async function readAddSyncConfig(cwd?: string): Promise<AddSyncConfig | null> {
+  const workingDirectory = cwd || process.cwd();
+  const [globalConfig, projectConfig] = await Promise.all([
+    readConfigFile(resolveGlobalConfigPath()),
+    readConfigFile(findProjectConfigPath(workingDirectory)),
+  ]);
+
+  if (!globalConfig && !projectConfig) {
+    return null;
+  }
+
+  return { ...globalConfig, ...projectConfig };
 }
 
 function normalizePrefix(value?: string): string | undefined {

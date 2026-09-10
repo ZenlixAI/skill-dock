@@ -10,7 +10,7 @@ This reference describes the current `skills` command surface. Run `skills --hel
 | `SKILLS_REGISTRY_TOKEN` | Bearer token for catalog requests |
 | `SKILLS_REGISTRY_ROLE` | Optional role header |
 | `NPM_CONFIG_USERCONFIG` | npm auth config for direct npm requests |
-| `skills.config.json` | Project config for automatic source import after `add` |
+| `skills.config.json` | Project config for automatic source import after `add`; merged with the global `${XDG_CONFIG_HOME:-~/.config}/skills/config.json` |
 
 `--registry <url>` means catalog server for `add`, `find`, `publish`, `import-local`, and `import-git`. For `import-npm`, it selects the source npm registry.
 
@@ -67,7 +67,7 @@ skills add <source> [options]
 | `--output-dir <path>` | Materialize a registry skill to a directory; requires `--json` |
 | `--json` | Machine-readable registry install output |
 
-For successful local or git installs, automatic server import is enabled unless `skills.config.json` contains `"syncOnAdd": false`. Its optional `packageNamePrefix`, `defaultVersion`, and `registry` values fill missing metadata and choose the import endpoint. Failure is a warning; the local install remains successful.
+For successful local or git installs, automatic server import is enabled unless the merged global/project configuration contains `"syncOnAdd": false`. Its optional `packageNamePrefix`, `defaultVersion`, and `registry` values fill missing metadata and choose the import endpoint. Failure is a warning; the local install remains successful.
 
 ## `update` and `sync`
 

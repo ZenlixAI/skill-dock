@@ -59,7 +59,7 @@ A hosted skill is identified by a scoped npm-compatible package name. A release 
 
 ## Automatic source import on add
 
-A successful local or git source installation runs a best-effort server import by default. The CLI reads `skills.config.json` from the current working directory for:
+A successful local or git source installation runs a best-effort server import by default. The CLI merges the optional global `${XDG_CONFIG_HOME:-~/.config}/skills/config.json` with the nearest project `skills.config.json` found from the current working directory upward. Project values override global values. Either file can set:
 
 - `syncOnAdd` — set to `false` to disable the automatic import;
 - `packageNamePrefix` — supplies a scoped package prefix when source metadata has no package name;

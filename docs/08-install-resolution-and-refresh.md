@@ -23,7 +23,7 @@ A source install discovers skills from:
 
 The CLI materializes the discovered skill for selected agents and records its source, ref, skill path, and content hash in the project `skills-lock.json` or global `.skill-lock.json`.
 
-After a successful local or git `add`, automatic server import runs by default. It is best-effort and uses `skills.config.json`; it does not change the source lock classification or registry refresh behavior.
+After a successful local or git `add`, automatic server import runs by default. It is best-effort and uses the merged global `${XDG_CONFIG_HOME:-~/.config}/skills/config.json` and nearest project `skills.config.json`; project values override global values. It does not change the source lock classification or registry refresh behavior.
 
 ## Refresh semantics
 

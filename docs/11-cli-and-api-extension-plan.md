@@ -20,7 +20,7 @@ Catalog domain responses support source, origin, import-mode, hosting, mirroring
 
 ### Local and git source installation
 
-`skills add` supports local paths, GitHub shorthand, and git URLs. Successful source installs are recorded in local state and trigger a best-effort `import-local` server workflow by default. A project `skills.config.json` can disable it or supply missing package metadata.
+`skills add` supports local paths, GitHub shorthand, and git URLs. Successful source installs are recorded in local state and trigger a best-effort `import-local` server workflow by default. Global or project `skills.config.json` can disable it or supply missing package metadata.
 
 ## Deferred work
 

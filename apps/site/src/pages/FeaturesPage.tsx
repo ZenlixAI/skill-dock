@@ -155,7 +155,7 @@ export function FeaturesPage() {
 
           <SurfaceCard
             className="features-page__sync-config"
-            description="Set the control variable in the directory where you run the CLI."
+            description="Set global defaults in the XDG config directory; project values override them."
             title="skills.config.json"
             variant="subtle"
           >

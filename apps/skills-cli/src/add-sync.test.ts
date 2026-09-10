@@ -12,9 +12,17 @@ import { runImportLocalWorkflow } from './import-local-workflow.ts';
 
 describe('add sync helper', () => {
   let root: string;
+  let configHome: string;
+  let originalConfigHome: string | undefined;
 
   beforeEach(() => {
-    root = join(tmpdir(), `skills-add-sync-test-${Date.now()}`);
+    root = join(
+      tmpdir(),
+      `skills-add-sync-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
+    configHome = join(root, 'config');
+    originalConfigHome = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = configHome;
     mkdirSync(root, { recursive: true });
     vi.mocked(runImportLocalWorkflow).mockReset();
     vi.mocked(runImportLocalWorkflow).mockResolvedValue({
@@ -32,11 +40,16 @@ describe('add sync helper', () => {
   });
 
   afterEach(() => {
+    if (originalConfigHome === undefined) {
+      delete process.env.XDG_CONFIG_HOME;
+    } else {
+      process.env.XDG_CONFIG_HOME = originalConfigHome;
+    }
     rmSync(root, { recursive: true, force: true });
     vi.restoreAllMocks();
   });
 
-  it('uses configured package name prefix and default version when package metadata is absent', async () => {
+  it('uses project defaults when package metadata is absent', async () => {
     writeFileSync(
       join(root, 'SKILL.md'),
       ['---', 'name: Demo Skill', 'description: Demo skill', '---', '', '# Demo Skill'].join('\n')
@@ -69,7 +82,100 @@ describe('add sync helper', () => {
     });
   });
 
-  it('syncs by default when no skills.config.json is present', async () => {
+  it('uses global defaults when project configuration is absent', async () => {
+    writeFileSync(
+      join(root, 'SKILL.md'),
+      ['---', 'name: Demo Skill', 'description: Demo skill', '---', '', '# Demo Skill'].join('\n')
+    );
+    mkdirSync(join(configHome, 'skills'), { recursive: true });
+    writeFileSync(
+      join(configHome, 'skills', 'config.json'),
+      JSON.stringify(
+        {
+          syncOnAdd: true,
+          packageNamePrefix: '@global.skill/',
+          defaultVersion: '0.3.0',
+          registry: 'https://global-catalog.example.com',
+        },
+        null,
+        2
+      )
+    );
+
+    const result = await syncAddedSkillToBackend(root, { cwd: root });
+
+    expect(result).toBeNull();
+    expect(runImportLocalWorkflow).toHaveBeenCalledWith({
+      path: root,
+      registry: 'https://global-catalog.example.com',
+      packageName: '@global.skill/demo-skill',
+      version: '0.3.0',
+    });
+  });
+
+  it('merges the nearest project configuration over global defaults', async () => {
+    const nestedDirectory = join(root, 'packages', 'demo');
+    mkdirSync(nestedDirectory, { recursive: true });
+    writeFileSync(
+      join(nestedDirectory, 'SKILL.md'),
+      ['---', 'name: Demo Skill', 'description: Demo skill', '---', '', '# Demo Skill'].join('\n')
+    );
+    mkdirSync(join(configHome, 'skills'), { recursive: true });
+    writeFileSync(
+      join(configHome, 'skills', 'config.json'),
+      JSON.stringify(
+        {
+          syncOnAdd: true,
+          packageNamePrefix: '@global.skill/',
+          defaultVersion: '0.1.0',
+          registry: 'https://global-catalog.example.com',
+        },
+        null,
+        2
+      )
+    );
+    writeFileSync(
+      join(root, 'skills.config.json'),
+      JSON.stringify(
+        {
+          defaultVersion: '0.2.0',
+          registry: 'https://project-catalog.example.com',
+        },
+        null,
+        2
+      )
+    );
+
+    const result = await syncAddedSkillToBackend(nestedDirectory, { cwd: nestedDirectory });
+
+    expect(result).toBeNull();
+    expect(runImportLocalWorkflow).toHaveBeenCalledWith({
+      path: nestedDirectory,
+      registry: 'https://project-catalog.example.com',
+      packageName: '@global.skill/demo-skill',
+      version: '0.2.0',
+    });
+  });
+
+  it('allows project configuration to disable globally enabled sync', async () => {
+    writeFileSync(
+      join(root, 'SKILL.md'),
+      ['---', 'name: Demo Skill', 'description: Demo skill', '---', '', '# Demo Skill'].join('\n')
+    );
+    mkdirSync(join(configHome, 'skills'), { recursive: true });
+    writeFileSync(
+      join(configHome, 'skills', 'config.json'),
+      JSON.stringify({ syncOnAdd: true }, null, 2)
+    );
+    writeFileSync(join(root, 'skills.config.json'), JSON.stringify({ syncOnAdd: false }, null, 2));
+
+    const result = await syncAddedSkillToBackend(root, { cwd: root });
+
+    expect(result).toBeNull();
+    expect(runImportLocalWorkflow).not.toHaveBeenCalled();
+  });
+
+  it('syncs by default when no configuration is present', async () => {
     writeFileSync(
       join(root, 'SKILL.md'),
       ['---', 'name: From Package', 'description: Demo skill', '---', '', '# Demo Skill'].join('\n')
@@ -97,7 +203,7 @@ describe('add sync helper', () => {
     });
   });
 
-  it('prefers package metadata over config defaults when available', async () => {
+  it('prefers package metadata over configuration defaults', async () => {
     writeFileSync(
       join(root, 'SKILL.md'),
       ['---', 'name: From Package', 'description: Demo skill', '---', '', '# Demo Skill'].join('\n')

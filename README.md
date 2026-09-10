@@ -25,7 +25,7 @@ Bundles are stored in an external npm-compatible artifact repository. The reposi
 | Source import | `skills import-local`, `skills import-git` | Server packaging and release workflow |
 | npm import | `skills import-npm` | CLI downloads from npm, then server packages the archive |
 
-When a local or git source is installed with `skills add`, the CLI also sends the installed source through the server's local import flow by default. This behavior is controlled by an optional project-level `skills.config.json`; it is best-effort and does not turn a source install into a registry install. Set `syncOnAdd` to `false` to keep the install local.
+When a local or git source is installed with `skills add`, the CLI also sends the installed source through the server's local import flow by default. Its optional configuration is loaded from `${XDG_CONFIG_HOME:-~/.config}/skills/config.json` and the nearest project `skills.config.json`; project values override global values. This best-effort import does not turn a source install into a registry install. Set `syncOnAdd` to `false` to keep the install local.
 
 ## Boundaries
 

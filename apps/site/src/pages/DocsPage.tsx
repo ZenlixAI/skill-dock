@@ -146,14 +146,15 @@ export function DocsPage() {
         <div className="docs-page__section-head">
           <h2>Sync source installs automatically</h2>
           <p>
-            Source installs sync through the backend import flow by default. Add this project-level file when a package
-            name prefix, default version, or registry needs to fill missing source metadata.
+            Source installs sync through the backend import flow by default. Configure global defaults in{' '}
+            <code>{'${XDG_CONFIG_HOME:-~/.config}/skills/config.json'}</code>; add the nearest project{' '}
+            <code>skills.config.json</code> when a project needs overrides.
           </p>
         </div>
 
         <SurfaceCard
           className="docs-page__sync-card"
-          description="Place this file in the directory where you run the CLI."
+          description="Global defaults live in the XDG config directory. Project values override them."
           title="skills.config.json"
           variant="subtle"
         >

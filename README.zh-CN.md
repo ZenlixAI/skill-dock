@@ -25,7 +25,7 @@ Bundle 存放在外部 npm 兼容制品仓库中。制品仓库可以替换；�
 | 来源导入 | `skills import-local`、`skills import-git` | Server 打包和 release 流程 |
 | npm 导入 | `skills import-npm` | CLI 下载 npm 包，再交给 server 导入 |
 
-使用 `skills add` 安装本地或 Git 来源后，CLI 默认还会通过 server 的 local import 流程提交一次已安装来源。项目级 `skills.config.json` 可以关闭这个行为；它不会把 source install 变成 registry install。设置 `syncOnAdd` 为 `false` 可以保持纯本地安装。
+使用 `skills add` 安装本地或 Git 来源后，CLI 默认还会通过 server 的 local import 流程提交一次已安装来源。可选配置从 `${XDG_CONFIG_HOME:-~/.config}/skills/config.json` 和向上查找的最近项目 `skills.config.json` 加载，项目配置覆盖全局配置。它不会把 source install 变成 registry install。设置 `syncOnAdd` 为 `false` 可以保持纯本地安装。
 
 ## 边界
 

@@ -31,7 +31,7 @@ The CLI supports local and git source installation without catalog discovery:
 - `skills add owner/repo`;
 - `skills add <git-url>`.
 
-It supports server publication from local, git, and npm sources through `import-local`, `import-git`, and `import-npm`. Local and git `add` also trigger a best-effort automatic import unless disabled by `skills.config.json`.
+It supports server publication from local, git, and npm sources through `import-local`, `import-git`, and `import-npm`. Local and git `add` also trigger a best-effort automatic import unless disabled by global or project `skills.config.json`.
 
 ## npm configuration
 
