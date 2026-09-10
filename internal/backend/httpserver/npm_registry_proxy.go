@@ -71,7 +71,7 @@ func newNPMRegistryProxy(targetBaseURL string, publicBaseURL string, readAuthori
 				return err
 			}
 			_ = response.Body.Close()
-			rewritten := rewriteRegistryTarballBase(body, publicBaseURL)
+			rewritten := rewriteRegistryTarballBase(body, publicBaseURL, target.Path)
 			response.Body = io.NopCloser(bytes.NewReader(rewritten))
 			response.ContentLength = int64(len(rewritten))
 			response.Header.Set("Content-Length", strconv.Itoa(len(rewritten)))
@@ -85,7 +85,7 @@ func newNPMRegistryProxy(targetBaseURL string, publicBaseURL string, readAuthori
 	return proxy
 }
 
-func rewriteRegistryTarballBase(body []byte, publicBaseURL string) []byte {
+func rewriteRegistryTarballBase(body []byte, publicBaseURL string, upstreamBasePath string) []byte {
 	publicBase := strings.TrimRight(strings.TrimSpace(publicBaseURL), "/")
 	if publicBase == "" {
 		return body
@@ -94,7 +94,7 @@ func rewriteRegistryTarballBase(body []byte, publicBaseURL string) []byte {
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return body
 	}
-	rewriteTarballURLs(payload, publicBase)
+	rewriteTarballURLs(payload, publicBase, upstreamBasePath)
 	rewritten, err := json.Marshal(payload)
 	if err != nil {
 		return body
@@ -102,31 +102,32 @@ func rewriteRegistryTarballBase(body []byte, publicBaseURL string) []byte {
 	return rewritten
 }
 
-func rewriteTarballURLs(node any, publicBase string) {
+func rewriteTarballURLs(node any, publicBase string, upstreamBasePath string) {
 	switch value := node.(type) {
 	case map[string]any:
 		for key, child := range value {
 			if key == "tarball" {
 				if tarball, ok := child.(string); ok {
-					value[key] = rewriteTarballURL(tarball, publicBase)
+					value[key] = rewriteTarballURL(tarball, publicBase, upstreamBasePath)
 				}
 				continue
 			}
-			rewriteTarballURLs(child, publicBase)
+			rewriteTarballURLs(child, publicBase, upstreamBasePath)
 		}
 	case []any:
 		for _, child := range value {
-			rewriteTarballURLs(child, publicBase)
+			rewriteTarballURLs(child, publicBase, upstreamBasePath)
 		}
 	}
 }
 
-func rewriteTarballURL(tarballURL string, publicBase string) string {
+func rewriteTarballURL(tarballURL string, publicBase string, upstreamBasePath string) string {
 	parsed, err := neturl.Parse(strings.TrimSpace(tarballURL))
 	if err != nil || parsed.Path == "" {
 		return tarballURL
 	}
-	rewritten := strings.TrimRight(publicBase, "/") + parsed.Path
+	path := stripRegistryBasePath(parsed.Path, upstreamBasePath)
+	rewritten := strings.TrimRight(publicBase, "/") + path
 	if parsed.RawQuery != "" {
 		rewritten += "?" + parsed.RawQuery
 	}
@@ -134,6 +135,20 @@ func rewriteTarballURL(tarballURL string, publicBase string) string {
 		rewritten += "#" + parsed.Fragment
 	}
 	return rewritten
+}
+
+func stripRegistryBasePath(path string, basePath string) string {
+	basePath = strings.TrimRight(basePath, "/")
+	if basePath == "" || basePath == "/" {
+		return path
+	}
+	if path == basePath {
+		return "/"
+	}
+	if relativePath, ok := strings.CutPrefix(path, basePath+"/"); ok {
+		return "/" + relativePath
+	}
+	return path
 }
 
 func joinRegistryProxyPath(basePath string, suffix string) string {

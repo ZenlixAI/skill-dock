@@ -196,6 +196,45 @@ func TestServerRewritesNPMRegistryMetadataToPublicProxy(t *testing.T) {
 	}
 }
 
+func TestServerRewritesArtifactKeeperTarballURLsToPublicProxy(t *testing.T) {
+	const internalTarballBase = "http://artifact-keeper-backend.artifact-keeper.svc.cluster.local:8080/npm/npm-repo"
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"name":"skills","versions":{"1.6.9-snapshot.21":{"dist":{"tarball":"` + internalTarballBase + `/skills/-/skills-1.6.9-snapshot.21.tgz"}}}}`))
+	}))
+	defer upstream.Close()
+	upstream.URL = strings.Replace(upstream.URL, "[::1]", "127.0.0.1", 1)
+
+	server := NewServer(ServerConfig{
+		Repository:                   cataloginfra.NewMemoryRepository(cataloginfra.SampleData()),
+		ImportReview:                 newImportReviewFuncForTest(),
+		Publish:                      newPublishFuncForTest(),
+		NPMRegistryURL:               upstream.URL + "/npm/npm-repo",
+		PublicNPMRegistryURL:         "http://127.0.0.1:18080/repository/skills-npm/",
+		NPMRegistryReadAuthorization: "Bearer server-token",
+	})
+
+	srv := httptest.NewServer(server.Handler())
+	defer srv.Close()
+
+	response, err := http.Get(srv.URL + "/repository/skills-npm/skills")
+	if err != nil {
+		t.Fatalf("request proxy: %v", err)
+	}
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	if strings.Contains(string(body), "/npm/npm-repo/") {
+		t.Fatalf("expected artifact registry path to be stripped, got %s", string(body))
+	}
+	if !strings.Contains(string(body), "http://127.0.0.1:18080/repository/skills-npm/skills/-/skills-1.6.9-snapshot.21.tgz") {
+		t.Fatalf("expected rewritten tarball url, got %s", string(body))
+	}
+}
+
 func TestServerProxiesNPMRegistryPublishRequests(t *testing.T) {
 	var receivedMethod string
 	var receivedPath string
