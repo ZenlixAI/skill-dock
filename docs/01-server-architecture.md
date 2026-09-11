@@ -1,85 +1,60 @@
 # Server architecture and configuration
 
-## Responsibilities
-
-The catalog server is the authority for:
-
-- catalog listing and search
-- skill and release metadata
-- install-target resolution
-- packaging review and publish workflows
-- visibility and lifecycle governance
-- audit and idempotency records
-
-It uses an external npm-compatible artifact repository for package metadata and bundle bytes, and a database for catalog and operational state.
+The catalog server owns catalog reads, release records, install-target resolution, packaging, governance, and audit records. It stores catalog state in a database and uses an npm-compatible artifact repository for package metadata and bundle bytes.
 
 ## HTTP surfaces
 
-Read routes are served under `/api/v1`:
+Catalog routes are served under `/api/v1`:
 
-- `GET /skills`
-- `GET /skills/search`
-- `GET /skills/curated`
-- `GET /skills/:package`
-- `GET /skills/:package/versions`
-- `GET /skills/:package/versions/:version`
+- `GET /skills`, `/skills/search`, and `/skills/curated`
+- `GET /skills/:package`, `/skills/:package/versions`, and `/skills/:package/versions/:version`
 - `GET /skills/:package/install-target`
+- `GET /governance-changes` and `/audit-events`
+- `POST /skill-packaging/import-review` and `/skill-packaging/publish`
+- `PUT /skills/:package/versions/:version/release-record`
+- `POST /skills/:package/governance-changes` and `/skills/:package/versions/:version/governance-changes`
 
-Packaging routes are:
+The process also exposes unauthenticated `GET /healthz`, `GET /readyz`, and `GET /metrics` endpoints. The API endpoint reference describes request and response contracts.
 
-- `POST /skill-packaging/import-review`
-- `POST /skill-packaging/publish`
+## Runtime configuration
 
-Governance routes create release and lifecycle records. See the [API endpoint reference](13-api-endpoint-spec.md).
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `SKILL_REGISTRY_ADDR` | HTTP listen address | `:8080` |
+| `SKILL_REGISTRY_DATABASE_URL` | SQLite or PostgreSQL URL | `file:data/skill-registry.db` |
+| `SKILL_REGISTRY_SHARED_WORKSPACE_ROOT` | Writable packaging workspace root | `data/packaging-workspaces` |
+| `SKILL_REGISTRY_DISABLE_SEED` | Disable sample catalog seed data | `true` |
+| `SKILL_REGISTRY_SERVER_MODE` | Route-serving mode | all routes |
+| `SKILL_REGISTRY_INSTALL_TARGET_MODE` | Tarball access mode: `proxy` or `direct` | `proxy` |
+| `SKILL_REGISTRY_SKILLS_SH_URL` | External search provider URL | `https://skills.sh` |
+| `SKILL_REGISTRY_AUTH_TOKENS_JSON` | Additional token-to-role mappings | unset |
 
-## Required runtime configuration
+Database-pool, HTTP-timeout, read-cache, and request-limit settings use the `SKILL_REGISTRY_DB_*`, `SKILL_REGISTRY_HTTP_*`, `SKILL_REGISTRY_READ_*`, and `SKILL_REGISTRY_WRITE_MAX_IN_FLIGHT` environment variables. Their defaults are defined in `cmd/skill-registry/main.go`.
+
+## Artifact repository configuration
 
 | Variable | Purpose |
 | --- | --- |
-| `SKILL_REGISTRY_ADDR` | Server listen address; default `:8080` |
-| `SKILL_REGISTRY_DATABASE_URL` | SQLite or PostgreSQL URL |
-| `SKILL_REGISTRY_NPM_REGISTRY_URL` | Internal npm-compatible artifact repository URL |
-| `SKILL_REGISTRY_READER_TOKEN` | Read access token |
-| `SKILL_REGISTRY_AUTHORING_TOKEN` | Authoring and packaging token |
-| `SKILL_REGISTRY_PUBLISHER_TOKEN` | Publishing and governance token |
+| `SKILL_REGISTRY_ARTIFACTS_PATH` | JSON artifact fixture source for tests or local setups |
+| `SKILL_REGISTRY_ARTIFACT_READ_URL` | Artifact repository URL for server reads |
+| `SKILL_REGISTRY_NPM_REGISTRY_URL` | Fallback artifact repository URL |
+| `SKILL_REGISTRY_ARTIFACT_READ_AUTHORIZATION` | Read authorization header |
+| `SKILL_REGISTRY_NPM_READ_AUTHORIZATION` | Fallback read authorization header |
+| `SKILL_REGISTRY_ARTIFACT_PUBLISH_AUTHORIZATION` | Publish authorization header |
+| `SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION` | Fallback publish authorization header |
+| `SKILL_REGISTRY_NPM_PUBLISH_TOKEN` | Bearer-token fallback for repository access |
+| `SKILL_REGISTRY_PUBLIC_INSTALL_URL` | Public artifact URL returned to clients |
+| `SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL` | Fallback public artifact URL |
 
-The public artifact URL and private repository authorization are deployment-dependent. Do not expose private backend credentials in install targets.
+Artifact source precedence is `ARTIFACTS_PATH`, then `ARTIFACT_READ_URL`, then `NPM_REGISTRY_URL`. Explicit artifact authorization takes precedence over its npm fallback. Private repository URLs and credentials are never returned in install targets.
 
-## Optional runtime configuration
+## External search and install transport
 
-| Variable | Purpose |
-| --- | --- |
-| `SKILL_REGISTRY_PUBLIC_NPM_REGISTRY_URL` | Artifact URL returned to clients |
-| `SKILL_REGISTRY_PUBLIC_INSTALL_URL` | Explicit public install URL override |
-| `SKILL_REGISTRY_ARTIFACTS_PATH` | JSON artifact source for tests or local setups |
-| `SKILL_REGISTRY_ARTIFACT_READ_URL` | Explicit artifact read URL |
-| `SKILL_REGISTRY_ARTIFACT_READ_AUTHORIZATION` | Explicit artifact read authorization |
-| `SKILL_REGISTRY_ARTIFACT_PUBLISH_AUTHORIZATION` | Explicit artifact publish authorization |
-| `SKILL_REGISTRY_NPM_READ_AUTHORIZATION` | npm read authorization fallback |
-| `SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION` | npm publish authorization |
-| `SKILL_REGISTRY_NPM_PUBLISH_TOKEN` | Bearer-token publish fallback |
-| `SKILL_REGISTRY_SHARED_WORKSPACE_ROOT` | Writable packaging workspace root |
-| `SKILL_REGISTRY_DISABLE_SEED` | Disable sample catalog seed data |
-| `SKILL_REGISTRY_SKILLS_SH_URL` | External search provider URL; default `https://skills.sh` |
-| `SKILL_REGISTRY_INSTALL_TARGET_MODE` | `proxy` or `direct`; default `proxy` |
-| `SKILL_REGISTRY_AUTH_TOKENS_JSON` | Additional token-to-role mappings |
-| `SKILL_REGISTRY_SESSION_SECRET` | Session auth secret |
-| `SKILL_REGISTRY_LOGIN_USERNAME` / `SKILL_REGISTRY_LOGIN_PASSWORD` | Bootstrap session credentials |
-| `SKILL_REGISTRY_SESSION_USERS_JSON` | Session user map |
+Catalog results are always available. External results from the configured `skills.sh` adapter are included only when a request sets `include_external=true` or selects `source=skills.sh` or `source=all`.
 
-Read and publish authorization use explicit artifact variables first, then the corresponding npm variables. The artifact source uses `SKILL_REGISTRY_ARTIFACTS_PATH`, then an explicit read URL, then `SKILL_REGISTRY_NPM_REGISTRY_URL`.
+An install target has one transport mode:
 
-## External search
+- `proxy` fetches the tarball through the server's npm proxy mount;
+- `direct` returns the upstream npm-compatible URL.
 
-The runtime configures one external search adapter for `skills.sh`. External results are opt-in through `include_external=true` or `source=skills.sh|all`; catalog results remain available without the adapter. The server does not currently aggregate arbitrary npm registries, git repositories, or local directories.
-
-## Install target modes
-
-- `proxy` rewrites the tarball URL to the server's npm proxy mount;
-- `direct` returns the upstream npm-compatible URL unchanged.
-
-The mode affects only tarball retrieval. It is not a release or identity mode.
-
-## Design rule
-
-Keep the server authoritative for hosted catalog truth and keep storage replaceable through configuration.
+Transport does not change package identity, release selection, visibility, or governance.

@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { StatusPill } from '../components/StatusPill';
 import { SurfaceCard } from '../components/SurfaceCard';
 
-const SEARCH_COMMAND = 'npx skills find';
+const SEARCH_COMMAND = 'npx skills@latest find <query>';
 
 const FEATURE_BANDS = [
   {
@@ -62,11 +62,11 @@ export function OverviewPage() {
             <Link className="button button--primary" to="/features">
               See how it works
             </Link>
-            <Link className="button button--ghost" to="/docs">
-              Get started
-            </Link>
+            <a className="button button--ghost" href="https://github.com/ZenlixAI/skill-dock#docker-compose" rel="noreferrer" target="_blank">
+              Installation guide
+            </a>
             <span className="hero-actions__note">
-              Open with <code>{SEARCH_COMMAND}</code> or copy it from the panel.
+            Open a terminal, configure your registry once, and run <code>npx skills@latest</code>.
             </span>
           </div>
         </div>
@@ -84,8 +84,8 @@ export function OverviewPage() {
             </button>
             }
           className="hero-shell__panel hero-shell__panel--landing home-command-card"
-          description="Skills live in a self-hosted npm-compatible private artifact repository, so the command resolves from the same private release path."
-          title="Built for private npm storage"
+          description="Find, install, and publish from one CLI. Configure the registry once, then use the same commands everywhere."
+          title="Start from the terminal"
           variant="hero"
         >
           <span className="sr-only" aria-live="polite">{copyState === 'copied' ? 'Command copied to clipboard.' : copyState === 'failed' ? 'Copy failed. Select the command manually.' : ''}</span>
@@ -93,9 +93,9 @@ export function OverviewPage() {
             <code>{SEARCH_COMMAND}</code>
           </div>
           <div className="home-command-card__meta" aria-label="Command highlights">
-            <span>One command</span>
-            <span>Shared across the team</span>
-            <span>Private repo ready</span>
+            <span>npm-compatible</span>
+            <span>Catalog-backed</span>
+            <span>Source sync</span>
           </div>
         </SurfaceCard>
 
@@ -119,8 +119,7 @@ export function OverviewPage() {
           <div className="home-feature-bands__callout">
             <StatusPill tone="accent">syncOnAdd</StatusPill>
             <p>
-              Successful source installs sync through the existing backend import flow by default. Set{' '}
-              <code>syncOnAdd: false</code> when an installation should remain local only.
+              Successful source installs are published through Catalog when <code>syncOnAdd</code> is enabled. Configure it once in the global CLI config; project settings can override it.
             </p>
           </div>
         </section>

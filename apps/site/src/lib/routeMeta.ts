@@ -20,15 +20,7 @@ export function getRouteMeta(pathname: string): RouteMeta {
     return {
       title: 'Features · Skill Registry',
       description:
-        'See how Skill Registry separates catalog control, private artifact storage, and a predictable CLI workflow.',
-      section: 'portal',
-    };
-  }
-
-  if (pathname === '/docs') {
-    return {
-      title: 'Get started · Skill Registry',
-      description: 'Deploy the backend, set the environment variables, and point the CLI at the same service.',
+        'A private package registry for installing and sharing reusable agent skills.',
       section: 'portal',
     };
   }

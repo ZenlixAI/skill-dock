@@ -6,5 +6,4 @@ export interface ShellNavItem {
 export const portalNavItems: readonly ShellNavItem[] = [
   { to: '/', label: 'Home' },
   { to: '/features', label: 'Features' },
-  { to: '/docs', label: 'Docs' },
 ];

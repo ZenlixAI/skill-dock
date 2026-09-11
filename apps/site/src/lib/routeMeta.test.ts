@@ -15,16 +15,16 @@ describe('getRouteMeta', () => {
     expect(getRouteMeta('/features')).toEqual({
       title: 'Features · Skill Registry',
       description:
-        'See how Skill Registry separates catalog control, private artifact storage, and a predictable CLI workflow.',
+        'A private package registry for installing and sharing reusable agent skills.',
       section: 'portal',
     });
   });
 
-  it('returns portal metadata for the docs page', () => {
+  it('returns not-found metadata for removed installation routes', () => {
     expect(getRouteMeta('/docs')).toEqual({
-      title: 'Get started · Skill Registry',
-      description: 'Deploy the backend, set the environment variables, and point the CLI at the same service.',
-      section: 'portal',
+      title: 'Page not found · Skill Registry',
+      description: 'The requested page is not available. Return home or read the product features.',
+      section: 'not-found',
     });
   });
 

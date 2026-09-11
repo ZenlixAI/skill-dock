@@ -8,28 +8,21 @@ afterEach(() => {
 });
 
 describe('FeaturesPage', () => {
-  it('reads like a product introduction with clear boundaries', () => {
+  it('explains the product through the user workflow', () => {
     render(
       <MemoryRouter>
         <FeaturesPage />
       </MemoryRouter>
     );
 
-    expect(screen.getByRole('heading', { name: 'Features' })).toBeInTheDocument();
-    expect(screen.getByText('A self-hosted control plane for reusable skills.')).toBeInTheDocument();
-    expect(screen.getByText('Self-hosted')).toBeInTheDocument();
-    expect(screen.getByText('Server authoritative')).toBeInTheDocument();
-    expect(screen.getByText('Private npm-compatible storage')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Designed around clear boundaries' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'One product, three responsibilities' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Skill Registry architecture')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Control' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Storage' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Keep source installs connected' })).toBeInTheDocument();
-    expect(screen.getByRole('list', { name: 'Automatic sync flow' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'skills.config.json' })).toBeInTheDocument();
-    expect(screen.getByText(/syncOnAdd.*true/i, { selector: 'code' })).toBeInTheDocument();
-    expect(screen.queryByText('Deployment is explicit')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'How it works' })).toBeInTheDocument();
+    expect(screen.getByText('A private package registry for reusable agent skills.')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'What developers can do' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Automatic source publication' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Command model' })).toBeInTheDocument();
+    expect(screen.getByText(/npx skills@latest add/)).toBeInTheDocument();
+    expect(screen.getByText(/Stored at/)).toBeInTheDocument();
+    expect(screen.queryByText('One product, three responsibilities')).not.toBeInTheDocument();
     expect(screen.queryByText('Explore catalog')).not.toBeInTheDocument();
   });
 });

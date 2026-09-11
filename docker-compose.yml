@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-skill_registry}
+      POSTGRES_USER: ${POSTGRES_USER:-skill_registry}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  artifact-keeper:
+    image: verdaccio/verdaccio:6
+    volumes:
+      - artifact-storage:/verdaccio/storage
+      - ./docker/verdaccio/config.yaml:/verdaccio/conf/config.yaml:ro
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:4873/-/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  catalog:
+    build:
+      context: .
+      dockerfile: zarf/docker/local/Dockerfile
+    environment:
+      SKILL_REGISTRY_ADDR: ":8080"
+      SKILL_REGISTRY_DATABASE_URL: postgres://${POSTGRES_USER:-skill_registry}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-skill_registry}?sslmode=disable
+      SKILL_REGISTRY_READER_TOKEN: ${SKILL_REGISTRY_READER_TOKEN:?set SKILL_REGISTRY_READER_TOKEN in .env}
+      SKILL_REGISTRY_AUTHORING_TOKEN: ${SKILL_REGISTRY_AUTHORING_TOKEN:?set SKILL_REGISTRY_AUTHORING_TOKEN in .env}
+      SKILL_REGISTRY_PUBLISHER_TOKEN: ${SKILL_REGISTRY_PUBLISHER_TOKEN:?set SKILL_REGISTRY_PUBLISHER_TOKEN in .env}
+      SKILL_REGISTRY_ARTIFACT_READ_URL: http://artifact-keeper:4873/
+      SKILL_REGISTRY_ARTIFACT_PUBLISH_AUTHORIZATION: ""
+      SKILL_REGISTRY_PUBLIC_INSTALL_URL: ${REGISTRY_PUBLIC_URL:-http://localhost:8080}/repository/skills-npm/
+      SKILL_REGISTRY_DISABLE_SEED: ${SKILL_REGISTRY_DISABLE_SEED:-true}
+      SKILL_REGISTRY_INSTALL_TARGET_MODE: proxy
+    ports:
+      - "${CATALOG_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      artifact-keeper:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  artifact-storage:

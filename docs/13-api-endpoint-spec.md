@@ -1,8 +1,16 @@
 # API endpoint reference
 
-This reference describes the routes and payload fields implemented by the catalog server. It does not prescribe unimplemented external-source behavior.
+Catalog API routes are served under `/api/v1`. Catalog and audit reads require a reader, publisher, or operator principal. Packaging review requires an authoring, publisher, or operator principal; publishing, release records, and governance changes require a publisher or operator principal.
 
-## Read routes
+## System routes
+
+| Route | Purpose |
+| --- | --- |
+| `GET /healthz` | Liveness status |
+| `GET /readyz` | Dependency readiness status |
+| `GET /metrics` | Prometheus metrics |
+
+## Catalog routes
 
 | Route | Purpose |
 | --- | --- |
@@ -13,46 +21,37 @@ This reference describes the routes and payload fields implemented by the catalo
 | `GET /api/v1/skills/:package/versions` | List versions |
 | `GET /api/v1/skills/:package/versions/:version` | Get version detail |
 | `GET /api/v1/skills/:package/install-target` | Resolve a published install target |
+| `GET /api/v1/audit-events` | List audit events |
+| `GET /api/v1/governance-changes` | List governance changes |
 
 `GET /api/v1/skills` accepts `q`, `package_name`, `source_type`, `include_retired`, `include_external`, `source`, `registry`, `scope`, `origin`, `sort`, `pageSize`, and `cursor`.
 
-- `source_type` accepts `native`, `imported`, `external`, or `platform_created`.
-- `include_external` is boolean and enables the configured external adapter.
-- `source=catalog`, `source=skills.sh`, and `source=all` are meaningful with the current adapter.
-- `registry`, `scope`, and `origin` are request-scoped values forwarded to the adapter.
-- `sort` accepts `relevance`, `updated_at_desc`, or `package_name_asc`.
+- `source_type` accepts `native`, `imported`, `external`, and `platform_created`.
+- `include_external` enables the configured external adapter.
+- The current adapter recognizes `source=catalog`, `source=skills.sh`, and `source=all`.
+- `sort` accepts `relevance`, `updated_at_desc`, and `package_name_asc`.
 
-List responses contain `items` and `pageInfo`. Skill, version, and install responses expose available identity, registry, lifecycle, and provenance fields, including `sourceKind`, `sourceLocator`, origins, `importMode`, `hosted`, `mirrored`, and `installable`.
+List responses contain `items` and `pageInfo`. Catalog records may include identity, registry, lifecycle, and provenance fields such as `sourceKind`, `sourceLocator`, origin URLs, `importMode`, `hosted`, `mirrored`, and `installable`.
 
-External `skills.sh` results are descriptive and return `installable: false`; install-target resolution remains a catalog release operation.
+`GET /api/v1/skills/:package/versions` accepts `include_deprecated`, `include_yanked`, `pageSize`, and `cursor`. `GET /api/v1/skills/:package/install-target` accepts an optional exact `version`.
 
 ## Packaging routes
 
 | Route | Purpose |
 | --- | --- |
-| `POST /api/v1/skill-packaging/import-review` | Review and package source input |
-| `POST /api/v1/skill-packaging/publish` | Package, publish bundle bytes, and create a release record |
+| `POST /api/v1/skill-packaging/import-review` | Validate and package source input for review |
+| `POST /api/v1/skill-packaging/publish` | Package source, publish bundle bytes, and create a release |
 
-Current `source.type` values are:
+The server accepts `source.type` values `upload_archive` with `archiveBase64` and `platform_authoring` with structured `files`. The CLI's local, git, and npm import flows submit `upload_archive` after collecting the source.
 
-- `upload_archive` with `archiveBase64`;
-- `platform_authoring` with structured `files`.
+Requests provide `target.packageName`, `target.version`, display metadata, and optional `options.publishRegistry` and `options.strict`. A publish request may include a review summary containing its manifest digest and component list. Responses include package identity, manifest digest, components, warnings, errors, and import report; publish responses also include `publishedToRegistry`, `created`, `idempotentReplay`, `versionStatus`, and `installPolicy`.
 
-The CLI's local, git, and npm import paths currently submit `upload_archive` after source collection or extraction. The server rejects `git`, `local`, `npm`, `archive`, and source-mode fields as normalized client source types.
-
-Requests include `target.packageName`, `target.version`, metadata containing display name and description, optional `options.publishRegistry`, and optional `options.strict`. Publish requests can include a review summary with manifest digest and components. Responses include package name, version, manifest digest, components, warnings, errors, import report, and for publish: `publishedToRegistry`, `created`, `idempotentReplay`, `versionStatus`, and `installPolicy`.
-
-## Governance routes
+## Release and governance routes
 
 | Route | Purpose |
 | --- | --- |
-| `PUT /api/v1/skills/:package/versions/:version/release-record` | Create server-owned release truth |
-| `POST /api/v1/skills/:package/governance-changes` | Apply skill lifecycle change |
-| `POST /api/v1/skills/:package/versions/:version/governance-changes` | Apply version lifecycle change |
-| `GET /api/v1/governance-changes` | Read audit/governance records |
+| `PUT /api/v1/skills/:package/versions/:version/release-record` | Create a server-owned release record |
+| `POST /api/v1/skills/:package/governance-changes` | Apply a skill lifecycle change |
+| `POST /api/v1/skills/:package/versions/:version/governance-changes` | Apply a version lifecycle change |
 
-Release record input accepts publication registry, manifest digest, and components. It does not currently accept client-supplied source provenance fields.
-
-## Compatibility
-
-Existing fields and routes use camelCase JSON names. New response fields should be additive and must not change package identity, exact-version rules, server authority, or deterministic install resolution.
+Release record input contains the publication registry, manifest digest, and components. Governance requests record explicit lifecycle changes and their reasons.

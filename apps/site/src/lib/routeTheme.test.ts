@@ -11,10 +11,6 @@ describe('getRouteTheme', () => {
       tone: 'frontstage',
       accent: 'detail',
     });
-    expect(getRouteTheme('/docs')).toEqual({
-      tone: 'frontstage',
-      accent: 'detail',
-    });
   });
 
   it('marks legal routes as frontstage legal routes', () => {

@@ -1,6 +1,5 @@
 import { Route, Routes } from 'react-router-dom';
 import { AppShell } from './components/AppShell';
-import { DocsPage } from './pages/DocsPage';
 import { FeaturesPage } from './pages/FeaturesPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { OverviewPage } from './pages/OverviewPage';
@@ -23,14 +22,6 @@ export function App() {
         element={
           <AppShell>
             <FeaturesPage />
-          </AppShell>
-        }
-      />
-      <Route
-        path="/docs"
-        element={
-          <AppShell>
-            <DocsPage />
           </AppShell>
         }
       />

@@ -23,7 +23,7 @@ export function NotFoundPage() {
           </div>
         }
         title="Back to the site"
-        description="Public site routes keep the product overview, docs, and legal pages in one place."
+        description="Public site routes keep the product overview, features, and legal pages in one place."
         variant="subtle"
       >
         <div className="stack-column">

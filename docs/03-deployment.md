@@ -1,67 +1,170 @@
-# Deployment and local runtime
+# Production deployment
 
-## Requirements
+This guide deploys the Catalog server with Docker Compose. It is intended for a single host or a small internal installation. Put a TLS reverse proxy and access-control layer in front of Catalog before exposing it to the public internet.
 
-- Docker
-- kind
-- kubectl
-- Go 1.26 or later
-- Node.js 18 or later
-- uv
+## What is deployed
 
-## Local development
+The production Compose stack contains:
 
-```bash
-make dev
-make dev-images
-make down
+- `catalog`: the Skill Registry API, packaging workspace, and npm proxy;
+- `postgres`: persistent catalog, release, governance, audit, and idempotency state.
+
+The website is not deployed by this project. Host the static site separately, or use the repository installation link. The artifact repository is also external; use an existing npm-compatible repository such as Verdaccio, Nexus, or Artifactory.
+
+## Prerequisites
+
+- Docker Engine 24 or later
+- Docker Compose v2 (`docker compose`)
+- An npm-compatible artifact repository reachable from the catalog container
+- A DNS name and TLS termination for a public deployment
+
+Build the supplied production images from the repository root. Do not use `make dev` for production; it is a kind-based development environment.
+
+## 1. Create the deployment configuration
+
+Create `zarf/compose/.env` with the following values. Do not commit the file. Generate each secret, and limit the file to the deployment operator (`chmod 600 zarf/compose/.env`).
+
+```dotenv
+# Database
+POSTGRES_DB=skill_registry
+POSTGRES_USER=skill_registry
+POSTGRES_PASSWORD=<random-database-password>
+SKILL_REGISTRY_DATABASE_URL=postgres://skill_registry:<url-encoded-database-password>@postgres:5432/skill_registry?sslmode=disable
+
+# Catalog API roles
+SKILL_REGISTRY_READER_TOKEN=<random-reader-token>
+SKILL_REGISTRY_AUTHORING_TOKEN=<random-authoring-token>
+SKILL_REGISTRY_PUBLISHER_TOKEN=<random-publisher-token>
+
+# Artifact repository URL and server-side credentials
+SKILL_REGISTRY_ARTIFACT_READ_URL=https://artifacts.example.com/npm/skills/
+SKILL_REGISTRY_ARTIFACT_READ_AUTHORIZATION=Bearer <artifact-read-token>
+SKILL_REGISTRY_ARTIFACT_PUBLISH_AUTHORIZATION=Bearer <artifact-publish-token>
+
+# The public Catalog URL returned in CLI install targets.
+SKILL_REGISTRY_PUBLIC_INSTALL_URL=https://registry.example.com/repository/skills-npm/
+
+# Do not publish this value to browsers or CLI clients.
 ```
 
-`make dev` creates the local stack and initializes sample data. Use `make dev-images` when the kind cluster already exists and only rebuilt service images need to be reloaded. `make down` tears down the local stack.
+When a password contains reserved URL characters, percent-encode it in `SKILL_REGISTRY_DATABASE_URL`. The Docker network resolves the database host as `postgres`.
 
-## Local services and endpoints
+The Compose definition binds Catalog to `127.0.0.1:8081`. Put a TLS reverse proxy or another public gateway in front of Catalog when it must be reachable by CLI clients.
 
-The default stack contains:
+## 2. Build and start
 
-- catalog server;
-- PostgreSQL;
-- external Artifact Keeper npm repository.
-
-| Service | URL |
-| --- | --- |
-| Catalog server | <http://127.0.0.1:18080> |
-| npm proxy | <http://127.0.0.1:18080/repository/skills-npm/> |
-
-## Artifact repository overrides
-
-When the artifact repository is not available at its default local address:
+Run from the repository root:
 
 ```bash
-ARTIFACTKEEPER_INTERNAL_NPM_URL=http://host.docker.internal:30080/ \
-ARTIFACTKEEPER_PUBLIC_NPM_URL=http://127.0.0.1:18080/repository/skills-npm/ \
-make dev
+chmod 600 zarf/compose/.env
+
+docker compose --env-file zarf/compose/.env \
+  -f zarf/compose/production.yml build
+
+docker compose --env-file zarf/compose/.env \
+  -f zarf/compose/production.yml up -d
 ```
 
-The internal URL is used by server-side reads and publication. The public URL is used in client-facing install targets.
-
-## CLI configuration
+Verify container state and the health endpoints:
 
 ```bash
-export SKILLS_REGISTRY_URL=http://127.0.0.1:18080
+docker compose --env-file zarf/compose/.env \
+  -f zarf/compose/production.yml ps
+
+curl -fsS http://127.0.0.1:8080/healthz
+curl -fsS http://127.0.0.1:8081/readyz
+```
+
+`/healthz` should return `ok`. `/readyz` verifies the catalog repository, audit store, and idempotency store. If readiness fails, inspect logs before retrying:
+
+```bash
+docker compose --env-file zarf/compose/.env \
+  -f zarf/compose/production.yml logs --tail=100 catalog postgres
+```
+
+## 3. Configure the external reverse proxy
+
+Point the public hostname, for example `registry.example.com`, to the Catalog service at `http://127.0.0.1:8081`. Catalog serves both `/api/v1` and `/repository/skills-npm/` directly.
+
+The reverse proxy must:
+
+- terminate TLS;
+- forward all paths to Catalog;
+- preserve `Host` and set `X-Forwarded-Proto` to the external scheme;
+- permit request bodies and upstream timeouts suitable for package uploads;
+- expose neither PostgreSQL nor the private artifact repository;
+- protect or restrict write operations if publication is not open to all users.
+
+Do not expose artifact repository credentials in the browser, CLI output, or public install target. After DNS and TLS are configured, verify the public endpoint:
+
+```bash
+curl -fsS https://registry.example.com/healthz
+curl -fsS https://registry.example.com/api/v1/skills \
+  -H "Authorization: Bearer <reader-token>"
+```
+
+## 4. Configure the CLI
+
+Install or discover skills with a reader token:
+
+```bash
+export SKILLS_REGISTRY_URL=https://registry.example.com
 export SKILLS_REGISTRY_TOKEN=<reader-token>
+
+npx skills find
+npx skills add @scope/skill-name
 ```
 
-Use a publisher token for packaging and publication:
+Use the token appropriate to the operation for packaging or publication:
 
 ```bash
 export SKILLS_REGISTRY_TOKEN=<publisher-token>
-skills publish /absolute/path/to/your-skill
+npx skills publish ./my-skill
 ```
 
-For `direct` install targets and `import-npm`, the CLI reads npm credentials from `NPM_CONFIG_USERCONFIG` or a `.npmrc` in the current working directory. `proxy` targets use the URL returned by the server and do not use npm config for the tarball request.
+The catalog server remains the authority for publication. Do not publish bundles directly to the artifact repository.
 
-## Production posture
+## Backup, updates, and shutdown
 
-Replace every sample or placeholder secret with a unique secret before deployment. Keep the database, packaging workspace, and private artifact repository writable only by the services that need them. Expose only the server's public endpoint and the configured public artifact URL to CLI clients.
+The Compose stack creates two persistent named volumes:
 
-See [Server architecture and configuration](01-server-architecture.md) and [Auth and access](04-auth-and-access.md) for the complete configuration and authorization model.
+- `postgres_data`: authoritative PostgreSQL state;
+- `catalog_workspace`: the server-side packaging workspace.
+
+Back up PostgreSQL through the normal database-backup process and test restores. The workspace is operational storage, not a replacement for artifact repository retention. Back up the artifact repository independently.
+
+To update the application:
+
+```bash
+docker compose --env-file zarf/compose/.env \
+  -f zarf/compose/production.yml build catalog
+
+docker compose --env-file zarf/compose/.env \
+  -f zarf/compose/production.yml up -d catalog
+
+curl -fsS http://127.0.0.1:8081/readyz
+```
+
+To stop without deleting data:
+
+```bash
+docker compose --env-file zarf/compose/.env \
+  -f zarf/compose/production.yml stop
+```
+
+To remove containers and the network while keeping volumes:
+
+```bash
+docker compose --env-file zarf/compose/.env \
+  -f zarf/compose/production.yml down
+```
+
+Do not use `down --volumes` unless you intentionally want to delete the database and workspace.
+
+## Configuration reference
+
+- [Server architecture and configuration](01-server-architecture.md)
+- [Auth and access](04-auth-and-access.md)
+- [Artifact resolution](06-artifact-resolution.md)
+- [CLI command reference](12-cli-command-spec.md)
+- [`zarf/compose/production.yml`](../zarf/compose/production.yml)

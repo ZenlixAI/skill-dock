@@ -32,7 +32,7 @@ export function AppShell({ children }: PropsWithChildren) {
             <div className="brand-lockup__copy">
               <p className="brand-lockup__eyebrow">Skill Registry</p>
               <span className="brand-lockup__name" role="heading" aria-level={2}>Skill Registry</span>
-              <p className="brand-lockup__subtitle">Official website for the product, with quick links to features and setup guidance.</p>
+              <p className="brand-lockup__subtitle">Official website for the product, with quick links to features and installation.</p>
             </div>
           </Link>
 
@@ -46,8 +46,8 @@ export function AppShell({ children }: PropsWithChildren) {
                 <span>{item.label}</span>
               </NavLink>
             ))}
-            <a className="nav-chip nav-chip--external" href="https://github.com/ZenlixAI/skill-dock" rel="noreferrer" target="_blank">
-              <span>GitHub</span>
+            <a className="nav-chip nav-chip--external" href="https://github.com/ZenlixAI/skill-dock#docker-compose" rel="noreferrer" target="_blank">
+              <span>Installation</span>
             </a>
           </nav>
         </div>
@@ -63,7 +63,7 @@ export function AppShell({ children }: PropsWithChildren) {
             <div className="brand-lockup__mark brand-lockup__mark--footer">SR</div>
             <div>
               <p className="brand-lockup__eyebrow">Skill Registry</p>
-              <p className="shell-footer__note">Official website for the product, with a short path to features and documentation.</p>
+              <p className="shell-footer__note">Official website for the product, with a short path to features and installation.</p>
             </div>
           </div>
 
@@ -73,7 +73,7 @@ export function AppShell({ children }: PropsWithChildren) {
               <ul>
                 <li><Link to="/">Home</Link></li>
                 <li><Link to="/features">Features</Link></li>
-                <li><Link to="/docs">Docs</Link></li>
+                <li><a href="https://github.com/ZenlixAI/skill-dock#docker-compose" rel="noreferrer" target="_blank">Installation</a></li>
               </ul>
             </div>
             <div>

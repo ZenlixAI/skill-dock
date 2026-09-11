@@ -1,38 +1,46 @@
 services:
   postgres:
     image: postgres:17
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-skill_registry}
       POSTGRES_USER: ${POSTGRES_USER:-skill_registry}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-skill_registry_change_me}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the environment file}
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-skill_registry} -d ${POSTGRES_DB:-skill_registry}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 6
 
   catalog:
+    image: ${CATALOG_IMAGE:-skill-registry-catalog:local}
     build:
       context: ../..
       dockerfile: zarf/docker/Dockerfile
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
     ports:
-      - "${CATALOG_PORT:-8080}:8080"
+      - "127.0.0.1:${CATALOG_PORT:-8081}:8080"
     environment:
       SKILL_REGISTRY_ADDR: :8080
-      SKILL_REGISTRY_DATABASE_URL: postgres://${POSTGRES_USER:-skill_registry}:${POSTGRES_PASSWORD:-skill_registry_change_me}@postgres:5432/${POSTGRES_DB:-skill_registry}?sslmode=disable
-      SKILL_REGISTRY_READER_TOKEN: ${SKILL_REGISTRY_READER_TOKEN:-reader-token-change-me}
-      SKILL_REGISTRY_AUTHORING_TOKEN: ${SKILL_REGISTRY_AUTHORING_TOKEN:-authoring-token-change-me}
-      SKILL_REGISTRY_PUBLISHER_TOKEN: ${SKILL_REGISTRY_PUBLISHER_TOKEN:-publisher-token-change-me}
-      SKILL_REGISTRY_ARTIFACT_READ_URL: ${SKILL_REGISTRY_ARTIFACT_READ_URL:-}
+      SKILL_REGISTRY_DATABASE_URL: ${SKILL_REGISTRY_DATABASE_URL:?set SKILL_REGISTRY_DATABASE_URL in the environment file}
+      SKILL_REGISTRY_SHARED_WORKSPACE_ROOT: /var/lib/skill-registry/packaging-workspaces
+      SKILL_REGISTRY_READER_TOKEN: ${SKILL_REGISTRY_READER_TOKEN:?set SKILL_REGISTRY_READER_TOKEN in the environment file}
+      SKILL_REGISTRY_AUTHORING_TOKEN: ${SKILL_REGISTRY_AUTHORING_TOKEN:?set SKILL_REGISTRY_AUTHORING_TOKEN in the environment file}
+      SKILL_REGISTRY_PUBLISHER_TOKEN: ${SKILL_REGISTRY_PUBLISHER_TOKEN:?set SKILL_REGISTRY_PUBLISHER_TOKEN in the environment file}
+      SKILL_REGISTRY_ARTIFACT_READ_URL: ${SKILL_REGISTRY_ARTIFACT_READ_URL:?set SKILL_REGISTRY_ARTIFACT_READ_URL in the environment file}
       SKILL_REGISTRY_ARTIFACT_READ_AUTHORIZATION: ${SKILL_REGISTRY_ARTIFACT_READ_AUTHORIZATION:-}
       SKILL_REGISTRY_ARTIFACT_PUBLISH_AUTHORIZATION: ${SKILL_REGISTRY_ARTIFACT_PUBLISH_AUTHORIZATION:-}
-      SKILL_REGISTRY_PUBLIC_INSTALL_URL: ${SKILL_REGISTRY_PUBLIC_INSTALL_URL:-}
-      SKILL_REGISTRY_AUTH_TOKENS_JSON: ${SKILL_REGISTRY_AUTH_TOKENS_JSON:-}
+      SKILL_REGISTRY_PUBLIC_INSTALL_URL: ${SKILL_REGISTRY_PUBLIC_INSTALL_URL:?set SKILL_REGISTRY_PUBLIC_INSTALL_URL in the environment file}
+      SKILL_REGISTRY_DISABLE_SEED: "true"
+      SKILL_REGISTRY_INSTALL_TARGET_MODE: proxy
+    volumes:
+      - catalog_workspace:/var/lib/skill-registry
 
 volumes:
-  pg_data:
+  postgres_data:
+  catalog_workspace:

@@ -1,35 +1,32 @@
 # Auth and access
 
-## Authority
+The server authenticates callers and authorizes each operation. The CLI only forwards credentials.
 
-Authentication determines who can call the server. The server's authorization policy determines which catalog, packaging, publication, and governance operations that principal may perform. The CLI sends credentials; it does not implement policy.
+## Catalog credentials
 
-## Server credentials
-
-| Variable | Purpose |
+| Variable | Role |
 | --- | --- |
-| `SKILL_REGISTRY_READER_TOKEN` | Read operations |
-| `SKILL_REGISTRY_AUTHORING_TOKEN` | Authoring and packaging operations |
-| `SKILL_REGISTRY_PUBLISHER_TOKEN` | Publication and governance operations |
-| `SKILL_REGISTRY_AUTH_TOKENS_JSON` | Additional token-to-role mappings |
-| `SKILL_REGISTRY_SESSION_SECRET` | Session authentication secret |
-| `SKILL_REGISTRY_LOGIN_USERNAME` / `SKILL_REGISTRY_LOGIN_PASSWORD` | Bootstrap login credentials |
-| `SKILL_REGISTRY_SESSION_USERS_JSON` | Session user map |
+| `SKILL_REGISTRY_READER_TOKEN` | Read catalog and audit data |
+| `SKILL_REGISTRY_AUTHORING_TOKEN` | Review and package source input |
+| `SKILL_REGISTRY_PUBLISHER_TOKEN` | Publish releases and apply governance changes |
+| `SKILL_REGISTRY_AUTH_TOKENS_JSON` | Define additional token, role, actor, and package-scope mappings |
 
-The exact role mapping is deployment configuration. Do not assume a reader token can publish or govern releases.
+When no catalog token is configured, the server accepts `X-Role` as development header authentication. This mode is not enabled once a catalog token is configured.
+
+Configured principals can be limited to package names or package-name prefixes through `allowedPackages` in `SKILL_REGISTRY_AUTH_TOKENS_JSON`.
 
 ## CLI credentials
 
 | Variable | Purpose |
 | --- | --- |
 | `SKILLS_REGISTRY_TOKEN` | Sent as `Authorization: Bearer <token>` |
-| `SKILLS_REGISTRY_ROLE` | Optional `X-Role` header for role-based local auth |
+| `SKILLS_REGISTRY_ROLE` | Development `X-Role` header when the server accepts header authentication |
 
-`--registry` changes the catalog server for the current command only. It does not persist credentials or registry state.
+`--registry` changes the catalog server only for the current command. It does not persist credentials or registry state.
 
-## Artifact credentials
+## Artifact repository credentials
 
-The server may need separate credentials for the npm-compatible artifact repository:
+The catalog service, not the CLI, uses artifact-repository credentials:
 
 - `SKILL_REGISTRY_ARTIFACT_READ_AUTHORIZATION`
 - `SKILL_REGISTRY_ARTIFACT_PUBLISH_AUTHORIZATION`
@@ -37,12 +34,4 @@ The server may need separate credentials for the npm-compatible artifact reposit
 - `SKILL_REGISTRY_NPM_PUBLISH_AUTHORIZATION`
 - `SKILL_REGISTRY_NPM_PUBLISH_TOKEN`
 
-These credentials stay server-side. They must not be copied into public install targets or CLI output.
-
-## Access principles
-
-- read access is explicit;
-- write access is narrower than read access;
-- publication and governance require stronger authorization than installation;
-- role policy remains deployment-driven;
-- authentication configuration does not alter package identity or release semantics.
+Do not expose these credentials in install targets or CLI output.

@@ -14,7 +14,7 @@ export function getRouteTheme(pathname: string): RouteTheme {
     };
   }
 
-  if (pathname === '/features' || pathname === '/docs') {
+  if (pathname === '/features') {
     return {
       tone: 'frontstage',
       accent: 'detail',
