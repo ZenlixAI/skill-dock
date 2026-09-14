@@ -1025,47 +1025,39 @@
   max-width: 760px;
 }
 
-.features-page__workflow {
+.features-page__cli-commands {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
   border-top: 1px solid hsl(0 0% 100% / 0.08);
-  border-left: 1px solid hsl(0 0% 100% / 0.08);
 }
 
-.features-page__workflow-item {
+.features-page__cli-command {
   display: grid;
+  grid-template-columns: minmax(150px, 0.35fr) minmax(0, 1fr);
   gap: 18px;
-  padding: 20px;
-  border-right: 1px solid hsl(0 0% 100% / 0.08);
+  align-items: center;
+  padding: 15px 0;
   border-bottom: 1px solid hsl(0 0% 100% / 0.08);
 }
 
-.features-page__workflow-item > span {
-  color: hsl(var(--primary));
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 0.72rem;
-  letter-spacing: 0.16em;
-}
-
-.features-page__workflow-item h3 {
-  margin: 0 0 8px;
-  color: hsl(0 0% 100% / 0.9);
-  font-size: 1rem;
-  line-height: 1.25;
-}
-
-.features-page__workflow-item p {
-  margin: 0;
+.features-page__cli-command span {
   color: hsl(var(--muted-foreground));
-  font-size: 0.88rem;
-  line-height: 1.6;
+  font-size: 0.84rem;
 }
 
-@media (max-width: 960px) {
-  .features-page__workflow {
+.features-page__cli-command code {
+  color: hsl(0 0% 100% / 0.9);
+  font-size: 0.88rem;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .features-page__cli-command {
     grid-template-columns: 1fr;
+    gap: 6px;
   }
 }
+
 
 .features-page__hero {
   align-items: stretch;

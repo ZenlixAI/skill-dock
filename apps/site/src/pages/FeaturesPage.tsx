@@ -9,8 +9,8 @@ const FEATURES = [
   },
   {
     icon: Package,
-    title: 'Share skills',
-    description: 'Give developers and agents a consistent way to access the knowledge and workflows your team creates.',
+    title: 'Use the familiar CLI',
+    description: 'Replace the skills.sh CLI without changing how your team discovers, installs, and works with agent skills.',
   },
   {
     icon: ShieldCheck,
@@ -19,19 +19,11 @@ const FEATURES = [
   },
 ] as const;
 
-const WORKFLOW = [
-  {
-    title: 'Find what you need',
-    description: 'Browse a shared collection of skills designed around the work your team does every day.',
-  },
-  {
-    title: 'Put it to work',
-    description: 'Make useful capabilities available to the agents and people who need them.',
-  },
-  {
-    title: 'Keep improving',
-    description: 'Maintain a trusted library as your team learns, changes, and grows.',
-  },
+const CLI_COMMANDS = [
+  ['Find a skill', 'npx skills find <query>'],
+  ['Install a skill', 'npx skills add <owner/repo>'],
+  ['Update skills', 'npx skills update'],
+  ['List installed skills', 'npx skills list'],
 ] as const;
 
 export function FeaturesPage() {
@@ -40,18 +32,18 @@ export function FeaturesPage() {
       <section className="features-page__intro">
         <SectionHeading
           title="How it works"
-          description="A simple home for the skills your agents rely on."
+          description="A one-for-one replacement for the skills.sh CLI, with a private catalog your team controls."
           tone="frontstage"
         />
         <p className="features-page__lede">
-          Skill Registry helps teams turn shared knowledge into reusable capabilities that are easy to discover, use, and maintain.
+          Skill Registry provides the same familiar CLI workflow as skills.sh, while giving teams a private place to discover, share, and manage skills.
         </p>
       </section>
 
       <section className="features-page__section" aria-labelledby="features-title">
         <div className="features-page__section-head">
-          <h2 id="features-title">Everything your team needs</h2>
-          <p>Bring the most important parts of a shared skill library into one calm, predictable experience.</p>
+          <h2 id="features-title">A one-for-one CLI replacement</h2>
+          <p>Keep the workflow your team already knows while bringing skill discovery and management into your own environment.</p>
         </div>
 
         <div className="features-page__matrix">
@@ -65,24 +57,23 @@ export function FeaturesPage() {
         </div>
       </section>
 
-      <section className="features-page__section" aria-labelledby="workflow-title">
+      <section className="features-page__section" aria-labelledby="cli-title">
         <div className="features-page__section-head">
-          <h2 id="workflow-title">A shared foundation for agent work</h2>
-          <p>Move from a one-off solution to a capability your whole team can use and improve.</p>
+          <h2 id="cli-title">Familiar commands, private control</h2>
+          <p>Use the skills CLI workflow you already know. Point it at Skill Registry and keep the same everyday commands.</p>
         </div>
 
-        <div className="features-page__workflow">
-          {WORKFLOW.map(({ title, description }, index) => (
-            <article className="features-page__workflow-item" key={title}>
-              <span aria-hidden="true">0{index + 1}</span>
-              <div>
-                <h3>{title}</h3>
-                <p>{description}</p>
-              </div>
-            </article>
+        <div className="features-page__cli-commands">
+          {CLI_COMMANDS.map(([label, command]) => (
+            <div className="features-page__cli-command" key={label}>
+              <span>{label}</span>
+              <code>{command}</code>
+            </div>
           ))}
         </div>
       </section>
+
+
     </div>
   );
 }

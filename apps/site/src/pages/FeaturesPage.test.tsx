@@ -16,13 +16,13 @@ describe('FeaturesPage', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'How it works' })).toBeInTheDocument();
-    expect(screen.getByText('A simple home for the skills your agents rely on.')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Everything your team needs' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'A shared foundation for agent work' })).toBeInTheDocument();
-    expect(screen.queryByText('Command model')).not.toBeInTheDocument();
-    expect(screen.queryByText(/npx skills@latest add/)).not.toBeInTheDocument();
+    expect(screen.getByText(/A one-for-one replacement for the skills\.sh CLI/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'A one-for-one CLI replacement' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Familiar commands, private control' })).toBeInTheDocument();
+    expect(screen.getByText('npx skills add <owner/repo>')).toBeInTheDocument();
+    expect(screen.getByText('npx skills update')).toBeInTheDocument();
+    expect(screen.queryByText('Everything your team needs')).not.toBeInTheDocument();
+    expect(screen.queryByText('A shared foundation for agent work')).not.toBeInTheDocument();
     expect(screen.queryByText(/Stored at/)).not.toBeInTheDocument();
-    expect(screen.queryByText('One product, three responsibilities')).not.toBeInTheDocument();
-    expect(screen.queryByText('Explore catalog')).not.toBeInTheDocument();
   });
 });
