@@ -15,11 +15,11 @@ describe('OverviewPage', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByRole('heading', { name: 'Ship the skills your agents rely on.' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Private skills for every agent.' })).toBeInTheDocument();
     expect(screen.getByText('npx skills@latest find <query>')).toBeInTheDocument();
-    expect(screen.getByText(/Find, install, and publish from one CLI/i)).toBeInTheDocument();
-    expect(screen.getByText(/Successful source installs are published through Catalog/i)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Installation guide/i })).toHaveAttribute(
+    expect(screen.getByText(/Search, install, and publish from one CLI/i)).toBeInTheDocument();
+    expect(screen.getByText(/Optional source sync/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Install the registry/i })).toHaveAttribute(
       'href',
       'https://github.com/ZenlixAI/skill-dock#docker-compose'
     );

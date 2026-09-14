@@ -46,16 +46,15 @@ export function OverviewPage() {
       <section className="hero-shell hero-shell--landing home-launch-shell">
         <div className="hero-shell__copy hero-shell__copy--landing">
           <div className="hero-kicker-row">
-            <StatusPill tone="accent">For teams</StatusPill>
-            <StatusPill>Versioned bundles</StatusPill>
-            <StatusPill>Stable commands</StatusPill>
+            <StatusPill tone="accent">Private catalog</StatusPill>
+            <StatusPill>Versioned releases</StatusPill>
+            <StatusPill>Auditable installs</StatusPill>
           </div>
 
-          <h1 className="hero-title hero-title--landing">Ship the skills your agents rely on.</h1>
+          <h1 className="hero-title hero-title--landing">Private skills for every agent.</h1>
 
           <p className="hero-description">
-            Self-hosted registry for discovering, versioning, and governing the AI agent skills your team relies on.
-            Find, install, publish, and sync from one predictable <code>skills add</code> workflow.
+            Discover, publish, and install governed agent skills from one catalog. Keep package identity, release decisions, and installation resolution under your team&apos;s control.
           </p>
 
           <div className="hero-actions">
@@ -63,10 +62,10 @@ export function OverviewPage() {
               See how it works
             </Link>
             <a className="button button--ghost" href="https://github.com/ZenlixAI/skill-dock#docker-compose" rel="noreferrer" target="_blank">
-              Installation guide
+              Install the registry
             </a>
             <span className="hero-actions__note">
-            Open a terminal, configure your registry once, and run <code>npx skills@latest</code>.
+              Start with <code>npx skills@latest</code>, then point it at your catalog.
             </span>
           </div>
         </div>
@@ -84,8 +83,8 @@ export function OverviewPage() {
             </button>
             }
           className="hero-shell__panel hero-shell__panel--landing home-command-card"
-          description="Find, install, and publish from one CLI. Configure the registry once, then use the same commands everywhere."
-          title="Start from the terminal"
+          description="Search, install, and publish from one CLI. The catalog keeps releases predictable and governed."
+          title="Start with a command"
           variant="hero"
         >
           <span className="sr-only" aria-live="polite">{copyState === 'copied' ? 'Command copied to clipboard.' : copyState === 'failed' ? 'Copy failed. Select the command manually.' : ''}</span>
@@ -93,8 +92,8 @@ export function OverviewPage() {
             <code>{SEARCH_COMMAND}</code>
           </div>
           <div className="home-command-card__meta" aria-label="Command highlights">
-            <span>npm-compatible</span>
-            <span>Catalog-backed</span>
+            <span>Exact versions</span>
+            <span>Verified artifacts</span>
             <span>Source sync</span>
           </div>
         </SurfaceCard>
@@ -117,9 +116,9 @@ export function OverviewPage() {
             );
           })}
           <div className="home-feature-bands__callout">
-            <StatusPill tone="accent">syncOnAdd</StatusPill>
+            <StatusPill tone="accent">Optional source sync</StatusPill>
             <p>
-              Successful source installs are published through Catalog when <code>syncOnAdd</code> is enabled. Configure it once in the global CLI config; project settings can override it.
+              Local and Git installs can sync a copy to the catalog with <code>syncOnAdd</code>. Keep this advanced setting in your project configuration when you need it.
             </p>
           </div>
         </section>

@@ -30,9 +30,7 @@ export function AppShell({ children }: PropsWithChildren) {
           <Link to="/" className="brand-lockup" aria-label="Skill Registry home">
             <div className="brand-lockup__mark">SR</div>
             <div className="brand-lockup__copy">
-              <p className="brand-lockup__eyebrow">Skill Registry</p>
               <span className="brand-lockup__name" role="heading" aria-level={2}>Skill Registry</span>
-              <p className="brand-lockup__subtitle">Official website for the product, with quick links to features and installation.</p>
             </div>
           </Link>
 
@@ -61,10 +59,7 @@ export function AppShell({ children }: PropsWithChildren) {
         <div className="shell-footer__inner">
           <div className="shell-footer__brand">
             <div className="brand-lockup__mark brand-lockup__mark--footer">SR</div>
-            <div>
-              <p className="brand-lockup__eyebrow">Skill Registry</p>
-              <p className="shell-footer__note">Official website for the product, with a short path to features and installation.</p>
-            </div>
+            <span className="shell-footer__name">Skill Registry</span>
           </div>
 
           <div className="shell-footer__groups">
@@ -87,8 +82,8 @@ export function AppShell({ children }: PropsWithChildren) {
         </div>
 
         <div className="shell-footer__bottom">
-          <span>© 2026 Skill Registry. MIT.</span>
-          <span>Official website for the product.</span>
+          <span>© 2026 Skill Registry · MIT License</span>
+          <span>Install from the terminal. Govern releases from the catalog.</span>
         </div>
       </footer>
     </div>

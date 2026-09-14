@@ -16,12 +16,12 @@ describe('FeaturesPage', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'How it works' })).toBeInTheDocument();
-    expect(screen.getByText('A private package registry for reusable agent skills.')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'What developers can do' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Automatic source publication' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Command model' })).toBeInTheDocument();
-    expect(screen.getByText(/npx skills@latest add/)).toBeInTheDocument();
-    expect(screen.getByText(/Stored at/)).toBeInTheDocument();
+    expect(screen.getByText('A simple home for the skills your agents rely on.')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Everything your team needs' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'A shared foundation for agent work' })).toBeInTheDocument();
+    expect(screen.queryByText('Command model')).not.toBeInTheDocument();
+    expect(screen.queryByText(/npx skills@latest add/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Stored at/)).not.toBeInTheDocument();
     expect(screen.queryByText('One product, three responsibilities')).not.toBeInTheDocument();
     expect(screen.queryByText('Explore catalog')).not.toBeInTheDocument();
   });

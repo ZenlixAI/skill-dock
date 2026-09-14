@@ -1,6 +1,6 @@
 # Production deployment
 
-This guide deploys the Catalog server with Docker Compose. It is intended for a single host or a small internal installation. Put a TLS reverse proxy and access-control layer in front of Catalog before exposing it to the public internet.
+This guide deploys the Catalog server with Docker Compose. It is intended for a single host or a small internal installation. The production stack does not deploy the static website. Put a TLS reverse proxy and access-control layer in front of Catalog before exposing it to the public internet.
 
 ## What is deployed
 
@@ -9,12 +9,13 @@ The production Compose stack contains:
 - `catalog`: the Skill Registry API, packaging workspace, and npm proxy;
 - `postgres`: persistent catalog, release, governance, audit, and idempotency state.
 
-The website is not deployed by this project. Host the static site separately, or use the repository installation link. The artifact repository is also external; use an existing npm-compatible repository such as Verdaccio, Nexus, or Artifactory.
+The website is maintained in this repository but is not part of the production Compose stack. Host the static site separately if you need it. The artifact repository is also external; use an existing npm-compatible repository such as Verdaccio, Nexus, or Artifactory.
 
 ## Prerequisites
 
 - Docker Engine 24 or later
 - Docker Compose v2 (`docker compose`)
+- Pull access to the base images used by `zarf/docker/Dockerfile` (or a locally retagged equivalent)
 - An npm-compatible artifact repository reachable from the catalog container
 - A DNS name and TLS termination for a public deployment
 
@@ -36,20 +37,20 @@ SKILL_REGISTRY_READER_TOKEN=<random-reader-token>
 SKILL_REGISTRY_AUTHORING_TOKEN=<random-authoring-token>
 SKILL_REGISTRY_PUBLISHER_TOKEN=<random-publisher-token>
 
-# Artifact repository URL and server-side credentials
+# Artifact repository URL
 SKILL_REGISTRY_ARTIFACT_READ_URL=https://artifacts.example.com/npm/skills/
+
+# Keep these server-side credentials private. Never expose them to browsers or CLI clients.
 SKILL_REGISTRY_ARTIFACT_READ_AUTHORIZATION=Bearer <artifact-read-token>
 SKILL_REGISTRY_ARTIFACT_PUBLISH_AUTHORIZATION=Bearer <artifact-publish-token>
 
 # The public Catalog URL returned in CLI install targets.
 SKILL_REGISTRY_PUBLIC_INSTALL_URL=https://registry.example.com/repository/skills-npm/
-
-# Do not publish this value to browsers or CLI clients.
 ```
 
 When a password contains reserved URL characters, percent-encode it in `SKILL_REGISTRY_DATABASE_URL`. The Docker network resolves the database host as `postgres`.
 
-The Compose definition binds Catalog to `127.0.0.1:8081`. Put a TLS reverse proxy or another public gateway in front of Catalog when it must be reachable by CLI clients.
+The Compose definition binds Catalog to `127.0.0.1:8081` by default (`CATALOG_PORT` can override this). Put a TLS reverse proxy or another public gateway in front of Catalog when it must be reachable by CLI clients.
 
 ## 2. Build and start
 
@@ -71,7 +72,7 @@ Verify container state and the health endpoints:
 docker compose --env-file zarf/compose/.env \
   -f zarf/compose/production.yml ps
 
-curl -fsS http://127.0.0.1:8080/healthz
+curl -fsS http://127.0.0.1:8081/healthz
 curl -fsS http://127.0.0.1:8081/readyz
 ```
 
@@ -84,7 +85,7 @@ docker compose --env-file zarf/compose/.env \
 
 ## 3. Configure the external reverse proxy
 
-Point the public hostname, for example `registry.example.com`, to the Catalog service at `http://127.0.0.1:8081`. Catalog serves both `/api/v1` and `/repository/skills-npm/` directly.
+Point the public hostname, for example `registry.example.com`, to the Catalog service at `http://127.0.0.1:8081` by default. If you set `CATALOG_PORT`, use that host port instead. Catalog serves both `/api/v1` and `/repository/skills-npm/` directly.
 
 The reverse proxy must:
 
@@ -129,9 +130,9 @@ The catalog server remains the authority for publication. Do not publish bundles
 The Compose stack creates two persistent named volumes:
 
 - `postgres_data`: authoritative PostgreSQL state;
-- `catalog_workspace`: the server-side packaging workspace.
+- `catalog_workspace`: server-side packaging workspace. It is operational storage, not a substitute for artifact repository retention.
 
-Back up PostgreSQL through the normal database-backup process and test restores. The workspace is operational storage, not a replacement for artifact repository retention. Back up the artifact repository independently.
+Back up PostgreSQL through the normal database-backup process and test restores. Back up the artifact repository independently.
 
 To update the application:
 

@@ -27,7 +27,7 @@ Bundle 存放在外部 npm 兼容制品仓库中。只有 catalog server 接受 
 
 ## Docker Compose
 
-本地开发使用根目录下的 Compose 文件。它会启动 Catalog、PostgreSQL 和本地 npm 兼容制品仓库，不部署网站：
+本地开发使用根目录下的 Compose 文件。它会启动 Catalog、PostgreSQL 和本地 npm 兼容制品仓库，但不会启动静态网站：
 
 ```bash
 cp .env.example .env
@@ -35,13 +35,21 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-Catalog API 地址是 <http://localhost:8080/api/v1>，npm proxy 地址是 <http://localhost:8080/repository/skills-npm/>。使用 `docker compose down` 停止服务；只有需要删除本地数据库和制品数据时才使用 `-v`。
+Catalog API 地址是 <http://localhost:8080/api/v1>，npm proxy 地址是 <http://localhost:8080/repository/skills-npm/>。可以用下面的命令验证服务状态和带认证的 Catalog 读取：
+
+```bash
+curl -fsS http://localhost:8080/readyz
+curl -fsS http://localhost:8080/api/v1/skills \
+  -H "Authorization: Bearer <reader-token>"
+```
+
+使用 `docker compose down` 停止服务；只有需要删除本地数据库和制品数据时才使用 `-v`。
 
 生产环境请使用[生产部署说明](docs/03-deployment.md)。该方案只运行 Catalog 和 PostgreSQL；Catalog 连接外部 npm 兼容制品仓库，并在 Catalog 前配置 TLS 反向代理。
 
 ## Dockerfile
 
-只使用 SQLite 运行 Catalog：
+使用 SQLite 运行独立 Catalog 镜像，仅适合本地评估。该命令没有配置外部制品仓库，因此不构成完整的 registry 安装或发布部署。生产环境请配置 PostgreSQL、npm 兼容制品仓库和公开安装地址。
 
 ```bash
 docker build -f zarf/docker/local/Dockerfile -t skill-registry-catalog .
@@ -57,19 +65,7 @@ docker run --rm -p 8080:8080 -v skill-registry-data:/var/lib/skill-registry \
 
 ## 文档
 
-- [产品方向与范围](docs/00-product-direction.md)
-- [Server 架构与配置](docs/01-server-architecture.md)
-- [CLI 协议与命令模型](docs/02-cli-contract.md)
-- [生产部署](docs/03-deployment.md)
-- [认证与访问](docs/04-auth-and-access.md)
-- [包与发布模型](docs/05-package-and-release-model.md)
-- [制品解析](docs/06-artifact-resolution.md)
-- [发布与导入工作流](docs/07-publish-and-import-workflows.md)
-- [安装解析与刷新](docs/08-install-resolution-and-refresh.md)
-- [治理与可见性](docs/09-governance-and-visibility.md)
-- [外部来源与发现](docs/10-external-sources-and-search.md)
-- [CLI 命令参考](docs/12-cli-command-spec.md)
-- [API 端点参考](docs/13-api-endpoint-spec.md)
+- [文档索引](docs/README.md)
 - [CLI 包说明](apps/skills-cli/README.md)
 
 ## 配置

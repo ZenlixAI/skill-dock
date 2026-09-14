@@ -27,7 +27,7 @@ After installing a local or git source, the CLI attempts a server import by defa
 
 ## Docker Compose
 
-For local development, use the root Compose file. It starts Catalog, PostgreSQL, and a local npm-compatible artifact repository. The website is not deployed by this project:
+For local development, use the root Compose file. It starts Catalog, PostgreSQL, and a local npm-compatible artifact repository; it does not start the static website:
 
 ```bash
 cp .env.example .env
@@ -35,13 +35,21 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-The Catalog API is available at <http://localhost:8080/api/v1>; its npm proxy is available at <http://localhost:8080/repository/skills-npm/>. Stop it with `docker compose down`; add `-v` only when you also want to remove local database and artifact data.
+The Catalog API is available at <http://localhost:8080/api/v1>; its npm proxy is available at <http://localhost:8080/repository/skills-npm/>. Verify the service and an authenticated catalog read with:
+
+```bash
+curl -fsS http://localhost:8080/readyz
+curl -fsS http://localhost:8080/api/v1/skills \
+  -H "Authorization: Bearer <reader-token>"
+```
+
+Stop it with `docker compose down`; add `-v` only when you also want to remove local database and artifact data.
 
 For a production deployment, use the [production deployment guide](docs/03-deployment.md). It runs only Catalog and PostgreSQL; connect Catalog to an external npm-compatible artifact repository and put a TLS reverse proxy in front of it.
 
 ## Build and run Catalog with Dockerfile
 
-Build and run Catalog alone with SQLite:
+Build and run the standalone Catalog image with SQLite for local evaluation. This command does not configure an external artifact repository, so it is not a complete registry-install or publication deployment. Configure PostgreSQL, an npm-compatible artifact repository, and the public install URL before using it for production.
 
 ```bash
 docker build -f zarf/docker/local/Dockerfile -t skill-registry-catalog .
@@ -57,19 +65,7 @@ Use real secrets and configure PostgreSQL plus an npm-compatible artifact reposi
 
 ## Documentation
 
-- [Product direction and scope](docs/00-product-direction.md)
-- [Server architecture and configuration](docs/01-server-architecture.md)
-- [CLI contract and command model](docs/02-cli-contract.md)
-- [Production deployment](docs/03-deployment.md)
-- [Auth and access](docs/04-auth-and-access.md)
-- [Package and release model](docs/05-package-and-release-model.md)
-- [Artifact resolution](docs/06-artifact-resolution.md)
-- [Publish and import workflows](docs/07-publish-and-import-workflows.md)
-- [Install resolution and refresh](docs/08-install-resolution-and-refresh.md)
-- [Governance and visibility](docs/09-governance-and-visibility.md)
-- [External sources and discovery](docs/10-external-sources-and-search.md)
-- [CLI command reference](docs/12-cli-command-spec.md)
-- [API endpoint reference](docs/13-api-endpoint-spec.md)
+- [Documentation index](docs/README.md)
 - [CLI package README](apps/skills-cli/README.md)
 
 ## Configuration

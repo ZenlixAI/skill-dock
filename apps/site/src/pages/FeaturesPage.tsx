@@ -1,75 +1,57 @@
-import { Search, Package, ShieldCheck } from 'lucide-react';
+import { Package, Search, ShieldCheck } from 'lucide-react';
 import { SectionHeading } from '../components/SectionHeading';
-import { SurfaceCard } from '../components/SurfaceCard';
 
 const FEATURES = [
   {
     icon: Search,
-    title: 'Find skills',
-    description: 'Search the catalog from the CLI and get the exact package and version your team published.',
+    title: 'Discover skills',
+    description: 'Help your team find the right capabilities quickly through a clear, focused library of reusable agent skills.',
   },
   {
     icon: Package,
-    title: 'Install from npm or Git',
-    description: 'Install a released package, or select a skill directly from a local folder or Git repository.',
+    title: 'Share skills',
+    description: 'Give developers and agents a consistent way to access the knowledge and workflows your team creates.',
   },
   {
     icon: ShieldCheck,
-    title: 'Keep releases controlled',
-    description: 'Catalog owns package identity, versions, access, and release records while Artifact Keeper stores bundles.',
+    title: 'Manage with confidence',
+    description: 'Keep your skill library organized, dependable, and aligned with the standards your team cares about.',
   },
 ] as const;
 
-const COMMANDS = [
-  'npx skills@latest find <query>',
-  'npx skills@latest add <package-name>',
-  'npx skills@latest add <git-url> --skill <name>',
-  'npx skills@latest update',
-  'npx skills@latest sync',
-].join('\n');
+const WORKFLOW = [
+  {
+    title: 'Find what you need',
+    description: 'Browse a shared collection of skills designed around the work your team does every day.',
+  },
+  {
+    title: 'Put it to work',
+    description: 'Make useful capabilities available to the agents and people who need them.',
+  },
+  {
+    title: 'Keep improving',
+    description: 'Maintain a trusted library as your team learns, changes, and grows.',
+  },
+] as const;
 
 export function FeaturesPage() {
   return (
     <div className="page-grid page-grid--detail features-page">
-      <section className="hero-shell hero-shell--split features-page__hero">
-        <div className="hero-shell__copy features-page__copy">
-          <SectionHeading
-            title="How it works"
-            description="A private package registry for reusable agent skills."
-            tone="frontstage"
-          />
-          <p className="features-page__lede">
-            The server keeps the catalog and release decisions in one place. The CLI keeps installation simple for developers.
-          </p>
-        </div>
-
-        <SurfaceCard
-          className="features-page__storage-card"
-          description="The public npm path and Catalog API are exposed by the same deployment."
-          title="One endpoint, two jobs"
-          variant="hero"
-        >
-          <dl className="features-page__storage-list">
-            <div>
-              <dt>Catalog</dt>
-              <dd>Search, authentication, package identity, and release resolution.</dd>
-            </div>
-            <div>
-              <dt>Artifact storage</dt>
-              <dd>Private npm-compatible storage for package metadata and tarballs.</dd>
-            </div>
-            <div>
-              <dt>CLI</dt>
-              <dd>Find, install, publish, import, update, and sync from the terminal.</dd>
-            </div>
-          </dl>
-        </SurfaceCard>
+      <section className="features-page__intro">
+        <SectionHeading
+          title="How it works"
+          description="A simple home for the skills your agents rely on."
+          tone="frontstage"
+        />
+        <p className="features-page__lede">
+          Skill Registry helps teams turn shared knowledge into reusable capabilities that are easy to discover, use, and maintain.
+        </p>
       </section>
 
-      <section className="features-page__section">
+      <section className="features-page__section" aria-labelledby="features-title">
         <div className="features-page__section-head">
-          <h2>What developers can do</h2>
-          <p>Most work happens through the CLI. You do not need to manage the artifact repository directly.</p>
+          <h2 id="features-title">Everything your team needs</h2>
+          <p>Bring the most important parts of a shared skill library into one calm, predictable experience.</p>
         </div>
 
         <div className="features-page__matrix">
@@ -83,39 +65,23 @@ export function FeaturesPage() {
         </div>
       </section>
 
-      <section className="features-page__section features-page__section--sync">
+      <section className="features-page__section" aria-labelledby="workflow-title">
         <div className="features-page__section-head">
-          <h2>Automatic source publication</h2>
-          <p>
-            When <code>syncOnAdd</code> is enabled, adding a local or Git source installs it first and then sends a copy through Catalog for publication. A failed publication does not remove the local install.
-          </p>
+          <h2 id="workflow-title">A shared foundation for agent work</h2>
+          <p>Move from a one-off solution to a capability your whole team can use and improve.</p>
         </div>
 
-        <SurfaceCard
-          className="features-page__sync-config"
-          description="Configure this globally, or override it per project."
-          title="Global configuration"
-          variant="subtle"
-        >
-          <pre className="features-page__code-block">
-            <code>{'{\n  "syncOnAdd": true,\n  "packageNamePrefix": "@acme.skill/",\n  "defaultVersion": "0.1.0"\n}'}</code>
-          </pre>
-          <p className="features-page__sync-note">
-            Stored at <code>${'{'}XDG_CONFIG_HOME:-~/.config{'}'}/skills/config.json</code>. A nearest project <code>skills.config.json</code> overrides global values.
-          </p>
-        </SurfaceCard>
-      </section>
-
-      <section className="features-page__section">
-        <div className="features-page__section-head">
-          <h2>Command model</h2>
-          <p>Use released packages for repeatable installs; use source commands when you are developing or importing a skill.</p>
+        <div className="features-page__workflow">
+          {WORKFLOW.map(({ title, description }, index) => (
+            <article className="features-page__workflow-item" key={title}>
+              <span aria-hidden="true">0{index + 1}</span>
+              <div>
+                <h3>{title}</h3>
+                <p>{description}</p>
+              </div>
+            </article>
+          ))}
         </div>
-        <SurfaceCard className="features-page__sync-config" description="See the repository README for installation and the full command reference." title="Common commands" variant="subtle">
-          <pre className="features-page__code-block">
-            <code>{COMMANDS}</code>
-          </pre>
-        </SurfaceCard>
       </section>
     </div>
   );
