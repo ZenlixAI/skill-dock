@@ -482,21 +482,7 @@ main {
   flex: none;
 }
 
-.brand__mark {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, var(--green) 24%, transparent);
-  border-radius: 9px;
-  background: var(--green-soft);
-  color: var(--green);
-}
 
-.brand__mark svg {
-  width: 21px;
-  height: 21px;
-}
 
 .brand__copy {
   display: grid;
@@ -1999,10 +1985,6 @@ main {
   gap: 12px;
 }
 
-.brand__mark--footer {
-  width: 32px;
-  height: 32px;
-}
 
 .site-footer__brand strong {
   display: block;
@@ -2138,21 +2120,7 @@ main {
   text-align: center;
 }
 
-.not-found__mark {
-  display: grid;
-  width: 54px;
-  height: 54px;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, var(--green) 24%, transparent);
-  border-radius: 14px;
-  background: var(--green-soft);
-  color: var(--green);
-}
 
-.not-found__mark svg {
-  width: 30px;
-  height: 30px;
-}
 
 .not-found h1 {
   font-size: clamp(2.2rem, 5vw, 3.2rem);
