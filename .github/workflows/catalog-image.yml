@@ -7,6 +7,14 @@ on:
       - master
     tags:
       - 'v*'
+    paths:
+      - 'cmd/**'
+      - 'internal/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'zarf/data/**'
+      - 'zarf/docker/**'
+      - '.github/workflows/catalog-image.yml'
   workflow_dispatch:
 
 permissions:
