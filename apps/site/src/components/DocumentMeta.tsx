@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
+import { SITE_URL } from '../lib/content';
 
 interface DocumentMetaProps {
   title: string;
@@ -40,7 +41,7 @@ export function DocumentMeta({ title, description }: DocumentMetaProps) {
       canonical.rel = 'canonical';
       document.head.appendChild(canonical);
     }
-    canonical.href = new URL(location.pathname, window.location.origin).href;
+    canonical.href = new URL(location.pathname, SITE_URL).href;
   }, [description, location.pathname, title]);
 
   return null;

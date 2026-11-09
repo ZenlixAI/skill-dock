@@ -9,41 +9,32 @@ export interface RouteMeta {
 export function getRouteMeta(pathname: string): RouteMeta {
   if (pathname === '/') {
     return {
-      title: 'Skill Registry · official website',
+      title: 'Skill Dock · A self-hosted registry for agent skills',
       description:
-        'A self-hosted registry for discovering, versioning, and governing the AI agent skills your team relies on.',
-      section: 'portal',
-    };
-  }
-
-  if (pathname === '/features') {
-    return {
-      title: 'Features · Skill Registry',
-      description:
-        'A private package registry for installing and sharing reusable agent skills.',
+        'Skill Dock is a self-hosted registry for agent skills. Store bundles in your npm registry, publish exact versions, resolve installs, and govern releases.',
       section: 'portal',
     };
   }
 
   if (pathname === '/privacy') {
     return {
-      title: 'Privacy · Skill Registry',
-      description: 'Understand how Skill Registry handles site usage data and product interactions.',
+      title: 'Privacy · Skill Dock',
+      description: 'How the Skill Dock website handles site usage data.',
       section: 'legal',
     };
   }
 
   if (pathname === '/terms') {
     return {
-      title: 'Terms · Skill Registry',
-      description: 'Review the terms for using the Skill Registry site and related materials.',
+      title: 'Terms · Skill Dock',
+      description: 'Terms for using the Skill Dock website and related materials.',
       section: 'legal',
     };
   }
 
   return {
-    title: 'Page not found · Skill Registry',
-    description: 'The requested page is not available. Return home or read the product features.',
+    title: 'Page not found · Skill Dock',
+    description: 'The requested page is not available. Return home or read the quick start.',
     section: 'not-found',
   };
 }

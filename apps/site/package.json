@@ -10,10 +10,13 @@
     "preview:e2e": "vite preview --host 127.0.0.1 --port 4174 --strictPort",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "prerender": "node scripts/prerender.mjs",
+    "build:seo": "npm run build && npm run prerender"
   },
   "dependencies": {
     "lucide-react": "^0.525.0",
+    "motion": "^14.10.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.9.4"

@@ -1,35 +1,18 @@
 import { Link } from 'react-router-dom';
-import { SectionHeading } from '../components/SectionHeading';
-import { SurfaceCard } from '../components/SurfaceCard';
+import { BrandMark } from '../components/BrandMark';
 
 export function NotFoundPage() {
   return (
-    <div className="page-grid">
-      <SectionHeading
-        title="Page not found"
-        description="That route is no longer available. Return home or read the product features."
-        tone="legal"
-      />
-
-      <SurfaceCard
-        action={
-          <div className="button-row">
-            <Link className="button button--primary" to="/">
-              Return home
-            </Link>
-            <Link className="button button--secondary" to="/features">
-              Read features
-            </Link>
-          </div>
-        }
-        title="Back to the site"
-        description="Public site routes keep the product overview, features, and legal pages in one place."
-        variant="subtle"
-      >
-        <div className="stack-column">
-          <div className="empty-box">This page does not exist in the public site map. Use the links above to continue.</div>
-        </div>
-      </SurfaceCard>
+    <div className="not-found">
+      <span className="not-found__mark">
+        <BrandMark />
+      </span>
+      <p className="eyebrow">404</p>
+      <h1>Page not found</h1>
+      <p className="lede">That route is not part of the site. Head back to the product page.</p>
+      <Link className="button button--primary" to="/">
+        Return home
+      </Link>
     </div>
   );
 }

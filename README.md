@@ -1,10 +1,10 @@
-# Skill Registry
+# Skill Dock
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
 > A self-hosted control plane for discovering, publishing, installing, and governing reusable agent skills.
 
-Skill Registry has two operational surfaces:
+Skill Dock has two operational surfaces:
 
 - the **catalog server**, which owns catalog data, hosted releases, install resolution, packaging, visibility, governance, and audit records;
 - the **`skills` CLI**, which discovers sources, installs skills locally, refreshes local state, and invokes catalog workflows.
@@ -67,6 +67,10 @@ Use real secrets and configure PostgreSQL plus an npm-compatible artifact reposi
 
 - [Documentation index](docs/README.md)
 - [CLI package README](apps/skills-cli/README.md)
+
+## Website
+
+The landing page lives in `apps/site` and deploys as a static site to <https://skill-dock.pages.dev>. See [website deployment](docs/03-deployment.md#website-deployment) for the build and GitHub Actions setup.
 
 ## Configuration
 

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { AppShell } from './AppShell';
@@ -18,28 +18,40 @@ function renderAppShell(pathname: string) {
 }
 
 describe('AppShell', () => {
-  it('renders the dark shell with landing navigation and skip link', async () => {
-    const { container } = renderAppShell('/features');
+  it('renders the primary navigation and skip link', () => {
+    renderAppShell('/');
 
-    expect(await screen.findByRole('link', { name: 'Skip to main content' })).toHaveAttribute('href', '#main-content');
-    expect(container.firstElementChild).toHaveClass('app-shell', 'app-shell--frontstage', 'app-shell--detail');
-    expect(screen.getByRole('heading', { name: 'Skill Registry' })).toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: 'Home' })).toHaveLength(2);
-    expect(screen.getAllByRole('link', { name: 'Features' })).toHaveLength(2);
-    expect(screen.getAllByRole('link', { name: 'Installation' })).toHaveLength(2);
-    expect(screen.getAllByRole('link', { name: 'Installation' })[0]).toHaveAttribute('href', 'https://github.com/ZenlixAI/skill-dock#docker-compose');
-    expect(screen.getAllByRole('link', { name: 'Installation' })[1]).toHaveAttribute('href', 'https://github.com/ZenlixAI/skill-dock#docker-compose');
-    expect(screen.queryByRole('link', { name: 'GitHub' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Explore' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'registry' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'governance' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'audit' })).not.toBeInTheDocument();
+    const primary = screen.getByRole('navigation', { name: 'Primary' });
+
+    expect(screen.getByRole('link', { name: 'Skip to main content' })).toHaveAttribute(
+      'href',
+      '#main-content'
+    );
+    expect(screen.getByRole('link', { name: 'Skill Dock home' })).toHaveAttribute('href', '/');
+    expect(screen.getByText('agent skill registry')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open source under MIT' })).toHaveAttribute(
+      'href',
+      'https://github.com/ZenlixAI/skill-dock/blob/master/LICENSE'
+    );
+    expect(within(primary).getByRole('link', { name: 'How it works' })).toHaveAttribute(
+      'href',
+      '/#how-it-works'
+    );
+    expect(within(primary).getByRole('link', { name: 'Quick start' })).toHaveAttribute(
+      'href',
+      '/#quick-start'
+    );
+    expect(screen.getByRole('link', { name: 'Skill Dock on GitHub' })).toHaveAttribute(
+      'href',
+      'https://github.com/ZenlixAI/skill-dock'
+    );
   });
 
-  it('keeps the shell background and landing accent classes on the home page', async () => {
-    const { container } = renderAppShell('/');
+  it('renders legal pages inside the same shell', () => {
+    renderAppShell('/privacy');
 
-    await screen.findByRole('link', { name: 'Skip to main content' });
-    expect(container.firstElementChild).toHaveClass('app-shell', 'app-shell--frontstage', 'app-shell--landing');
+    expect(screen.getByRole('contentinfo')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', '/privacy');
+    expect(screen.getByRole('link', { name: 'Terms' })).toHaveAttribute('href', '/terms');
   });
 });

@@ -1,10 +1,10 @@
-# Skill Registry
+# Skill Dock
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
 > 用于发现、发布、安装和治理可复用 Agent Skill 的自托管控制平面。
 
-Skill Registry 包含两个运行面：
+Skill Dock 包含两个运行面：
 
 - **Catalog server**：负责 catalog 数据、托管 release、安装解析、打包、可见性、治理和审计记录；
 - **`skills` CLI**：负责发现来源、本地安装、刷新本地状态，以及调用 catalog 工作流。
@@ -67,6 +67,10 @@ docker run --rm -p 8080:8080 -v skill-registry-data:/var/lib/skill-registry \
 
 - [文档索引](docs/README.md)
 - [CLI 包说明](apps/skills-cli/README.md)
+
+## 官网
+
+Landing Page 位于 `apps/site`，以静态站点形式发布到 <https://skill-dock.pages.dev>。构建和 GitHub Actions 配置见[官网部署说明](docs/03-deployment.md#website-deployment)。
 
 ## 配置
 

@@ -1,0 +1,17 @@
+{
+  "name": "Skill Dock",
+  "short_name": "Skill Dock",
+  "description": "A self-hosted registry for agent skills.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f8f4",
+  "theme_color": "#0f7a41",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

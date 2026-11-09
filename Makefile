@@ -37,7 +37,7 @@ CLI_PUBLISH_VERSION_STATE ?= $(ARTIFACTKEEPER_STATE_DIR)/cli-snapshot.version
 CLI_PUBLISH_DIST_TAG ?= latest
 CLI_PUBLISH_REGISTRY ?= http://127.0.0.1:18080/repository/skills-npm/
 
-.PHONY: test build dev dev-update down publish-cli-snapshot
+.PHONY: test build dev dev-update down publish-cli-snapshot deploy-site
 
 test:
 	env GOCACHE=$(GO_CACHE) go test ./...
@@ -101,3 +101,9 @@ publish-cli:
 
 down:
 	kind delete cluster --name $(KIND_CLUSTER)
+
+deploy-site:
+	cd $(SITE_DIR) && npm ci
+	cd $(SITE_DIR) && npx playwright install chromium
+	cd $(SITE_DIR) && npm test && npm run build:seo
+	cd $(SITE_DIR) && npx wrangler pages deploy dist --project-name=skill-dock --branch=main

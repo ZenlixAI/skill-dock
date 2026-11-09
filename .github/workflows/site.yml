@@ -1,0 +1,98 @@
+name: Site
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'apps/site/**'
+      - '.github/workflows/site.yml'
+  pull_request:
+    paths:
+      - 'apps/site/**'
+      - '.github/workflows/site.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build site
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: apps/site
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/site/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build static site
+        run: npm run build:seo
+
+      - name: Upload site artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-dist
+          path: apps/site/dist
+          if-no-files-found: error
+
+  deploy:
+    name: Deploy to Cloudflare Pages
+    needs: build
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://skill-dock.pages.dev
+    steps:
+      - name: Download site artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: site-dist
+          path: dist
+
+      - name: Check Cloudflare credentials
+        id: cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy
+        if: steps.cloudflare.outputs.configured == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=skill-dock --branch=main
+
+      - name: Report missing token
+        if: steps.cloudflare.outputs.configured != 'true'
+        run: |
+          echo "::warning::CLOUDFLARE_API_TOKEN is not set. Add it to the repository secrets to enable automatic site deploys."

@@ -6,7 +6,7 @@ This guide deploys the Catalog server with Docker Compose. It is intended for a 
 
 The production Compose stack contains:
 
-- `catalog`: the Skill Registry API, packaging workspace, and npm proxy;
+- `catalog`: the Skill Dock API, packaging workspace, and npm proxy;
 - `postgres`: persistent catalog, release, governance, audit, and idempotency state.
 
 The website is maintained in this repository but is not part of the production Compose stack. Host the static site separately if you need it. The artifact repository is also external; use an existing npm-compatible repository such as Verdaccio, Nexus, or Artifactory.
@@ -106,21 +106,23 @@ curl -fsS https://registry.example.com/api/v1/skills \
 
 ## 4. Configure the CLI
 
-Install or discover skills with a reader token:
+Install the `skills` CLI from this repository or from the npm registry that hosts your catalog copy. The commands below assume `skills` is on `PATH`.
+
+Discover and install with a reader token:
 
 ```bash
 export SKILLS_REGISTRY_URL=https://registry.example.com
 export SKILLS_REGISTRY_TOKEN=<reader-token>
 
-npx skills find
-npx skills add @scope/skill-name
+skills find
+skills add @scope/skill-name
 ```
 
 Use the token appropriate to the operation for packaging or publication:
 
 ```bash
 export SKILLS_REGISTRY_TOKEN=<publisher-token>
-npx skills publish ./my-skill
+skills publish ./my-skill
 ```
 
 The catalog server remains the authority for publication. Do not publish bundles directly to the artifact repository.
@@ -169,3 +171,38 @@ Do not use `down --volumes` unless you intentionally want to delete the database
 - [Artifact resolution](06-artifact-resolution.md)
 - [CLI command reference](12-cli-command-spec.md)
 - [`zarf/compose/production.yml`](../zarf/compose/production.yml)
+
+## Website deployment
+
+The public site is a static Vite build in `apps/site`. The production Cloudflare Pages project is `skill-dock`, available at <https://skill-dock.pages.dev>.
+
+Build and deploy it manually:
+
+```bash
+cd apps/site
+npm ci
+npx playwright install chromium
+npm test
+npm run build:seo
+npx wrangler pages deploy dist --project-name=skill-dock --branch=main
+```
+
+The SEO build renders the landing page to `dist/index.html`, and the legal pages to `dist/privacy.html` and `dist/terms.html`. The build also ships `dist/_redirects` and `dist/_headers`, so `/privacy` and `/terms` work on direct navigation and asset responses carry the expected cache and security headers.
+
+### GitHub Actions
+
+Two workflows run from the repository root:
+
+- `.github/workflows/site.yml` runs the site tests, builds the static site, and deploys it to Cloudflare Pages when `main` or `master` receives a push.
+- `.github/workflows/catalog-image.yml` builds the catalog image from `zarf/docker/ci/Dockerfile` and publishes it to GHCR for `main`, `master`, and `v*` tags.
+
+The site workflow needs these repository secrets:
+
+| Secret | Value |
+| --- | --- |
+| `CLOUDFLARE_ACCOUNT_ID` | The Cloudflare account that owns the Pages project |
+| `CLOUDFLARE_API_TOKEN` | A token with `Account > Cloudflare Pages > Edit` |
+
+The image workflow uses the repository `GITHUB_TOKEN` and needs no extra secret. The published image is `ghcr.io/<owner>/skill-dock-catalog`. The workflow lowercases the owner for the image name.
+
+If `CLOUDFLARE_API_TOKEN` is not set, the site workflow builds and tests the site, then skips the deploy step with a warning. Add the secret to enable automatic deploys.

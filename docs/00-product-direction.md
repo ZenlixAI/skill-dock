@@ -1,6 +1,6 @@
 # Product direction and scope
 
-Skill Registry is a self-hosted control plane for reusable agent skills. It makes skills discoverable, publishable, installable, and governable while using an external npm-compatible repository for bundle storage.
+Skill Dock is a self-hosted control plane for reusable agent skills. It makes skills discoverable, publishable, installable, and governable while using an external npm-compatible repository for bundle storage.
 
 ## Responsibilities
 

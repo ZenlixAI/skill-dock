@@ -12,3 +12,5 @@ apps/skills-web/test-results/
 .superpowers
 .vite
 test-results/
+
+.wrangler/
