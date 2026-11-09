@@ -22,7 +22,7 @@ const CLI_STEPS = [
     title: 'Build the CLI',
     body: 'The CLI lives in the same repository. Install it globally after the build.',
     command:
-      'pnpm --dir apps/skills-cli install\npnpm --dir apps/skills-cli build\nnpm install -g ./apps/skills-cli',
+      'npx -y pnpm@10.17.1 --dir apps/skills-cli install\nnpx -y pnpm@10.17.1 --dir apps/skills-cli build\nnpm install -g ./apps/skills-cli',
   },
   {
     title: 'Point it at the catalog',

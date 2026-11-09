@@ -106,21 +106,23 @@ curl -fsS https://registry.example.com/api/v1/skills \
 
 ## 4. Configure the CLI
 
-Install or discover skills with a reader token:
+Install the `skills` CLI from this repository or from the npm registry that hosts your catalog copy. The commands below assume `skills` is on `PATH`.
+
+Discover and install with a reader token:
 
 ```bash
 export SKILLS_REGISTRY_URL=https://registry.example.com
 export SKILLS_REGISTRY_TOKEN=<reader-token>
 
-npx skills find
-npx skills add @scope/skill-name
+skills find
+skills add @scope/skill-name
 ```
 
 Use the token appropriate to the operation for packaging or publication:
 
 ```bash
 export SKILLS_REGISTRY_TOKEN=<publisher-token>
-npx skills publish ./my-skill
+skills publish ./my-skill
 ```
 
 The catalog server remains the authority for publication. Do not publish bundles directly to the artifact repository.
