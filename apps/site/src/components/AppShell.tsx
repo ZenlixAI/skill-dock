@@ -18,7 +18,8 @@ function useHashScroll() {
     const element = document.getElementById(id);
     if (!element) return;
     requestAnimationFrame(() => {
-      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      element.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
     });
   }, [location]);
 }
