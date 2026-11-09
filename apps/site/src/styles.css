@@ -102,10 +102,7 @@ html {
 body {
   margin: 0;
   min-width: 320px;
-  background:
-    radial-gradient(900px 520px at 82% -8%, var(--glow-green), transparent 62%),
-    radial-gradient(760px 460px at -10% 24%, var(--glow-blue), transparent 62%),
-    var(--bg);
+  background: var(--bg);
   color: var(--text);
   font-family: var(--sans);
   font-size: 16px;
@@ -210,9 +207,32 @@ kbd {
 }
 
 .site-shell {
+  position: relative;
+  z-index: 1;
   display: flex;
   min-height: 100vh;
   flex-direction: column;
+}
+
+.threads-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.threads-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.threads-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 main {

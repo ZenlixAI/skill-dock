@@ -46,6 +46,12 @@ Object.defineProperty(window, 'matchMedia', {
   writable: true,
 });
 
+Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+  configurable: true,
+  value: () => null,
+  writable: true,
+});
+
 Object.defineProperty(navigator, 'clipboard', {
   configurable: true,
   value: {

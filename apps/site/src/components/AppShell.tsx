@@ -6,6 +6,7 @@ import { DOCS_URL, LICENSE_URL, NAV_ITEMS, REPO_URL } from '../lib/content';
 import { getRouteMeta } from '../lib/routeMeta';
 import clsx from '../vendor/clsx';
 import { BrandMark } from './BrandMark';
+import { ThreadsBackground } from './ThreadsBackground';
 import { DocumentMeta } from './DocumentMeta';
 import { ScrollProgress } from './ScrollProgress';
 import { ThemeToggle } from './ThemeToggle';
@@ -37,6 +38,7 @@ export function AppShell({ children }: PropsWithChildren) {
 
   return (
     <div className="site-shell">
+      <ThreadsBackground />
       <DocumentMeta description={routeMeta.description} title={routeMeta.title} />
       <ScrollProgress />
 
