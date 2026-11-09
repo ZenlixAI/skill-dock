@@ -4,6 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+    />
+    <meta
       name="description"
       content="Skill Dock is a self-hosted registry for agent skills. Store bundles in your npm registry, publish exact versions, resolve installs, and govern releases."
     />
@@ -67,10 +71,6 @@
     <link rel="preload" as="font" crossorigin href="/fonts/inter-latin-400-normal.woff2" type="font/woff2" />
     <link rel="preload" as="font" crossorigin href="/fonts/jetbrains-mono-latin-400-normal.woff2" type="font/woff2" />
     <link rel="stylesheet" href="/fonts/fonts.css" />
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
-    />
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",

@@ -187,7 +187,7 @@ npm run build:seo
 npx wrangler pages deploy dist --project-name=skill-dock --branch=main
 ```
 
-The SEO build renders the landing page and legal pages to static HTML before writing `dist/_redirects` and `dist/_headers`. Cloudflare Pages uses both, so `/privacy` and `/terms` work on direct navigation and asset responses carry the expected cache and security headers.
+The SEO build renders the landing page to `dist/index.html`, and the legal pages to `dist/privacy.html` and `dist/terms.html`. The build also ships `dist/_redirects` and `dist/_headers`, so `/privacy` and `/terms` work on direct navigation and asset responses carry the expected cache and security headers.
 
 ### GitHub Actions
 
