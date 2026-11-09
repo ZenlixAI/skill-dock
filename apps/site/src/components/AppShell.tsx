@@ -5,7 +5,6 @@ import { Link, NavLink, useLocation } from 'react-router-dom';
 import { DOCS_URL, LICENSE_URL, NAV_ITEMS, REPO_URL } from '../lib/content';
 import { getRouteMeta } from '../lib/routeMeta';
 import clsx from '../vendor/clsx';
-import { BrandMark } from './BrandMark';
 import { ThreadsBackground } from './ThreadsBackground';
 import { DocumentMeta } from './DocumentMeta';
 import { ScrollProgress } from './ScrollProgress';
@@ -49,9 +48,6 @@ export function AppShell({ children }: PropsWithChildren) {
       <header className="site-header">
         <div className="site-header__inner">
           <Link aria-label="Skill Dock home" className="brand" to="/">
-            <span className="brand__mark">
-              <BrandMark />
-            </span>
             <span className="brand__copy">
               <strong>Skill Dock</strong>
               <small>agent skill registry</small>
@@ -126,9 +122,6 @@ export function AppShell({ children }: PropsWithChildren) {
       <footer className="site-footer">
         <div className="site-footer__top">
           <div className="site-footer__brand">
-            <span className="brand__mark brand__mark--footer">
-              <BrandMark />
-            </span>
             <div>
               <strong>Skill Dock</strong>
               <p>A self-hosted registry for agent skills.</p>
