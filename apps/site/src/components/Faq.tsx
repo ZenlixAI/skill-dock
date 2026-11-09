@@ -1,4 +1,4 @@
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { motion, useReducedMotion } from 'motion/react';
 import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { FAQ } from '../lib/content';
@@ -44,22 +44,18 @@ export function Faq() {
                     </span>
                   </button>
                 </h3>
-                <AnimatePresence initial={false}>
-                  {isOpen ? (
-                    <motion.div
-                      animate={{ height: 'auto', opacity: 1 }}
-                      aria-labelledby={triggerId}
-                      className="faq-panel"
-                      exit={{ height: 0, opacity: 0 }}
-                      id={panelId}
-                      initial={reduce ? { height: 'auto', opacity: 1 } : { height: 0, opacity: 0 }}
-                      role="region"
-                      transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
-                    >
-                      <p>{item.answer}</p>
-                    </motion.div>
-                  ) : null}
-                </AnimatePresence>
+                <motion.div
+                  animate={isOpen ? { height: 'auto', opacity: 1 } : { height: 0, opacity: 0 }}
+                  aria-hidden={!isOpen}
+                  aria-labelledby={triggerId}
+                  className="faq-panel"
+                  id={panelId}
+                  initial={false}
+                  role="region"
+                  transition={reduce ? { duration: 0 } : { duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  <p>{item.answer}</p>
+                </motion.div>
               </div>
             );
           })}
