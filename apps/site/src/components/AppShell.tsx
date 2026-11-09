@@ -5,7 +5,6 @@ import { Link, NavLink, useLocation } from 'react-router-dom';
 import { DOCS_URL, LICENSE_URL, NAV_ITEMS, REPO_URL } from '../lib/content';
 import { getRouteMeta } from '../lib/routeMeta';
 import clsx from '../vendor/clsx';
-import { BackgroundFX } from './BackgroundFX';
 import { BrandMark } from './BrandMark';
 import { DocumentMeta } from './DocumentMeta';
 import { ScrollProgress } from './ScrollProgress';
@@ -38,7 +37,6 @@ export function AppShell({ children }: PropsWithChildren) {
 
   return (
     <div className="site-shell">
-      <BackgroundFX />
       <DocumentMeta description={routeMeta.description} title={routeMeta.title} />
       <ScrollProgress />
 
