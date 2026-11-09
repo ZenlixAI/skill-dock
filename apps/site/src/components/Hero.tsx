@@ -92,7 +92,7 @@ export function Hero() {
       <div className="hero__copy">
         <p className="eyebrow">
           <span aria-hidden="true" className="eyebrow__dot" />
-          Self-hosted · MIT
+          Self-hosted · Open source
         </p>
 
         <h1 className="hero__title" id="hero-title">
@@ -100,9 +100,8 @@ export function Hero() {
         </h1>
 
         <p className="hero__lede">
-          Skill Registry is a catalog for the skills your team writes. Bundles live in your npm
-          registry. The catalog decides which release an agent gets and records every change to that
-          decision.
+          Skill Dock is a self-hosted registry for agent skills. Bundles live in your npm registry.
+          The catalog decides which release an agent gets and records every change to that decision.
         </p>
 
         <div className="hero__actions">

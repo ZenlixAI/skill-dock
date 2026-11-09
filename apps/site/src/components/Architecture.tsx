@@ -21,7 +21,7 @@ export function Architecture() {
         <SectionHeader
           eyebrow="Architecture"
           id="architecture-title"
-          lede="The catalog is one Go binary. Postgres holds release records and governance data. Your npm registry holds the bundle bytes. The CLI runs on a developer machine or in CI."
+          lede="The catalog is a service you run. Postgres holds release records and governance data. Your npm registry holds the bundle bytes. The CLI runs on a developer machine or in CI."
           title="Three pieces, one release path."
         />
       </Reveal>
@@ -76,10 +76,6 @@ export function Architecture() {
             </div>
             <h3>{selected.title}</h3>
             <p>{selected.detail}</p>
-            <div className="arch-detail__meta">
-              <span>runs on {selected.subtitle}</span>
-              <span className="mono">{selected.id}</span>
-            </div>
           </div>
         </div>
       </Reveal>

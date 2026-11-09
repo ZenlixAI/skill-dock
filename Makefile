@@ -103,5 +103,7 @@ down:
 	kind delete cluster --name $(KIND_CLUSTER)
 
 deploy-site:
-	cd $(SITE_DIR) && npm ci && npm test && npm run build
+	cd $(SITE_DIR) && npm ci
+	cd $(SITE_DIR) && npx playwright install chromium
+	cd $(SITE_DIR) && npm test && npm run build:seo
 	cd $(SITE_DIR) && npx wrangler pages deploy dist --project-name=skill-dock --branch=main

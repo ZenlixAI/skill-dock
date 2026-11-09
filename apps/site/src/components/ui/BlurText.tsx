@@ -20,10 +20,8 @@ export function BlurText({ text, className, delay = 0, stagger = 0.03 }: BlurTex
 
   return (
     <span className={clsx('blur-text', className)}>
-      <span className="sr-only">{text}</span>
       {words.map((word, index) => (
         <motion.span
-          aria-hidden="true"
           className="blur-text__word"
           initial={{ filter: 'blur(8px)', y: 12 }}
           key={`${word}-${index}`}

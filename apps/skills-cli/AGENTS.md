@@ -4,7 +4,7 @@ This file provides guidance to AI coding agents working on the `skills` CLI code
 
 ## Project overview
 
-`skills` is the CLI for the Skill Registry platform.
+`skills` is the CLI for the Skill Dock platform.
 
 ## Command model
 

@@ -18,8 +18,8 @@
       <path d="M2 11.5 12 17 22 11.5" stroke="#7CF0A7" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
       <path d="M2 16.5 12 22 22 16.5" stroke="#7CF0A7" stroke-opacity="0.5" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
     </g>
-    <text x="62" y="21" fill="#F1F5F1" font-family="Inter, Helvetica, Arial, sans-serif" font-size="22" font-weight="600" letter-spacing="-0.6">Skill Registry</text>
-    <text x="62" y="38" fill="#7E8B80" font-family="JetBrains Mono, Menlo, monospace" font-size="11" letter-spacing="0.8">SELF-HOSTED CATALOG</text>
+    <text x="62" y="21" fill="#F1F5F1" font-family="Inter, Helvetica, Arial, sans-serif" font-size="22" font-weight="600" letter-spacing="-0.6">Skill Dock</text>
+    <text x="62" y="38" fill="#7E8B80" font-family="JetBrains Mono, Menlo, monospace" font-size="11" letter-spacing="0.8">AGENT SKILL REGISTRY</text>
   </g>
   <text x="72" y="268" fill="#F1F5F1" font-family="Inter, Helvetica, Arial, sans-serif" font-size="72" font-weight="600" letter-spacing="-3.6">Agent skills, with</text>
   <text x="72" y="348" fill="#F1F5F1" font-family="Inter, Helvetica, Arial, sans-serif" font-size="72" font-weight="600" letter-spacing="-3.6">a release process.</text>
@@ -28,8 +28,8 @@
   <g transform="translate(72 512)">
     <rect width="250" height="46" rx="10" fill="#7CF0A7"/>
     <text x="20" y="29" fill="#071009" font-family="Inter, Helvetica, Arial, sans-serif" font-size="16" font-weight="600">docker compose up</text>
-    <rect x="268" y="0" width="230" height="46" rx="10" fill="#FFFFFF" fill-opacity="0.04" stroke="#FFFFFF" stroke-opacity="0.12"/>
-    <text x="288" y="29" fill="#B8C2B9" font-family="JetBrains Mono, Menlo, monospace" font-size="14">github.com/ZenlixAI</text>
+    <rect x="268" y="0" width="280" height="46" rx="10" fill="#FFFFFF" fill-opacity="0.04" stroke="#FFFFFF" stroke-opacity="0.12"/>
+    <text x="288" y="29" fill="#B8C2B9" font-family="JetBrains Mono, Menlo, monospace" font-size="14">github.com/ZenlixAI/skill-dock</text>
   </g>
   <g transform="translate(820 200)">
     <rect width="308" height="318" rx="20" fill="#0F1510" stroke="#FFFFFF" stroke-opacity="0.12"/>

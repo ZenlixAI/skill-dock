@@ -8,6 +8,7 @@ import clsx from '../vendor/clsx';
 import { BrandMark } from './BrandMark';
 import { DocumentMeta } from './DocumentMeta';
 import { ScrollProgress } from './ScrollProgress';
+import { ThemeToggle } from './ThemeToggle';
 
 function useHashScroll() {
   const location = useLocation();
@@ -45,13 +46,13 @@ export function AppShell({ children }: PropsWithChildren) {
 
       <header className="site-header">
         <div className="site-header__inner">
-          <Link aria-label="Skill Registry home" className="brand" to="/">
+          <Link aria-label="Skill Dock home" className="brand" to="/">
             <span className="brand__mark">
               <BrandMark />
             </span>
             <span className="brand__copy">
-              <strong>Skill Registry</strong>
-              <small>self-hosted catalog</small>
+              <strong>Skill Dock</strong>
+              <small>agent skill registry</small>
             </span>
           </Link>
 
@@ -64,8 +65,9 @@ export function AppShell({ children }: PropsWithChildren) {
           </nav>
 
           <div className="site-header__actions">
+            <ThemeToggle />
             <a
-              aria-label="Skill Registry on GitHub"
+              aria-label="Skill Dock on GitHub"
               className="icon-button"
               href={REPO_URL}
               rel="noreferrer"
@@ -126,8 +128,8 @@ export function AppShell({ children }: PropsWithChildren) {
               <BrandMark />
             </span>
             <div>
-              <strong>Skill Registry</strong>
-              <p>A self-hosted catalog for agent skills.</p>
+              <strong>Skill Dock</strong>
+              <p>A self-hosted registry for agent skills.</p>
             </div>
           </div>
 
@@ -187,8 +189,10 @@ export function AppShell({ children }: PropsWithChildren) {
         </div>
 
         <div className="site-footer__bottom">
-          <span>© 2026 Skill Registry</span>
-          <span className="mono">MIT · Go · TypeScript</span>
+          <span>© 2026 Skill Dock</span>
+          <a className="site-footer__license" href={LICENSE_URL} rel="noreferrer" target="_blank">
+            Open source under MIT
+          </a>
         </div>
       </footer>
     </div>

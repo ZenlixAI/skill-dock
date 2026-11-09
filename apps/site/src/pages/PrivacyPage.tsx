@@ -6,7 +6,7 @@ export function PrivacyPage() {
       <header className="legal-page__header">
         <p className="eyebrow">Legal</p>
         <h1>Privacy</h1>
-        <p className="lede">How the Skill Registry website handles site usage data.</p>
+        <p className="lede">How the Skill Dock website handles site usage data.</p>
       </header>
 
       <article aria-label="Privacy content" className="legal-page__article">

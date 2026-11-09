@@ -9,7 +9,7 @@ export function ReleaseDiscipline() {
         <h2 id="release-title">A git ref is not a release.</h2>
         <p className="lede">
           A skill can change how an agent works. It can also ship scripts. If the source is a
-          branch, the same name can point at different files tomorrow. Skill Registry gives each
+          branch, the same name can point at different files tomorrow. Skill Dock gives each
           bundle an exact version, an integrity hash, and a record of whether it is installable.
         </p>
       </Reveal>

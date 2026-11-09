@@ -9,7 +9,7 @@ afterEach(() => {
 
 describe('LandingPage', () => {
   it('introduces the catalog, the release path, and the quick start', async () => {
-    render(
+    const { container } = render(
       <MemoryRouter>
         <LandingPage />
       </MemoryRouter>
@@ -36,6 +36,9 @@ describe('LandingPage', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: 'Install' }));
     expect(await screen.findByRole('tabpanel', { name: 'Install' })).toBeInTheDocument();
+
+    expect(container.querySelectorAll('.faq-item')).toHaveLength(5);
+    expect(screen.queryByText('MIT · Go · TypeScript')).not.toBeInTheDocument();
   });
 
   it('keeps the public copy focused on the product path', () => {

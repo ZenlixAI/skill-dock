@@ -6,7 +6,7 @@ export function TermsPage() {
       <header className="legal-page__header">
         <p className="eyebrow">Legal</p>
         <h1>Terms</h1>
-        <p className="lede">Terms for using the Skill Registry website and related materials.</p>
+        <p className="lede">Terms for using the Skill Dock website and related materials.</p>
       </header>
 
       <article aria-label="Terms content" className="legal-page__article">
@@ -21,7 +21,7 @@ export function TermsPage() {
         <section>
           <h2>Software license</h2>
           <p>
-            The Skill Registry source code is released under the MIT License. The license in the{' '}
+            The Skill Dock source code is released under the MIT License. The license in the{' '}
             <a href="https://github.com/ZenlixAI/skill-dock/blob/master/LICENSE">repository</a>{' '}
             governs your use of the software.
           </p>

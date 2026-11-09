@@ -5,29 +5,63 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="A self-hosted catalog for agent skills. Store bundles in your npm registry, publish exact versions, resolve installs, and govern releases."
+      content="Skill Dock is a self-hosted registry for agent skills. Store bundles in your npm registry, publish exact versions, resolve installs, and govern releases."
     />
-    <meta name="theme-color" content="#070908" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f6f8f4" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#070908" media="(prefers-color-scheme: dark)" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="author" content="Skill Dock" />
+    <meta name="application-name" content="Skill Dock" />
+    <meta name="apple-mobile-web-app-title" content="Skill Dock" />
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Skill Registry" />
-    <meta property="og:title" content="Skill Registry · A private catalog for agent skills" />
+    <meta property="og:site_name" content="Skill Dock" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:title" content="Skill Dock · A self-hosted registry for agent skills" />
     <meta
       property="og:description"
-      content="Store bundles in your npm registry. Publish exact versions, resolve installs, and govern releases from one catalog."
+      content="Store agent skill bundles in your npm registry. Publish exact versions, resolve installs, and govern releases from one catalog."
     />
     <meta property="og:image" content="https://skill-dock.pages.dev/og.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="Skill Dock release record showing package @acme.skill/release-notes version 1.4.0"
+    />
     <meta property="og:url" content="https://skill-dock.pages.dev/" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Skill Registry · A private catalog for agent skills" />
+    <meta name="twitter:title" content="Skill Dock · A self-hosted registry for agent skills" />
     <meta
       name="twitter:description"
-      content="Store bundles in your npm registry. Publish exact versions, resolve installs, and govern releases from one catalog."
+      content="Store agent skill bundles in your npm registry. Publish exact versions, resolve installs, and govern releases from one catalog."
     />
     <meta name="twitter:image" content="https://skill-dock.pages.dev/og.png" />
-    <title>Skill Registry · A private catalog for agent skills</title>
+    <meta
+      name="twitter:image:alt"
+      content="Skill Dock release record showing package @acme.skill/release-notes version 1.4.0"
+    />
+    <title>Skill Dock · A self-hosted registry for agent skills</title>
     <link rel="canonical" href="https://skill-dock.pages.dev/" />
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('skill-dock-theme');
+          var theme =
+            stored === 'light' || stored === 'dark'
+              ? stored
+              : window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light';
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme;
+          document.querySelectorAll('meta[name="theme-color"]').forEach(function (meta) {
+            meta.setAttribute('content', theme === 'dark' ? '#070908' : '#f6f8f4');
+          });
+        } catch (error) {}
+      })();
+    </script>
+    <link rel="manifest" href="/site.webmanifest" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/favicon.svg" />
     <link rel="preload" as="font" crossorigin href="/fonts/inter-latin-400-normal.woff2" type="font/woff2" />
@@ -37,21 +71,82 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
     />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "https://skill-dock.pages.dev/#website",
+            "url": "https://skill-dock.pages.dev/",
+            "name": "Skill Dock",
+            "description": "A self-hosted registry for agent skills.",
+            "inLanguage": "en"
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://skill-dock.pages.dev/#software",
+            "name": "Skill Dock",
+            "url": "https://skill-dock.pages.dev/",
+            "applicationCategory": "DeveloperApplication",
+            "operatingSystem": "Linux, macOS, Windows",
+            "description": "Skill Dock stores agent skill bundles in your npm registry, publishes exact versions, resolves installs, and governs releases.",
+            "license": "https://github.com/ZenlixAI/skill-dock/blob/master/LICENSE",
+            "isAccessibleForFree": true,
+            "sameAs": ["https://github.com/ZenlixAI/skill-dock"]
+          },
+          {
+            "@type": "FAQPage",
+            "@id": "https://skill-dock.pages.dev/#faq",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "Does Skill Dock store the bundle?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No. Skill Dock stores release metadata and resolves tarball URLs. The bundle bytes stay in your npm registry."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Which npm registries work?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Any registry that supports the npm publish and package metadata APIs. Teams commonly use Nexus, Artifactory, or Verdaccio. The local Compose stack includes Verdaccio for evaluation."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Can developers keep installing from git?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. skills add accepts a local path, a GitHub shorthand, or a git URL. skills sync refreshes those installs. Registry installs use skills update."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What happens when a version is yanked?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "The tarball stays in npm. Skill Dock marks the version yanked and blocked. New installs fail with an explicit error, and the response can include a replacement recommendation."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How do I run it in production?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Run the catalog with Postgres, point SKILL_REGISTRY_ARTIFACT_READ_URL at your npm registry, and put the catalog behind TLS. The production Compose file is in zarf/compose/production.yml."
+                }
+              }
+            ]
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
-    <noscript>
-      <div style="max-width: 720px; margin: 80px auto; padding: 0 20px; color: #f1f5f1; font-family: system-ui, sans-serif">
-        <h1>Skill Registry</h1>
-        <p>
-          A self-hosted catalog for agent skills. Enable JavaScript to view the interactive site, or
-          read the documentation at
-          <a href="https://github.com/ZenlixAI/skill-dock/tree/master/docs" style="color: #7cf0a7"
-            >github.com/ZenlixAI/skill-dock</a
-          >.
-        </p>
-      </div>
-    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

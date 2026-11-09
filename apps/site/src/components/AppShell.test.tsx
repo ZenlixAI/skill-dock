@@ -27,7 +27,12 @@ describe('AppShell', () => {
       'href',
       '#main-content'
     );
-    expect(screen.getByRole('link', { name: 'Skill Registry home' })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: 'Skill Dock home' })).toHaveAttribute('href', '/');
+    expect(screen.getByText('agent skill registry')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open source under MIT' })).toHaveAttribute(
+      'href',
+      'https://github.com/ZenlixAI/skill-dock/blob/master/LICENSE'
+    );
     expect(within(primary).getByRole('link', { name: 'How it works' })).toHaveAttribute(
       'href',
       '/#how-it-works'
@@ -36,7 +41,7 @@ describe('AppShell', () => {
       'href',
       '/#quick-start'
     );
-    expect(screen.getByRole('link', { name: 'Skill Registry on GitHub' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Skill Dock on GitHub' })).toHaveAttribute(
       'href',
       'https://github.com/ZenlixAI/skill-dock'
     );

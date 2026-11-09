@@ -6,7 +6,7 @@ This guide deploys the Catalog server with Docker Compose. It is intended for a 
 
 The production Compose stack contains:
 
-- `catalog`: the Skill Registry API, packaging workspace, and npm proxy;
+- `catalog`: the Skill Dock API, packaging workspace, and npm proxy;
 - `postgres`: persistent catalog, release, governance, audit, and idempotency state.
 
 The website is maintained in this repository but is not part of the production Compose stack. Host the static site separately if you need it. The artifact repository is also external; use an existing npm-compatible repository such as Verdaccio, Nexus, or Artifactory.
@@ -181,12 +181,13 @@ Build and deploy it manually:
 ```bash
 cd apps/site
 npm ci
+npx playwright install chromium
 npm test
-npm run build
+npm run build:seo
 npx wrangler pages deploy dist --project-name=skill-dock --branch=main
 ```
 
-The build writes `dist/_redirects` and `dist/_headers`. Cloudflare Pages uses both, so `/privacy` and `/terms` work on direct navigation and asset responses carry the expected cache and security headers.
+The SEO build renders the landing page and legal pages to static HTML before writing `dist/_redirects` and `dist/_headers`. Cloudflare Pages uses both, so `/privacy` and `/terms` work on direct navigation and asset responses carry the expected cache and security headers.
 
 ### GitHub Actions
 

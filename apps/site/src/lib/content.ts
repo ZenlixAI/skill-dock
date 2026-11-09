@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
+export const SITE_URL = 'https://skill-dock.pages.dev';
 export const REPO_URL = 'https://github.com/ZenlixAI/skill-dock';
 export const DOCS_URL = `${REPO_URL}/tree/master/docs`;
 export const LICENSE_URL = `${REPO_URL}/blob/master/LICENSE`;
@@ -130,7 +131,7 @@ export const ARCHITECTURE_NODES: ArchitectureNode[] = [
   {
     id: 'catalog',
     title: 'Catalog',
-    subtitle: 'one Go binary',
+    subtitle: 'self-hosted service',
     detail:
       'Owns release records, install resolution, lifecycle state, and audit events. It never stores bundle bytes.',
     icon: Server,
@@ -140,7 +141,7 @@ export const ARCHITECTURE_NODES: ArchitectureNode[] = [
     title: 'Postgres',
     subtitle: 'catalog state',
     detail:
-      'Stores release records, governance changes, audit events, and idempotency state. SQLite is available for local evaluation.',
+      'Stores release records, governance changes, audit events, and idempotency state.',
     icon: Database,
   },
   {
@@ -213,14 +214,14 @@ export interface FaqItem {
 
 export const FAQ: FaqItem[] = [
   {
-    question: 'Does the catalog store the bundle?',
+    question: 'Does Skill Dock store the bundle?',
     answer:
-      'No. It stores release metadata and resolves tarball URLs. The bundle bytes stay in your npm registry.',
+      'No. Skill Dock stores release metadata and resolves tarball URLs. The bundle bytes stay in your npm registry.',
   },
   {
     question: 'Which npm registries work?',
     answer:
-      'A registry that supports the npm publish and package metadata APIs. The repo includes Verdaccio for local development. Production deployments usually point at Nexus, Artifactory, or another hosted npm repository.',
+      'Any registry that supports the npm publish and package metadata APIs. Teams commonly use Nexus, Artifactory, or Verdaccio. The local Compose stack includes Verdaccio for evaluation.',
   },
   {
     question: 'Can developers keep installing from git?',
@@ -228,23 +229,14 @@ export const FAQ: FaqItem[] = [
       'Yes. skills add accepts a local path, a GitHub shorthand, or a git URL. skills sync refreshes those installs. Registry installs use skills update.',
   },
   {
-    question: 'What does a yank do?',
+    question: 'What happens when a version is yanked?',
     answer:
-      'The tarball stays in npm. The catalog marks the version yanked and blocked. New installs fail with an explicit error, and the response can include a replacement recommendation.',
+      'The tarball stays in npm. Skill Dock marks the version yanked and blocked. New installs fail with an explicit error, and the response can include a replacement recommendation.',
   },
   {
-    question: 'Do I need Postgres?',
+    question: 'How do I run it in production?',
     answer:
-      'Production uses Postgres. SQLite works for local evaluation and the default standalone binary.',
-  },
-  {
-    question: 'Is there a web UI?',
-    answer:
-      'The catalog is API-first. Use the CLI, or call the API from your own internal tooling.',
-  },
-  {
-    question: 'What license?',
-    answer: 'MIT.',
+      'Run the catalog with Postgres, point SKILL_REGISTRY_ARTIFACT_READ_URL at your npm registry, and put the catalog behind TLS. The production Compose file is in zarf/compose/production.yml.',
   },
 ];
 
