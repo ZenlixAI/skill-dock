@@ -2,41 +2,24 @@ import { describe, expect, it } from 'vitest';
 import { getRouteMeta } from './routeMeta';
 
 describe('getRouteMeta', () => {
-  it('returns portal metadata for the home page', () => {
+  it('returns product metadata for the home page', () => {
     expect(getRouteMeta('/')).toEqual({
-      title: 'Skill Registry · official website',
+      title: 'Skill Registry · A private catalog for agent skills',
       description:
-        'A self-hosted registry for discovering, versioning, and governing the AI agent skills your team relies on.',
+        'A self-hosted catalog for agent skills. Store bundles in your npm registry, publish exact versions, resolve installs, and govern releases.',
       section: 'portal',
-    });
-  });
-
-  it('returns portal metadata for the features page', () => {
-    expect(getRouteMeta('/features')).toEqual({
-      title: 'Features · Skill Registry',
-      description:
-        'A private package registry for installing and sharing reusable agent skills.',
-      section: 'portal',
-    });
-  });
-
-  it('returns not-found metadata for removed installation routes', () => {
-    expect(getRouteMeta('/docs')).toEqual({
-      title: 'Page not found · Skill Registry',
-      description: 'The requested page is not available. Return home or read the product features.',
-      section: 'not-found',
     });
   });
 
   it('returns legal metadata for the privacy and terms pages', () => {
     expect(getRouteMeta('/privacy')).toEqual({
       title: 'Privacy · Skill Registry',
-      description: 'Understand how Skill Registry handles site usage data and product interactions.',
+      description: 'How the Skill Registry website handles site usage data and product interactions.',
       section: 'legal',
     });
     expect(getRouteMeta('/terms')).toEqual({
       title: 'Terms · Skill Registry',
-      description: 'Review the terms for using the Skill Registry site and related materials.',
+      description: 'Terms for using the Skill Registry website and related materials.',
       section: 'legal',
     });
   });
@@ -44,7 +27,7 @@ describe('getRouteMeta', () => {
   it('returns not-found metadata for unknown routes', () => {
     expect(getRouteMeta('/catalog')).toEqual({
       title: 'Page not found · Skill Registry',
-      description: 'The requested page is not available. Return home or read the product features.',
+      description: 'The requested page is not available. Return home or read the quick start.',
       section: 'not-found',
     });
   });

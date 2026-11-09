@@ -3,21 +3,52 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="A self-hosted registry for discovering, versioning, and governing the AI agent skills your team relies on." />
+    <meta
+      name="description"
+      content="A self-hosted catalog for agent skills. Store bundles in your npm registry, publish exact versions, resolve installs, and govern releases."
+    />
+    <meta name="theme-color" content="#070908" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Skill Registry" />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:title" content="Skill Registry · A private catalog for agent skills" />
+    <meta
+      property="og:description"
+      content="Store bundles in your npm registry. Publish exact versions, resolve installs, and govern releases from one catalog."
+    />
+    <meta property="og:image" content="/og.png" />
+    <meta property="og:url" content="https://skill-dock.pages.dev/" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Skill Registry · A private catalog for agent skills" />
+    <meta
+      name="twitter:description"
+      content="Store bundles in your npm registry. Publish exact versions, resolve installs, and govern releases from one catalog."
+    />
+    <meta name="twitter:image" content="/og.png" />
+    <title>Skill Registry · A private catalog for agent skills</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <link rel="preload" as="font" crossorigin href="/fonts/inter-latin-400-normal.woff2" type="font/woff2" />
+    <link rel="preload" as="font" crossorigin href="/fonts/jetbrains-mono-latin-400-normal.woff2" type="font/woff2" />
+    <link rel="stylesheet" href="/fonts/fonts.css" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' ws: wss: http://localhost:* https://localhost:*; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
     />
-    <title>Skill Registry · official website</title>
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="stylesheet" href="/fonts/fonts.css" />
   </head>
   <body>
     <div id="root"></div>
-    <div id="skillhub-portals"></div>
+    <noscript>
+      <div style="max-width: 720px; margin: 80px auto; padding: 0 20px; color: #f1f5f1; font-family: system-ui, sans-serif">
+        <h1>Skill Registry</h1>
+        <p>
+          A self-hosted catalog for agent skills. Enable JavaScript to view the interactive site, or
+          read the documentation at
+          <a href="https://github.com/ZenlixAI/skill-dock/tree/master/docs" style="color: #7cf0a7"
+            >github.com/ZenlixAI/skill-dock</a
+          >.
+        </p>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

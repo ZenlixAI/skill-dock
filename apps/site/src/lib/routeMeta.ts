@@ -9,18 +9,9 @@ export interface RouteMeta {
 export function getRouteMeta(pathname: string): RouteMeta {
   if (pathname === '/') {
     return {
-      title: 'Skill Registry · official website',
+      title: 'Skill Registry · A private catalog for agent skills',
       description:
-        'A self-hosted registry for discovering, versioning, and governing the AI agent skills your team relies on.',
-      section: 'portal',
-    };
-  }
-
-  if (pathname === '/features') {
-    return {
-      title: 'Features · Skill Registry',
-      description:
-        'A private package registry for installing and sharing reusable agent skills.',
+        'A self-hosted catalog for agent skills. Store bundles in your npm registry, publish exact versions, resolve installs, and govern releases.',
       section: 'portal',
     };
   }
@@ -28,7 +19,7 @@ export function getRouteMeta(pathname: string): RouteMeta {
   if (pathname === '/privacy') {
     return {
       title: 'Privacy · Skill Registry',
-      description: 'Understand how Skill Registry handles site usage data and product interactions.',
+      description: 'How the Skill Registry website handles site usage data and product interactions.',
       section: 'legal',
     };
   }
@@ -36,14 +27,14 @@ export function getRouteMeta(pathname: string): RouteMeta {
   if (pathname === '/terms') {
     return {
       title: 'Terms · Skill Registry',
-      description: 'Review the terms for using the Skill Registry site and related materials.',
+      description: 'Terms for using the Skill Registry website and related materials.',
       section: 'legal',
     };
   }
 
   return {
     title: 'Page not found · Skill Registry',
-    description: 'The requested page is not available. Return home or read the product features.',
+    description: 'The requested page is not available. Return home or read the quick start.',
     section: 'not-found',
   };
 }

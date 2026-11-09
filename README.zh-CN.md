@@ -68,6 +68,10 @@ docker run --rm -p 8080:8080 -v skill-registry-data:/var/lib/skill-registry \
 - [文档索引](docs/README.md)
 - [CLI 包说明](apps/skills-cli/README.md)
 
+## 官网
+
+Landing Page 位于 `apps/site`，以静态站点形式发布到 <https://skill-dock.pages.dev>。构建和 GitHub Actions 配置见[官网部署说明](docs/03-deployment.md#website-deployment)。
+
 ## 配置
 
 ### Server

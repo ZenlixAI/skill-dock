@@ -169,3 +169,37 @@ Do not use `down --volumes` unless you intentionally want to delete the database
 - [Artifact resolution](06-artifact-resolution.md)
 - [CLI command reference](12-cli-command-spec.md)
 - [`zarf/compose/production.yml`](../zarf/compose/production.yml)
+
+## Website deployment
+
+The public site is a static Vite build in `apps/site`. The production Cloudflare Pages project is `skill-dock`, available at <https://skill-dock.pages.dev>.
+
+Build and deploy it manually:
+
+```bash
+cd apps/site
+npm ci
+npm test
+npm run build
+npx wrangler pages deploy dist --project-name=skill-dock --branch=main
+```
+
+The build writes `dist/_redirects` and `dist/_headers`. Cloudflare Pages uses both, so `/privacy` and `/terms` work on direct navigation and asset responses carry the expected cache and security headers.
+
+### GitHub Actions
+
+Two workflows run from the repository root:
+
+- `.github/workflows/site.yml` runs the site tests, builds the static site, and deploys it to Cloudflare Pages when `main` or `master` receives a push.
+- `.github/workflows/catalog-image.yml` builds the catalog image from `zarf/docker/ci/Dockerfile` and publishes it to GHCR for `main`, `master`, and `v*` tags.
+
+The site workflow needs these repository secrets:
+
+| Secret | Value |
+| --- | --- |
+| `CLOUDFLARE_ACCOUNT_ID` | The Cloudflare account that owns the Pages project |
+| `CLOUDFLARE_API_TOKEN` | A token with `Account > Cloudflare Pages > Edit` |
+
+The image workflow uses the repository `GITHUB_TOKEN` and needs no extra secret. The published image is `ghcr.io/<owner>/skill-dock-catalog`. The workflow lowercases the owner for the image name.
+
+If `CLOUDFLARE_API_TOKEN` is not set, the site workflow builds and tests the site, then skips the deploy step with a warning. Add the secret to enable automatic deploys.

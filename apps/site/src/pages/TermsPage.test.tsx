@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 import { TermsPage } from './TermsPage';
 
 afterEach(() => {
@@ -7,14 +8,16 @@ afterEach(() => {
 });
 
 describe('TermsPage', () => {
-  it('renders a single-column legal layout without home navigation blocks', () => {
-    render(<TermsPage />);
+  it('renders the terms content and a way back', () => {
+    render(
+      <MemoryRouter>
+        <TermsPage />
+      </MemoryRouter>
+    );
 
     expect(screen.getByRole('heading', { name: 'Terms' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Usage requirements' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Software license' })).toBeInTheDocument();
     expect(screen.getByRole('article', { name: 'Terms content' })).toBeInTheDocument();
-    expect(screen.queryByText('Back to the site')).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Return home' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Browse catalog' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Back to the product' })).toHaveAttribute('href', '/');
   });
 });

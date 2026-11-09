@@ -68,6 +68,10 @@ Use real secrets and configure PostgreSQL plus an npm-compatible artifact reposi
 - [Documentation index](docs/README.md)
 - [CLI package README](apps/skills-cli/README.md)
 
+## Website
+
+The landing page lives in `apps/site` and deploys as a static site to <https://skill-dock.pages.dev>. See [website deployment](docs/03-deployment.md#website-deployment) for the build and GitHub Actions setup.
+
 ## Configuration
 
 ### Server

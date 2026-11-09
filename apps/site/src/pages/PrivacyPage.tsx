@@ -1,24 +1,52 @@
-import { SectionHeading } from '../components/SectionHeading';
+import { Link } from 'react-router-dom';
 
 export function PrivacyPage() {
   return (
-    <div className="page-shell page-shell--enter legal-page">
-      <SectionHeading
-        title="Privacy"
-        description="How Skill Registry handles site usage data and product interactions."
-        tone="legal"
-      />
+    <div className="legal-page">
+      <header className="legal-page__header">
+        <p className="eyebrow">Legal</p>
+        <h1>Privacy</h1>
+        <p className="lede">How the Skill Registry website handles site usage data.</p>
+      </header>
 
-      <article className="legal-page__article" aria-label="Privacy content">
-        <section className="legal-page__section">
-          <h2>What we collect</h2>
-          <div className="legal-page__prose">
-            <p>We may store site visits, copy actions, and basic request logs.</p>
-            <p>If you open a page or copy a command, that interaction may be recorded as product usage.</p>
-            <p>Please avoid placing personal, customer, or regulated data in site copy or examples.</p>
-          </div>
+      <article aria-label="Privacy content" className="legal-page__article">
+        <section>
+          <h2>What the site collects</h2>
+          <p>
+            The public site is a static build. It does not include an account system, analytics
+            script, or advertising tracker. The hosting provider may keep standard request logs such
+            as IP address, user agent, and requested path.
+          </p>
+        </section>
+
+        <section>
+          <h2>Clipboard actions</h2>
+          <p>
+            Copy buttons write the selected command to your clipboard through the browser API. The
+            site does not send the copied text anywhere.
+          </p>
+        </section>
+
+        <section>
+          <h2>External links</h2>
+          <p>
+            Links to GitHub and the documentation open external sites. Their privacy policies apply
+            once you leave this site.
+          </p>
+        </section>
+
+        <section>
+          <h2>Contact</h2>
+          <p>
+            For questions about the project, open an issue in the{' '}
+            <a href="https://github.com/ZenlixAI/skill-dock/issues">GitHub repository</a>.
+          </p>
         </section>
       </article>
+
+      <Link className="text-link" to="/">
+        Back to the product
+      </Link>
     </div>
   );
 }
