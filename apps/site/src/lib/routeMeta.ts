@@ -16,6 +16,15 @@ export function getRouteMeta(pathname: string): RouteMeta {
     };
   }
 
+  if (pathname === '/registry') {
+    return {
+      title: 'Skills Directory · Skill Dock',
+      description:
+        'Browse the public skills.sh directory, compare install counts, and inspect a skill before installing it.',
+      section: 'portal',
+    };
+  }
+
   if (pathname === '/privacy') {
     return {
       title: 'Privacy · Skill Dock',

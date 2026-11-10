@@ -75,11 +75,32 @@ func configuredRepositoryOptions(artifactSource catalog.ArtifactSource) catalogi
 }
 
 func configuredExternalSkillSearcher() catalog.ExternalSkillSearcher {
+	if !skillsShEnabled() {
+		return nil
+	}
 	skillsShURL := strings.TrimSpace(os.Getenv("SKILL_REGISTRY_SKILLS_SH_URL"))
 	if skillsShURL == "" {
 		skillsShURL = "https://skills.sh"
 	}
 	return cataloginfra.NewSkillsShSearchSource(skillsShURL, nil)
+}
+
+func skillsShEnabled() bool {
+	for _, key := range []string{"SKILLS_SH_ENABLED", "SKILL_REGISTRY_SKILLS_SH_ENABLED"} {
+		value := strings.TrimSpace(os.Getenv(key))
+		if value == "" {
+			continue
+		}
+		switch strings.ToLower(value) {
+		case "1", "true", "yes", "on":
+			return true
+		case "0", "false", "no", "off":
+			return false
+		default:
+			log.Fatalf("parse %s: expected boolean value, got %q", key, value)
+		}
+	}
+	return true
 }
 
 func configuredRuntimeConfig() backend.Config {

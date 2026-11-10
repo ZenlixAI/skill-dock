@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
-export const SITE_URL = 'https://skill-dock.pages.dev';
+export const SITE_URL = (import.meta.env.VITE_SITE_URL || 'https://skill-dock.pages.dev').replace(/\/+$/, '');
 export const REPO_URL = 'https://github.com/ZenlixAI/skill-dock';
 export const DOCS_URL = `${REPO_URL}/tree/master/docs`;
 export const LICENSE_URL = `${REPO_URL}/blob/master/LICENSE`;
@@ -241,6 +241,7 @@ export const FAQ: FaqItem[] = [
 ];
 
 export const NAV_ITEMS = [
+  { label: 'Registry', href: '/registry' },
   { label: 'How it works', href: '/#how-it-works' },
   { label: 'Architecture', href: '/#architecture' },
   { label: 'Quick start', href: '/#quick-start' },

@@ -223,8 +223,49 @@ type ExternalSearchQuery struct {
 	Origin   string
 }
 
+type ExternalBrowseQuery struct {
+	View     string
+	Page     int
+	PageSize int
+}
+
+type ExternalSkill struct {
+	ID                string `json:"id"`
+	Source            string `json:"source"`
+	SkillID           string `json:"skillId"`
+	Name              string `json:"name"`
+	Installs          int    `json:"installs"`
+	InstallsYesterday int    `json:"installsYesterday,omitempty"`
+	Change            int    `json:"change,omitempty"`
+	WeeklyInstalls    []int  `json:"weeklyInstalls,omitempty"`
+	IsOfficial        bool   `json:"isOfficial,omitempty"`
+	InstallCommand    string `json:"installCommand,omitempty"`
+	LearnMoreURL      string `json:"learnMoreUrl,omitempty"`
+	OriginRegistryURL string `json:"originRegistryUrl,omitempty"`
+}
+
+type ExternalSkillsPage struct {
+	Items    []ExternalSkill `json:"items"`
+	PageInfo PageInfo        `json:"pageInfo"`
+	Total    int             `json:"total,omitempty"`
+	Page     int             `json:"page,omitempty"`
+}
+
+type ExternalSkillDetail struct {
+	ExternalSkill
+	DisplayName   string          `json:"displayName,omitempty"`
+	Description   string          `json:"description,omitempty"`
+	SummaryHTML   string          `json:"summaryHtml,omitempty"`
+	ContentHTML   string          `json:"contentHtml,omitempty"`
+	Topics        []string        `json:"topics,omitempty"`
+	RelatedSkills []ExternalSkill `json:"relatedSkills,omitempty"`
+	URL           string          `json:"url,omitempty"`
+}
+
 type ExternalSkillSearcher interface {
-	SearchSkills(ctx context.Context, query ExternalSearchQuery) (SkillsPage, error)
+	SearchSkills(ctx context.Context, query ExternalSearchQuery) (ExternalSkillsPage, error)
+	ListSkills(ctx context.Context, query ExternalBrowseQuery) (ExternalSkillsPage, error)
+	GetSkill(ctx context.Context, source string, skillID string) (ExternalSkillDetail, error)
 }
 
 type CuratedSkillQuery struct {

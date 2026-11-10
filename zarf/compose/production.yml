@@ -38,6 +38,8 @@ services:
       SKILL_REGISTRY_PUBLIC_INSTALL_URL: ${SKILL_REGISTRY_PUBLIC_INSTALL_URL:?set SKILL_REGISTRY_PUBLIC_INSTALL_URL in the environment file}
       SKILL_REGISTRY_DISABLE_SEED: "true"
       SKILL_REGISTRY_INSTALL_TARGET_MODE: proxy
+      SKILLS_SH_ENABLED: ${SKILLS_SH_ENABLED:-true}
+      SKILL_REGISTRY_SKILLS_SH_URL: ${SKILL_REGISTRY_SKILLS_SH_URL:-https://skills.sh}
     volumes:
       - catalog_workspace:/var/lib/skill-registry
 

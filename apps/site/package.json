@@ -5,23 +5,30 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && npm run type-check:worker && vite build",
     "preview": "vite preview",
     "preview:e2e": "vite preview --host 127.0.0.1 --port 4174 --strictPort",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "prerender": "node scripts/prerender.mjs",
-    "build:seo": "npm run build && npm run prerender"
+    "build:seo": "npm run build && npm run prerender",
+    "dev:worker": "wrangler dev",
+    "dev:full": "npm run build && wrangler dev",
+    "type-check:worker": "tsc -p worker/tsconfig.json",
+    "deploy": "npm run build:seo && wrangler deploy",
+    "deploy:dry": "npm run build:seo && wrangler deploy --dry-run"
   },
   "dependencies": {
     "lucide-react": "^0.525.0",
     "motion": "^14.10.1",
+    "node-html-parser": "^9.0.7",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.9.4"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261110.1",
     "@playwright/test": "^1.53.0",
     "@testing-library/jest-dom": "^6.8.0",
     "@testing-library/react": "^16.3.0",
@@ -31,6 +38,7 @@
     "jsdom": "^26.1.0",
     "typescript": "^5.9.3",
     "vite": "^7.2.1",
-    "vitest": "^2.1.9"
+    "vitest": "^2.1.9",
+    "wrangler": "^4.160.0"
   }
 }

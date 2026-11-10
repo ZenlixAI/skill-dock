@@ -59,19 +59,34 @@ jobs:
           if-no-files-found: error
 
   deploy:
-    name: Deploy to Cloudflare Pages
+    name: Deploy Cloudflare Worker
     needs: build
     if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment:
       name: production
-      url: https://skill-dock.pages.dev
+    defaults:
+      run:
+        working-directory: apps/site
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/site/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Download site artifact
         uses: actions/download-artifact@v4
         with:
           name: site-dist
-          path: dist
+          path: apps/site/dist
 
       - name: Check Cloudflare credentials
         id: cloudflare
@@ -84,15 +99,17 @@ jobs:
             echo "configured=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Deploy
+      - name: Deploy Worker
         if: steps.cloudflare.outputs.configured == 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=skill-dock --branch=main
+          workingDirectory: apps/site
+          command: deploy
 
       - name: Report missing token
         if: steps.cloudflare.outputs.configured != 'true'
+        working-directory: .
         run: |
           echo "::warning::CLOUDFLARE_API_TOKEN is not set. Add it to the repository secrets to enable automatic site deploys."

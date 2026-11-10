@@ -236,3 +236,26 @@ func TestConfiguredRuntimeConfigUsesProductionOnlyStartupWiring(t *testing.T) {
 
 	var _ backend.Config = config
 }
+
+func TestSkillsShEnabledDefaultsToTrue(t *testing.T) {
+	t.Setenv("SKILLS_SH_ENABLED", "")
+	t.Setenv("SKILL_REGISTRY_SKILLS_SH_ENABLED", "")
+
+	if !skillsShEnabled() {
+		t.Fatal("expected skills.sh to be enabled by default")
+	}
+}
+
+func TestSkillsShEnabledAcceptsBothVariableNames(t *testing.T) {
+	t.Setenv("SKILLS_SH_ENABLED", "false")
+	t.Setenv("SKILL_REGISTRY_SKILLS_SH_ENABLED", "")
+	if skillsShEnabled() {
+		t.Fatal("expected SKILLS_SH_ENABLED=false to disable the provider")
+	}
+
+	t.Setenv("SKILLS_SH_ENABLED", "")
+	t.Setenv("SKILL_REGISTRY_SKILLS_SH_ENABLED", "false")
+	if skillsShEnabled() {
+		t.Fatal("expected the alias to disable the provider")
+	}
+}
