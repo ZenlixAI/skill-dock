@@ -31,4 +31,23 @@ describe('getRouteMeta', () => {
       section: 'not-found',
     });
   });
+
+  it('returns Chinese metadata for /zh routes', () => {
+    expect(getRouteMeta('/zh')).toEqual({
+      title: 'Skill Dock · 面向 Agent 技能的自托管 registry',
+      description:
+        'Skill Dock 是面向 Agent 技能的自托管 registry。将 bundle 存放在你的 npm registry 中，发布精确版本，解析安装，并治理每一次发布。',
+      section: 'portal',
+    });
+    expect(getRouteMeta('/zh/privacy')).toEqual({
+      title: '隐私 · Skill Dock',
+      description: 'Skill Dock 网站如何处理站点使用数据。',
+      section: 'legal',
+    });
+    expect(getRouteMeta('/zh/unknown')).toEqual({
+      title: '页面未找到 · Skill Dock',
+      description: '请求的页面不存在。请返回首页或阅读快速开始。',
+      section: 'not-found',
+    });
+  });
 });

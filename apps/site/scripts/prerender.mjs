@@ -9,6 +9,10 @@ const routes = [
   { path: '/registry?prerender=1', file: 'registry.html' },
   { path: '/privacy', file: 'privacy.html' },
   { path: '/terms', file: 'terms.html' },
+  { path: '/zh', file: 'zh/index.html' },
+  { path: '/zh/registry?prerender=1', file: 'zh/registry.html' },
+  { path: '/zh/privacy', file: 'zh/privacy.html' },
+  { path: '/zh/terms', file: 'zh/terms.html' },
 ];
 
 const server = await preview({

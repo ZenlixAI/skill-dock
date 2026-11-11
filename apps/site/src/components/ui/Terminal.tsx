@@ -1,5 +1,6 @@
 import { Check, Copy, TerminalSquare } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { useI18n } from '../../lib/i18n';
 import clsx from '../../vendor/clsx';
 import { copyText } from '../../lib/clipboard';
 
@@ -11,6 +12,8 @@ interface TerminalProps {
 }
 
 export function Terminal({ command, title = 'terminal', className, secondary }: TerminalProps) {
+  const { content } = useI18n();
+  const copy = content.ui.terminal;
   const [copied, setCopied] = useState(false);
   const timeout = useRef<number | undefined>(undefined);
 
@@ -20,7 +23,7 @@ export function Terminal({ command, title = 'terminal', className, secondary }: 
     };
   }, []);
 
-  async function copy() {
+  async function copyCommand() {
     const copied = await copyText(command);
     setCopied(copied);
     if (copied) {
@@ -42,13 +45,13 @@ export function Terminal({ command, title = 'terminal', className, secondary }: 
           {title}
         </span>
         <button
-          aria-label={copied ? 'Copied command' : `Copy ${title} command`}
+          aria-label={copied ? copy.copiedCommand : copy.copyCommand(title)}
           className="terminal__copy"
-          onClick={() => void copy()}
+          onClick={() => void copyCommand()}
           type="button"
         >
           {copied ? <Check aria-hidden="true" size={14} /> : <Copy aria-hidden="true" size={14} />}
-          <span>{copied ? 'Copied' : 'Copy'}</span>
+          <span>{copied ? copy.copied : copy.copy}</span>
         </button>
       </div>
       <pre className="terminal__body" tabIndex={0}>
@@ -62,7 +65,7 @@ export function Terminal({ command, title = 'terminal', className, secondary }: 
       </pre>
       {secondary ? <div className="terminal__secondary">{secondary}</div> : null}
       <span aria-live="polite" className="sr-only">
-        {copied ? 'Command copied to clipboard.' : ''}
+        {copied ? copy.announcement : ''}
       </span>
     </div>
   );

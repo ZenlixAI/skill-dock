@@ -1,36 +1,37 @@
 import { Boxes, Database, Server, TerminalSquare } from 'lucide-react';
 import { useState } from 'react';
-import { ARCHITECTURE_NODES } from '../lib/content';
+import { useI18n } from '../lib/i18n';
 import { SectionHeader } from './SectionHeader';
 import { Reveal } from './ui/BlurText';
 import { BorderBeam } from './ui/BorderBeam';
 
-const FLOW = [
-  { ...ARCHITECTURE_NODES[0], icon: TerminalSquare },
-  { ...ARCHITECTURE_NODES[1], icon: Server },
-  { ...ARCHITECTURE_NODES[3], icon: Boxes },
-] as const;
-
 export function Architecture() {
+  const { content } = useI18n();
+  const copy = content.architecture;
   const [active, setActive] = useState('catalog');
-  const selected = ARCHITECTURE_NODES.find((node) => node.id === active) ?? ARCHITECTURE_NODES[1];
+  const selected = copy.nodes.find((node) => node.id === active) ?? copy.nodes[1];
+  const flow = [
+    { ...copy.nodes[0], icon: TerminalSquare },
+    { ...copy.nodes[1], icon: Server },
+    { ...copy.nodes[3], icon: Boxes },
+  ];
 
   return (
     <section aria-labelledby="architecture-title" className="section architecture" id="architecture">
       <Reveal>
         <SectionHeader
-          eyebrow="Architecture"
+          eyebrow={copy.eyebrow}
           id="architecture-title"
-          lede="The catalog is a service you run. Postgres holds release records and governance data. Your npm registry holds the bundle bytes. The CLI runs on a developer machine or in CI."
-          title="Three pieces, one release path."
+          lede={copy.lede}
+          title={copy.title}
         />
       </Reveal>
 
       <Reveal delay={0.05}>
         <div className="arch-shell">
           <BorderBeam duration={12} size={180} />
-          <div aria-label="Architecture flow" className="arch-flow" role="group">
-            {FLOW.map((node, index) => {
+          <div aria-label={copy.flowLabel} className="arch-flow" role="group">
+            {flow.map((node, index) => {
               const Icon = node.icon;
               const isActive = active === node.id;
               return (
@@ -55,7 +56,7 @@ export function Architecture() {
                       </span>
                     ) : null}
                   </button>
-                  {index < FLOW.length - 1 ? (
+                  {index < flow.length - 1 ? (
                     <span aria-hidden="true" className="arch-arrow">
                       <span className="arch-arrow__line" />
                       <span className="arch-arrow__packet" />
@@ -68,7 +69,7 @@ export function Architecture() {
 
           <div className="arch-detail" aria-live="polite">
             <div className="arch-detail__head">
-              <span className="arch-detail__label">selected piece</span>
+              <span className="arch-detail__label">{copy.selectedLabel}</span>
               <span className="arch-detail__status">
                 <span className="status-dot" />
                 {selected.subtitle}
@@ -81,10 +82,7 @@ export function Architecture() {
       </Reveal>
 
       <Reveal className="arch-note" delay={0.1}>
-        <p>
-          The catalog never stores bundle bytes. It stores the release record, the manifest digest,
-          and the install policy. The npm registry stores the tarball.
-        </p>
+        <p>{copy.note}</p>
       </Reveal>
     </section>
   );

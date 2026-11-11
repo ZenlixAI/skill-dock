@@ -1,22 +1,21 @@
-import { RELEASE_POINTS } from '../lib/content';
+import { useI18n } from '../lib/i18n';
 import { Reveal } from './ui/BlurText';
 
 export function ReleaseDiscipline() {
+  const { content } = useI18n();
+  const copy = content.release;
+
   return (
     <section aria-labelledby="release-title" className="section release-discipline">
       <Reveal className="release-discipline__intro">
-        <p className="eyebrow">Release discipline</p>
-        <h2 id="release-title">A git ref is not a release.</h2>
-        <p className="lede">
-          A skill can change how an agent works. It can also ship scripts. If the source is a
-          branch, the same name can point at different files tomorrow. Skill Dock gives each
-          bundle an exact version, an integrity hash, and a record of whether it is installable.
-        </p>
+        <p className="eyebrow">{copy.eyebrow}</p>
+        <h2 id="release-title">{copy.title}</h2>
+        <p className="lede">{copy.lede}</p>
       </Reveal>
 
       <Reveal delay={0.05}>
         <div className="release-points">
-          {RELEASE_POINTS.map(({ icon: Icon, title, body }) => (
+          {copy.points.map(({ icon: Icon, title, body }) => (
             <div className="release-point" key={title}>
               <span className="release-point__icon">
                 <Icon aria-hidden="true" size={18} strokeWidth={1.8} />

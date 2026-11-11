@@ -1,7 +1,9 @@
 import { ArrowRight, ArrowUpRight, RefreshCw, Search, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ExternalSkillDrawer, formatInstalls } from '../components/ExternalSkillDrawer';
+import { ExternalSkillDrawer } from '../components/ExternalSkillDrawer';
+import { formatInstalls } from '../lib/format';
+import { useI18n } from '../lib/i18n';
 import type {
   ExternalSkill,
   ExternalSkillsPage,
@@ -20,13 +22,9 @@ import clsx from '../vendor/clsx';
 const PAGE_SIZE = 12;
 const isPrerender = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('prerender');
 
-const VIEWS: Array<{ value: SkillsShBrowseView; label: string }> = [
-  { value: 'all-time', label: 'All-time' },
-  { value: 'trending', label: 'Trending' },
-  { value: 'hot', label: 'Hot' },
-];
-
 export function SkillsDirectoryPage() {
+  const { content, locale } = useI18n();
+  const copy = content.registry;
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState(() => searchParams.get('q') || '');
   const [debouncedQuery, setDebouncedQuery] = useState(() => (searchParams.get('q') || '').trim());
@@ -55,12 +53,16 @@ export function SkillsDirectoryPage() {
       .then((next) => setCapabilities(next))
       .catch((cause: unknown) => {
         if (isAbortError(cause) || isPrerender) return;
-        setCapabilitiesError(cause instanceof Error ? cause.message : 'Could not check the skills directory.');
+        setCapabilitiesError(
+          cause instanceof Error ? cause.message : copy.capabilityCheckErrorFallback
+        );
       })
       .finally(() => {
         if (!controller.signal.aborted && !isPrerender) setCapabilitiesLoading(false);
       });
     return () => controller.abort();
+    // The localized fallback is read at request time; locale changes do not need a refetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [retryToken]);
 
   useEffect(() => {
@@ -106,7 +108,7 @@ export function SkillsDirectoryPage() {
       .then((next) => setPage(next))
       .catch((cause: unknown) => {
         if (isAbortError(cause)) return;
-        setError(cause instanceof Error ? cause.message : 'The skills directory is unavailable.');
+        setError(cause instanceof Error ? cause.message : copy.loadErrorFallback);
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -137,37 +139,40 @@ export function SkillsDirectoryPage() {
       <header className="registry-hero">
         <p className="eyebrow">
           <span aria-hidden="true" className="eyebrow__dot" />
-          Registry · skills.sh
+          {copy.eyebrow}
         </p>
-        <h1>Skills Directory</h1>
-        <p className="registry-hero__lede">
-          Browse the public skills.sh directory. Install any skill from its source repository.
-        </p>
+        <h1>{copy.title}</h1>
+        <p className="registry-hero__lede">{copy.lede}</p>
 
         <div className="registry-search">
           <Search aria-hidden="true" size={18} strokeWidth={1.8} />
           <input
-            aria-label="Search skills"
+            aria-label={copy.searchLabel}
             disabled={!enabled}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search skills.sh"
+            placeholder={copy.searchPlaceholder}
             type="search"
             value={query}
           />
           {query ? (
-            <button aria-label="Clear search" className="registry-search__clear" onClick={() => setQuery('')} type="button">
+            <button
+              aria-label={copy.clearSearch}
+              className="registry-search__clear"
+              onClick={() => setQuery('')}
+              type="button"
+            >
               <X aria-hidden="true" size={16} />
             </button>
           ) : null}
         </div>
 
         {enabled && query.trim().length === 1 ? (
-          <p className="registry-search__hint">Type at least 2 characters to search skills.sh.</p>
+          <p className="registry-search__hint">{copy.minCharsHint}</p>
         ) : null}
 
         {showViewTabs ? (
-          <div aria-label="Browse view" className="registry-filters" role="group">
-            {VIEWS.map((entry) => (
+          <div aria-label={copy.viewsLabel} className="registry-filters" role="group">
+            {copy.views.map((entry) => (
               <button
                 aria-pressed={view === entry.value}
                 className={clsx('registry-filter', view === entry.value && 'registry-filter--active')}
@@ -187,33 +192,33 @@ export function SkillsDirectoryPage() {
       ) : capabilitiesError ? (
         <State
           action={retry}
+          actionLabel={content.ui.retry}
           message={capabilitiesError}
-          title="Could not check the skills directory"
+          title={copy.capabilityCheckErrorTitle}
         />
       ) : !enabled ? (
-        <State
-          message="This deployment has disabled the public skills directory."
-          title="Skills directory is not enabled"
-        />
+        <State message={copy.disabledMessage} title={copy.disabledTitle} />
       ) : debouncedQuery.length === 1 ? (
-        <State
-          message="Type at least 2 characters to search skills.sh."
-          title="Keep typing"
-        />
+        <State message={copy.minCharsHint} title={copy.keepTypingTitle} />
       ) : loading ? (
         <CardSkeletonGrid />
       ) : error ? (
-        <State action={retry} message={error} title="Could not load the skills directory" />
+        <State
+          action={retry}
+          actionLabel={content.ui.retry}
+          message={error}
+          title={copy.loadErrorTitle}
+        />
       ) : items.length > 0 ? (
         <section aria-labelledby="skills-sh-results-title" className="registry-group registry-group--external">
           <div className="registry-group__header">
             <div>
-              <h2 id="skills-sh-results-title">skills.sh</h2>
+              <h2 id="skills-sh-results-title">{copy.resultsTitle}</h2>
               <p>
                 {debouncedQuery
-                  ? `Search results for “${debouncedQuery}”.`
-                  : `${viewDescription(view)}.`}{' '}
-                A community directory, not reviewed or hosted by Skill Dock.
+                  ? copy.searchResultsFor(debouncedQuery)
+                  : `${copy.viewDescriptions[view]}.`}{' '}
+                {copy.communityNotice}
               </p>
             </div>
             <a
@@ -222,8 +227,8 @@ export function SkillsDirectoryPage() {
               rel="noreferrer"
               target="_blank"
             >
-              View all on skills.sh
-              <span className="sr-only"> (opens in a new tab)</span>
+              {copy.viewAll}
+              <span className="sr-only">{content.ui.opensInNewTab}</span>
               <ArrowUpRight aria-hidden="true" size={14} />
             </a>
           </div>
@@ -237,7 +242,7 @@ export function SkillsDirectoryPage() {
           <div className="registry-more">
             {!debouncedQuery && page?.total && page.total > items.length ? (
               <span className="registry-more__hint">
-                Showing {items.length} of {formatInstalls(page.total)}
+                {copy.showing(String(items.length), formatInstalls(page.total, locale))}
               </span>
             ) : null}
           </div>
@@ -246,13 +251,11 @@ export function SkillsDirectoryPage() {
         <State
           action={clearSearch}
           actionIcon="clear"
-          actionLabel="Clear search"
+          actionLabel={copy.clearSearch}
           message={
-            debouncedQuery
-              ? `No skills.sh results for “${debouncedQuery}”.`
-              : 'No skills in this view right now.'
+            debouncedQuery ? copy.emptySearch(debouncedQuery) : copy.emptyView
           }
-          title="Nothing found"
+          title={copy.emptyTitle}
         />
       )}
 
@@ -268,6 +271,9 @@ export function SkillsDirectoryPage() {
 }
 
 function ExternalSkillCard({ skill, onOpen }: { skill: ExternalSkill; onOpen: () => void }) {
+  const { content, locale } = useI18n();
+  const copy = content.registry;
+
   return (
     <article className="registry-card registry-card--external">
       <div className="registry-card__top">
@@ -275,16 +281,16 @@ function ExternalSkillCard({ skill, onOpen }: { skill: ExternalSkill; onOpen: ()
           skills.sh
           <ArrowUpRight aria-hidden="true" size={12} />
         </span>
-        {skill.isOfficial ? <span className="registry-official">Official</span> : null}
+        {skill.isOfficial ? <span className="registry-official">{copy.official}</span> : null}
       </div>
       <h3>{skill.name}</h3>
       <p className="registry-card__package">{skill.source}</p>
       <div className="registry-card__meta">
-        <span>{formatInstalls(skill.installs)} installs</span>
+        <span>{copy.installs(formatInstalls(skill.installs, locale))}</span>
       </div>
       <div className="registry-card__actions">
         <button className="button button--secondary button--small" onClick={onOpen} type="button">
-          View details
+          {copy.viewDetails}
           <ArrowRight aria-hidden="true" size={14} />
         </button>
       </div>
@@ -296,7 +302,7 @@ function State({
   title,
   message,
   action,
-  actionLabel = 'Retry',
+  actionLabel,
   actionIcon = 'retry',
 }: {
   title: string;
@@ -341,17 +347,6 @@ function CardSkeletonGrid() {
 function parseView(raw: string | null): SkillsShBrowseView {
   if (raw === 'trending' || raw === 'hot') return raw;
   return 'all-time';
-}
-
-function viewDescription(view: SkillsShBrowseView): string {
-  switch (view) {
-    case 'trending':
-      return 'Trending skills from the last 24 hours';
-    case 'hot':
-      return 'Skills with the biggest short-term movement';
-    default:
-      return 'Popular skills by all-time installs';
-  }
 }
 
 function isAbortError(error: unknown): boolean {

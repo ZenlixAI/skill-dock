@@ -72,6 +72,8 @@ docker run --rm -p 8080:8080 -v skill-registry-data:/var/lib/skill-registry \
 
 站点位于 `apps/site`，以 Cloudflare Worker + 静态资源的形式发布。`/registry` 是公开的 skills.sh 目录页：搜索、All-time/Trending/Hot 榜单，以及站内详情抽屉。Worker 负责提供 SPA，并把 `/api/skills-sh/*` 反向代理到 skills.sh，从而绕开浏览器 CORS，同时把 HTML 解析和清洗留在边缘侧。
 
+站点提供中英文两个版本。英文页面位于 `/`，简体中文页面位于 `/zh`（`/zh/registry`、`/zh/privacy`、`/zh/terms`）。页头的语言菜单会保留当前页面、查询参数和锚点。界面文案位于 `apps/site/src/lib/content.en.ts` 和 `apps/site/src/lib/content.zh.ts`；`npm run prerender` 会为两个语言版本生成带本地化元数据和 `hreflang` 交替链接的静态页面。
+
 部署：
 
 ```bash

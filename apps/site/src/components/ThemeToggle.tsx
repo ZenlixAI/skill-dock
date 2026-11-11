@@ -1,21 +1,12 @@
 import { Check, Monitor, Moon, Sun } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { useI18n } from '../lib/i18n';
 import clsx from '../vendor/clsx';
 
 type ThemePreference = 'system' | 'light' | 'dark';
 type ResolvedTheme = 'light' | 'dark';
 
 const STORAGE_KEY = 'skill-dock-theme';
-
-const OPTIONS: Array<{
-  id: ThemePreference;
-  label: string;
-  icon: typeof Monitor;
-}> = [
-  { id: 'system', label: 'System', icon: Monitor },
-  { id: 'light', label: 'Light', icon: Sun },
-  { id: 'dark', label: 'Dark', icon: Moon },
-];
 
 function getSystemTheme(): ResolvedTheme {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
@@ -48,10 +39,22 @@ function readPreference(): ThemePreference {
 }
 
 export function ThemeToggle() {
+  const { content } = useI18n();
+  const copy = content.ui.theme;
   const [preference, setPreference] = useState<ThemePreference>(readPreference);
   const [resolved, setResolved] = useState<ResolvedTheme>(() => resolveTheme(readPreference()));
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const options: Array<{
+    id: ThemePreference;
+    label: string;
+    icon: typeof Monitor;
+  }> = [
+    { id: 'system', label: copy.system, icon: Monitor },
+    { id: 'light', label: copy.light, icon: Sun },
+    { id: 'dark', label: copy.dark, icon: Moon },
+  ];
 
   useEffect(() => {
     setResolved(applyTheme(preference));
@@ -108,14 +111,18 @@ export function ThemeToggle() {
 
   const CurrentIcon = preference === 'system' ? Monitor : resolved === 'dark' ? Moon : Sun;
   const currentLabel =
-    preference === 'system' ? `System (${resolved})` : preference === 'dark' ? 'Dark' : 'Light';
+    preference === 'system'
+      ? copy.systemWith(resolved)
+      : preference === 'dark'
+        ? copy.dark
+        : copy.light;
 
   return (
     <div className="theme-toggle" ref={containerRef}>
       <button
         aria-expanded={open}
         aria-haspopup="menu"
-        aria-label={`Theme: ${currentLabel}`}
+        aria-label={copy.trigger(currentLabel)}
         className={clsx('icon-button', open && 'icon-button--active')}
         onClick={() => setOpen((value) => !value)}
         type="button"
@@ -124,8 +131,8 @@ export function ThemeToggle() {
       </button>
 
       {open ? (
-        <div aria-label="Theme" className="theme-menu" role="menu">
-          {OPTIONS.map(({ id, label, icon: Icon }) => {
+        <div aria-label={copy.label} className="theme-menu" role="menu">
+          {options.map(({ id, label, icon: Icon }) => {
             const checked = preference === id;
             return (
               <button

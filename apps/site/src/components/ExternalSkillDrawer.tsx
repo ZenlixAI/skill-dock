@@ -1,5 +1,7 @@
 import { ArrowUpRight, Check, Copy, RefreshCw, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { formatInstalls } from '../lib/format';
+import { useI18n } from '../lib/i18n';
 import type { ExternalSkill, ExternalSkillDetail } from '../lib/skills-directory-api';
 import { fetchSkillsShDetail, skillsShSkillURL, skillsShSourceURL } from '../lib/skills-directory-api';
 
@@ -18,6 +20,8 @@ export function ExternalSkillDrawer({
   onClose,
   onSelectRelated,
 }: ExternalSkillDrawerProps) {
+  const { content } = useI18n();
+  const copy = content.registry;
   const [detail, setDetail] = useState<ExternalSkillDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,11 +40,13 @@ export function ExternalSkillDrawer({
       .then((next) => setDetail(next))
       .catch((cause: unknown) => {
         if (cause instanceof DOMException && cause.name === 'AbortError') return;
-        setError(cause instanceof Error ? cause.message : 'Could not load this skill.');
+        setError(cause instanceof Error ? cause.message : copy.detailUnavailable);
       })
       .finally(() => setLoading(false));
 
     return () => controller.abort();
+    // Localized fallback text is read at request time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, source, skillId, reloadToken]);
 
   useEffect(() => {
@@ -77,7 +83,7 @@ export function ExternalSkillDrawer({
       role="presentation"
     >
       <div
-        aria-label={detail ? undefined : 'External skill details'}
+        aria-label={detail ? undefined : copy.drawer.ariaLabel}
         aria-labelledby={detail ? 'external-skill-title' : undefined}
         aria-modal="true"
         className="registry-drawer__panel"
@@ -105,7 +111,7 @@ export function ExternalSkillDrawer({
             <ArrowUpRight aria-hidden="true" size={12} />
           </span>
           <button
-            aria-label="Close skill details"
+            aria-label={copy.drawer.closeLabel}
             className="icon-button registry-drawer__close"
             onClick={onClose}
             ref={closeRef}
@@ -126,7 +132,7 @@ export function ExternalSkillDrawer({
                 type="button"
               >
                 <RefreshCw aria-hidden="true" size={14} />
-                Retry
+                {content.ui.retry}
               </button>
             </div>
           ) : null}
@@ -149,6 +155,8 @@ function ExternalDetail({
   detail: ExternalSkillDetail;
   onSelectRelated: (skill: ExternalSkill) => void;
 }) {
+  const { content, locale } = useI18n();
+  const copy = content.registry;
   const displayName = detail.displayName && detail.displayName !== detail.name ? detail.displayName : null;
   const command = detail.installCommand || '';
   const skillURL = detail.url || skillsShSkillURL(detail.source, detail.skillId);
@@ -163,13 +171,13 @@ function ExternalDetail({
           target="_blank"
         >
           {detail.source}
-          <span className="sr-only"> (opens in a new tab)</span>
+          <span className="sr-only">{content.ui.opensInNewTab}</span>
         </a>
         <h2 className="registry-drawer__title" id="external-skill-title">
           {detail.name}
         </h2>
         {displayName ? <p className="registry-drawer__display-name">{displayName}</p> : null}
-        {detail.isOfficial ? <span className="registry-official">Official</span> : null}
+        {detail.isOfficial ? <span className="registry-official">{copy.official}</span> : null}
         {detail.topics && detail.topics.length > 0 ? (
           <div className="registry-topics">
             {detail.topics.map((topic) => (
@@ -183,21 +191,22 @@ function ExternalDetail({
       </div>
 
       <section className="registry-drawer__section">
-        <h3>Installation</h3>
+        <h3>{copy.drawer.installation}</h3>
         {command ? (
           <CopyCommand command={command} />
         ) : (
-          <p className="registry-drawer__note">Install command unavailable.</p>
+          <p className="registry-drawer__note">{copy.drawer.installUnavailable}</p>
         )}
         <p className="registry-drawer__note">
-          Fetches from the source repository. Refresh with <code>skills sync</code>.
+          {copy.drawer.refreshNote} <code>{copy.drawer.refreshCommand}</code>
+          {copy.drawer.refreshSuffix}
         </p>
       </section>
 
       <section className="registry-drawer__stats">
         <div>
-          <span className="registry-drawer__stat-label">Installs</span>
-          <strong>{formatInstalls(detail.installs)}</strong>
+          <span className="registry-drawer__stat-label">{copy.drawer.installsLabel}</span>
+          <strong>{formatInstalls(detail.installs, locale)}</strong>
         </div>
         {detail.weeklyInstalls && detail.weeklyInstalls.length > 1 ? (
           <WeeklySparkline values={detail.weeklyInstalls} />
@@ -206,7 +215,7 @@ function ExternalDetail({
 
       {detail.summaryHtml ? (
         <section className="registry-drawer__section">
-          <h3>Summary</h3>
+          <h3>{copy.drawer.summary}</h3>
           <div className="registry-prose" dangerouslySetInnerHTML={{ __html: detail.summaryHtml }} />
         </section>
       ) : null}
@@ -215,13 +224,13 @@ function ExternalDetail({
         <section className="registry-drawer__section">
           <h3>SKILL.md</h3>
           <div className="registry-prose" dangerouslySetInnerHTML={{ __html: detail.contentHtml }} />
-          <p className="registry-drawer__note">Rendered from the skill&apos;s SKILL.md.</p>
+          <p className="registry-drawer__note">{copy.drawer.renderedFrom}</p>
         </section>
       ) : null}
 
       {detail.relatedSkills && detail.relatedSkills.length > 0 ? (
         <section className="registry-drawer__section">
-          <h3>Related skills</h3>
+          <h3>{copy.drawer.relatedSkills}</h3>
           <ul className="registry-related">
             {detail.relatedSkills.map((skill) => (
               <li key={skill.id}>
@@ -231,7 +240,9 @@ function ExternalDetail({
                     <small>{skill.source}</small>
                   </span>
                   {skill.installs > 0 ? (
-                    <span className="registry-related__meta">{formatInstalls(skill.installs)} installs</span>
+                    <span className="registry-related__meta">
+                      {copy.drawer.relatedInstalls(formatInstalls(skill.installs, locale))}
+                    </span>
                   ) : null}
                 </button>
               </li>
@@ -241,8 +252,8 @@ function ExternalDetail({
       ) : null}
 
       <a className="button button--secondary registry-drawer__external" href={skillURL} rel="noreferrer" target="_blank">
-        View on skills.sh
-        <span className="sr-only"> (opens in a new tab)</span>
+        {copy.drawer.viewOn}
+        <span className="sr-only">{content.ui.opensInNewTab}</span>
         <ArrowUpRight aria-hidden="true" size={15} />
       </a>
     </div>
@@ -250,6 +261,7 @@ function ExternalDetail({
 }
 
 function CopyCommand({ command }: { command: string }) {
+  const { content } = useI18n();
   const [copied, setCopied] = useState(false);
 
   const copy = async () => {
@@ -263,13 +275,18 @@ function CopyCommand({ command }: { command: string }) {
   };
 
   return (
-    <button className="registry-command" onClick={copy} title="Copy command to clipboard" type="button">
+    <button
+      className="registry-command"
+      onClick={copy}
+      title={content.registry.drawer.copyCommand}
+      type="button"
+    >
       <code>
         <span aria-hidden="true">$</span> {command}
       </code>
       {copied ? (
         <span className="registry-command__status">
-          <Check aria-hidden="true" size={14} /> Copied
+          <Check aria-hidden="true" size={14} /> {content.registry.drawer.copied}
         </span>
       ) : (
         <Copy aria-hidden="true" size={14} />
@@ -279,6 +296,8 @@ function CopyCommand({ command }: { command: string }) {
 }
 
 function WeeklySparkline({ values }: { values: number[] }) {
+  const { content } = useI18n();
+  const copy = content.registry.drawer;
   const width = 160;
   const height = 48;
   const min = Math.min(...values);
@@ -294,10 +313,14 @@ function WeeklySparkline({ values }: { values: number[] }) {
 
   return (
     <div className="registry-sparkline">
-      <svg aria-label={`Weekly installs: ${values.join(', ')}`} role="img" viewBox={`0 0 ${width} ${height}`}>
+      <svg
+        aria-label={copy.weeklySparkline(values.join(', '))}
+        role="img"
+        viewBox={`0 0 ${width} ${height}`}
+      >
         <polyline fill="none" points={points} stroke="currentColor" strokeWidth="2" />
       </svg>
-      <span>8-week installs</span>
+      <span>{copy.weeklyLabel}</span>
     </div>
   );
 }
@@ -313,11 +336,4 @@ function DrawerSkeleton() {
       <span className="registry-skeleton" />
     </div>
   );
-}
-
-export function formatInstalls(value: number): string {
-  return new Intl.NumberFormat('en-US', {
-    notation: 'compact',
-    maximumFractionDigits: 1,
-  }).format(value);
 }
