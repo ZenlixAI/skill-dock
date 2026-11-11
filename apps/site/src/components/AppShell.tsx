@@ -133,6 +133,9 @@ export function AppShell({ children }: PropsWithChildren) {
               <h2>Product</h2>
               <ul>
                 <li>
+                  <Link to="/registry">Registry</Link>
+                </li>
+                <li>
                   <Link to="/#how-it-works">How it works</Link>
                 </li>
                 <li>

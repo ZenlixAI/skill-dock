@@ -6,6 +6,7 @@ import { preview } from 'vite';
 const port = 4176;
 const routes = [
   { path: '/', file: 'index.html' },
+  { path: '/registry?prerender=1', file: 'registry.html' },
   { path: '/privacy', file: 'privacy.html' },
   { path: '/terms', file: 'terms.html' },
 ];

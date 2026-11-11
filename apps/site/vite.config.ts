@@ -8,11 +8,17 @@ export default defineConfig({
     port: 4174,
     host: '127.0.0.1',
     strictPort: true,
+    proxy: {
+      '/api/skills-sh': process.env.VITE_SKILLS_SH_PROXY || 'http://127.0.0.1:8787',
+    },
   },
   preview: {
     port: 4174,
     host: '127.0.0.1',
     strictPort: true,
+    proxy: {
+      '/api/skills-sh': process.env.VITE_SKILLS_SH_PROXY || 'http://127.0.0.1:8787',
+    },
   },
   test: {
     environment: 'jsdom',

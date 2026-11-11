@@ -24,6 +24,23 @@ Catalog API routes are served under `/api/v1`. Catalog and audit reads require a
 | `GET /api/v1/audit-events` | List audit events |
 | `GET /api/v1/governance-changes` | List governance changes |
 
+## Public Registry routes
+
+These routes are unauthenticated, read-only, and CORS-enabled for the static Registry page.
+
+| Route | Purpose |
+| --- | --- |
+| `GET /api/v1/public/registry/capabilities` | Report `externalSearch.enabled` and the provider name |
+| `GET /api/v1/public/registry/skills` | List or search catalog summaries |
+| `GET /api/v1/public/registry/external/skills` | Search skills.sh (`q`) or browse it (`view`, `page`) |
+| `GET /api/v1/public/registry/external/skill` | Return the skills.sh detail used by the drawer (`source`, `skillId`) |
+
+`/external/skills` accepts `q`, `limit`, `view` (`all-time`, `trending`, `hot`), and `page`. `q` requires at least 2 characters. `/external/skill` returns sanitized `summaryHtml` and `contentHtml` plus install metadata.
+
+The site-facing aliases `GET /api/skills-sh/capabilities`, `/api/skills-sh/search`, `/api/skills-sh/browse`, and `/api/skills-sh/skill` map to the same handlers. The Cloudflare Worker serves these paths in the deployed site; the catalog server mounts them for self-hosted/Docker deployments.
+
+When `SKILLS_SH_ENABLED=false`, the external routes return `404 external_search_disabled` and the capabilities response reports the feature as disabled.
+
 `GET /api/v1/skills` accepts `q`, `package_name`, `source_type`, `include_retired`, `include_external`, `source`, `registry`, `scope`, `origin`, `sort`, `pageSize`, and `cursor`.
 
 - `source_type` accepts `native`, `imported`, `external`, and `platform_created`.

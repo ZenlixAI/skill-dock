@@ -12,6 +12,7 @@ COPY apps/site/index.html ./index.html
 COPY apps/site/tsconfig.json ./tsconfig.json
 COPY apps/site/vite.config.ts ./vite.config.ts
 COPY apps/site/src ./src
+COPY apps/site/worker ./worker
 RUN npm run build
 
 FROM truth-ai-registry.cn-hangzhou.cr.aliyuncs.com/base/nginx:1.29-alpine AS runtime

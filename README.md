@@ -70,7 +70,16 @@ Use real secrets and configure PostgreSQL plus an npm-compatible artifact reposi
 
 ## Website
 
-The landing page lives in `apps/site` and deploys as a static site to <https://skill-dock.pages.dev>. See [website deployment](docs/03-deployment.md#website-deployment) for the build and GitHub Actions setup.
+The site lives in `apps/site` and deploys as a Cloudflare Worker with static assets. The `/registry` page is a public skills.sh directory: search, all-time/trending/hot views, and an in-site detail drawer. The Worker serves the SPA and reverse-proxies `/api/skills-sh/*` to skills.sh, which avoids browser CORS and keeps the HTML parsing/sanitization on the edge.
+
+Deploy it with:
+
+```bash
+cd apps/site
+npm run deploy
+```
+
+Worker runtime settings live in `wrangler.jsonc` (`SKILLS_SH_ENABLED`, `SKILLS_SH_BASE_URL`). For local full-stack development, run `npm run dev:worker` after a build, or point the Vite dev proxy at the Worker with `VITE_SKILLS_SH_PROXY` (default `http://127.0.0.1:8787`). The Go catalog also exposes `/api/skills-sh/*` aliases for self-hosted/Docker deployments. See [website deployment](docs/03-deployment.md#website-deployment) for details.
 
 ## Configuration
 
@@ -82,6 +91,8 @@ The landing page lives in `apps/site` and deploys as a static site to <https://s
 | `SKILL_REGISTRY_SHARED_WORKSPACE_ROOT` | Writable packaging workspace root |
 | `SKILL_REGISTRY_ARTIFACT_READ_URL` | Artifact repository URL for server reads |
 | `SKILL_REGISTRY_PUBLIC_INSTALL_URL` | Artifact URL exposed to clients |
+| `SKILLS_SH_ENABLED` | Enable skills.sh discovery (default `true`) |
+| `SKILL_REGISTRY_SKILLS_SH_URL` | skills.sh provider URL |
 | `SKILL_REGISTRY_READER_TOKEN` | Reader token |
 | `SKILL_REGISTRY_AUTHORING_TOKEN` | Authoring token |
 | `SKILL_REGISTRY_PUBLISHER_TOKEN` | Publisher token |

@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "skill-dock",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-11-10",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true
+  },
+  "vars": {
+    "SKILLS_SH_ENABLED": "true",
+    "SKILLS_SH_BASE_URL": "https://skills.sh"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

@@ -174,34 +174,61 @@ Do not use `down --volumes` unless you intentionally want to delete the database
 
 ## Website deployment
 
-The public site is a static Vite build in `apps/site`. The production Cloudflare Pages project is `skill-dock`, available at <https://skill-dock.pages.dev>.
+The public site lives in `apps/site` and deploys as a Cloudflare Worker with static assets. The Worker is defined in `apps/site/worker/index.ts`; `apps/site/wrangler.jsonc` points it at the Vite `dist` directory.
 
-Build and deploy it manually:
+The `/registry` page is a public skills.sh directory. The Worker:
+
+- serves the SPA and static assets through the `ASSETS` binding;
+- reverse-proxies `/api/skills-sh/*` to `SKILLS_SH_BASE_URL` (default `https://skills.sh`);
+- parses and sanitizes the skills.sh detail page and RSC payload on the edge;
+- caches search/browse responses for 30 seconds and detail responses for 10 minutes;
+- reports `SKILLS_SH_ENABLED` through `/api/skills-sh/capabilities`.
+
+Deploy manually:
 
 ```bash
 cd apps/site
 npm ci
 npx playwright install chromium
 npm test
-npm run build:seo
-npx wrangler pages deploy dist --project-name=skill-dock --branch=main
+npm run deploy
 ```
 
-The SEO build renders the landing page to `dist/index.html`, and the legal pages to `dist/privacy.html` and `dist/terms.html`. The build also ships `dist/_redirects` and `dist/_headers`, so `/privacy` and `/terms` work on direct navigation and asset responses carry the expected cache and security headers.
+`npm run deploy` runs the SEO build and then `wrangler deploy` using `wrangler.jsonc`. Set `SKILLS_SH_ENABLED=false` in `wrangler.jsonc`, the dashboard, or a deployment override to remove the directory data and render the disabled state.
+
+Local development:
+
+```bash
+cd apps/site
+npm run build          # build dist once
+npm run dev:worker     # wrangler dev, serves the Worker and dist
+```
+
+Or run Vite for HMR and point its `/api/skills-sh` proxy at a running Worker:
+
+```bash
+VITE_SKILLS_SH_PROXY=http://127.0.0.1:8787 npm run dev
+```
+
+The self-hosted Docker site still works through the Go catalog: its nginx config proxies `/api/` to the catalog, and the catalog exposes the same `/api/skills-sh/capabilities`, `/search`, `/browse`, and `/skill` route names.
+
+The generated canonical, Open Graph, robots, and sitemap URLs still use `https://skill-dock.pages.dev`; update `apps/site/index.html`, `apps/site/src/lib/content.ts`, and `apps/site/public/sitemap.xml` (or attach a custom domain) when the Worker gets a different hostname.
+
+The SEO build renders the landing page to `dist/index.html`, the directory shell to `dist/registry.html`, and the legal pages to `dist/privacy.html` and `dist/terms.html`. `wrangler.jsonc` uses `not_found_handling: single-page-application`, so direct navigation to `/registry` works even when the prerendered file is absent.
 
 ### GitHub Actions
 
 Two workflows run from the repository root:
 
-- `.github/workflows/site.yml` runs the site tests, builds the static site, and deploys it to Cloudflare Pages when `main` or `master` receives a push.
+- `.github/workflows/site.yml` runs the site tests, builds the static site, and deploys the Cloudflare Worker when `main` or `master` receives a push.
 - `.github/workflows/catalog-image.yml` builds the catalog image from `zarf/docker/ci/Dockerfile` and publishes it to GHCR for `main`, `master`, and `v*` tags.
 
 The site workflow needs these repository secrets:
 
 | Secret | Value |
 | --- | --- |
-| `CLOUDFLARE_ACCOUNT_ID` | The Cloudflare account that owns the Pages project |
-| `CLOUDFLARE_API_TOKEN` | A token with `Account > Cloudflare Pages > Edit` |
+| `CLOUDFLARE_ACCOUNT_ID` | The Cloudflare account that owns the Worker |
+| `CLOUDFLARE_API_TOKEN` | A token with `Account > Workers Scripts > Edit` |
 
 The image workflow uses the repository `GITHUB_TOKEN` and needs no extra secret. The published image is `ghcr.io/<owner>/skill-dock-catalog`. The workflow lowercases the owner for the image name.
 

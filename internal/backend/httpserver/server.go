@@ -87,6 +87,7 @@ type Server struct {
 	readCache                       *platformhttp.ReadCache
 	readLimiter                     *platformhttp.RequestLimiter
 	writeLimiter                    *platformhttp.RequestLimiter
+	externalSkillSearcher           catalog.ExternalSkillSearcher
 }
 
 func NewServer(config ServerConfig) *Server {
@@ -140,6 +141,7 @@ func NewServer(config ServerConfig) *Server {
 		readCache:                       platformhttp.NewReadCache(),
 		readLimiter:                     platformhttp.NewRequestLimiter(config.ReadMaxInFlight),
 		writeLimiter:                    platformhttp.NewRequestLimiter(config.WriteMaxInFlight),
+		externalSkillSearcher:           config.ExternalSkillSearcher,
 	}
 	readModule := internalcataloghttp.NewReadWorkflow(readService)
 	server.listSkillsFunc = readModule.ListSkills
@@ -303,6 +305,7 @@ func (s *Server) newEngine() *gin.Engine {
 		VersionDetail:     s.protectedActionHandler(auth.ActionReadCatalog, catalogHTTPHandlers.VersionDetail),
 		InstallTarget:     s.protectedActionHandler(auth.ActionReadCatalog, catalogHTTPHandlers.InstallTarget),
 	})
+	s.registerPublicRegistryRoutes(engine)
 
 	internalgovernancehttp.RegisterRoutes(engine, internalgovernancehttp.Config{
 		ServesReadRoutes:  s.mode.servesReadRoutes(),

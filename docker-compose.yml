@@ -39,6 +39,8 @@ services:
       SKILL_REGISTRY_PUBLIC_INSTALL_URL: ${REGISTRY_PUBLIC_URL:-http://localhost:8080}/repository/skills-npm/
       SKILL_REGISTRY_DISABLE_SEED: ${SKILL_REGISTRY_DISABLE_SEED:-true}
       SKILL_REGISTRY_INSTALL_TARGET_MODE: proxy
+      SKILLS_SH_ENABLED: ${SKILLS_SH_ENABLED:-true}
+      SKILL_REGISTRY_SKILLS_SH_URL: ${SKILL_REGISTRY_SKILLS_SH_URL:-https://skills.sh}
     ports:
       - "${CATALOG_PORT:-8080}:8080"
     depends_on:

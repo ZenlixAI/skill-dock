@@ -43,7 +43,26 @@ func (s *externalReadService) ListSkills(ctx context.Context, query catalog.Skil
 		return catalog.SkillsPage{}, externalErr
 	}
 
-	return mergeSkillsPages(basePage, externalPage, query), nil
+	return mergeSkillsPages(basePage, externalPageToSkillsPage(externalPage), query), nil
+}
+
+func externalPageToSkillsPage(page catalog.ExternalSkillsPage) catalog.SkillsPage {
+	items := make([]catalog.SkillSummary, 0, len(page.Items))
+	for _, item := range page.Items {
+		items = append(items, catalog.SkillSummary{
+			PackageName:       item.ID,
+			DisplayName:       item.Name,
+			SourceType:        catalog.SourceTypeExternal,
+			Status:            catalog.SkillStatusActive,
+			SourceKind:        "skills.sh",
+			OriginRegistryURL: item.OriginRegistryURL,
+			LearnMoreURL:      item.LearnMoreURL,
+			Installable:       false,
+			Hosted:            false,
+			Mirrored:          false,
+		})
+	}
+	return catalog.SkillsPage{Items: items, PageInfo: page.PageInfo}
 }
 
 func (s *externalReadService) ListCuratedSkills(ctx context.Context, query catalog.CuratedSkillQuery) (catalog.CuratedSkillsPage, error) {

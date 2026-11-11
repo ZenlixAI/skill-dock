@@ -1,5 +1,6 @@
 import { ArrowRight, ArrowUpRight, Check, CircleCheck, Play } from 'lucide-react';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { AGENTS, HERO_COMMAND, REPO_URL } from '../lib/content';
 import { StatusPill } from './StatusPill';
 import { AnimatedGridPattern } from './ui/AnimatedGridPattern';
@@ -116,6 +117,11 @@ export function Hero() {
             <ArrowUpRight aria-hidden="true" size={16} strokeWidth={2} />
           </a>
         </div>
+
+        <Link className="hero__registry-link" to="/registry">
+          Browse skills
+          <ArrowRight aria-hidden="true" size={15} strokeWidth={2} />
+        </Link>
 
         <div className="hero__command">
           <Terminal command={HERO_COMMAND} title="start the catalog" />

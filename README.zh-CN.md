@@ -70,7 +70,16 @@ docker run --rm -p 8080:8080 -v skill-registry-data:/var/lib/skill-registry \
 
 ## 官网
 
-Landing Page 位于 `apps/site`，以静态站点形式发布到 <https://skill-dock.pages.dev>。构建和 GitHub Actions 配置见[官网部署说明](docs/03-deployment.md#website-deployment)。
+站点位于 `apps/site`，以 Cloudflare Worker + 静态资源的形式发布。`/registry` 是公开的 skills.sh 目录页：搜索、All-time/Trending/Hot 榜单，以及站内详情抽屉。Worker 负责提供 SPA，并把 `/api/skills-sh/*` 反向代理到 skills.sh，从而绕开浏览器 CORS，同时把 HTML 解析和清洗留在边缘侧。
+
+部署：
+
+```bash
+cd apps/site
+npm run deploy
+```
+
+Worker 的运行时配置在 `wrangler.jsonc`（`SKILLS_SH_ENABLED`、`SKILLS_SH_BASE_URL`）。本地全栈开发可以在构建后运行 `npm run dev:worker`，或把 Vite 开发代理指向 Worker：`VITE_SKILLS_SH_PROXY`（默认 `http://127.0.0.1:8787`）。Go catalog 也提供 `/api/skills-sh/*` 别名，供自托管/Docker 站点使用。构建和 GitHub Actions 配置见[官网部署说明](docs/03-deployment.md#website-deployment)。
 
 ## 配置
 
@@ -82,6 +91,8 @@ Landing Page 位于 `apps/site`，以静态站点形式发布到 <https://skill-
 | `SKILL_REGISTRY_SHARED_WORKSPACE_ROOT` | 可写的打包 workspace 根目录 |
 | `SKILL_REGISTRY_ARTIFACT_READ_URL` | Server 读取制品的仓库地址 |
 | `SKILL_REGISTRY_PUBLIC_INSTALL_URL` | 返回给客户端的制品地址 |
+| `SKILLS_SH_ENABLED` | 是否启用 skills.sh 发现（默认 `true`） |
+| `SKILL_REGISTRY_SKILLS_SH_URL` | skills.sh 服务地址 |
 | `SKILL_REGISTRY_READER_TOKEN` | 读取 token |
 | `SKILL_REGISTRY_AUTHORING_TOKEN` | 创作 token |
 | `SKILL_REGISTRY_PUBLISHER_TOKEN` | 发布 token |

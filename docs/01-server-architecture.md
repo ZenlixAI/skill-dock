@@ -16,6 +16,8 @@ Catalog routes are served under `/api/v1`:
 
 The process also exposes unauthenticated `GET /healthz`, `GET /readyz`, and `GET /metrics` endpoints. The API endpoint reference describes request and response contracts.
 
+The catalog server also exposes unauthenticated public read routes under `/api/v1/public/registry`. These routes expose catalog summaries and, when `SKILLS_SH_ENABLED` is true, skills.sh search, browse, and detail data. They never accept caller credentials or merge external records into the catalog response. The shipped site uses its own Cloudflare Worker; the same `/api/skills-sh/*` route names are also mounted here for self-hosted and Docker deployments.
+
 ## Runtime configuration
 
 | Variable | Purpose | Default |
@@ -26,6 +28,7 @@ The process also exposes unauthenticated `GET /healthz`, `GET /readyz`, and `GET
 | `SKILL_REGISTRY_DISABLE_SEED` | Disable sample catalog seed data | `true` |
 | `SKILL_REGISTRY_SERVER_MODE` | Route-serving mode | all routes |
 | `SKILL_REGISTRY_INSTALL_TARGET_MODE` | Tarball access mode: `proxy` or `direct` | `proxy` |
+| `SKILLS_SH_ENABLED` | Enable the skills.sh provider (`SKILL_REGISTRY_SKILLS_SH_ENABLED` is accepted as an alias) | `true` |
 | `SKILL_REGISTRY_SKILLS_SH_URL` | External search provider URL | `https://skills.sh` |
 | `SKILL_REGISTRY_AUTH_TOKENS_JSON` | Additional token-to-role mappings | unset |
 
@@ -51,6 +54,8 @@ Artifact source precedence is `ARTIFACTS_PATH`, then `ARTIFACT_READ_URL`, then `
 ## External search and install transport
 
 Catalog results are always available. External results from the configured `skills.sh` adapter are included only when a request sets `include_external=true` or selects `source=skills.sh` or `source=all`.
+
+Set `SKILLS_SH_ENABLED=false` to remove the provider entirely. The server skips all skills.sh requests, the public capabilities endpoint reports the feature as disabled, and the Registry page does not render source filters or external results.
 
 An install target has one transport mode:
 

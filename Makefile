@@ -106,4 +106,4 @@ deploy-site:
 	cd $(SITE_DIR) && npm ci
 	cd $(SITE_DIR) && npx playwright install chromium
 	cd $(SITE_DIR) && npm test && npm run build:seo
-	cd $(SITE_DIR) && npx wrangler pages deploy dist --project-name=skill-dock --branch=main
+	cd $(SITE_DIR) && npx wrangler deploy
