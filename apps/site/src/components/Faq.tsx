@@ -1,12 +1,14 @@
 import { motion, useReducedMotion } from 'motion/react';
 import { Plus } from 'lucide-react';
 import { useState } from 'react';
-import { FAQ } from '../lib/content';
+import { useI18n } from '../lib/i18n';
 import { SectionHeader } from './SectionHeader';
 import { Reveal } from './ui/BlurText';
 import clsx from '../vendor/clsx';
 
 export function Faq() {
+  const { content } = useI18n();
+  const copy = content.faq;
   const [open, setOpen] = useState<number | null>(0);
   const reduce = useReducedMotion();
 
@@ -14,16 +16,16 @@ export function Faq() {
     <section aria-labelledby="faq-title" className="section faq" id="faq">
       <Reveal>
         <SectionHeader
-          eyebrow="FAQ"
+          eyebrow={copy.eyebrow}
           id="faq-title"
-          lede="Short answers to the questions that come up before a first deployment."
-          title="Questions that come up."
+          lede={copy.lede}
+          title={copy.title}
         />
       </Reveal>
 
       <Reveal delay={0.05}>
         <div className="faq-list">
-          {FAQ.map((item, index) => {
+          {copy.items.map((item, index) => {
             const isOpen = open === index;
             const panelId = `faq-panel-${index}`;
             const triggerId = `faq-trigger-${index}`;

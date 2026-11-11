@@ -72,6 +72,8 @@ Use real secrets and configure PostgreSQL plus an npm-compatible artifact reposi
 
 The site lives in `apps/site` and deploys as a Cloudflare Worker with static assets. The `/registry` page is a public skills.sh directory: search, all-time/trending/hot views, and an in-site detail drawer. The Worker serves the SPA and reverse-proxies `/api/skills-sh/*` to skills.sh, which avoids browser CORS and keeps the HTML parsing/sanitization on the edge.
 
+The site is bilingual. English pages live at `/`, and Simplified Chinese pages live under `/zh` (`/zh/registry`, `/zh/privacy`, `/zh/terms`). The header language menu preserves the current page, query string, and hash when switching. UI copy lives in `apps/site/src/lib/content.en.ts` and `apps/site/src/lib/content.zh.ts`; `npm run prerender` emits both locales with localized metadata and `hreflang` alternates.
+
 Deploy it with:
 
 ```bash

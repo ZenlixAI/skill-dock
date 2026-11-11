@@ -1,51 +1,34 @@
 import { Link } from 'react-router-dom';
+import { ISSUES_URL } from '../lib/content';
+import { useI18n } from '../lib/i18n';
 
 export function PrivacyPage() {
+  const { content, path } = useI18n();
+  const copy = content.legal.privacy;
+
   return (
     <div className="legal-page">
       <header className="legal-page__header">
-        <p className="eyebrow">Legal</p>
-        <h1>Privacy</h1>
-        <p className="lede">How the Skill Dock website handles site usage data.</p>
+        <p className="eyebrow">{content.legal.eyebrow}</p>
+        <h1>{copy.title}</h1>
+        <p className="lede">{copy.lede}</p>
       </header>
 
-      <article aria-label="Privacy content" className="legal-page__article">
-        <section>
-          <h2>What the site collects</h2>
-          <p>
-            The public site is a static build. It does not include an account system, analytics
-            script, or advertising tracker. The hosting provider may keep standard request logs such
-            as IP address, user agent, and requested path.
-          </p>
-        </section>
-
-        <section>
-          <h2>Clipboard actions</h2>
-          <p>
-            Copy buttons write the selected command to your clipboard through the browser API. The
-            site does not send the copied text anywhere.
-          </p>
-        </section>
-
-        <section>
-          <h2>External links</h2>
-          <p>
-            Links to GitHub and the documentation open external sites. Their privacy policies apply
-            once you leave this site.
-          </p>
-        </section>
-
-        <section>
-          <h2>Contact</h2>
-          <p>
-            For questions about the project, open an issue in the{' '}
-            <a href="https://github.com/ZenlixAI/skill-dock/issues">GitHub repository</a>.
-          </p>
-        </section>
+      <article aria-label={copy.articleLabel} className="legal-page__article">
+        {copy.sections.map((section) => (
+          <section key={section.heading}>
+            <h2>{section.heading}</h2>
+            <p>
+              {section.body}
+              {section.linkLabel ? <a href={ISSUES_URL}>{section.linkLabel}</a> : null}
+              {section.bodyAfter ?? ''}
+            </p>
+          </section>
+        ))}
       </article>
 
-      <Link className="text-link" to="/">
-        Back to the product
+      <Link className="text-link" to={path('/')}>
+        {content.legal.back}
       </Link>
     </div>
   );

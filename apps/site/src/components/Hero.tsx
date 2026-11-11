@@ -2,6 +2,7 @@ import { ArrowRight, ArrowUpRight, Check, CircleCheck, Play } from 'lucide-react
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AGENTS, HERO_COMMAND, REPO_URL } from '../lib/content';
+import { useI18n } from '../lib/i18n';
 import { StatusPill } from './StatusPill';
 import { AnimatedGridPattern } from './ui/AnimatedGridPattern';
 import { BlurText } from './ui/BlurText';
@@ -11,13 +12,15 @@ import { Terminal } from './ui/Terminal';
 
 function ReleaseCard() {
   const [resolved, setResolved] = useState(false);
+  const { content } = useI18n();
+  const card = content.hero.card;
 
   return (
     <div className="release-card">
       <BorderBeam />
       <div className="release-card__top">
-        <span className="release-card__label">catalog / release</span>
-        <StatusPill>published</StatusPill>
+        <span className="release-card__label">{card.catalogLabel}</span>
+        <StatusPill>{card.published}</StatusPill>
       </div>
 
       <div className="release-card__title">
@@ -27,30 +30,30 @@ function ReleaseCard() {
 
       <dl className="release-card__rows">
         <div>
-          <dt>integrity</dt>
+          <dt>{card.integrity}</dt>
           <dd>sha512-9f2c…</dd>
         </div>
         <div>
-          <dt>manifest</dt>
+          <dt>{card.manifest}</dt>
           <dd>sha256:6a1d…</dd>
         </div>
         <div>
-          <dt>policy</dt>
-          <dd>{resolved ? 'resolved' : 'resolvable'}</dd>
+          <dt>{card.policy}</dt>
+          <dd>{resolved ? card.resolved : card.resolvable}</dd>
         </div>
       </dl>
 
       <div className="release-card__divider" />
 
       <div className="release-card__agents">
-        <span className="release-card__meta-label">agents</span>
+        <span className="release-card__meta-label">{card.agents}</span>
         <div className="agent-chips">
           {AGENTS.slice(0, 3).map((agent) => (
             <span className="agent-chip agent-chip--small" key={agent}>
               {agent}
             </span>
           ))}
-          <span className="agent-chip agent-chip--small agent-chip--muted">+53</span>
+          <span className="agent-chip agent-chip--small agent-chip--muted">{card.extraAgents}</span>
         </div>
       </div>
 
@@ -63,12 +66,12 @@ function ReleaseCard() {
         {resolved ? (
           <>
             <Check aria-hidden="true" size={15} strokeWidth={2.2} />
-            resolved in 38 ms
+            {card.resolvedIn}
           </>
         ) : (
           <>
             <Play aria-hidden="true" size={14} strokeWidth={2.2} />
-            resolve install
+            {card.resolveInstall}
           </>
         )}
       </button>
@@ -77,10 +80,10 @@ function ReleaseCard() {
         {resolved ? (
           <>
             <CircleCheck aria-hidden="true" size={13} />
-            Install target returned for 1.4.0
+            {card.installTarget}
           </>
         ) : (
-          'Example release record'
+          card.example
         )}
       </p>
     </div>
@@ -88,44 +91,44 @@ function ReleaseCard() {
 }
 
 export function Hero() {
+  const { content, path } = useI18n();
+  const hero = content.hero;
+
   return (
     <section aria-labelledby="hero-title" className="hero">
       <div className="hero__copy">
         <p className="eyebrow">
           <span aria-hidden="true" className="eyebrow__dot" />
-          Self-hosted · Open source
+          {hero.eyebrow}
         </p>
 
         <h1 className="hero__title" id="hero-title">
-          <BlurText text="Agent skills, with a release process." />
+          <BlurText text={hero.title} />
         </h1>
 
-        <p className="hero__lede">
-          Skill Dock is a self-hosted registry for agent skills. Bundles live in your npm registry.
-          The catalog decides which release an agent gets and records every change to that decision.
-        </p>
+        <p className="hero__lede">{hero.lede}</p>
 
         <div className="hero__actions">
           <Magnet>
             <a className="button button--primary" href="#quick-start">
-              Quick start
+              {hero.quickStart}
               <ArrowRight aria-hidden="true" size={16} strokeWidth={2} />
             </a>
           </Magnet>
           <a className="button button--secondary" href={REPO_URL} rel="noreferrer" target="_blank">
-            View the source
+            {hero.viewSource}
             <ArrowUpRight aria-hidden="true" size={16} strokeWidth={2} />
           </a>
         </div>
 
-        <Link className="hero__registry-link" to="/registry">
-          Browse skills
+        <Link className="hero__registry-link" to={path('/registry')}>
+          {hero.browseSkills}
           <ArrowRight aria-hidden="true" size={15} strokeWidth={2} />
         </Link>
 
         <div className="hero__command">
-          <Terminal command={HERO_COMMAND} title="start the catalog" />
-          <p className="hero__note">Starts the catalog, Postgres, and a local npm registry.</p>
+          <Terminal command={HERO_COMMAND} title={hero.terminalTitle} />
+          <p className="hero__note">{hero.terminalNote}</p>
         </div>
       </div>
 

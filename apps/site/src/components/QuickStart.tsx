@@ -1,44 +1,12 @@
 import { Check } from 'lucide-react';
+import type { QuickStartStep } from '../lib/content';
+import { useI18n } from '../lib/i18n';
 import { SectionHeader } from './SectionHeader';
 import { Reveal } from './ui/BlurText';
 import { SegmentedTabs } from './ui/SegmentedTabs';
 import { Terminal } from './ui/Terminal';
 
-const CATALOG_STEPS = [
-  {
-    title: 'Clone and configure',
-    body: 'Replace the sample passwords and tokens in .env before you start the stack.',
-    command: 'git clone https://github.com/ZenlixAI/skill-dock.git\ncd skill-dock\ncp .env.example .env',
-  },
-  {
-    title: 'Start the stack',
-    body: 'Compose starts the catalog, Postgres, and a local npm registry.',
-    command: 'docker compose up --build -d\ncurl -fsS http://localhost:8080/readyz',
-  },
-] as const;
-
-const CLI_STEPS = [
-  {
-    title: 'Build the CLI',
-    body: 'The CLI lives in the same repository. Install it globally after the build.',
-    command:
-      'npx -y pnpm@10.17.1 --dir apps/skills-cli install\nnpx -y pnpm@10.17.1 --dir apps/skills-cli build\nnpm install -g ./apps/skills-cli',
-  },
-  {
-    title: 'Point it at the catalog',
-    body: 'Use the publisher token for authoring. Use the reader token for installs.',
-    command:
-      'export SKILLS_REGISTRY_URL=http://localhost:8080\nexport SKILLS_REGISTRY_TOKEN=<publisher-token>',
-  },
-  {
-    title: 'Publish and install',
-    body: 'The example uses the scoped package name the catalog expects.',
-    command:
-      'skills import-local ./my-skill \\\n  --package-name @acme.skill/my-skill \\\n  --version 1.4.0\n\nskills add @acme.skill/my-skill',
-  },
-] as const;
-
-function Steps({ steps }: { steps: readonly { title: string; body: string; command: string }[] }) {
+function Steps({ steps }: { steps: readonly QuickStartStep[] }) {
   return (
     <ol className="quick-steps">
       {steps.map((step, index) => (
@@ -58,30 +26,33 @@ function Steps({ steps }: { steps: readonly { title: string; body: string; comma
 }
 
 export function QuickStart() {
+  const { content } = useI18n();
+  const copy = content.quickStart;
+
   return (
     <section aria-labelledby="quick-start-title" className="section quick-start" id="quick-start">
       <Reveal>
         <SectionHeader
-          eyebrow="Quick start"
+          eyebrow={copy.eyebrow}
           id="quick-start-title"
-          lede="The Compose stack starts the catalog, Postgres, and a local npm registry. You can swap the registry for Nexus or Artifactory when you deploy."
-          title="Run it locally."
+          lede={copy.lede}
+          title={copy.title}
         />
       </Reveal>
 
       <Reveal delay={0.05}>
         <SegmentedTabs
-          ariaLabel="Quick start path"
+          ariaLabel={copy.tablistLabel}
           items={[
             {
               id: 'catalog',
-              label: 'Catalog',
-              content: <Steps steps={CATALOG_STEPS} />,
+              label: copy.catalogTab,
+              content: <Steps steps={copy.catalogSteps} />,
             },
             {
               id: 'cli',
-              label: 'CLI',
-              content: <Steps steps={CLI_STEPS} />,
+              label: copy.cliTab,
+              content: <Steps steps={copy.cliSteps} />,
             },
           ]}
         />
@@ -90,9 +61,11 @@ export function QuickStart() {
       <Reveal className="quick-start__note" delay={0.1}>
         <p>
           <Check aria-hidden="true" size={15} strokeWidth={2.2} />
-          For production, use <code>zarf/compose/production.yml</code>, set{' '}
-          <code>SKILL_REGISTRY_ARTIFACT_READ_URL</code> to your npm registry, and put the catalog
-          behind TLS.
+          {copy.productionNotePrefix}
+          <code>zarf/compose/production.yml</code>
+          {copy.productionNoteMiddle}
+          <code>SKILL_REGISTRY_ARTIFACT_READ_URL</code>
+          {copy.productionNoteSuffix}
         </p>
       </Reveal>
     </section>

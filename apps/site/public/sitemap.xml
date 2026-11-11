@@ -1,7 +1,62 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://skill-dock.pages.dev/</loc><lastmod>2026-11-09</lastmod></url>
-  <url><loc>https://skill-dock.pages.dev/registry</loc><lastmod>2026-11-09</lastmod></url>
-  <url><loc>https://skill-dock.pages.dev/privacy</loc><lastmod>2026-11-09</lastmod></url>
-  <url><loc>https://skill-dock.pages.dev/terms</loc><lastmod>2026-11-09</lastmod></url>
+<urlset
+  xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+  xmlns:xhtml="http://www.w3.org/1999/xhtml"
+>
+  <url>
+    <loc>https://skill-dock.pages.dev/</loc>
+    <lastmod>2026-11-11</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://skill-dock.pages.dev/" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://skill-dock.pages.dev/zh" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://skill-dock.pages.dev/" />
+  </url>
+  <url>
+    <loc>https://skill-dock.pages.dev/zh</loc>
+    <lastmod>2026-11-11</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://skill-dock.pages.dev/" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://skill-dock.pages.dev/zh" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://skill-dock.pages.dev/" />
+  </url>
+  <url>
+    <loc>https://skill-dock.pages.dev/registry</loc>
+    <lastmod>2026-11-11</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://skill-dock.pages.dev/registry" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://skill-dock.pages.dev/zh/registry" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://skill-dock.pages.dev/registry" />
+  </url>
+  <url>
+    <loc>https://skill-dock.pages.dev/zh/registry</loc>
+    <lastmod>2026-11-11</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://skill-dock.pages.dev/registry" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://skill-dock.pages.dev/zh/registry" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://skill-dock.pages.dev/registry" />
+  </url>
+  <url>
+    <loc>https://skill-dock.pages.dev/privacy</loc>
+    <lastmod>2026-11-11</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://skill-dock.pages.dev/privacy" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://skill-dock.pages.dev/zh/privacy" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://skill-dock.pages.dev/privacy" />
+  </url>
+  <url>
+    <loc>https://skill-dock.pages.dev/zh/privacy</loc>
+    <lastmod>2026-11-11</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://skill-dock.pages.dev/privacy" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://skill-dock.pages.dev/zh/privacy" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://skill-dock.pages.dev/privacy" />
+  </url>
+  <url>
+    <loc>https://skill-dock.pages.dev/terms</loc>
+    <lastmod>2026-11-11</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://skill-dock.pages.dev/terms" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://skill-dock.pages.dev/zh/terms" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://skill-dock.pages.dev/terms" />
+  </url>
+  <url>
+    <loc>https://skill-dock.pages.dev/zh/terms</loc>
+    <lastmod>2026-11-11</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://skill-dock.pages.dev/terms" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://skill-dock.pages.dev/zh/terms" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://skill-dock.pages.dev/terms" />
+  </url>
 </urlset>

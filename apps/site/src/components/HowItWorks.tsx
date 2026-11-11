@@ -1,11 +1,14 @@
-import { WORKFLOWS } from '../lib/content';
+import { useI18n } from '../lib/i18n';
 import { SectionHeader } from './SectionHeader';
 import { Reveal } from './ui/BlurText';
 import { SegmentedTabs } from './ui/SegmentedTabs';
 import { Terminal } from './ui/Terminal';
 
 export function HowItWorks() {
-  const items = WORKFLOWS.map((workflow) => ({
+  const { content } = useI18n();
+  const copy = content.howItWorks;
+
+  const items = copy.workflows.map((workflow) => ({
     id: workflow.id,
     label: workflow.label,
     content: (
@@ -13,7 +16,7 @@ export function HowItWorks() {
         <div className="workflow__copy">
           <h3>{workflow.title}</h3>
           <p>{workflow.body}</p>
-          <div aria-label={`${workflow.label} flow`} className="workflow__flow" role="group">
+          <div aria-label={copy.flowLabel(workflow.label)} className="workflow__flow" role="group">
             {workflow.flow.map((step, index) => (
               <span className="workflow__step" key={step}>
                 {step}
@@ -28,7 +31,7 @@ export function HowItWorks() {
         </div>
         <Terminal
           command={workflow.command}
-          secondary={workflow.secondary ? `Or: ${workflow.secondary}` : undefined}
+          secondary={workflow.secondary ? `${copy.orPrefix}${workflow.secondary}` : undefined}
           title={workflow.label.toLowerCase()}
         />
       </div>
@@ -39,14 +42,14 @@ export function HowItWorks() {
     <section aria-labelledby="how-it-works-title" className="section how-it-works" id="how-it-works">
       <Reveal>
         <SectionHeader
-          eyebrow="How it works"
+          eyebrow={copy.eyebrow}
           id="how-it-works-title"
-          lede="The catalog sits between the CLI and your npm registry. It decides what a version means and who can install it."
-          title="Publish, resolve, govern."
+          lede={copy.lede}
+          title={copy.title}
         />
       </Reveal>
       <Reveal delay={0.05}>
-        <SegmentedTabs ariaLabel="Release workflow" items={items} />
+        <SegmentedTabs ariaLabel={copy.tablistLabel} items={items} />
       </Reveal>
     </section>
   );

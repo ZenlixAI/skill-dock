@@ -1,18 +1,17 @@
 import { AGENTS } from '../lib/content';
+import { useI18n } from '../lib/i18n';
 import { Marquee } from './ui/Marquee';
 
 export function AgentStrip() {
+  const { content } = useI18n();
+  const copy = content.agents;
+
   return (
     <section aria-labelledby="agents-title" className="agent-strip">
       <div className="agent-strip__intro">
-        <p className="eyebrow">Agent coverage</p>
-        <h2 id="agents-title">
-          One CLI, 56 agent targets.
-        </h2>
-        <p className="agent-strip__copy">
-          The same bundle installs into Claude Code, Codex, Cursor, OpenCode, and the directories
-          other agents read. Choose project or global scope.
-        </p>
+        <p className="eyebrow">{copy.eyebrow}</p>
+        <h2 id="agents-title">{copy.title}</h2>
+        <p className="agent-strip__copy">{copy.copy}</p>
       </div>
       <Marquee className="agent-strip__marquee" items={AGENTS} />
     </section>

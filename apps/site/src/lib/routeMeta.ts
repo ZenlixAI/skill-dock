@@ -1,3 +1,6 @@
+import { getContent } from './content';
+import { localeFromPathname, stripLocalePrefix } from './locale';
+
 export type RouteSection = 'portal' | 'legal' | 'not-found';
 
 export interface RouteMeta {
@@ -7,43 +10,24 @@ export interface RouteMeta {
 }
 
 export function getRouteMeta(pathname: string): RouteMeta {
-  if (pathname === '/') {
-    return {
-      title: 'Skill Dock · A self-hosted registry for agent skills',
-      description:
-        'Skill Dock is a self-hosted registry for agent skills. Store bundles in your npm registry, publish exact versions, resolve installs, and govern releases.',
-      section: 'portal',
-    };
+  const content = getContent(localeFromPathname(pathname)).meta;
+  const path = stripLocalePrefix(pathname);
+
+  if (path === '/') {
+    return { ...content.home, section: 'portal' };
   }
 
-  if (pathname === '/registry') {
-    return {
-      title: 'Skills Directory · Skill Dock',
-      description:
-        'Browse the public skills.sh directory, compare install counts, and inspect a skill before installing it.',
-      section: 'portal',
-    };
+  if (path === '/registry') {
+    return { ...content.registry, section: 'portal' };
   }
 
-  if (pathname === '/privacy') {
-    return {
-      title: 'Privacy · Skill Dock',
-      description: 'How the Skill Dock website handles site usage data.',
-      section: 'legal',
-    };
+  if (path === '/privacy') {
+    return { ...content.privacy, section: 'legal' };
   }
 
-  if (pathname === '/terms') {
-    return {
-      title: 'Terms · Skill Dock',
-      description: 'Terms for using the Skill Dock website and related materials.',
-      section: 'legal',
-    };
+  if (path === '/terms') {
+    return { ...content.terms, section: 'legal' };
   }
 
-  return {
-    title: 'Page not found · Skill Dock',
-    description: 'The requested page is not available. Return home or read the quick start.',
-    section: 'not-found',
-  };
+  return { ...content.notFound, section: 'not-found' };
 }

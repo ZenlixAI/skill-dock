@@ -176,6 +176,8 @@ Do not use `down --volumes` unless you intentionally want to delete the database
 
 The public site lives in `apps/site` and deploys as a Cloudflare Worker with static assets. The Worker is defined in `apps/site/worker/index.ts`; `apps/site/wrangler.jsonc` points it at the Vite `dist` directory.
 
+The site is bilingual. English pages are served at `/`; Simplified Chinese pages are served under `/zh` and are prerendered to `dist/zh/*`. The build emits localized titles, descriptions, Open Graph locale data, and `hreflang` alternates for both languages.
+
 The `/registry` page is a public skills.sh directory. The Worker:
 
 - serves the SPA and static assets through the `ASSETS` binding;
