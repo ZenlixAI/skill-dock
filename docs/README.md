@@ -6,6 +6,7 @@ The documentation is grouped by audience:
 
 - [Product direction and scope](00-product-direction.md)
 - [Production deployment](03-deployment.md)
+- [Helm chart](../zarf/charts/skill-dock/README.md)
 - [Server architecture and configuration](01-server-architecture.md)
 
 ## Use the CLI

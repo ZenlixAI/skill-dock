@@ -1,0 +1,14 @@
+{{- if eq (include "skill-dock.useEmbeddedVerdaccio" .) "true" }}
+{{- $config := .Values.verdaccio.config | default (include "skill-dock.verdaccioConfig" .) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "skill-dock.verdaccioName" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: verdaccio
+    {{- include "skill-dock.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+{{ $config | indent 4 }}
+{{- end }}

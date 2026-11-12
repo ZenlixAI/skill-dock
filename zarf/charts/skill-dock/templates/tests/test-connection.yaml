@@ -1,0 +1,27 @@
+{{- if .Values.tests.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "skill-dock.fullname" . }}-test-connection
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: test
+    {{- include "skill-dock.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  {{- with .Values.imagePullSecrets }}
+  imagePullSecrets:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  containers:
+    - name: wget
+      image: "{{ .Values.tests.image.repository }}:{{ .Values.tests.image.tag }}"
+      imagePullPolicy: IfNotPresent
+      command:
+        - wget
+        - -qO-
+        - http://{{ include "skill-dock.catalogName" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.catalog.service.port }}/healthz
+{{- end }}

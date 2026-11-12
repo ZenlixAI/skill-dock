@@ -1,0 +1,199 @@
+{{- $catalogSecretName := .Values.catalog.existingSecret | default (include "skill-dock.catalogSecretName" .) -}}
+{{- $databaseSecretName := $catalogSecretName -}}
+{{- $databaseSecretKey := "database-url" -}}
+{{- if .Values.database.existingSecret -}}
+{{- $databaseSecretName = .Values.database.existingSecret -}}
+{{- $databaseSecretKey = .Values.database.existingSecretKey | default "skill_registry_database_url" -}}
+{{- end -}}
+{{- $artifactSecretName := $catalogSecretName -}}
+{{- $artifactReadKey := "artifact-read-authorization" -}}
+{{- $artifactPublishKey := "artifact-publish-authorization" -}}
+{{- if and .Values.artifactRepository.existingSecret .Values.artifactRepository.url -}}
+{{- $artifactSecretName = .Values.artifactRepository.existingSecret -}}
+{{- $artifactReadKey = .Values.artifactRepository.existingSecretKeys.readAuthorization -}}
+{{- $artifactPublishKey = .Values.artifactRepository.existingSecretKeys.publishAuthorization -}}
+{{- end -}}
+{{- $useEmbeddedPostgres := eq (include "skill-dock.useEmbeddedPostgres" .) "true" -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "skill-dock.catalogName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: catalog
+    {{- include "skill-dock.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.catalog.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: catalog
+      {{- include "skill-dock.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: catalog
+        {{- include "skill-dock.selectorLabels" . | nindent 8 }}
+        {{- with .Values.catalog.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/config: {{ dict "catalogAuth" .Values.catalog.auth "seedSampleData" .Values.catalog.seedSampleData "installTargetMode" .Values.catalog.installTargetMode "skillsSh" .Values.catalog.skillsSh "database" .Values.database "postgres" .Values.postgres "artifactRepository" .Values.artifactRepository "verdaccio" .Values.verdaccio | toJson | sha256sum }}
+        {{- with .Values.catalog.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "skill-dock.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.catalog.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if and $useEmbeddedPostgres .Values.catalog.waitForDatabase.enabled }}
+      initContainers:
+        - name: wait-for-postgres
+          image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
+          imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -c
+            - until pg_isready -h {{ include "skill-dock.postgresName" . }}.{{ .Release.Namespace }}.svc.cluster.local -p {{ .Values.postgres.service.port }} -U {{ .Values.postgres.auth.user }} -d {{ .Values.postgres.auth.database }}; do echo "waiting for postgres"; sleep 2; done
+      {{- end }}
+      containers:
+        - name: catalog
+          image: "{{ .Values.catalog.image.repository }}:{{ .Values.catalog.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.catalog.image.pullPolicy }}
+          {{- with .Values.catalog.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: SKILL_REGISTRY_ADDR
+              value: ":8080"
+            - name: SKILL_REGISTRY_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $databaseSecretName }}
+                  key: {{ $databaseSecretKey }}
+            - name: SKILL_REGISTRY_SHARED_WORKSPACE_ROOT
+              value: {{ .Values.catalog.sharedWorkspaceRoot | quote }}
+            - name: SKILL_REGISTRY_READER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $catalogSecretName }}
+                  key: reader-token
+            - name: SKILL_REGISTRY_AUTHORING_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $catalogSecretName }}
+                  key: authoring-token
+            - name: SKILL_REGISTRY_PUBLISHER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $catalogSecretName }}
+                  key: publisher-token
+            - name: SKILL_REGISTRY_ARTIFACT_READ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $catalogSecretName }}
+                  key: artifact-read-url
+            - name: SKILL_REGISTRY_ARTIFACT_READ_AUTHORIZATION
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $artifactSecretName }}
+                  key: {{ $artifactReadKey }}
+            - name: SKILL_REGISTRY_ARTIFACT_PUBLISH_AUTHORIZATION
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $artifactSecretName }}
+                  key: {{ $artifactPublishKey }}
+            - name: SKILL_REGISTRY_PUBLIC_INSTALL_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $catalogSecretName }}
+                  key: public-install-url
+            - name: SKILL_REGISTRY_AUTH_TOKENS_JSON
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $catalogSecretName }}
+                  key: auth-tokens-json
+            - name: SKILL_REGISTRY_DISABLE_SEED
+              value: {{ not .Values.catalog.seedSampleData | quote }}
+            - name: SKILL_REGISTRY_INSTALL_TARGET_MODE
+              value: {{ .Values.catalog.installTargetMode | quote }}
+            - name: SKILLS_SH_ENABLED
+              value: {{ .Values.catalog.skillsSh.enabled | quote }}
+            - name: SKILL_REGISTRY_SKILLS_SH_URL
+              value: {{ .Values.catalog.skillsSh.url | quote }}
+            {{- with .Values.catalog.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.catalog.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          volumeMounts:
+            - name: workspace
+              mountPath: {{ .Values.catalog.persistence.mountPath | default "/var/lib/skill-registry" }}
+          resources:
+            {{- toYaml .Values.catalog.resources | nindent 12 }}
+      volumes:
+        - name: workspace
+          {{- if .Values.catalog.persistence.enabled }}
+          {{- if .Values.catalog.persistence.existingClaim }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.catalog.persistence.existingClaim }}
+          {{- else }}
+          persistentVolumeClaim:
+            claimName: {{ include "skill-dock.catalogName" . }}-workspace
+          {{- end }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with .Values.catalog.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.catalog.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.catalog.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "skill-dock.catalogName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: catalog
+    {{- include "skill-dock.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.catalog.service.type | default "ClusterIP" }}
+  selector:
+    app.kubernetes.io/component: catalog
+    {{- include "skill-dock.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.catalog.service.port }}
+      targetPort: http

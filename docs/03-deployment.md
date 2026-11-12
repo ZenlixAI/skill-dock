@@ -2,6 +2,8 @@
 
 This guide deploys the Catalog server with Docker Compose. It is intended for a single host or a small internal installation. The production stack does not deploy the static website. Put a TLS reverse proxy and access-control layer in front of Catalog before exposing it to the public internet.
 
+For Kubernetes, use the Helm chart described below. The rest of this guide covers the Docker Compose deployment.
+
 ## What is deployed
 
 The production Compose stack contains:
@@ -11,7 +13,18 @@ The production Compose stack contains:
 
 The website is maintained in this repository but is not part of the production Compose stack. Host the static site separately if you need it. The artifact repository is also external; use an existing npm-compatible repository such as Verdaccio, Nexus, or Artifactory.
 
-## Prerequisites
+## Kubernetes (Helm)
+
+The repository includes a Helm chart at [`zarf/charts/skill-dock`](../zarf/charts/skill-dock). Its default install runs Catalog, the web site, an embedded Verdaccio npm registry, and an embedded PostgreSQL database. It also supports external PostgreSQL and an external npm-compatible artifact repository.
+
+```bash
+helm upgrade --install skill-dock ./zarf/charts/skill-dock \
+  --namespace skill-dock --create-namespace
+```
+
+Ingress is disabled by default; use a port-forward for the first check, or enable `ingress.enabled` and set the site host. See the [chart README](../zarf/charts/skill-dock/README.md) for ingress and Traefik options, external database and npm registry values, Verdaccio upstream configuration, generated credentials, and production guidance.
+
+## Docker Compose prerequisites
 
 - Docker Engine 24 or later
 - Docker Compose v2 (`docker compose`)
@@ -220,10 +233,11 @@ The SEO build renders the landing page to `dist/index.html`, the directory shell
 
 ### GitHub Actions
 
-Two workflows run from the repository root:
+Three workflows run from the repository root:
 
 - `.github/workflows/site.yml` runs the site tests, builds the static site, and deploys the Cloudflare Worker when `main` or `master` receives a push.
-- `.github/workflows/catalog-image.yml` builds the catalog image from `zarf/docker/ci/Dockerfile` and publishes it to GHCR for `main`, `master`, and `v*` tags.
+- `.github/workflows/catalog-image.yml` builds the catalog image from `zarf/docker/ci/Dockerfile` and the site image from `zarf/docker/local/site.Dockerfile`, then publishes both to GHCR for `main`, `master`, and `v*` tags.
+- `.github/workflows/helm.yml` lints the chart and renders embedded, external, and Traefik configurations.
 
 The site workflow needs these repository secrets:
 

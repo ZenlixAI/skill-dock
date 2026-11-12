@@ -1,0 +1,79 @@
+name: Helm chart
+
+on:
+  push:
+    paths:
+      - 'zarf/charts/**'
+      - '.github/workflows/helm.yml'
+  pull_request:
+    paths:
+      - 'zarf/charts/**'
+      - '.github/workflows/helm.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint and render
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.17.3
+
+      - name: Lint default install
+        run: helm lint ./zarf/charts/skill-dock
+
+      - name: Render default install
+        run: |
+          helm template skill-dock ./zarf/charts/skill-dock \
+            --namespace skill-dock \
+            >/dev/null
+
+      - name: Assert skills.sh is enabled by default
+        run: |
+          helm template skill-dock ./zarf/charts/skill-dock \
+            --namespace skill-dock \
+            | grep -A1 'name: SKILLS_SH_ENABLED' \
+            | grep -q '"true"'
+
+      - name: Render ingress install
+        run: |
+          helm template skill-dock ./zarf/charts/skill-dock \
+            --namespace skill-dock \
+            --set ingress.enabled=true \
+            --set ingress.className=traefik \
+            --set ingress.site.host=skills.example.com \
+            --set ingress.site.tls.enabled=true \
+            --set ingress.site.tls.secretName=skills-tls \
+            >/dev/null
+
+      - name: Render external database and artifact repository
+        run: |
+          helm template skill-dock ./zarf/charts/skill-dock \
+            --namespace skill-dock \
+            --set database.url='postgres://skill_registry:password@postgres.example.com:5432/skill_registry?sslmode=require' \
+            --set artifactRepository.url='https://artifacts.example.com/repository/skills-npm/' \
+            >/dev/null
+
+      - name: Render Traefik IngressRoute install
+        run: |
+          helm template skill-dock ./zarf/charts/skill-dock \
+            --namespace skill-dock \
+            --set ingress.enabled=true \
+            --set ingress.type=ingressRoute \
+            --set ingress.site.host=skills.example.com \
+            >/dev/null
+
+      - name: Render Verdaccio with an upstream mirror
+        run: |
+          helm template skill-dock ./zarf/charts/skill-dock \
+            --namespace skill-dock \
+            --set verdaccio.uplinks.npmjs=https://registry.npmmirror.com \
+            >/dev/null

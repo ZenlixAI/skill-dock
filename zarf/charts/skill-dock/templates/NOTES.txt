@@ -1,0 +1,82 @@
+Skill Dock installed.
+
+Release:
+  {{ .Release.Name }} in namespace {{ .Release.Namespace }}
+
+Components:
+  catalog:  {{ include "skill-dock.catalogName" . }}:{{ .Values.catalog.service.port }}
+{{- if .Values.site.enabled }}
+  site:     {{ include "skill-dock.siteName" . }}:{{ .Values.site.service.port }}
+{{- else }}
+  site:     disabled
+{{- end }}
+{{- if eq (include "skill-dock.useEmbeddedVerdaccio" .) "true" }}
+  verdaccio: {{ include "skill-dock.verdaccioName" . }}:{{ .Values.verdaccio.service.port }}
+{{- else }}
+  verdaccio: disabled (external artifact repository)
+{{- end }}
+{{- if eq (include "skill-dock.useEmbeddedPostgres" .) "true" }}
+  postgres: embedded
+{{- else }}
+  postgres: external
+{{- end }}
+
+Artifact repository:
+  internal: {{ include "skill-dock.artifactRepositoryUrl" . }}
+  public:   {{ include "skill-dock.publicArtifactRepositoryUrl" . }}
+
+{{- if and .Values.ingress.enabled .Values.site.enabled }}
+Site:
+  {{ include "skill-dock.ingressBaseUrl" .Values.ingress.site }}/
+{{- else if .Values.site.enabled }}
+Site access from your machine:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "skill-dock.siteName" . }} 8080:{{ .Values.site.service.port }}
+  then open http://127.0.0.1:8080
+{{- end }}
+
+{{- if and .Values.ingress.enabled .Values.ingress.catalog.enabled }}
+Catalog:
+  {{ include "skill-dock.ingressBaseUrl" .Values.ingress.catalog }}/
+{{- end }}
+
+{{- if and (eq (include "skill-dock.useEmbeddedVerdaccio" .) "true") .Values.ingress.enabled .Values.ingress.verdaccio.enabled }}
+Verdaccio:
+  {{ include "skill-dock.ingressBaseUrl" .Values.ingress.verdaccio }}/
+{{- end }}
+
+{{- if .Values.catalog.existingSecret }}
+Catalog credentials are provided by the existing Secret:
+  {{ .Values.catalog.existingSecret }}
+{{- else }}
+Retrieve the catalog tokens with:
+  kubectl -n {{ .Release.Namespace }} get secret {{ include "skill-dock.catalogSecretName" . }} \
+    -o jsonpath='{.data.reader-token}' | base64 -d
+  kubectl -n {{ .Release.Namespace }} get secret {{ include "skill-dock.catalogSecretName" . }} \
+    -o jsonpath='{.data.authoring-token}' | base64 -d
+  kubectl -n {{ .Release.Namespace }} get secret {{ include "skill-dock.catalogSecretName" . }} \
+    -o jsonpath='{.data.publisher-token}' | base64 -d
+{{- end }}
+
+{{- if eq (include "skill-dock.useEmbeddedVerdaccio" .) "true" }}
+Retrieve the Verdaccio publisher credentials with:
+  kubectl -n {{ .Release.Namespace }} get secret {{ include "skill-dock.verdaccioSecretName" . }} \
+    -o jsonpath='{.data.publisher-user}' | base64 -d
+  kubectl -n {{ .Release.Namespace }} get secret {{ include "skill-dock.verdaccioSecretName" . }} \
+    -o jsonpath='{.data.publisher-password}' | base64 -d
+{{- end }}
+
+{{- if eq (include "skill-dock.useEmbeddedPostgres" .) "true" }}
+Retrieve the PostgreSQL password with:
+  kubectl -n {{ .Release.Namespace }} get secret {{ include "skill-dock.postgresSecretName" . }} \
+    -o jsonpath='{.data.password}' | base64 -d
+{{- end }}
+
+CLI example:
+{{- if and .Values.ingress.enabled .Values.site.enabled }}
+  export SKILLS_REGISTRY_URL={{ include "skill-dock.ingressBaseUrl" .Values.ingress.site }}
+{{- else }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "skill-dock.catalogName" . }} 8080:{{ .Values.catalog.service.port }}
+  export SKILLS_REGISTRY_URL=http://127.0.0.1:8080
+{{- end }}
+  export SKILLS_REGISTRY_TOKEN=<reader-token>
+  skills find

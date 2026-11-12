@@ -1,0 +1,106 @@
+{{- if .Values.site.enabled }}
+{{- $siteSecretName := .Values.site.existingSecret | default (include "skill-dock.siteSecretName" .) }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "skill-dock.siteName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: site
+    {{- include "skill-dock.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.site.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: site
+      {{- include "skill-dock.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: site
+        {{- include "skill-dock.selectorLabels" . | nindent 8 }}
+        {{- with .Values.site.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/config: {{ dict "site" .Values.site | toJson | sha256sum }}
+        {{- with .Values.site.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "skill-dock.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.site.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: site
+          image: "{{ .Values.site.image.repository }}:{{ .Values.site.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.site.image.pullPolicy }}
+          {{- with .Values.site.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: CATALOG_UPSTREAM
+              value: {{ include "skill-dock.catalogUpstream" . | quote }}
+            - name: CATALOG_AUTHORIZATION_HEADER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $siteSecretName }}
+                  key: catalog-authorization-header
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.site.resources | nindent 12 }}
+      {{- with .Values.site.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.site.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.site.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "skill-dock.siteName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: site
+    {{- include "skill-dock.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.site.service.type | default "ClusterIP" }}
+  selector:
+    app.kubernetes.io/component: site
+    {{- include "skill-dock.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.site.service.port }}
+      targetPort: http
+      {{- if and (eq .Values.site.service.type "NodePort") .Values.site.service.nodePort }}
+      nodePort: {{ .Values.site.service.nodePort }}
+      {{- end }}
+{{- end }}

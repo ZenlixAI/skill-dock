@@ -1,0 +1,289 @@
+# Default values for the Skill Dock chart.
+#
+# The default install runs Catalog, the web site, an embedded Verdaccio npm
+# registry, and an embedded PostgreSQL database. For production, use external
+# PostgreSQL and/or an external npm registry when you already operate them.
+
+nameOverride: ""
+fullnameOverride: ""
+
+namespace:
+  create: false
+
+imagePullSecrets: []
+
+serviceAccount:
+  # Catalog and the site do not call the Kubernetes API today.
+  create: false
+  name: ""
+  annotations: {}
+
+# ---------------------------------------------------------------------------
+# Database
+#
+# Set `database.url` or `database.existingSecret` to use an external database.
+# When both are empty, the embedded PostgreSQL below is used.
+# ---------------------------------------------------------------------------
+database:
+  # Complete SQLite or PostgreSQL DSN. Takes precedence over the embedded
+  # PostgreSQL.
+  url: ""
+  # Use an existing Secret that contains the DSN instead. The key defaults to
+  # skill_registry_database_url.
+  existingSecret: ""
+  existingSecretKey: skill_registry_database_url
+
+postgres:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "17"
+    pullPolicy: IfNotPresent
+  auth:
+    database: skill_registry
+    user: postgres
+    # Generated on first install when empty and reused on upgrade.
+    password: ""
+  service:
+    port: 5432
+  persistence:
+    size: 8Gi
+    accessModes:
+      - ReadWriteOnce
+    # storageClassName: ""
+  podSecurityContext: {}
+  securityContext: {}
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# ---------------------------------------------------------------------------
+# Catalog server
+# ---------------------------------------------------------------------------
+catalog:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/zenlixai/skill-dock-catalog
+    # The default tracks the repository's default branch. Pin this to an
+    # immutable release tag in production.
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8080
+  auth:
+    # Generated on first install when empty and reused on upgrade.
+    readerToken: ""
+    authoringToken: ""
+    publisherToken: ""
+    # Optional JSON map of additional tokens and package scopes.
+    authTokensJson: ""
+  # Seed the sample catalog records. Leave false for production.
+  seedSampleData: false
+  # proxy: tarballs are served through Catalog's /repository/skills-npm mount.
+  # direct: install targets point at the public artifact repository URL.
+  installTargetMode: proxy
+  skillsSh:
+    # Enabled by default so the site's /registry page can show the skills.sh
+    # directory. Set false to remove every external skills.sh surface.
+    enabled: true
+    url: https://skills.sh
+  sharedWorkspaceRoot: /var/lib/skill-registry/packaging-workspaces
+  # Wait for the embedded PostgreSQL before starting Catalog.
+  waitForDatabase:
+    enabled: true
+  # The packaging workspace is request-scoped. Enable persistence for retained
+  # or larger temporary storage. With multiple replicas use a ReadWriteMany
+  # volume or a shared filesystem.
+  persistence:
+    enabled: false
+    size: 8Gi
+    accessModes:
+      - ReadWriteOnce
+    # storageClassName: ""
+    existingClaim: ""
+    mountPath: /var/lib/skill-registry
+  podAnnotations: {}
+  podLabels: {}
+  podSecurityContext:
+    fsGroup: 10001
+  securityContext:
+    runAsUser: 10001
+    runAsGroup: 10001
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  extraEnv: []
+  extraEnvFrom: []
+
+# ---------------------------------------------------------------------------
+# Web site
+# ---------------------------------------------------------------------------
+site:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ghcr.io/zenlixai/skill-dock-site
+    # The default tracks the repository's default branch. Pin this to an
+    # immutable release tag in production.
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8080
+    # nodePort: 30090
+  # Optional fixed read token for the site's /api proxy. Leave empty for the
+  # normal public registry page.
+  catalogAuthorizationHeader: ""
+  existingSecret: ""
+  podAnnotations: {}
+  podLabels: {}
+  podSecurityContext: {}
+  securityContext: {}
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# ---------------------------------------------------------------------------
+# Artifact repository
+#
+# Leave `url` empty to deploy the embedded Verdaccio registry below.
+# Set `url` to an existing npm-compatible registry to use external mode.
+# In external mode Verdaccio is not deployed, even if verdaccio.enabled=true.
+# ---------------------------------------------------------------------------
+artifactRepository:
+  # Internal URL used by Catalog pods. For example:
+  #   https://artifacts.example.com/repository/npm/
+  url: ""
+  # Public URL returned to clients. Defaults to the site or Catalog proxy URL
+  # in embedded mode, or to `url` in external mode.
+  publicUrl: ""
+  # Authorization headers for external mode, for example
+  # "Bearer <token>" or "Basic <base64>". Leave empty for anonymous access.
+  readAuthorization: ""
+  publishAuthorization: ""
+  # Use an existing Secret for the two authorization headers.
+  existingSecret: ""
+  existingSecretKeys:
+    readAuthorization: read-authorization
+    publishAuthorization: publish-authorization
+
+# ---------------------------------------------------------------------------
+# Embedded Verdaccio npm registry
+#
+# Used only when artifactRepository.url is empty. The chart creates a hosted
+# registry with a generated publisher account. Anonymous read is enabled by
+# default; clients normally install through Catalog's npm proxy.
+# ---------------------------------------------------------------------------
+verdaccio:
+  enabled: true
+  image:
+    repository: verdaccio/verdaccio
+    tag: "6.11.1"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 4873
+  auth:
+    publisher:
+      user: publisher
+      # Generated on first install when empty and reused on upgrade.
+      password: ""
+  # Allow anonymous reads from Verdaccio. Publishing always requires the
+  # publisher account.
+  enableAnonymousRead: true
+  # Optional upstream npm registry. The registry stores and serves packages
+  # locally by default; enable an uplink only when you want Verdaccio to proxy
+  # an existing npm registry.
+  #
+  # Examples:
+  #   uplinks:
+  #     npmjs: https://registry.npmmirror.com
+  #
+  # Leave empty for a fully self-contained registry.
+  uplinks: {}
+  # Name of the uplink used by the default package rules. Must be a key in
+  # verdaccio.uplinks when uplinks is not empty.
+  proxyUplink: npmjs
+  web:
+    enabled: false
+  # Optional raw config.yaml override. When set, the generated config is ignored
+  # and this file must reference /verdaccio/conf/htpasswd for authentication.
+  config: ""
+  persistence:
+    size: 10Gi
+    accessModes:
+      - ReadWriteOnce
+    # storageClassName: ""
+  podSecurityContext:
+    fsGroup: 10001
+  securityContext:
+    runAsUser: 10001
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# ---------------------------------------------------------------------------
+# Ingress
+# ---------------------------------------------------------------------------
+ingress:
+  enabled: false
+  # ingress: networking.k8s.io/v1 Ingress
+  # ingressRoute: Traefik IngressRoute
+  type: ingress
+  # Leave empty to use the cluster's default IngressClass.
+  className: ""
+  annotations: {}
+  site:
+    host: skill-dock.example.com
+    path: /
+    pathType: Prefix
+    annotations: {}
+    tls:
+      enabled: false
+      secretName: ""
+    # Traefik IngressRoute only.
+    entrypoint: web
+    match: ""
+  catalog:
+    enabled: false
+    host: catalog.example.com
+    path: /
+    pathType: Prefix
+    annotations: {}
+    tls:
+      enabled: false
+      secretName: ""
+    entrypoint: web
+    match: ""
+  verdaccio:
+    enabled: false
+    host: npm.example.com
+    path: /
+    pathType: Prefix
+    annotations: {}
+    tls:
+      enabled: false
+      secretName: ""
+    entrypoint: web
+    match: ""
+
+tests:
+  enabled: true
+  image:
+    repository: busybox
+    tag: "1.36"
