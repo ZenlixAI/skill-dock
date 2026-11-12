@@ -1,0 +1,222 @@
+{{- if .Values.ingress.enabled }}
+{{- if not (has .Values.ingress.type (list "ingress" "ingressRoute")) }}
+{{- fail "ingress.type must be ingress or ingressRoute" }}
+{{- end }}
+{{- if eq .Values.ingress.type "ingress" }}
+{{- if .Values.site.enabled }}
+{{- $annotations := mergeOverwrite (dict) .Values.ingress.annotations .Values.ingress.site.annotations }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "skill-dock.siteName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: site
+    {{- include "skill-dock.labels" . | nindent 4 }}
+  {{- with $annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.site.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.site.host | quote }}
+      {{- if .Values.ingress.site.tls.secretName }}
+      secretName: {{ .Values.ingress.site.tls.secretName | quote }}
+      {{- end }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.site.host | quote }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.site.path }}
+            pathType: {{ .Values.ingress.site.pathType }}
+            backend:
+              service:
+                name: {{ include "skill-dock.siteName" . }}
+                port:
+                  number: {{ .Values.site.service.port }}
+{{- end }}
+{{- if .Values.ingress.catalog.enabled }}
+---
+{{- $annotations := mergeOverwrite (dict) .Values.ingress.annotations .Values.ingress.catalog.annotations }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "skill-dock.catalogName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: catalog
+    {{- include "skill-dock.labels" . | nindent 4 }}
+  {{- with $annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.catalog.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.catalog.host | quote }}
+      {{- if .Values.ingress.catalog.tls.secretName }}
+      secretName: {{ .Values.ingress.catalog.tls.secretName | quote }}
+      {{- end }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.catalog.host | quote }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.catalog.path }}
+            pathType: {{ .Values.ingress.catalog.pathType }}
+            backend:
+              service:
+                name: {{ include "skill-dock.catalogName" . }}
+                port:
+                  number: {{ .Values.catalog.service.port }}
+{{- end }}
+{{- if and (eq (include "skill-dock.useEmbeddedVerdaccio" .) "true") .Values.ingress.verdaccio.enabled }}
+---
+{{- $annotations := mergeOverwrite (dict) .Values.ingress.annotations .Values.ingress.verdaccio.annotations }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "skill-dock.verdaccioName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: verdaccio
+    {{- include "skill-dock.labels" . | nindent 4 }}
+  {{- with $annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.verdaccio.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.verdaccio.host | quote }}
+      {{- if .Values.ingress.verdaccio.tls.secretName }}
+      secretName: {{ .Values.ingress.verdaccio.tls.secretName | quote }}
+      {{- end }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.verdaccio.host | quote }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.verdaccio.path }}
+            pathType: {{ .Values.ingress.verdaccio.pathType }}
+            backend:
+              service:
+                name: {{ include "skill-dock.verdaccioName" . }}
+                port:
+                  number: {{ .Values.verdaccio.service.port }}
+{{- end }}
+{{- else if eq .Values.ingress.type "ingressRoute" }}
+{{- if .Values.site.enabled }}
+{{- $annotations := mergeOverwrite (dict) .Values.ingress.annotations .Values.ingress.site.annotations }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ include "skill-dock.siteName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: site
+    {{- include "skill-dock.labels" . | nindent 4 }}
+  {{- with $annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  entryPoints:
+    - {{ .Values.ingress.site.entrypoint | quote }}
+  routes:
+    - match: {{ if .Values.ingress.site.match }}{{ .Values.ingress.site.match | quote }}{{ else }}{{ include "skill-dock.traefikMatch" (dict "host" .Values.ingress.site.host "path" .Values.ingress.site.path) | quote }}{{ end }}
+      kind: Rule
+      services:
+        - name: {{ include "skill-dock.siteName" . }}
+          port: {{ .Values.site.service.port }}
+  {{- if .Values.ingress.site.tls.enabled }}
+  tls:
+    {{- if .Values.ingress.site.tls.secretName }}
+    secretName: {{ .Values.ingress.site.tls.secretName | quote }}
+    {{- else }}
+    {}
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{- if .Values.ingress.catalog.enabled }}
+---
+{{- $annotations := mergeOverwrite (dict) .Values.ingress.annotations .Values.ingress.catalog.annotations }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ include "skill-dock.catalogName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: catalog
+    {{- include "skill-dock.labels" . | nindent 4 }}
+  {{- with $annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  entryPoints:
+    - {{ .Values.ingress.catalog.entrypoint | quote }}
+  routes:
+    - match: {{ if .Values.ingress.catalog.match }}{{ .Values.ingress.catalog.match | quote }}{{ else }}{{ include "skill-dock.traefikMatch" (dict "host" .Values.ingress.catalog.host "path" .Values.ingress.catalog.path) | quote }}{{ end }}
+      kind: Rule
+      services:
+        - name: {{ include "skill-dock.catalogName" . }}
+          port: {{ .Values.catalog.service.port }}
+  {{- if .Values.ingress.catalog.tls.enabled }}
+  tls:
+    {{- if .Values.ingress.catalog.tls.secretName }}
+    secretName: {{ .Values.ingress.catalog.tls.secretName | quote }}
+    {{- else }}
+    {}
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{- if and (eq (include "skill-dock.useEmbeddedVerdaccio" .) "true") .Values.ingress.verdaccio.enabled }}
+---
+{{- $annotations := mergeOverwrite (dict) .Values.ingress.annotations .Values.ingress.verdaccio.annotations }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ include "skill-dock.verdaccioName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: verdaccio
+    {{- include "skill-dock.labels" . | nindent 4 }}
+  {{- with $annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  entryPoints:
+    - {{ .Values.ingress.verdaccio.entrypoint | quote }}
+  routes:
+    - match: {{ if .Values.ingress.verdaccio.match }}{{ .Values.ingress.verdaccio.match | quote }}{{ else }}{{ include "skill-dock.traefikMatch" (dict "host" .Values.ingress.verdaccio.host "path" .Values.ingress.verdaccio.path) | quote }}{{ end }}
+      kind: Rule
+      services:
+        - name: {{ include "skill-dock.verdaccioName" . }}
+          port: {{ .Values.verdaccio.service.port }}
+  {{- if .Values.ingress.verdaccio.tls.enabled }}
+  tls:
+    {{- if .Values.ingress.verdaccio.tls.secretName }}
+    secretName: {{ .Values.ingress.verdaccio.tls.secretName | quote }}
+    {{- else }}
+    {}
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

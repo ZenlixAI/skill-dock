@@ -1,0 +1,19 @@
+{{- if and .Values.catalog.persistence.enabled (not .Values.catalog.persistence.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "skill-dock.catalogName" . }}-workspace
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: catalog
+    {{- include "skill-dock.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    {{- toYaml .Values.catalog.persistence.accessModes | nindent 4 }}
+  {{- if .Values.catalog.persistence.storageClassName }}
+  storageClassName: {{ .Values.catalog.persistence.storageClassName | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.catalog.persistence.size }}
+{{- end }}

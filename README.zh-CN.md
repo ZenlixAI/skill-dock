@@ -47,6 +47,17 @@ curl -fsS http://localhost:8080/api/v1/skills \
 
 生产环境请使用[生产部署说明](docs/03-deployment.md)。该方案只运行 Catalog 和 PostgreSQL；Catalog 连接外部 npm 兼容制品仓库，并在 Catalog 前配置 TLS 反向代理。
 
+## Kubernetes 与 Helm
+
+[`zarf/charts/skill-dock`](zarf/charts/skill-dock) 提供完整 Helm chart，默认部署 Catalog、Web 站点、内置 Verdaccio npm 仓库和内置 PostgreSQL。
+
+```bash
+helm upgrade --install skill-dock ./zarf/charts/skill-dock \
+  --namespace skill-dock --create-namespace
+```
+
+外部 PostgreSQL、外部 npm 源、Verdaccio upstream、Ingress、自动生成的凭据和持久化说明详见 [chart README](zarf/charts/skill-dock/README.md)。
+
 ## Dockerfile
 
 使用 SQLite 运行独立 Catalog 镜像，仅适合本地评估。该命令没有配置外部制品仓库，因此不构成完整的 registry 安装或发布部署。生产环境请配置 PostgreSQL、npm 兼容制品仓库和公开安装地址。

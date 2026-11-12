@@ -1,4 +1,4 @@
-name: Catalog image
+name: Images
 
 on:
   push:
@@ -12,6 +12,7 @@ on:
       - 'internal/**'
       - 'go.mod'
       - 'go.sum'
+      - 'apps/site/**'
       - 'zarf/data/**'
       - 'zarf/docker/**'
       - '.github/workflows/catalog-image.yml'
@@ -22,16 +23,26 @@ permissions:
   packages: write
 
 concurrency:
-  group: catalog-image-${{ github.ref }}
+  group: images-${{ github.ref }}
   cancel-in-progress: true
-
-env:
-  IMAGE_NAME: skill-dock-catalog
 
 jobs:
   publish:
-    name: Build and publish catalog image
+    name: Build and publish ${{ matrix.name }} image
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: catalog
+            image: skill-dock-catalog
+            dockerfile: zarf/docker/ci/Dockerfile
+            buildArgs: ""
+          - name: site
+            image: skill-dock-site
+            dockerfile: zarf/docker/local/site.Dockerfile
+            buildArgs: |
+              NPM_REGISTRY=https://registry.npmjs.org
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -57,7 +68,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ steps.repo.outputs.owner }}/${{ env.IMAGE_NAME }}
+          images: ghcr.io/${{ steps.repo.outputs.owner }}/${{ matrix.image }}
           tags: |
             type=ref,event=branch
             type=ref,event=tag
@@ -69,12 +80,13 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: zarf/docker/ci/Dockerfile
+          file: ${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          build-args: ${{ matrix.buildArgs }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
           provenance: true
           sbom: true

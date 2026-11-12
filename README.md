@@ -47,6 +47,17 @@ Stop it with `docker compose down`; add `-v` only when you also want to remove l
 
 For a production deployment, use the [production deployment guide](docs/03-deployment.md). It runs only Catalog and PostgreSQL; connect Catalog to an external npm-compatible artifact repository and put a TLS reverse proxy in front of it.
 
+## Kubernetes with Helm
+
+The Helm chart in [`zarf/charts/skill-dock`](zarf/charts/skill-dock) deploys Catalog, the web site, an embedded Verdaccio npm registry, and an embedded PostgreSQL database by default.
+
+```bash
+helm upgrade --install skill-dock ./zarf/charts/skill-dock \
+  --namespace skill-dock --create-namespace
+```
+
+See the [chart README](zarf/charts/skill-dock/README.md) for ingress, external PostgreSQL, external npm registry, Verdaccio upstream sources, generated credentials, and production guidance.
+
 ## Build and run Catalog with Dockerfile
 
 Build and run the standalone Catalog image with SQLite for local evaluation. This command does not configure an external artifact repository, so it is not a complete registry-install or publication deployment. Configure PostgreSQL, an npm-compatible artifact repository, and the public install URL before using it for production.

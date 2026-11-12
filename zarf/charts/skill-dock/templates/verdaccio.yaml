@@ -1,0 +1,125 @@
+{{- if eq (include "skill-dock.useEmbeddedVerdaccio" .) "true" }}
+{{- $verdaccioSecretName := include "skill-dock.verdaccioSecretName" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "skill-dock.verdaccioName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: verdaccio
+    {{- include "skill-dock.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.verdaccio.service.type | default "ClusterIP" }}
+  selector:
+    app.kubernetes.io/component: verdaccio
+    {{- include "skill-dock.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.verdaccio.service.port }}
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "skill-dock.verdaccioName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: verdaccio
+    {{- include "skill-dock.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "skill-dock.verdaccioName" . }}
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: verdaccio
+      {{- include "skill-dock.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: verdaccio
+        {{- include "skill-dock.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ dict "verdaccio" .Values.verdaccio | toJson | sha256sum }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.verdaccio.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: verdaccio
+          image: "{{ .Values.verdaccio.image.repository }}:{{ .Values.verdaccio.image.tag }}"
+          imagePullPolicy: {{ .Values.verdaccio.image.pullPolicy }}
+          {{- with .Values.verdaccio.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - containerPort: 4873
+              name: http
+          env:
+            - name: VERDACCIO_PORT
+              value: "4873"
+            - name: VERDACCIO_ADDRESS
+              value: "0.0.0.0"
+            - name: VERDACCIO_PROTOCOL
+              value: "http"
+          volumeMounts:
+            - name: config
+              mountPath: /verdaccio/conf/config.yaml
+              subPath: config.yaml
+            - name: htpasswd
+              mountPath: /verdaccio/conf/htpasswd
+              subPath: htpasswd
+            - name: storage
+              mountPath: /verdaccio/storage
+          readinessProbe:
+            httpGet:
+              path: /-/ping
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /-/ping
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.verdaccio.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "skill-dock.verdaccioName" . }}-config
+        - name: htpasswd
+          secret:
+            secretName: {{ $verdaccioSecretName }}
+            defaultMode: 0440
+      {{- with .Values.verdaccio.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.verdaccio.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.verdaccio.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: storage
+      spec:
+        accessModes:
+          {{- toYaml .Values.verdaccio.persistence.accessModes | nindent 10 }}
+        {{- if .Values.verdaccio.persistence.storageClassName }}
+        storageClassName: {{ .Values.verdaccio.persistence.storageClassName | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.verdaccio.persistence.size }}
+{{- end }}
