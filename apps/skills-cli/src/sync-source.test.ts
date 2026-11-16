@@ -21,6 +21,56 @@ describe('sync source helpers', () => {
     expect(parsed?.ref).toBe('main');
   });
 
+  it('prefers the normalized sourceUrl over the original source', () => {
+    const parsed = parseLegacyReplaySource({
+      sourceType: 'gitlab',
+      legacy: {
+        source: 'https://gitlab.com/acme/skills',
+        sourceUrl: 'git@gitlab.com:acme/skills.git',
+        ref: 'main',
+      },
+    });
+
+    expect(parsed).toEqual({
+      type: 'gitlab',
+      url: 'git@gitlab.com:acme/skills.git',
+      ref: 'main',
+    });
+  });
+
+  it('keeps selectors from the original source when replaying a normalized URL', () => {
+    const parsed = parseLegacyReplaySource({
+      sourceType: 'gitlab',
+      legacy: {
+        source: 'https://gitlab.com/acme/skills/-/tree/main/skills/pdf',
+        sourceUrl: 'git@gitlab.com:acme/skills.git',
+        ref: 'main',
+      },
+    });
+
+    expect(parsed).toEqual({
+      type: 'gitlab',
+      url: 'git@gitlab.com:acme/skills.git',
+      ref: 'main',
+      subpath: 'skills/pdf',
+    });
+  });
+
+  it('falls back to source when sourceUrl cannot be parsed', () => {
+    const parsed = parseLegacyReplaySource({
+      sourceType: 'gitlab',
+      legacy: {
+        sourceUrl: 'https://example.com/not-a-repo',
+        source: 'https://gitlab.com/acme/skills',
+      },
+    });
+
+    expect(parsed).toEqual({
+      type: 'gitlab',
+      url: 'git@gitlab.com:acme/skills.git',
+    });
+  });
+
   it('returns the recorded SKILL.md path from legacy metadata', () => {
     expect(
       getRecordedSkillPath({

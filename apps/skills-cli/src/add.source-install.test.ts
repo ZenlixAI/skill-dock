@@ -204,6 +204,33 @@ describe('runAdd source installs', () => {
     expect(git.cleanupTempDir).toHaveBeenCalledWith('/tmp/cloned-owner-repo');
   });
 
+  it('clones a GitLab source over SSH and records a gitlab source type', async () => {
+    vi.mocked(git.cloneRepo).mockResolvedValue('/tmp/cloned-gitlab-group-repo');
+
+    await runAdd(['https://gitlab.com/group/repo'], {
+      yes: true,
+      agent: ['claude-code'],
+    });
+
+    expect(git.cloneRepo).toHaveBeenCalledWith('git@gitlab.com:group/repo.git', undefined);
+    expect(skills.discoverSkills).toHaveBeenCalledWith('/tmp/cloned-gitlab-group-repo', undefined, {
+      fullDepth: false,
+    });
+    expect(localLock.addSkillToLocalLock).toHaveBeenCalledWith(
+      'zoom-out',
+      expect.objectContaining({
+        sourceType: 'gitlab',
+        computedHash: 'computed-hash',
+        legacy: expect.objectContaining({
+          source: 'https://gitlab.com/group/repo',
+          sourceUrl: 'git@gitlab.com:group/repo.git',
+        }),
+      }),
+      expect.any(String)
+    );
+    expect(git.cleanupTempDir).toHaveBeenCalledWith('/tmp/cloned-gitlab-group-repo');
+  });
+
   it('still routes registry package names through the registry workflow first', async () => {
     vi.mocked(workflow.runRegistryInstallWorkflow).mockResolvedValue({
       packageName: '@platform.skill/pdf-skill',

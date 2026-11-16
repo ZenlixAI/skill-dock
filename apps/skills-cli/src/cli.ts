@@ -121,6 +121,7 @@ ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} skills add @company.skill/pdf-skill --version 1.2.0
   ${DIM}$${RESET} skills add @company.skill/pdf-skill --registry https://catalog.example.com
   ${DIM}$${RESET} skills add owner/repo --skill pdf
+  ${DIM}$${RESET} skills add gitlab:group/repo --skill pdf
   ${DIM}$${RESET} skills add ./local-skills --list
   ${DIM}$${RESET} skills remove                        ${DIM}# interactive remove${RESET}
   ${DIM}$${RESET} skills remove web-design             ${DIM}# remove by name${RESET}
@@ -183,7 +184,7 @@ ${BOLD}Description:${RESET}
   Install a skill from the registry or directly from a source repository/path.
 
 ${BOLD}Arguments:${RESET}
-  source            Registry package identity, local path, owner/repo, or Git URL
+  source            Registry package identity, local path, GitHub shorthand, GitLab shorthand/URL, or Git URL
 
 ${BOLD}Options:${RESET}
   -g, --global           Install skill globally (user-level) instead of project-level
@@ -205,7 +206,11 @@ ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} skills add @company.skill/pdf-skill --registry https://catalog.example.com
   ${DIM}$${RESET} skills add owner/repo --skill pdf
   ${DIM}$${RESET} skills add https://github.com/owner/repo?path=skills/pdf
+  ${DIM}$${RESET} skills add gitlab:group/repo --skill pdf
+  ${DIM}$${RESET} skills add https://gitlab.com/group/repo/-/tree/main/skills/pdf
   ${DIM}$${RESET} skills add ./local-skills --list
+
+  ${DIM}GitLab HTTP(S) sources are cloned over SSH; configure SSH access to the GitLab host.${RESET}
 `);
 }
 
@@ -387,7 +392,7 @@ ${BOLD}Description:${RESET}
   Clone an external git source, discover a skill, and publish it through Catalog one-shot import.
 
 ${BOLD}Arguments:${RESET}
-  source                 Required git source (owner/repo, https://..., git@...)
+  source                 Required git source (owner/repo, GitLab shorthand/URL, https://..., git@...)
 
 ${BOLD}Options:${RESET}
   --registry <url>       Catalog base URL override
@@ -402,6 +407,9 @@ ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} skills import-git owner/repo
   ${DIM}$${RESET} skills import-git owner/repo --skill pdf
   ${DIM}$${RESET} skills import-git https://github.com/owner/repo?path=skills/pdf
+  ${DIM}$${RESET} skills import-git gitlab:group/repo --skill pdf
+
+  ${DIM}GitLab HTTP(S) sources are cloned over SSH; configure SSH access to the GitLab host.${RESET}
 `);
 }
 

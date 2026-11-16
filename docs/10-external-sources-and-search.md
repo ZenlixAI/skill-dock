@@ -25,7 +25,11 @@ The CLI also works directly with local and git sources:
 ```bash
 skills add ./path
 skills add owner/repo
+skills add gitlab:group/repo
+skills add https://gitlab.com/group/repo
 skills add <git-url>
 ```
+
+GitLab HTTP(S) URLs are recognized when the hostname starts with `gitlab.` and are normalized to SSH clone URLs; configure SSH access to the GitLab host before installing. HTTPS GitLab URLs become `git@host:group/repo.git`. If the host uses a non-standard SSH port, pass an `ssh://git@host:port/group/repo.git` URL directly. For a branch name containing `/`, use `?ref=feature/foo` rather than a `/-/tree/` URL, because that path form is ambiguous.
 
 `import-local`, `import-git`, and `import-npm` submit collected source to the server for publication. Source installation and catalog installation remain separate workflows.

@@ -24,9 +24,9 @@
 - `SKILLS_REGISTRY_URL` is the catalog server base URL;
 - `--registry` is a per-invocation catalog override and is not persisted;
 - registry package installs resolve through the server;
-- source installs may use a local path, GitHub shorthand, or git URL;
+- source installs may use a local path, GitHub shorthand, GitLab shorthand/URL, or git URL;
 - `update` applies only to registry-installed entries;
-- `sync` applies only to local or git source-installed entries;
+- `sync` applies only to local or git source-installed entries, including GitHub and GitLab;
 - `list` and `remove` query and mutate local installed state only;
 - `skills --help` is the command-level source for the supported flags and examples.
 

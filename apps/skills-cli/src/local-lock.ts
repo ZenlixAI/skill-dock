@@ -8,6 +8,8 @@ const CURRENT_VERSION = 1;
 export interface LocalSkillLegacyMetadata {
   /** Historical source identifier from pre-registry install flows. */
   source?: string;
+  /** Normalized clone URL for replaying a source install. */
+  sourceUrl?: string;
   /** Historical branch or tag ref from pre-registry install flows. */
   ref?: string;
   /** Historical repo-local SKILL.md path from pre-registry install flows. */
@@ -37,9 +39,9 @@ export interface LocalSkillLockEntry {
   /**
    * Install source classification.
    *
-   * `registry` is the canonical V1 path. Other values such as `node_modules`
-   * or `local` exist only so the lock reader can classify historical entries
-   * without treating them as the primary contract.
+   * `registry` is the canonical registry path. Source installs use `local`,
+   * `github`, `gitlab`, or `git`. Other values remain readable so historical
+   * entries can still be classified.
    */
   sourceType: string;
   /** Historical compatibility-only metadata from pre-registry install flows. */
@@ -220,6 +222,7 @@ function createEmptyLocalLock(): LocalSkillLockFile {
 
 type RawLocalSkillLockEntry = LocalSkillLockEntry & {
   source?: string;
+  sourceUrl?: string;
   ref?: string;
   skillPath?: string;
 };
@@ -245,15 +248,17 @@ function normalizeLocalLegacyMetadata(
   entry: Partial<RawLocalSkillLockEntry>
 ): LocalSkillLegacyMetadata | undefined {
   const source = entry.legacy?.source ?? entry.source;
+  const sourceUrl = entry.legacy?.sourceUrl ?? entry.sourceUrl;
   const ref = entry.legacy?.ref ?? entry.ref;
   const skillPath = entry.legacy?.skillPath ?? entry.skillPath;
 
-  if (!source && !ref && !skillPath) {
+  if (!source && !sourceUrl && !ref && !skillPath) {
     return undefined;
   }
 
   return {
     ...(source ? { source } : {}),
+    ...(sourceUrl ? { sourceUrl } : {}),
     ...(ref ? { ref } : {}),
     ...(skillPath ? { skillPath } : {}),
   };
@@ -262,6 +267,7 @@ function normalizeLocalLegacyMetadata(
 function serializeLocalSkillLockEntry(entry: LocalSkillLockEntry): Record<string, unknown> {
   return {
     ...(entry.legacy?.source ? { source: entry.legacy.source } : {}),
+    ...(entry.legacy?.sourceUrl ? { sourceUrl: entry.legacy.sourceUrl } : {}),
     ...(entry.legacy?.ref ? { ref: entry.legacy.ref } : {}),
     ...(entry.legacy?.skillPath ? { skillPath: entry.legacy.skillPath } : {}),
     sourceType: entry.sourceType,

@@ -6,6 +6,7 @@ interface SyncLegacyShape {
   sourceType?: string;
   legacy?: {
     source?: string;
+    sourceUrl?: string;
     ref?: string;
     skillPath?: string;
   };
@@ -17,19 +18,26 @@ export function getRecordedSkillPath(input: SyncLegacyShape): string | null {
 }
 
 export function parseLegacyReplaySource(input: SyncLegacyShape): ParsedSource | null {
-  const rawSource = input.legacy?.source?.trim();
-  if (!rawSource) {
+  const recordedRef = input.legacy?.ref?.trim() || undefined;
+  const sourceUrl = input.legacy?.sourceUrl?.trim();
+  const source = input.legacy?.source?.trim();
+  const parsedSourceUrl = sourceUrl ? parseSourceInput(sourceUrl) : null;
+  const parsedSource = source ? parseSourceInput(source) : null;
+  const base = parsedSourceUrl || parsedSource;
+
+  if (!base) {
     return null;
   }
 
-  const parsed = parseSourceInput(rawSource);
-  if (!parsed) {
-    return null;
-  }
+  // The normalized sourceUrl is the best clone target, but the original source
+  // may still carry selectors such as ?path= or a GitLab /-/tree/ subpath.
+  const subpath = base.subpath || parsedSource?.subpath;
+  const ref = recordedRef || base.ref || parsedSource?.ref;
 
   return {
-    ...parsed,
-    ref: input.legacy?.ref?.trim() || parsed.ref,
+    ...base,
+    ...(subpath ? { subpath } : {}),
+    ...(ref ? { ref } : {}),
   };
 }
 
