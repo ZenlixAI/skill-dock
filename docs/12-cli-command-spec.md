@@ -40,7 +40,7 @@ skills find [query] [--registry <url>] [--include-external] [--source <catalog|s
 skills add <source> [options]
 ```
 
-`add` accepts a package name, local path, GitHub shorthand, or git URL. Its source-install options include `--skill`, `--list`, `--all`, and `--full-depth`; registry installs also support `--version`, `--output-dir`, and `--json`.
+`add` accepts a package name, local path, GitHub shorthand, GitLab shorthand/URL, or git URL. GitLab HTTP(S) URLs are recognized when the hostname starts with `gitlab.` and are normalized to SSH clone URLs. Its source-install options include `--skill`, `--list`, `--all`, and `--full-depth`; registry installs also support `--version`, `--output-dir`, and `--json`.
 
 Successful local and git installs attempt a server import by default. Set `syncOnAdd` to `false` to disable it. `packageNamePrefix`, `defaultVersion`, and `registry` can supply missing source metadata and select the import endpoint. Import failure is reported as a warning and does not roll back the local installation.
 
@@ -51,7 +51,7 @@ skills update [skills...] [-g|--global] [-p|--project] [-y|--yes]
 skills sync [skills...] [-g|--global] [-p|--project] [-y|--yes]
 ```
 
-`update` applies only to registry entries. `sync` applies only to `local`, `github`, and `git` entries with recorded source and skill-path metadata. With no explicit scope, non-interactive execution chooses project scope when project skills exist, otherwise global scope.
+`update` applies only to registry entries. `sync` applies only to `local`, `github`, `gitlab`, and `git` entries with recorded source and skill-path metadata. With no explicit scope, non-interactive execution chooses project scope when project skills exist, otherwise global scope.
 
 ## Authoring and publication
 

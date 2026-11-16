@@ -834,6 +834,7 @@ async function installSourceReference(
             computedHash,
             legacy: {
               source: legacy.source,
+              ...(legacy.sourceUrl ? { sourceUrl: legacy.sourceUrl } : {}),
               ...(legacy.ref ? { ref: legacy.ref } : {}),
               ...(legacy.skillPath ? { skillPath: legacy.skillPath } : {}),
             },
@@ -951,7 +952,7 @@ export async function runAdd(args: string[], options: AddOptions = {}): Promise<
       }
 
       showAddUsageError(
-        'Unsupported source. Use a registry package_name, local path, owner/repo, or Git URL.'
+        'Unsupported source. Use a registry package_name, local path, owner/repo, GitLab shorthand/URL, or Git URL.'
       );
     }
 

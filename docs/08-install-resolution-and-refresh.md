@@ -19,16 +19,17 @@ A source install discovers skills from:
 
 - a local filesystem path;
 - GitHub shorthand such as `owner/repo`;
+- GitLab shorthand such as `gitlab:group/repo` or a GitLab URL whose hostname starts with `gitlab.`;
 - a git URL.
 
-The CLI materializes the discovered skill for selected agents and records its source, ref, skill path, and content hash in the project `skills-lock.json` or global `.skill-lock.json`.
+GitLab HTTP(S) sources are normalized to SSH clone URLs. The CLI materializes the discovered skill for selected agents and records its source, normalized source URL, ref, skill path, and content hash in the project `skills-lock.json` or global `.skill-lock.json`.
 
 After a successful local or git `add`, automatic server import runs by default. It is best-effort and uses the merged global `${XDG_CONFIG_HOME:-~/.config}/skills/config.json` and nearest project `skills.config.json`; project values override global values. It does not change the source lock classification or registry refresh behavior.
 
 ## Refresh semantics
 
 - `update` applies only to entries with `sourceType: registry` and follows server release resolution;
-- `sync` applies only to entries with source types `local`, `github`, or `git`;
+- `sync` applies only to entries with source types `local`, `github`, `gitlab`, or `git`;
 - `sync` replays the recorded source and skill path, reinstalls for recorded agents, and updates the content hash;
 - `sync` does not query the catalog or publish changed source content;
 - registry and source refresh paths must remain separate.

@@ -95,6 +95,42 @@ describe('import-git workflow', () => {
     expect(cleanupTempDir).toHaveBeenCalledWith(repoDir);
   });
 
+  it('clones GitLab sources over SSH before publishing', async () => {
+    const skillDir = join(repoDir, 'skills', 'gitlab-skill');
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(
+      join(skillDir, 'SKILL.md'),
+      `---\nname: gitlab-skill\ndescription: GitLab skill\n---\n`
+    );
+
+    vi.mocked(cloneRepo).mockResolvedValueOnce(repoDir);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        packageName: '@acme.skill/gitlab-skill',
+        version: '0.1.0',
+        manifestDigest: 'sha256:test',
+        components: [],
+        publishedToRegistry: false,
+        created: true,
+        idempotentReplay: false,
+        versionStatus: 'published',
+        installPolicy: 'resolvable',
+        warnings: [],
+        errors: [],
+      })
+    );
+
+    const result = await runImportGitWorkflow({
+      source: 'https://gitlab.com/acme/skills',
+      registry: 'https://catalog.example.com',
+      packageName: '@acme.skill/gitlab-skill',
+      version: '0.1.0',
+    });
+
+    expect(cloneRepo).toHaveBeenCalledWith('git@gitlab.com:acme/skills.git', undefined);
+    expect(result.ok).toBe(true);
+  });
+
   it('requires --skill when multiple skills are discovered', async () => {
     const firstSkill = join(repoDir, 'skills', 'first');
     const secondSkill = join(repoDir, 'skills', 'second');

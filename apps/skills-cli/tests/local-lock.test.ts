@@ -251,6 +251,52 @@ describe('local-lock', () => {
     });
   });
 
+  describe('GitLab legacy metadata', () => {
+    it('serializes and reads sourceUrl for source replay', async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'lock-test-'));
+      try {
+        await addSkillToLocalLock(
+          'gitlab-skill',
+          {
+            sourceType: 'gitlab',
+            computedHash: 'gitlab-hash',
+            legacy: {
+              source: 'https://gitlab.com/acme/skills/-/tree/main/skills/pdf',
+              sourceUrl: 'git@gitlab.com:acme/skills.git',
+              ref: 'main',
+              skillPath: 'skills/pdf/SKILL.md',
+            },
+          },
+          dir
+        );
+
+        const raw = JSON.parse(await readFile(join(dir, 'skills-lock.json'), 'utf-8'));
+        expect(raw.skills['gitlab-skill']).toEqual({
+          source: 'https://gitlab.com/acme/skills/-/tree/main/skills/pdf',
+          sourceUrl: 'git@gitlab.com:acme/skills.git',
+          ref: 'main',
+          skillPath: 'skills/pdf/SKILL.md',
+          sourceType: 'gitlab',
+          computedHash: 'gitlab-hash',
+        });
+
+        const lock = await readLocalLock(dir);
+        expect(lock.skills['gitlab-skill']).toEqual({
+          sourceType: 'gitlab',
+          computedHash: 'gitlab-hash',
+          legacy: {
+            source: 'https://gitlab.com/acme/skills/-/tree/main/skills/pdf',
+            sourceUrl: 'git@gitlab.com:acme/skills.git',
+            ref: 'main',
+            skillPath: 'skills/pdf/SKILL.md',
+          },
+        });
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe('addSkillToLocalLock', () => {
     it('adds a new skill to an empty lock', async () => {
       const dir = await mkdtemp(join(tmpdir(), 'lock-test-'));

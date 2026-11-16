@@ -36,8 +36,8 @@ export interface SkillLockEntry {
   /**
    * Install source classification.
    *
-   * `registry` is the intended V1 steady-state. Other values remain so the CLI
-   * can classify historical global installs without making them first-class.
+   * Registry installs use `registry`; source installs use `local`, `github`,
+   * `gitlab`, or `git`. Historical values remain readable for classification.
    */
   sourceType: string;
   /** Historical compatibility-only metadata from pre-registry install flows. */

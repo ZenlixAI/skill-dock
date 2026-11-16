@@ -43,7 +43,12 @@ function matchesFilter(record: InstalledSkillView, requested?: string[]): boolea
 }
 
 function isSyncableSourceType(sourceType: string): boolean {
-  return sourceType === 'local' || sourceType === 'github' || sourceType === 'git';
+  return (
+    sourceType === 'local' ||
+    sourceType === 'github' ||
+    sourceType === 'gitlab' ||
+    sourceType === 'git'
+  );
 }
 
 function resolveScope(options: SyncOptions): InstalledViewScope {
@@ -75,6 +80,7 @@ function buildLocalLegacyMetadata(record: InstalledSkillView): LocalSkillLegacyM
 
   return {
     ...(legacy.source ? { source: legacy.source } : {}),
+    ...(legacy.sourceUrl ? { sourceUrl: legacy.sourceUrl } : {}),
     ...(legacy.ref ? { ref: legacy.ref } : {}),
     ...(legacy.skillPath ? { skillPath: legacy.skillPath } : {}),
   };
@@ -110,7 +116,7 @@ export async function runSyncWorkflow(options: SyncOptions): Promise<SyncWorkflo
       result.failCount++;
       result.failures.push({
         skill: recordLabel(record),
-        error: 'legacy.source and legacy.skillPath are required for sync',
+        error: 'legacy.source/sourceUrl and legacy.skillPath are required for sync',
       });
       continue;
     }

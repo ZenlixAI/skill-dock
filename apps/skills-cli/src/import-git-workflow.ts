@@ -24,7 +24,9 @@ export async function runImportGitWorkflow(
   const parsedSource = parseSourceInput(options.source);
 
   if (!parsedSource || parsedSource.type === 'local') {
-    return failure(['Unsupported source. Use owner/repo or a Git URL for external imports.']);
+    return failure([
+      'Unsupported source. Use owner/repo, a GitLab shorthand/URL, or a Git URL for external imports.',
+    ]);
   }
 
   let cleanupRoot: string | null = null;

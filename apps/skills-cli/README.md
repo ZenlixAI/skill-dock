@@ -47,6 +47,8 @@ Set `syncOnAdd` to `false` to disable automatic import. The operation is best-ef
 npx skills find pdf --include-external
 npx skills add @platform.skill/pdf-skill --version 1.2.0
 npx skills add owner/repo --skill pdf
+npx skills add gitlab:group/repo --skill pdf
+npx skills add https://gitlab.com/group/repo/-/tree/main/skills/pdf
 npx skills add ./local-skills --list
 npx skills update @platform.skill/pdf-skill
 npx skills sync legacy-skill
@@ -61,6 +63,7 @@ Use `skills --help` or a command's `--help` flag for the complete option list.
 ## Boundaries
 
 - Registry and source installations are separate workflows.
+- GitLab HTTP(S) sources are recognized when the hostname starts with `gitlab.` and are normalized to SSH clone URLs. HTTPS GitLab URLs become `git@host:group/repo.git`; use an `ssh://` URL directly for non-standard SSH ports.
 - `update` resolves registry releases through the server; `sync` replays recorded local or git sources.
 - The CLI does not publish directly to the artifact repository.
 - Only a server-resolvable hosted release can be installed as a registry package.

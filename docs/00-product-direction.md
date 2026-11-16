@@ -31,7 +31,7 @@ A hosted skill is identified by a scoped npm-compatible package name. A release 
 
 ## Source installs
 
-`skills add` accepts a local path, GitHub shorthand, or git URL. It records the source locally, and `skills sync` replays that source later. Successful local and git installs also attempt a server import by default; a failed import does not undo the completed local installation. Set `syncOnAdd` to `false` in the merged global or project `skills.config.json` to disable this import.
+`skills add` accepts a local path, GitHub shorthand, GitLab shorthand/URL, or git URL. GitLab HTTP(S) URLs are recognized when the hostname starts with `gitlab.` and are normalized to SSH clone URLs. It records the source locally, and `skills sync` replays that source later. Successful local and git installs also attempt a server import by default; a failed import does not undo the completed local installation. Set `syncOnAdd` to `false` in the merged global or project `skills.config.json` to disable this import.
 
 ## Install transport
 

@@ -9,6 +9,7 @@ This file provides guidance to AI coding agents working on the `skills` CLI code
 ## Command model
 
 - `add` installs registry packages or source-discovered skills.
+- GitLab HTTP(S) URLs are recognized when the hostname starts with `gitlab.` and are normalized to SSH clone URLs.
 - `find` searches skills.
 - `list` shows installed skills.
 - `remove` uninstalls local skills.

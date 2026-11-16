@@ -135,6 +135,78 @@ describe('sync workflow', () => {
     });
   });
 
+  it('replays a project GitLab source over SSH and refreshes the local lock entry', async () => {
+    vi.mocked(listInstalledView).mockResolvedValueOnce([
+      {
+        lockKey: 'gitlab-skill',
+        packageName: undefined,
+        displayName: 'GitLab Skill',
+        installName: 'gitlab-skill',
+        aliases: ['gitlab-skill'],
+        scope: 'project',
+        canonicalPath: '/repo/.agents/skills/gitlab-skill',
+        agentLinks: [
+          { agent: 'codex', path: '/repo/.agents/skills/gitlab-skill', kind: 'canonical' },
+        ],
+        sourceType: 'gitlab',
+        registry: undefined,
+        version: undefined,
+        pluginName: undefined,
+        orphaned: false,
+        orphanReasons: [],
+        lockEntry: {
+          sourceType: 'gitlab',
+          computedHash: 'old-hash',
+          legacy: {
+            source: 'https://gitlab.com/acme/skills/-/tree/main/skills/gitlab-skill',
+            sourceUrl: 'git@gitlab.com:acme/skills.git',
+            ref: 'main',
+            skillPath: 'SKILL.md',
+          },
+        },
+      },
+    ]);
+    vi.mocked(cloneRepo).mockResolvedValueOnce(clonedRoot);
+    vi.mocked(discoverSkills).mockResolvedValueOnce([
+      {
+        name: 'GitLab Skill',
+        description: 'Updated',
+        path: join(clonedRoot, 'skills', 'gitlab-skill'),
+      },
+    ]);
+    vi.mocked(installSkillForAgent).mockResolvedValueOnce({
+      success: true,
+      path: '/repo/.agents/skills/gitlab-skill',
+      canonicalPath: '/repo/.agents/skills/gitlab-skill',
+      mode: 'symlink',
+    });
+    vi.mocked(computeSkillFolderHash).mockResolvedValueOnce('gitlab-hash');
+
+    const result = await runSyncWorkflow({ project: true, skills: ['gitlab-skill'] });
+
+    expect(cloneRepo).toHaveBeenCalledWith('git@gitlab.com:acme/skills.git', 'main');
+    expect(discoverSkills).toHaveBeenCalledWith(clonedRoot, 'skills/gitlab-skill', {
+      fullDepth: false,
+    });
+    expect(addSkillToLocalLock).toHaveBeenCalledWith(
+      'gitlab-skill',
+      expect.objectContaining({
+        sourceType: 'gitlab',
+        computedHash: 'gitlab-hash',
+        legacy: expect.objectContaining({
+          sourceUrl: 'git@gitlab.com:acme/skills.git',
+          ref: 'main',
+        }),
+      }),
+      expect.any(String)
+    );
+    expect(result).toMatchObject({
+      successCount: 1,
+      failCount: 0,
+      skippedCount: 0,
+    });
+  });
+
   it('skips orphaned or registry-installed records', async () => {
     vi.mocked(listInstalledView).mockResolvedValueOnce([
       {
@@ -227,7 +299,7 @@ describe('sync workflow', () => {
     expect(result.failCount).toBe(1);
     expect(result.failures[0]).toMatchObject({
       skill: 'Legacy Skill',
-      error: 'legacy.source and legacy.skillPath are required for sync',
+      error: 'legacy.source/sourceUrl and legacy.skillPath are required for sync',
     });
   });
 
