@@ -292,16 +292,43 @@ func (s *Store) replaceGroupMembers(ctx context.Context, group Group) error {
 	if err != nil {
 		return err
 	}
+	next := map[string]struct{}{}
 	for _, member := range group.Members {
 		user, err := s.GetUser(ctx, member.Value)
 		if err != nil {
 			continue
 		}
+		next[user.ID] = struct{}{}
 		if err := s.identity.UpsertMembership(ctx, identity.Membership{OrganizationID: orgID, UserID: user.ID}); err != nil {
 			return err
 		}
 		query := s.bind(`INSERT INTO scim_group_members (group_id, user_id) VALUES (?,?) ON CONFLICT (group_id, user_id) DO NOTHING`)
 		_, _ = s.db.ExecContext(ctx, query, group.ID, member.Value)
+	}
+
+	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT user_id FROM scim_group_members WHERE group_id = ?`), group.ID)
+	if err != nil {
+		return err
+	}
+	var removed []string
+	for rows.Next() {
+		var userID string
+		if err := rows.Scan(&userID); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		if _, ok := next[userID]; !ok {
+			removed = append(removed, userID)
+		}
+	}
+	_ = rows.Close()
+	for _, userID := range removed {
+		if err := s.identity.RemoveMembership(ctx, orgID, userID); err != nil {
+			return err
+		}
+		if _, err := s.db.ExecContext(ctx, s.bind(`DELETE FROM scim_group_members WHERE group_id = ? AND user_id = ?`), group.ID, userID); err != nil {
+			return err
+		}
 	}
 	return nil
 }

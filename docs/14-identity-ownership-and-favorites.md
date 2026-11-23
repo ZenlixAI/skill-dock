@@ -1505,7 +1505,7 @@ Authentication is a bearer token in `Authorization: Bearer <SKILL_REGISTRY_SCIM_
 
 ### 16.4 Limitations
 
-- Group members are added, not authoritatively removed, in the first SCIM implementation.
+- SCIM group membership is authoritative for members previously created through SCIM; Logto-managed members are not removed by a SCIM group update.
 - SCIM roles are not mapped to Skill Dock organization roles yet.
 - Filtering is limited to `userName eq` and `emails.value eq`.
 - Bulk operations, ETag/versioning, and SCIM password change are not supported.
