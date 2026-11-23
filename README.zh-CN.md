@@ -109,6 +109,13 @@ Worker 的运行时配置在 `wrangler.jsonc`（`SKILLS_SH_ENABLED`、`SKILLS_SH
 | `SKILL_REGISTRY_READER_TOKEN` | 读取 token |
 | `SKILL_REGISTRY_AUTHORING_TOKEN` | 创作 token |
 | `SKILL_REGISTRY_PUBLISHER_TOKEN` | 发布 token |
+| `SKILL_REGISTRY_AUTH_MODE` | `legacy`、`hybrid` 或 `logto` |
+| `SKILL_REGISTRY_LOGTO_ENDPOINT` | Logto OIDC 地址 |
+| `SKILL_REGISTRY_LOGTO_API_RESOURCE` | Logto API resource / JWT audience |
+| `SKILL_REGISTRY_CORS_ORIGINS` | 允许调用认证接口的浏览器来源 |
+| `SKILL_REGISTRY_SCIM_TOKEN` | 可选的 SCIM 2.0 provisioning token |
+| `SKILL_REGISTRY_PRIVATE_ARTIFACT_UPSTREAM_URL` | 服务端私有 npm 上游地址 |
+| `SKILL_REGISTRY_PRIVATE_ARTIFACT_READ_AUTHORIZATION` | 私有 npm 上游读取凭证 |
 | `SKILL_REGISTRY_INSTALL_TARGET_MODE` | `proxy` 或 `direct` |
 
 ### CLI

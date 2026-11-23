@@ -14,9 +14,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"skill_registry/internal/access"
 	catalog "skill_registry/internal/catalog/domain"
 	internalcataloghttp "skill_registry/internal/catalog/http"
+	"skill_registry/internal/favorites"
 	internalgovernancehttp "skill_registry/internal/governance/http"
+	"skill_registry/internal/identity"
 	packaging "skill_registry/internal/packaging/domain"
 	platformaudit "skill_registry/internal/platform/audit"
 	"skill_registry/internal/platform/auth"
@@ -25,7 +28,9 @@ import (
 	platformmiddleware "skill_registry/internal/platform/http/middleware"
 	"skill_registry/internal/platform/observability"
 	persist "skill_registry/internal/platform/persistence"
+	"skill_registry/internal/scim"
 	internalsystemhttp "skill_registry/internal/system/http"
+	"skill_registry/internal/tags"
 )
 
 type ImportReviewFunc func(context.Context, packaging.ImportReviewRequest) (packaging.ImportReviewResponse, error)
@@ -33,61 +38,83 @@ type ImportReviewFunc func(context.Context, packaging.ImportReviewRequest) (pack
 type PublishFunc func(context.Context, packaging.PublishRequest) (packaging.PublishResponse, error)
 
 type ServerConfig struct {
-	Repository                      catalog.Repository
-	Mode                            ServerMode
-	InstallTargetMode               InstallTargetMode
-	ReadListCacheTTL                time.Duration
-	ReadDetailCacheTTL              time.Duration
-	ReadMaxInFlight                 int
-	WriteMaxInFlight                int
-	ReaderToken                     string
-	AuthoringToken                  string
-	PublisherToken                  string
-	NPMRegistryURL                  string
-	NPMRegistryReadAuthorization    string
-	NPMRegistryPublishAuthorization string
-	NPMRegistryPublishClient        *http.Client
-	PublicNPMRegistryURL            string
-	AuthTokens                      map[string]auth.TokenConfig
-	ImportReview                    ImportReviewFunc
-	Publish                         PublishFunc
-	ExternalSkillSearcher           catalog.ExternalSkillSearcher
-	Idempotency                     persist.IdempotencyStore
-	Audit                           persist.AuditStore
-	Logger                          *log.Logger
+	Repository                          catalog.Repository
+	Mode                                ServerMode
+	InstallTargetMode                   InstallTargetMode
+	ReadListCacheTTL                    time.Duration
+	ReadDetailCacheTTL                  time.Duration
+	ReadMaxInFlight                     int
+	WriteMaxInFlight                    int
+	ReaderToken                         string
+	AuthoringToken                      string
+	PublisherToken                      string
+	NPMRegistryURL                      string
+	NPMRegistryReadAuthorization        string
+	NPMRegistryPublishAuthorization     string
+	PrivateNPMRegistryURL               string
+	PrivateNPMRegistryReadAuthorization string
+	NPMRegistryPublishClient            *http.Client
+	PublicNPMRegistryURL                string
+	AuthTokens                          map[string]auth.TokenConfig
+	ImportReview                        ImportReviewFunc
+	Publish                             PublishFunc
+	ExternalSkillSearcher               catalog.ExternalSkillSearcher
+	Identity                            *identity.Service
+	IdentityStore                       identity.Store
+	AccessStore                         access.Store
+	Access                              *access.Decider
+	TagStore                            *tags.Store
+	FavoriteStore                       *favorites.Store
+	SCIMStore                           *scim.Store
+	SCIMToken                           string
+	CORSOrigins                         []string
+	Idempotency                         persist.IdempotencyStore
+	Audit                               persist.AuditStore
+	Logger                              *log.Logger
 }
 
 type Server struct {
-	authorizer                      *auth.Authorizer
-	accessWorkflow                  platformaccess.Gate
-	listSkillsFunc                  func(context.Context, auth.Principal, internalcataloghttp.SkillsQuery) (catalog.SkillsPage, *catalog.Error)
-	listCuratedSkillsFunc           func(context.Context, auth.Principal, int, int) (catalog.CuratedSkillsPage, *catalog.Error)
-	getSkillFunc                    func(context.Context, string) (catalog.SkillDetail, error)
-	listVersionsFunc                func(context.Context, catalog.VersionQuery) (catalog.VersionsPage, error)
-	getVersionFunc                  func(context.Context, string, string) (catalog.SkillVersionDetail, error)
-	resolveInstallTargetFunc        func(context.Context, string, string) (catalog.InstallResolution, error)
-	auditListEvents                 func(context.Context, auth.Principal, url.Values) (persist.AuditPage, *catalog.Error)
-	systemReadyz                    func(context.Context) (internalsystemhttp.Readyz, int)
-	governanceWorkflow              internalgovernancehttp.Workflow
-	npmRegistryURL                  string
-	npmRegistryReadAuthorization    string
-	npmRegistryPublishAuthorization string
-	publicNPMRegistryURL            string
-	importReview                    ImportReviewFunc
-	publish                         PublishFunc
-	idempotency                     persist.IdempotencyStore
-	auditRecorder                   *platformaudit.Recorder
-	logger                          *log.Logger
-	metrics                         *observability.Collector
-	requestID                       atomic.Uint64
-	mode                            ServerMode
-	installTargetMode               InstallTargetMode
-	readListCacheTTL                time.Duration
-	readDetailCacheTTL              time.Duration
-	readCache                       *platformhttp.ReadCache
-	readLimiter                     *platformhttp.RequestLimiter
-	writeLimiter                    *platformhttp.RequestLimiter
-	externalSkillSearcher           catalog.ExternalSkillSearcher
+	authorizer                          *auth.Authorizer
+	accessWorkflow                      platformaccess.Gate
+	listSkillsFunc                      func(context.Context, auth.Principal, internalcataloghttp.SkillsQuery) (catalog.SkillsPage, *catalog.Error)
+	listCuratedSkillsFunc               func(context.Context, auth.Principal, int, int) (catalog.CuratedSkillsPage, *catalog.Error)
+	getSkillFunc                        func(context.Context, string) (catalog.SkillDetail, error)
+	listVersionsFunc                    func(context.Context, catalog.VersionQuery) (catalog.VersionsPage, error)
+	getVersionFunc                      func(context.Context, string, string) (catalog.SkillVersionDetail, error)
+	resolveInstallTargetFunc            func(context.Context, string, string) (catalog.InstallResolution, error)
+	auditListEvents                     func(context.Context, auth.Principal, url.Values) (persist.AuditPage, *catalog.Error)
+	systemReadyz                        func(context.Context) (internalsystemhttp.Readyz, int)
+	governanceWorkflow                  internalgovernancehttp.Workflow
+	npmRegistryURL                      string
+	npmRegistryReadAuthorization        string
+	npmRegistryPublishAuthorization     string
+	privateNPMRegistryURL               string
+	privateNPMRegistryReadAuthorization string
+	publicNPMRegistryURL                string
+	importReview                        ImportReviewFunc
+	publish                             PublishFunc
+	idempotency                         persist.IdempotencyStore
+	auditRecorder                       *platformaudit.Recorder
+	identity                            *identity.Service
+	identityStore                       identity.Store
+	accessStore                         access.Store
+	access                              *access.Decider
+	tagStore                            *tags.Store
+	favoriteStore                       *favorites.Store
+	scimStore                           *scim.Store
+	scimToken                           string
+	corsOrigins                         []string
+	logger                              *log.Logger
+	metrics                             *observability.Collector
+	requestID                           atomic.Uint64
+	mode                                ServerMode
+	installTargetMode                   InstallTargetMode
+	readListCacheTTL                    time.Duration
+	readDetailCacheTTL                  time.Duration
+	readCache                           *platformhttp.ReadCache
+	readLimiter                         *platformhttp.RequestLimiter
+	writeLimiter                        *platformhttp.RequestLimiter
+	externalSkillSearcher               catalog.ExternalSkillSearcher
 }
 
 func NewServer(config ServerConfig) *Server {
@@ -123,25 +150,36 @@ func NewServer(config ServerConfig) *Server {
 	}
 
 	server := &Server{
-		authorizer:                      authorizer,
-		npmRegistryURL:                  strings.TrimSpace(config.NPMRegistryURL),
-		npmRegistryReadAuthorization:    strings.TrimSpace(config.NPMRegistryReadAuthorization),
-		npmRegistryPublishAuthorization: strings.TrimSpace(config.NPMRegistryPublishAuthorization),
-		publicNPMRegistryURL:            strings.TrimRight(strings.TrimSpace(config.PublicNPMRegistryURL), "/"),
-		importReview:                    config.ImportReview,
-		publish:                         config.Publish,
-		idempotency:                     idempotencyStore,
-		auditRecorder:                   auditRecorder,
-		logger:                          logger,
-		metrics:                         observability.NewCollector(),
-		mode:                            mode,
-		installTargetMode:               normalizeInstallTargetMode(config.InstallTargetMode),
-		readListCacheTTL:                readListCacheTTL,
-		readDetailCacheTTL:              readDetailCacheTTL,
-		readCache:                       platformhttp.NewReadCache(),
-		readLimiter:                     platformhttp.NewRequestLimiter(config.ReadMaxInFlight),
-		writeLimiter:                    platformhttp.NewRequestLimiter(config.WriteMaxInFlight),
-		externalSkillSearcher:           config.ExternalSkillSearcher,
+		authorizer:                          authorizer,
+		npmRegistryURL:                      strings.TrimSpace(config.NPMRegistryURL),
+		npmRegistryReadAuthorization:        strings.TrimSpace(config.NPMRegistryReadAuthorization),
+		npmRegistryPublishAuthorization:     strings.TrimSpace(config.NPMRegistryPublishAuthorization),
+		privateNPMRegistryURL:               strings.TrimSpace(config.PrivateNPMRegistryURL),
+		privateNPMRegistryReadAuthorization: strings.TrimSpace(config.PrivateNPMRegistryReadAuthorization),
+		publicNPMRegistryURL:                strings.TrimRight(strings.TrimSpace(config.PublicNPMRegistryURL), "/"),
+		importReview:                        config.ImportReview,
+		publish:                             config.Publish,
+		idempotency:                         idempotencyStore,
+		auditRecorder:                       auditRecorder,
+		identity:                            config.Identity,
+		identityStore:                       config.IdentityStore,
+		accessStore:                         config.AccessStore,
+		access:                              config.Access,
+		tagStore:                            config.TagStore,
+		favoriteStore:                       config.FavoriteStore,
+		scimStore:                           config.SCIMStore,
+		scimToken:                           strings.TrimSpace(config.SCIMToken),
+		corsOrigins:                         config.CORSOrigins,
+		logger:                              logger,
+		metrics:                             observability.NewCollector(),
+		mode:                                mode,
+		installTargetMode:                   normalizeInstallTargetMode(config.InstallTargetMode),
+		readListCacheTTL:                    readListCacheTTL,
+		readDetailCacheTTL:                  readDetailCacheTTL,
+		readCache:                           platformhttp.NewReadCache(),
+		readLimiter:                         platformhttp.NewRequestLimiter(config.ReadMaxInFlight),
+		writeLimiter:                        platformhttp.NewRequestLimiter(config.WriteMaxInFlight),
+		externalSkillSearcher:               config.ExternalSkillSearcher,
 	}
 	readModule := internalcataloghttp.NewReadWorkflow(readService)
 	server.listSkillsFunc = readModule.ListSkills
@@ -170,7 +208,11 @@ func (s *Server) serveCachedReadJSON(writer http.ResponseWriter, request *http.R
 	}
 	defer release()
 
-	cacheKey := s.readCacheKey(request, auth.PrincipalFromContext(request.Context()))
+	principal := auth.PrincipalFromContext(request.Context())
+	if principal.IsUser() {
+		writer.Header().Set("Cache-Control", "private, no-store")
+	}
+	cacheKey := s.readCacheKey(request, principal)
 	if cached, ok := s.readCache.Lookup(cacheKey); ok {
 		platformhttp.WriteJSONBytes(writer, http.StatusOK, cached)
 		return
@@ -199,7 +241,12 @@ func (s *Server) readCacheKey(request *http.Request, principal auth.Principal) s
 		request.Method,
 		request.URL.EscapedPath(),
 		request.URL.Query().Encode(),
+		principal.Kind,
 		principal.Role,
+		principal.UserID,
+		principal.Subject,
+		principal.TenantID,
+		principal.TokenID,
 		strings.Join(principal.AllowedPackages, ","),
 	}, "\x00")
 }
@@ -237,24 +284,64 @@ func (s *Server) newEngine() *gin.Engine {
 		reqInstallTargetMode = InstallTargetModeProxy
 	}
 	catalogHTTPHandlers := internalcataloghttp.Handlers{
-		AuthorizePackage:     s.accessWorkflow.AuthorizePackage,
-		ServeCachedReadJSON:  s.serveCachedReadJSON,
-		ReadListCacheTTL:     s.readListCacheTTL,
-		ReadDetailCacheTTL:   s.readDetailCacheTTL,
-		ListAuditEvents:      s.auditListEvents,
-		ListSkillsFunc:       s.listSkillsFunc,
-		ListCuratedSkills:    s.listCuratedSkillsFunc,
-		GetSkillFunc:         s.getSkillFunc,
-		ListVersionsFunc:     s.listVersionsFunc,
-		GetVersionFunc:       s.getVersionFunc,
-		ResolveInstallTarget: s.resolveInstallTargetFunc,
+		AuthorizePackage:    s.accessWorkflow.AuthorizePackage,
+		ServeCachedReadJSON: s.serveCachedReadJSON,
+		ReadListCacheTTL:    s.readListCacheTTL,
+		ReadDetailCacheTTL:  s.readDetailCacheTTL,
+		ListAuditEvents:     s.auditListEvents,
+		ListSkillsFunc: func(ctx context.Context, principal auth.Principal, query internalcataloghttp.SkillsQuery) (catalog.SkillsPage, *catalog.Error) {
+			page, err := s.listSkillsFunc(ctx, principal, query)
+			if err == nil {
+				s.enrichSummaryTags(ctx, principal, page.Items)
+			}
+			return page, err
+		},
+		ListCuratedSkills: s.listCuratedSkillsFunc,
+		GetSkillFunc: func(ctx context.Context, packageName string) (catalog.SkillDetail, error) {
+			if err := s.checkSkillAccess(ctx, packageName, access.ActionRead); err != nil {
+				return catalog.SkillDetail{}, err
+			}
+			detail, err := s.getSkillFunc(ctx, packageName)
+			if err == nil {
+				detail.Tags = s.tagsForPrincipal(ctx, packageName, auth.PrincipalFromContext(ctx))
+			}
+			return detail, err
+		},
+		ListVersionsFunc: func(ctx context.Context, query catalog.VersionQuery) (catalog.VersionsPage, error) {
+			if err := s.checkSkillAccess(ctx, query.PackageName, access.ActionRead); err != nil {
+				return catalog.VersionsPage{}, err
+			}
+			return s.listVersionsFunc(ctx, query)
+		},
+		GetVersionFunc: func(ctx context.Context, packageName string, version string) (catalog.SkillVersionDetail, error) {
+			if err := s.checkSkillAccess(ctx, packageName, access.ActionRead); err != nil {
+				return catalog.SkillVersionDetail{}, err
+			}
+			return s.getVersionFunc(ctx, packageName, version)
+		},
+		ResolveInstallTarget: func(ctx context.Context, packageName string, version string) (catalog.InstallResolution, error) {
+			if err := s.checkSkillAccess(ctx, packageName, access.ActionInstall); err != nil {
+				return catalog.InstallResolution{}, err
+			}
+			return s.resolveInstallTargetFunc(ctx, packageName, version)
+		},
 		PublicInstallTarget: func(request *http.Request, response catalog.InstallResolution) catalog.InstallResolution {
+			private := s.isPrivateSkill(request.Context(), response.PackageName)
+			if private {
+				response = internalcataloghttp.RewriteInstallTargetToProxy(request, response)
+				response.RegistryAccessMode = string(InstallTargetModeProxy)
+				response.ArtifactAccess = "catalog_proxy"
+				response.AuthorizationRequired = true
+				return response
+			}
 			if reqInstallTargetMode == InstallTargetModeDirect {
 				response.RegistryAccessMode = string(InstallTargetModeDirect)
+				response.ArtifactAccess = "npm"
 				return response
 			}
 			response = internalcataloghttp.RewriteInstallTargetToProxy(request, response)
 			response.RegistryAccessMode = string(InstallTargetModeProxy)
+			response.ArtifactAccess = "public_proxy"
 			return response
 		},
 	}
@@ -268,7 +355,16 @@ func (s *Server) newEngine() *gin.Engine {
 			return s.writeLimiter.Acquire()
 		},
 		CreateReleaseRecord: func(request *http.Request, principal auth.Principal, packageName string, versionPath string, rawBody []byte) (catalog.ReleaseRecordResult, int, *catalog.Error) {
-			return s.governanceWorkflow.CreateReleaseRecord(request.Context(), principal, packageName, versionPath, rawBody)
+			cleanup, accessErr := s.ensurePublishAccess(request.Context(), principal, packageName, "")
+			if accessErr != nil {
+				return catalog.ReleaseRecordResult{}, 0, platformhttp.CatalogErrorFromError(accessErr)
+			}
+			result, status, err := s.governanceWorkflow.CreateReleaseRecord(request.Context(), principal, packageName, versionPath, rawBody)
+			if err != nil {
+				cleanup()
+			}
+			s.readCache.InvalidateAll()
+			return result, status, err
 		},
 		ApplySkillGovernanceChange: func(request *http.Request, principal auth.Principal, packageName string, rawBody []byte) (catalog.GovernanceChangeResponse, int, *catalog.Error) {
 			return s.governanceWorkflow.ApplySkillGovernanceChange(request.Context(), principal, packageName, rawBody)
@@ -282,6 +378,15 @@ func (s *Server) newEngine() *gin.Engine {
 		platformmiddleware.WithObservability(s.metrics, s.logger),
 		platformmiddleware.WithAuthentication(s.authenticateRequest),
 	})
+	if len(s.corsOrigins) > 0 {
+		engine.Use(s.corsMiddleware())
+	}
+
+	s.registerIdentityRoutes(engine)
+	s.registerOwnershipRoutes(engine)
+	s.registerTagRoutes(engine)
+	s.registerFavoriteRoutes(engine)
+	s.registerSCIMRoutes(engine)
 
 	internalsystemhttp.RegisterRoutes(engine, internalsystemhttp.Config{
 		Healthz: systemHTTPHandlers.Healthz,
@@ -290,8 +395,13 @@ func (s *Server) newEngine() *gin.Engine {
 	})
 
 	proxy := newNPMRegistryProxy(s.npmRegistryURL, s.publicNPMRegistryURL, s.npmRegistryReadAuthorization, s.npmRegistryPublishAuthorization)
-	engine.Any(npmRegistryMountPath, gin.WrapH(proxy))
-	engine.Any(npmRegistryMountPath+"/*path", gin.WrapH(proxy))
+	privateProxy := http.Handler(nil)
+	if s.privateNPMRegistryURL != "" {
+		privateProxy = newNPMRegistryProxy(s.privateNPMRegistryURL, s.publicNPMRegistryURL, s.privateNPMRegistryReadAuthorization, s.npmRegistryPublishAuthorization)
+	}
+	proxyHandler := s.authenticatedArtifactProxy(proxy, privateProxy)
+	engine.Any(npmRegistryMountPath, proxyHandler)
+	engine.Any(npmRegistryMountPath+"/*path", proxyHandler)
 
 	internalcataloghttp.RegisterRoutes(engine, internalcataloghttp.Config{
 		ServesReadRoutes:  s.mode.servesReadRoutes(),
@@ -333,15 +443,25 @@ func (s *Server) newEngine() *gin.Engine {
 			if !s.accessWorkflow.AuthorizePackage(c.Writer, c.Request, payload.Target.PackageName) {
 				return
 			}
+			cleanup, accessErr := s.ensurePublishAccess(c.Request.Context(), auth.PrincipalFromContext(c.Request.Context()), payload.Target.PackageName, payload.Options.Visibility)
+			if accessErr != nil {
+				catalogErr := platformhttp.CatalogErrorFromError(accessErr)
+				s.recordMutationAudit(c.Request, "packaging.publish", payload.Target.PackageName, payload.Target.Version, catalogErr.Status, "failed", map[string]any{"errorCode": catalogErr.Code})
+				platformhttp.WriteCatalogError(c.Writer, c.Request, catalogErr)
+				return
+			}
 			release, err := s.writeLimiter.Acquire()
 			if err != nil {
+				cleanup()
 				platformhttp.WriteCatalogError(c.Writer, c.Request, err)
 				return
 			}
 			defer release()
 
 			result, publishErr := s.publish(c.Request.Context(), payload)
+			s.readCache.InvalidateAll()
 			if publishErr != nil {
+				cleanup()
 				catalogErr := platformhttp.CatalogErrorFromError(publishErr)
 				s.recordMutationAudit(c.Request, "packaging.publish", payload.Target.PackageName, payload.Target.Version, catalogErr.Status, "failed", map[string]any{"errorCode": catalogErr.Code})
 				platformhttp.WriteCatalogError(c.Writer, c.Request, catalogErr)
@@ -476,5 +596,32 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) authenticateRequest(request *http.Request) (auth.Principal, bool) {
-	return s.authorizer.Authenticate(request)
+	if current, ok := s.authorizer.Authenticate(request); ok {
+		if current.Kind == "" {
+			current.Kind = auth.PrincipalKindService
+		}
+		return current, true
+	}
+	if s.identity != nil {
+		token, ok := bearerToken(request)
+		if ok {
+			current, recognized, err := s.identity.AuthenticateBearer(request.Context(), token)
+			if recognized && err == nil {
+				return current, true
+			}
+		}
+	}
+	return auth.Principal{}, false
+}
+
+func bearerToken(request *http.Request) (string, bool) {
+	if request == nil {
+		return "", false
+	}
+	authorization := strings.TrimSpace(request.Header.Get("Authorization"))
+	if !strings.HasPrefix(authorization, "Bearer ") {
+		return "", false
+	}
+	token := strings.TrimSpace(strings.TrimPrefix(authorization, "Bearer "))
+	return token, token != ""
 }

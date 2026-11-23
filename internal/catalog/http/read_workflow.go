@@ -62,10 +62,20 @@ func (m *ReadModule) ListSkills(ctx context.Context, principal auth.Principal, q
 		Scope:           scope,
 		Origin:          origin,
 		Sort:            sortValue,
+		TagSlugs:        append([]string(nil), query.Tags...),
+		TagMode:         strings.ToLower(strings.TrimSpace(query.TagMode)),
 		PageSize:        pageSize,
 		Cursor:          cursor,
 	}
+	if skillQuery.TagMode != "" && skillQuery.TagMode != "all" && skillQuery.TagMode != "any" {
+		return catalog.SkillsPage{}, catalog.NewError(400, "invalid_request", "tag_mode must be all or any.", map[string]any{"tagMode": query.TagMode})
+	}
 	skillQuery.AllowedPackages = append([]string(nil), principal.AllowedPackages...)
+	skillQuery.TenantID = principal.TenantID
+	skillQuery.UserID = principal.UserID
+	skillQuery.IncludeAll = principal.PlatformAdmin || principal.IsService()
+	skillQuery.PublicOnly = principal.IsAnonymous() || (principal.TenantID == "" && !principal.PlatformAdmin && !principal.IsService())
+	skillQuery.IncludeTenantPrivate = principal.HasScope("skill:manage") || principal.HasScope("org:manage") || principal.HasScope("skill:govern")
 
 	response, err := m.service.ListSkills(ctx, skillQuery)
 	if err != nil {
@@ -76,9 +86,14 @@ func (m *ReadModule) ListSkills(ctx context.Context, principal auth.Principal, q
 
 func (m *ReadModule) ListCuratedSkills(ctx context.Context, principal auth.Principal, pageSize int, cursor int) (catalog.CuratedSkillsPage, *catalog.Error) {
 	response, err := m.service.ListCuratedSkills(ctx, catalog.CuratedSkillQuery{
-		AllowedPackages: append([]string(nil), principal.AllowedPackages...),
-		PageSize:        pageSize,
-		Cursor:          cursor,
+		AllowedPackages:      append([]string(nil), principal.AllowedPackages...),
+		PageSize:             pageSize,
+		Cursor:               cursor,
+		TenantID:             principal.TenantID,
+		UserID:               principal.UserID,
+		IncludeAll:           principal.PlatformAdmin || principal.IsService(),
+		PublicOnly:           principal.IsAnonymous() || (principal.TenantID == "" && !principal.PlatformAdmin && !principal.IsService()),
+		IncludeTenantPrivate: principal.HasScope("skill:manage") || principal.HasScope("org:manage") || principal.HasScope("skill:govern"),
 	})
 	if err != nil {
 		return catalog.CuratedSkillsPage{}, platformhttp.CatalogErrorFromError(err)

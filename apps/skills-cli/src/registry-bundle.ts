@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { parseSkillMd } from './skills.ts';
+import { getStoredAccessToken } from './auth-token.ts';
 import type { InstallTarget } from './catalog.ts';
 import type { Skill } from './types.ts';
 
@@ -190,6 +191,12 @@ export async function downloadRegistrySkillBundle(
     };
     if (authorization) {
       headers.Authorization = authorization;
+    } else if (resolveRegistryAccessMode(target) !== 'direct') {
+      const catalogToken =
+        process.env.SKILLS_REGISTRY_TOKEN?.trim() || (await getStoredAccessToken());
+      if (catalogToken) {
+        headers.Authorization = `Bearer ${catalogToken}`;
+      }
     }
 
     const response = await fetch(target.tarballUrl, {

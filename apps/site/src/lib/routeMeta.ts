@@ -21,6 +21,10 @@ export function getRouteMeta(pathname: string): RouteMeta {
     return { ...content.registry, section: 'portal' };
   }
 
+  if (path === '/callback') {
+    return { ...content.home, section: 'portal' };
+  }
+
   if (path === '/privacy') {
     return { ...content.privacy, section: 'legal' };
   }

@@ -1,7 +1,8 @@
-import { ArrowUpRight, Github, Menu, X } from 'lucide-react';
+import { ArrowUpRight, Github, LogOut, Menu, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { PropsWithChildren } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
+import { useAuth } from '../lib/auth';
 import { DOCS_URL, LICENSE_URL, REPO_URL } from '../lib/content';
 import { useI18n } from '../lib/i18n';
 import { getRouteMeta } from '../lib/routeMeta';
@@ -32,6 +33,7 @@ export function AppShell({ children }: PropsWithChildren) {
   const routeMeta = getRouteMeta(location.pathname);
   const { content, path } = useI18n();
   const { shell } = content;
+  const auth = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   useHashScroll();
 
@@ -67,6 +69,46 @@ export function AppShell({ children }: PropsWithChildren) {
           </nav>
 
           <div className="site-header__actions">
+            {auth.enabled ? (
+              auth.authenticated ? (
+                <>
+                  {auth.organizations.length > 1 ? (
+                    <label className="site-tenant-switcher">
+                      <span className="sr-only">{shell.auth.activeOrganization}</span>
+                      <select
+                        aria-label={shell.auth.activeOrganization}
+                        onChange={(event) => auth.switchOrganization(event.target.value)}
+                        value={auth.activeOrganization?.id ?? ''}
+                      >
+                        {auth.organizations.map((organization) => (
+                          <option key={organization.id} value={organization.id}>
+                            {organization.name || organization.slug}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+                  <button
+                    aria-label={shell.auth.signOut}
+                    className="icon-button"
+                    onClick={() => void auth.signOut()}
+                    title={shell.auth.signOut}
+                    type="button"
+                  >
+                    <LogOut aria-hidden="true" size={17} strokeWidth={1.8} />
+                  </button>
+                </>
+              ) : (
+                <button
+                  className="button button--small button--secondary"
+                  disabled={auth.loading}
+                  onClick={() => void auth.signIn()}
+                  type="button"
+                >
+                  {auth.loading ? shell.auth.loading : shell.auth.signIn}
+                </button>
+              )
+            ) : null}
             <LanguageToggle />
             <ThemeToggle />
             <a
@@ -108,6 +150,34 @@ export function AppShell({ children }: PropsWithChildren) {
                 {item.label}
               </Link>
             ))}
+            {auth.enabled && !auth.authenticated ? (
+              <button className="mobile-menu__link" onClick={() => void auth.signIn()} type="button">
+                {shell.auth.signIn}
+              </button>
+            ) : null}
+            {auth.enabled && auth.authenticated ? (
+              <>
+                {auth.organizations.length > 1 ? (
+                  <label className="mobile-menu__link">
+                    <span>{shell.auth.activeOrganization}</span>
+                    <select
+                      aria-label={shell.auth.activeOrganization}
+                      onChange={(event) => auth.switchOrganization(event.target.value)}
+                      value={auth.activeOrganization?.id ?? ''}
+                    >
+                      {auth.organizations.map((organization) => (
+                        <option key={organization.id} value={organization.id}>
+                          {organization.name || organization.slug}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                <button className="mobile-menu__link" onClick={() => void auth.signOut()} type="button">
+                  {shell.auth.signOut}
+                </button>
+              </>
+            ) : null}
             <a className="mobile-menu__link" href={DOCS_URL} rel="noreferrer" target="_blank">
               {shell.docs}
               <ArrowUpRight aria-hidden="true" size={14} />

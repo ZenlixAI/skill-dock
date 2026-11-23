@@ -21,21 +21,29 @@ type AuditStore interface {
 }
 
 type AuditEvent struct {
-	Action        string
-	RequestID     string
-	TraceID       string
-	Actor         string
-	Role          string
-	AuthMechanism string
-	AuthDecision  platformobservability.AuthDecision
-	Endpoint      string
-	Method        string
-	PackageName   string
-	Version       *string
-	Outcome       string
-	StatusCode    int
-	Details       map[string]any
-	CreatedAt     time.Time
+	Action              string
+	RequestID           string
+	TraceID             string
+	Actor               string
+	Role                string
+	AuthMechanism       string
+	ActorType           string
+	ActorUserID         string
+	ActorSubject        string
+	ActorOrganizationID string
+	OrganizationID      string
+	ActorDisplay        string
+	TokenID             string
+	ClientID            string
+	AuthDecision        platformobservability.AuthDecision
+	Endpoint            string
+	Method              string
+	PackageName         string
+	Version             *string
+	Outcome             string
+	StatusCode          int
+	Details             map[string]any
+	CreatedAt           time.Time
 }
 
 type AuditQuery struct {
@@ -50,22 +58,30 @@ type AuditQuery struct {
 }
 
 type AuditRecord struct {
-	ID            string                             `json:"id"`
-	RequestID     string                             `json:"requestId"`
-	TraceID       string                             `json:"traceId"`
-	Action        string                             `json:"action"`
-	Actor         string                             `json:"actor"`
-	Role          string                             `json:"role"`
-	AuthMechanism string                             `json:"authMechanism"`
-	AuthDecision  platformobservability.AuthDecision `json:"authDecision"`
-	Endpoint      string                             `json:"endpoint"`
-	Method        string                             `json:"method"`
-	PackageName   string                             `json:"packageName"`
-	Version       *string                            `json:"version,omitempty"`
-	Outcome       string                             `json:"outcome"`
-	StatusCode    int                                `json:"statusCode"`
-	Details       map[string]any                     `json:"details"`
-	CreatedAt     time.Time                          `json:"createdAt"`
+	ID                  string                             `json:"id"`
+	RequestID           string                             `json:"requestId"`
+	TraceID             string                             `json:"traceId"`
+	Action              string                             `json:"action"`
+	Actor               string                             `json:"actor"`
+	Role                string                             `json:"role"`
+	AuthMechanism       string                             `json:"authMechanism"`
+	ActorType           string                             `json:"actorType,omitempty"`
+	ActorUserID         string                             `json:"actorUserId,omitempty"`
+	ActorSubject        string                             `json:"actorSubject,omitempty"`
+	ActorOrganizationID string                             `json:"actorOrganizationId,omitempty"`
+	OrganizationID      string                             `json:"organizationId,omitempty"`
+	ActorDisplay        string                             `json:"actorDisplay,omitempty"`
+	TokenID             string                             `json:"tokenId,omitempty"`
+	ClientID            string                             `json:"clientId,omitempty"`
+	AuthDecision        platformobservability.AuthDecision `json:"authDecision"`
+	Endpoint            string                             `json:"endpoint"`
+	Method              string                             `json:"method"`
+	PackageName         string                             `json:"packageName"`
+	Version             *string                            `json:"version,omitempty"`
+	Outcome             string                             `json:"outcome"`
+	StatusCode          int                                `json:"statusCode"`
+	Details             map[string]any                     `json:"details"`
+	CreatedAt           time.Time                          `json:"createdAt"`
 }
 
 type AuditPage struct {
@@ -113,6 +129,14 @@ INSERT INTO audit_events (
 	actor,
 	role,
 	auth_mechanism,
+	actor_type,
+	actor_user_id,
+	actor_subject,
+	actor_organization_id,
+	organization_id,
+	actor_display,
+	token_id,
+	client_id,
 	auth_decision,
 	endpoint,
 	method,
@@ -122,7 +146,7 @@ INSERT INTO audit_events (
 	status_code,
 	details_json,
 	created_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	_, err = s.db.ExecContext(
 		ctx,
 		query,
@@ -133,6 +157,14 @@ INSERT INTO audit_events (
 		strings.TrimSpace(event.Actor),
 		strings.TrimSpace(event.Role),
 		strings.TrimSpace(event.AuthMechanism),
+		strings.TrimSpace(event.ActorType),
+		strings.TrimSpace(event.ActorUserID),
+		strings.TrimSpace(event.ActorSubject),
+		strings.TrimSpace(event.ActorOrganizationID),
+		strings.TrimSpace(event.OrganizationID),
+		strings.TrimSpace(event.ActorDisplay),
+		strings.TrimSpace(event.TokenID),
+		strings.TrimSpace(event.ClientID),
 		strings.TrimSpace(string(event.AuthDecision)),
 		strings.TrimSpace(event.Endpoint),
 		strings.TrimSpace(event.Method),
@@ -185,6 +217,14 @@ func (s *SQLAuditStore) List(ctx context.Context, query AuditQuery) (AuditPage, 
 			&record.Actor,
 			&record.Role,
 			&record.AuthMechanism,
+			&record.ActorType,
+			&record.ActorUserID,
+			&record.ActorSubject,
+			&record.ActorOrganizationID,
+			&record.OrganizationID,
+			&record.ActorDisplay,
+			&record.TokenID,
+			&record.ClientID,
 			&record.AuthDecision,
 			&record.Endpoint,
 			&record.Method,
@@ -246,6 +286,14 @@ SELECT
 	actor,
 	role,
 	auth_mechanism,
+	actor_type,
+	actor_user_id,
+	actor_subject,
+	actor_organization_id,
+	organization_id,
+	actor_display,
+	token_id,
+	client_id,
 	auth_decision,
 	endpoint,
 	method,
@@ -317,6 +365,14 @@ func (s *SQLAuditStore) migrate(ctx context.Context) error {
 			actor TEXT NOT NULL,
 			role TEXT NOT NULL,
 			auth_mechanism TEXT NOT NULL,
+			actor_type TEXT NOT NULL DEFAULT 'legacy',
+			actor_user_id TEXT,
+			actor_subject TEXT,
+			actor_organization_id TEXT,
+			organization_id TEXT,
+			actor_display TEXT,
+			token_id TEXT,
+			client_id TEXT,
 			auth_decision TEXT NOT NULL DEFAULT '',
 			endpoint TEXT NOT NULL,
 			method TEXT NOT NULL,
@@ -337,7 +393,31 @@ func (s *SQLAuditStore) migrate(ctx context.Context) error {
 	if _, err := s.db.ExecContext(ctx, `ALTER TABLE audit_events ADD COLUMN trace_id TEXT NOT NULL DEFAULT ''`); err != nil && !isIgnorableAddColumnError(err) {
 		return err
 	}
-	if _, err := s.db.ExecContext(ctx, `ALTER TABLE audit_events ADD COLUMN auth_decision TEXT NOT NULL DEFAULT ''`); err != nil && !isIgnorableAddColumnError(err) {
+	for _, statement := range []string{
+		`ALTER TABLE audit_events ADD COLUMN auth_decision TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE audit_events ADD COLUMN actor_type TEXT NOT NULL DEFAULT 'legacy'`,
+		`ALTER TABLE audit_events ADD COLUMN actor_user_id TEXT`,
+		`ALTER TABLE audit_events ADD COLUMN actor_subject TEXT`,
+		`ALTER TABLE audit_events ADD COLUMN actor_organization_id TEXT`,
+		`ALTER TABLE audit_events ADD COLUMN organization_id TEXT`,
+		`ALTER TABLE audit_events ADD COLUMN actor_display TEXT`,
+		`ALTER TABLE audit_events ADD COLUMN token_id TEXT`,
+		`ALTER TABLE audit_events ADD COLUMN client_id TEXT`,
+	} {
+		if _, err := s.db.ExecContext(ctx, statement); err != nil && !isIgnorableAddColumnError(err) {
+			return err
+		}
+	}
+	for _, statement := range []string{
+		`CREATE INDEX IF NOT EXISTS idx_audit_events_actor_user ON audit_events(actor_user_id, created_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_audit_events_actor_org ON audit_events(actor_organization_id, created_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_audit_events_org_created ON audit_events(organization_id, created_at)`,
+	} {
+		if _, err := s.db.ExecContext(ctx, statement); err != nil {
+			return err
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE audit_events SET actor_display = actor WHERE actor_display IS NULL OR actor_display = ''`); err != nil {
 		return err
 	}
 	return nil

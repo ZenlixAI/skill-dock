@@ -13,6 +13,7 @@ import { runInspect } from './inspect.ts';
 import { runImportGit } from './import-git.ts';
 import { runImportLocal } from './import-local.ts';
 import { runImportNpm } from './import-npm.ts';
+import { runLogin, runLogout, runOrgList, runOrgUse, runWhoami } from './login.ts';
 import { runPublish } from './publish.ts';
 import { runSync } from './sync.ts';
 import { runUpdate } from './update.ts';
@@ -56,6 +57,14 @@ ${BOLD}Manage Skills:${RESET}
   remove [skills]      Remove installed skills
   list, ls             List installed skills
   find [query]         Search for skills (supports --registry, --json)
+
+${BOLD}Account:${RESET}
+  login                Sign in with Logto device flow
+  logout               Remove the local Logto credential
+  whoami               Show the current account and organizations
+  org list             List organizations for the current account
+  org use <slug>       Select the active organization
+  login options: --logto-endpoint <url> --client-id <id> --api-resource <uri>
 
 ${BOLD}Updates:${RESET}
   update [skills...]   Update installed registry skills to latest versions
@@ -512,6 +521,13 @@ Describe when this skill should be used.
 // Main
 // ============================================
 
+function optionValue(args: string[], name: string): string | undefined {
+  const index = args.indexOf(name);
+  if (index < 0) return undefined;
+  const value = args[index + 1];
+  return value && !value.startsWith('--') ? value : undefined;
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
@@ -615,6 +631,32 @@ async function main(): Promise<void> {
       }
       await runSync(restArgs);
       break;
+    case 'login':
+      await runLogin({
+        logtoEndpoint: optionValue(restArgs, '--logto-endpoint'),
+        clientId: optionValue(restArgs, '--client-id'),
+        apiResource: optionValue(restArgs, '--api-resource'),
+      });
+      break;
+    case 'logout':
+      runLogout();
+      break;
+    case 'whoami':
+      await runWhoami({ registry: optionValue(restArgs, '--registry') });
+      break;
+    case 'org': {
+      const subcommand = restArgs[0] || 'list';
+      if (subcommand === 'list' || subcommand === 'ls') {
+        await runOrgList({ registry: optionValue(restArgs, '--registry') });
+      } else if (subcommand === 'use') {
+        const slug = restArgs[1];
+        if (!slug) throw new Error('Usage: skills org use <slug>');
+        await runOrgUse(slug, { registry: optionValue(restArgs, '--registry') });
+      } else {
+        throw new Error('Usage: skills org list | skills org use <slug>');
+      }
+      break;
+    }
     case '--help':
     case '-h':
       showHelp();

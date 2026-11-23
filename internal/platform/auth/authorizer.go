@@ -27,6 +27,46 @@ type Principal struct {
 	Actor           string
 	AuthMechanism   string
 	AllowedPackages []string
+
+	// Identity fields are additive. Legacy token principals leave them empty.
+	Kind          string
+	UserID        string
+	Subject       string
+	TenantID      string
+	TenantSlug    string
+	Scopes        []string
+	TokenID       string
+	DisplayName   string
+	Email         string
+	ClientID      string
+	PlatformAdmin bool
+}
+
+const (
+	PrincipalKindAnonymous = "anonymous"
+	PrincipalKindUser      = "user"
+	PrincipalKindService   = "service"
+)
+
+func (p Principal) IsUser() bool { return p.Kind == PrincipalKindUser }
+func (p Principal) IsService() bool {
+	return p.Kind == PrincipalKindService || (p.Kind == "" && strings.TrimSpace(p.Role) != "")
+}
+func (p Principal) IsAnonymous() bool {
+	return p.Kind == PrincipalKindAnonymous || (p.Kind == "" && p.Role == "" && p.Actor == "" && p.AuthMechanism == "")
+}
+func (p Principal) HasTenant() bool { return strings.TrimSpace(p.TenantID) != "" }
+func (p Principal) HasScope(scope string) bool {
+	scope = strings.TrimSpace(scope)
+	if scope == "" {
+		return false
+	}
+	for _, current := range p.Scopes {
+		if strings.TrimSpace(current) == scope {
+			return true
+		}
+	}
+	return false
 }
 
 type Action string
@@ -143,6 +183,12 @@ func (a *Authorizer) AuthorizeRole(current Principal, allowedRoles ...string) *A
 }
 
 func (a *Authorizer) AuthorizeAction(current Principal, action Action) *AuthorizationError {
+	if current.PlatformAdmin {
+		return nil
+	}
+	if scope := scopeForAction(action); scope != "" && current.HasScope(scope) {
+		return nil
+	}
 	allowedRoles, ok := a.capabilities[action]
 	if !ok {
 		return &AuthorizationError{
@@ -160,6 +206,21 @@ func (a *Authorizer) AuthorizeAction(current Principal, action Action) *Authoriz
 		Code:    "forbidden",
 		Message: "Action is not allowed for this endpoint.",
 		Details: map[string]any{"action": string(action), "role": current.Role},
+	}
+}
+
+func scopeForAction(action Action) string {
+	switch action {
+	case ActionReadCatalog:
+		return "catalog:read"
+	case ActionReadAuditEvents:
+		return "audit:read"
+	case ActionPackagingPrepare, ActionPackagingValidate, ActionPackagingPack, ActionPackagingPublish, ActionCreateReleaseRecord:
+		return "skill:publish"
+	case ActionApplySkillGovernance, ActionApplyVersionGovernance:
+		return "skill:govern"
+	default:
+		return ""
 	}
 }
 

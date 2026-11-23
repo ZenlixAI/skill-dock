@@ -51,3 +51,12 @@ func (c *ReadCache) Store(key string, body []byte, ttl time.Duration) {
 	}
 	c.mu.Unlock()
 }
+
+func (c *ReadCache) InvalidateAll() {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	c.entries = map[string]readCacheEntry{}
+	c.mu.Unlock()
+}

@@ -29,4 +29,8 @@ The documentation is grouped by audience:
 - [External sources and discovery](10-external-sources-and-search.md)
 - [API endpoint reference](13-api-endpoint-spec.md)
 
-The command and API references describe the implemented interfaces. The other documents explain the current operating model.
+## Identity and multi-tenancy
+
+- [Identity, ownership, authorization, tags, and favorites](14-identity-ownership-and-favorites.md)
+
+The command and API references describe the implemented interfaces. The identity document describes the implemented baseline and the remaining hardening items.

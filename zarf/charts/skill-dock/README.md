@@ -333,6 +333,35 @@ catalog:
 The Catalog's Go HTTP client uses the standard `HTTP_PROXY`/`HTTPS_PROXY`
 environment variables.
 
+## Logto identity and SCIM
+
+The chart passes arbitrary Catalog environment variables through
+`catalog.extraEnv`. A hybrid deployment can use:
+
+```yaml
+catalog:
+  extraEnv:
+    - name: SKILL_REGISTRY_AUTH_MODE
+      value: hybrid
+    - name: SKILL_REGISTRY_LOGTO_ENDPOINT
+      value: https://your-tenant.logto.app
+    - name: SKILL_REGISTRY_LOGTO_ISSUER
+      value: https://your-tenant.logto.app/oidc
+    - name: SKILL_REGISTRY_LOGTO_API_RESOURCE
+      value: https://registry.example.com/api
+    - name: SKILL_REGISTRY_SCIM_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: skill-dock-catalog
+          key: scim-token
+```
+
+The default site image is built without `VITE_LOGTO_*` values, so account
+features stay disabled and favorites remain local. To enable sign-in and
+server-backed favorites, build a site image with `VITE_LOGTO_ENDPOINT`,
+`VITE_LOGTO_APP_ID`, `VITE_LOGTO_API_RESOURCE`, and `VITE_CATALOG_API_URL`.
+The Catalog and site must share a reachable API origin in that build.
+
 ## Existing Secrets
 
 For GitOps, the catalog can use an existing Secret:

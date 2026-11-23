@@ -33,6 +33,17 @@ func main() {
 	}
 }
 
+func splitCSV(value string) []string {
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
 func envOrDefault(key string, fallback string) string {
 	value := os.Getenv(key)
 	if value == "" {
@@ -147,22 +158,26 @@ func configuredRuntimeConfig() backend.Config {
 		ArtifactSource:      artifactSource,
 		RepositoryOptions:   configuredRepositoryOptions(artifactSource),
 		Server: httpserver.ServerConfig{
-			Mode:                            httpserver.ServerMode(os.Getenv("SKILL_REGISTRY_SERVER_MODE")),
-			InstallTargetMode:               installTargetMode,
-			ReadListCacheTTL:                envDurationOrDefault("SKILL_REGISTRY_READ_CACHE_LIST_TTL", 2*time.Second),
-			ReadDetailCacheTTL:              envDurationOrDefault("SKILL_REGISTRY_READ_CACHE_DETAIL_TTL", 5*time.Second),
-			ReadMaxInFlight:                 envIntOrDefault("SKILL_REGISTRY_READ_MAX_IN_FLIGHT", 64),
-			WriteMaxInFlight:                envIntOrDefault("SKILL_REGISTRY_WRITE_MAX_IN_FLIGHT", 4),
-			ReaderToken:                     os.Getenv("SKILL_REGISTRY_READER_TOKEN"),
-			AuthoringToken:                  os.Getenv("SKILL_REGISTRY_AUTHORING_TOKEN"),
-			PublisherToken:                  os.Getenv("SKILL_REGISTRY_PUBLISHER_TOKEN"),
-			NPMRegistryURL:                  artifactReadURL,
-			NPMRegistryReadAuthorization:    artifactReadAuthorization,
-			NPMRegistryPublishAuthorization: artifactPublishAuthorization,
-			PublicNPMRegistryURL:            publicInstallURL,
-			AuthTokens:                      configuredAuthTokens(),
-			ExternalSkillSearcher:           configuredExternalSkillSearcher(),
-			Logger:                          log.New(os.Stderr, "", 0),
+			Mode:                                httpserver.ServerMode(os.Getenv("SKILL_REGISTRY_SERVER_MODE")),
+			InstallTargetMode:                   installTargetMode,
+			ReadListCacheTTL:                    envDurationOrDefault("SKILL_REGISTRY_READ_CACHE_LIST_TTL", 2*time.Second),
+			ReadDetailCacheTTL:                  envDurationOrDefault("SKILL_REGISTRY_READ_CACHE_DETAIL_TTL", 5*time.Second),
+			ReadMaxInFlight:                     envIntOrDefault("SKILL_REGISTRY_READ_MAX_IN_FLIGHT", 64),
+			WriteMaxInFlight:                    envIntOrDefault("SKILL_REGISTRY_WRITE_MAX_IN_FLIGHT", 4),
+			ReaderToken:                         os.Getenv("SKILL_REGISTRY_READER_TOKEN"),
+			AuthoringToken:                      os.Getenv("SKILL_REGISTRY_AUTHORING_TOKEN"),
+			PublisherToken:                      os.Getenv("SKILL_REGISTRY_PUBLISHER_TOKEN"),
+			NPMRegistryURL:                      artifactReadURL,
+			NPMRegistryReadAuthorization:        artifactReadAuthorization,
+			NPMRegistryPublishAuthorization:     artifactPublishAuthorization,
+			PrivateNPMRegistryURL:               strings.TrimSpace(os.Getenv("SKILL_REGISTRY_PRIVATE_ARTIFACT_UPSTREAM_URL")),
+			PrivateNPMRegistryReadAuthorization: strings.TrimSpace(os.Getenv("SKILL_REGISTRY_PRIVATE_ARTIFACT_READ_AUTHORIZATION")),
+			PublicNPMRegistryURL:                publicInstallURL,
+			AuthTokens:                          configuredAuthTokens(),
+			ExternalSkillSearcher:               configuredExternalSkillSearcher(),
+			SCIMToken:                           os.Getenv("SKILL_REGISTRY_SCIM_TOKEN"),
+			CORSOrigins:                         splitCSV(os.Getenv("SKILL_REGISTRY_CORS_ORIGINS")),
+			Logger:                              log.New(os.Stderr, "", 0),
 		},
 		HTTPServer: httpserver.HTTPServerConfig{
 			ReadHeaderTimeout: envDurationOrDefault("SKILL_REGISTRY_HTTP_READ_HEADER_TIMEOUT", 2*time.Second),
@@ -177,6 +192,19 @@ func configuredRuntimeConfig() backend.Config {
 			ConnMaxIdleTime: envDurationOrDefault("SKILL_REGISTRY_DB_CONN_MAX_IDLE_TIME", 15*time.Minute),
 		},
 		IdempotencyTTL: 10 * time.Minute,
+		Identity:       configuredIdentity(),
+	}
+}
+
+func configuredIdentity() backend.IdentityConfig {
+	mode := strings.ToLower(strings.TrimSpace(os.Getenv("SKILL_REGISTRY_AUTH_MODE")))
+	enabled := mode == "hybrid" || mode == "logto"
+	return backend.IdentityConfig{
+		Enabled:  enabled,
+		Endpoint: strings.TrimSpace(os.Getenv("SKILL_REGISTRY_LOGTO_ENDPOINT")),
+		Issuer:   strings.TrimSpace(os.Getenv("SKILL_REGISTRY_LOGTO_ISSUER")),
+		Audience: strings.TrimSpace(os.Getenv("SKILL_REGISTRY_LOGTO_API_RESOURCE")),
+		JWKSURL:  strings.TrimSpace(os.Getenv("SKILL_REGISTRY_LOGTO_JWKS_URL")),
 	}
 }
 
