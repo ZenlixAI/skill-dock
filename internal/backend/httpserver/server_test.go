@@ -267,6 +267,7 @@ func TestServerProxiesNPMRegistryPublishRequests(t *testing.T) {
 		t.Fatalf("create publish request: %v", err)
 	}
 	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Role", "publisher")
 
 	response, err := srv.Client().Do(request)
 	if err != nil {

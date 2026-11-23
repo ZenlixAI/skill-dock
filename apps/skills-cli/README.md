@@ -11,6 +11,17 @@ export SKILLS_REGISTRY_TOKEN=<token>
 
 `SKILLS_REGISTRY_ROLE` sends the development `X-Role` header when the server accepts header authentication. For direct npm traffic, use `NPM_CONFIG_USERCONFIG` or a local `.npmrc`.
 
+For user accounts, configure Logto device flow and run `skills login`:
+
+```bash
+export SKILLS_LOGTO_ENDPOINT=https://your-tenant.logto.app
+export SKILLS_LOGTO_CLIENT_ID=<device-flow-app-id>
+export SKILLS_LOGTO_API_RESOURCE=https://catalog.example.com/api
+npx skills login
+```
+
+The refresh token is stored in `${XDG_CONFIG_HOME:-~/.config}/skill-dock/credentials.json` with `0600` permissions. Use `skills whoami`, `skills org list`, and `skills org use <slug>` to inspect and switch the active tenant. `SKILLS_REGISTRY_TOKEN` remains available for CI and service accounts.
+
 For automatic imports after `add`, the CLI merges `${XDG_CONFIG_HOME:-~/.config}/skills/config.json` with the nearest project `skills.config.json`. Project values override global values.
 
 ```json
@@ -40,6 +51,11 @@ Set `syncOnAdd` to `false` to disable automatic import. The operation is best-ef
 | `npx skills import-local [path]` | Publish a local source through Catalog |
 | `npx skills import-git <source>` | Discover and publish a git-source skill through Catalog |
 | `npx skills import-npm <package>` | Download an npm package and publish its extracted source |
+| `npx skills login` | Sign in with the Logto device flow |
+| `npx skills logout` | Remove the local Logto credential |
+| `npx skills whoami` | Show the current account |
+| `npx skills org list` | List organizations |
+| `npx skills org use <slug>` | Select the active tenant |
 
 ## Examples
 

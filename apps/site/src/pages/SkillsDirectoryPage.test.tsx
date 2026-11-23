@@ -1,6 +1,8 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
+import { AuthProvider } from '../lib/auth';
+import { FavoritesProvider } from '../lib/favorites';
 import { SkillsDirectoryPage } from './SkillsDirectoryPage';
 
 const browsePage = {
@@ -63,6 +65,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  window.localStorage.clear();
   installFetchMock();
 });
 
@@ -142,6 +145,27 @@ describe('SkillsDirectoryPage', () => {
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
+  });
+
+  it('saves a skill and shows it in the saved view', async () => {
+    render(
+      <AuthProvider>
+        <FavoritesProvider>
+          <MemoryRouter initialEntries={['/registry']}>
+            <SkillsDirectoryPage />
+          </MemoryRouter>
+        </FavoritesProvider>
+      </AuthProvider>
+    );
+
+    expect(await screen.findByText('music-to-video')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Save skill' }));
+    expect(screen.getByRole('button', { name: 'Remove from saved' })).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: /Saved \(1\)/ }));
+    expect(await screen.findByRole('heading', { name: 'Saved skills' })).toBeInTheDocument();
+    expect(screen.getByText('music-to-video')).toBeInTheDocument();
+    expect(JSON.parse(window.localStorage.getItem('skill-dock:favorites:v1') || '[]')).toHaveLength(1);
   });
 
   it('shows a disabled state without requesting skills.sh data', async () => {

@@ -14,6 +14,12 @@
 {{- $artifactPublishKey = .Values.artifactRepository.existingSecretKeys.publishAuthorization -}}
 {{- end -}}
 {{- $useEmbeddedPostgres := eq (include "skill-dock.useEmbeddedPostgres" .) "true" -}}
+{{- $scimSecretName := $catalogSecretName -}}
+{{- $scimSecretKey := "scim-token" -}}
+{{- if .Values.logto.scim.existingSecret -}}
+{{- $scimSecretName = .Values.logto.scim.existingSecret -}}
+{{- $scimSecretKey = .Values.logto.scim.existingSecretKey | default "scim-token" -}}
+{{- end -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -37,7 +43,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       annotations:
-        checksum/config: {{ dict "catalogAuth" .Values.catalog.auth "seedSampleData" .Values.catalog.seedSampleData "installTargetMode" .Values.catalog.installTargetMode "skillsSh" .Values.catalog.skillsSh "database" .Values.database "postgres" .Values.postgres "artifactRepository" .Values.artifactRepository "verdaccio" .Values.verdaccio | toJson | sha256sum }}
+        checksum/config: {{ dict "catalogAuth" .Values.catalog.auth "seedSampleData" .Values.catalog.seedSampleData "installTargetMode" .Values.catalog.installTargetMode "skillsSh" .Values.catalog.skillsSh "database" .Values.database "postgres" .Values.postgres "artifactRepository" .Values.artifactRepository "verdaccio" .Values.verdaccio "logto" .Values.logto | toJson | sha256sum }}
         {{- with .Values.catalog.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -122,6 +128,27 @@ spec:
                 secretKeyRef:
                   name: {{ $catalogSecretName }}
                   key: auth-tokens-json
+            {{- if .Values.logto.enabled }}
+            - name: SKILL_REGISTRY_AUTH_MODE
+              value: {{ .Values.logto.authMode | default "hybrid" | quote }}
+            - name: SKILL_REGISTRY_LOGTO_ENDPOINT
+              value: {{ .Values.logto.endpoint | quote }}
+            - name: SKILL_REGISTRY_LOGTO_ISSUER
+              value: {{ .Values.logto.issuer | quote }}
+            - name: SKILL_REGISTRY_LOGTO_API_RESOURCE
+              value: {{ .Values.logto.apiResource | quote }}
+            {{- with .Values.logto.corsOrigins }}
+            - name: SKILL_REGISTRY_CORS_ORIGINS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- if .Values.logto.scim.enabled }}
+            - name: SKILL_REGISTRY_SCIM_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $scimSecretName }}
+                  key: {{ $scimSecretKey }}
+            {{- end }}
+            {{- end }}
             - name: SKILL_REGISTRY_DISABLE_SEED
               value: {{ not .Values.catalog.seedSampleData | quote }}
             - name: SKILL_REGISTRY_INSTALL_TARGET_MODE

@@ -79,7 +79,7 @@ func TestSQLStateStoreListSkillsSQLAppliesSortLimitOffset(t *testing.T) {
 	}
 
 	sqlText := store.listSkillsSQL(query, sortKey)
-	if !strings.Contains(sqlText, "ORDER BY package_name ASC") {
+	if !strings.Contains(sqlText, "ORDER BY skills.package_name ASC") {
 		t.Fatalf("expected package sort in SQL, got %q", sqlText)
 	}
 	if !strings.Contains(sqlText, "LIMIT ?") {

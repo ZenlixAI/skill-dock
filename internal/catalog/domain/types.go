@@ -52,25 +52,36 @@ const (
 	GovernanceActionYank      GovernanceAction = "yank"
 )
 
+type TagSummary struct {
+	Slug  string `json:"slug"`
+	Label string `json:"label"`
+	Scope string `json:"scope"`
+}
+
 type SkillSummary struct {
-	PackageName         string      `json:"packageName"`
-	DisplayName         string      `json:"displayName"`
-	Description         string      `json:"description"`
-	SourceType          SourceType  `json:"sourceType"`
-	Status              SkillStatus `json:"status"`
-	LatestVersion       *string     `json:"latestVersion"`
-	LatestVersionStatus *string     `json:"latestVersionStatus"`
-	UpdatedAt           time.Time   `json:"updatedAt"`
-	SourceKind          string      `json:"sourceKind,omitempty"`
-	SourceLocator       string      `json:"sourceLocator,omitempty"`
-	OriginRegistryURL   string      `json:"originRegistryUrl,omitempty"`
-	OriginRepositoryURL string      `json:"originRepositoryUrl,omitempty"`
-	OriginRevision      string      `json:"originRevision,omitempty"`
-	ImportMode          string      `json:"importMode,omitempty"`
-	LearnMoreURL        string      `json:"learnMoreUrl,omitempty"`
-	Installable         bool        `json:"installable,omitempty"`
-	Hosted              bool        `json:"hosted,omitempty"`
-	Mirrored            bool        `json:"mirrored,omitempty"`
+	PackageName         string       `json:"packageName"`
+	DisplayName         string       `json:"displayName"`
+	Description         string       `json:"description"`
+	SourceType          SourceType   `json:"sourceType"`
+	Status              SkillStatus  `json:"status"`
+	LatestVersion       *string      `json:"latestVersion"`
+	LatestVersionStatus *string      `json:"latestVersionStatus"`
+	Visibility          string       `json:"visibility,omitempty"`
+	OwnerType           string       `json:"ownerType,omitempty"`
+	OwnerID             string       `json:"ownerId,omitempty"`
+	OrganizationID      string       `json:"organizationId,omitempty"`
+	Tags                []TagSummary `json:"tags,omitempty"`
+	UpdatedAt           time.Time    `json:"updatedAt"`
+	SourceKind          string       `json:"sourceKind,omitempty"`
+	SourceLocator       string       `json:"sourceLocator,omitempty"`
+	OriginRegistryURL   string       `json:"originRegistryUrl,omitempty"`
+	OriginRepositoryURL string       `json:"originRepositoryUrl,omitempty"`
+	OriginRevision      string       `json:"originRevision,omitempty"`
+	ImportMode          string       `json:"importMode,omitempty"`
+	LearnMoreURL        string       `json:"learnMoreUrl,omitempty"`
+	Installable         bool         `json:"installable,omitempty"`
+	Hosted              bool         `json:"hosted,omitempty"`
+	Mirrored            bool         `json:"mirrored,omitempty"`
 }
 
 type SkillDetail struct {
@@ -139,23 +150,25 @@ type GovernanceRecord struct {
 }
 
 type InstallResolution struct {
-	PackageName         string        `json:"packageName"`
-	Version             string        `json:"version"`
-	NPMRegistry         string        `json:"npmRegistry"`
-	Integrity           string        `json:"integrity"`
-	TarballURL          string        `json:"tarballUrl"`
-	SkillManifestDigest string        `json:"skillManifestDigest"`
-	VersionStatus       VersionStatus `json:"versionStatus"`
-	RegistryAccessMode  string        `json:"registryAccessMode,omitempty"`
-	SourceKind          string        `json:"sourceKind,omitempty"`
-	SourceLocator       string        `json:"sourceLocator,omitempty"`
-	OriginRegistryURL   string        `json:"originRegistryUrl,omitempty"`
-	OriginRepositoryURL string        `json:"originRepositoryUrl,omitempty"`
-	OriginRevision      string        `json:"originRevision,omitempty"`
-	ImportMode          string        `json:"importMode,omitempty"`
-	Installable         bool          `json:"installable,omitempty"`
-	Hosted              bool          `json:"hosted,omitempty"`
-	Mirrored            bool          `json:"mirrored,omitempty"`
+	PackageName           string        `json:"packageName"`
+	Version               string        `json:"version"`
+	NPMRegistry           string        `json:"npmRegistry"`
+	Integrity             string        `json:"integrity"`
+	TarballURL            string        `json:"tarballUrl"`
+	SkillManifestDigest   string        `json:"skillManifestDigest"`
+	VersionStatus         VersionStatus `json:"versionStatus"`
+	RegistryAccessMode    string        `json:"registryAccessMode,omitempty"`
+	ArtifactAccess        string        `json:"artifactAccess,omitempty"`
+	AuthorizationRequired bool          `json:"authorizationRequired,omitempty"`
+	SourceKind            string        `json:"sourceKind,omitempty"`
+	SourceLocator         string        `json:"sourceLocator,omitempty"`
+	OriginRegistryURL     string        `json:"originRegistryUrl,omitempty"`
+	OriginRepositoryURL   string        `json:"originRepositoryUrl,omitempty"`
+	OriginRevision        string        `json:"originRevision,omitempty"`
+	ImportMode            string        `json:"importMode,omitempty"`
+	Installable           bool          `json:"installable,omitempty"`
+	Hosted                bool          `json:"hosted,omitempty"`
+	Mirrored              bool          `json:"mirrored,omitempty"`
 }
 
 type ReleaseRecordResult struct {
@@ -210,9 +223,20 @@ type SkillQuery struct {
 	Scope           string
 	Origin          string
 	Sort            string
+	TagSlugs        []string
+	TagMode         string
 	AllowedPackages []string
 	PageSize        int
 	Cursor          int
+
+	// Access filtering. PublicOnly wins over tenant filtering and is used by
+	// public registry routes. When TenantID is set, public plus that tenant's
+	// organization/private rows (with a matching user grant) are visible.
+	PublicOnly           bool
+	TenantID             string
+	UserID               string
+	IncludeAll           bool
+	IncludeTenantPrivate bool
 }
 
 type ExternalSearchQuery struct {
@@ -269,9 +293,14 @@ type ExternalSkillSearcher interface {
 }
 
 type CuratedSkillQuery struct {
-	AllowedPackages []string
-	PageSize        int
-	Cursor          int
+	AllowedPackages      []string
+	PageSize             int
+	Cursor               int
+	PublicOnly           bool
+	TenantID             string
+	UserID               string
+	IncludeAll           bool
+	IncludeTenantPrivate bool
 }
 
 type VersionQuery struct {

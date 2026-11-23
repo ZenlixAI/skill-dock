@@ -286,6 +286,10 @@ func (s *SQLStateStore) ListCuratedSkills(ctx context.Context, query CuratedSkil
 			&item.Status,
 			&latestVersion,
 			&latestVersionStatus,
+			&item.Visibility,
+			&item.OwnerType,
+			&item.OwnerID,
+			&item.OrganizationID,
 			&updatedAtRaw,
 			&item.CurationReason,
 		); err != nil {
@@ -312,17 +316,22 @@ func (s *SQLStateStore) ListCuratedSkills(ctx context.Context, query CuratedSkil
 func (s *SQLStateStore) GetSkill(ctx context.Context, packageName string) (SkillDetail, error) {
 	query := bindSQL(s.dialect, `
 SELECT
-	package_name,
-	display_name,
-	description,
-	source_type,
-	status,
-	latest_version,
-	latest_version_status,
-	created_at,
-	updated_at
+	skills.package_name,
+	skills.display_name,
+	skills.description,
+	skills.source_type,
+	skills.status,
+	skills.latest_version,
+	skills.latest_version_status,
+	COALESCE(sa.visibility, 'public') AS visibility,
+	COALESCE(sa.owner_type, 'platform') AS owner_type,
+	COALESCE(sa.owner_id, '') AS owner_id,
+	COALESCE(sa.organization_id, '') AS organization_id,
+	skills.created_at,
+	skills.updated_at
 FROM skills
-WHERE package_name = ?`)
+LEFT JOIN skill_access sa ON sa.package_name = skills.package_name
+WHERE skills.package_name = ?`)
 
 	detail, err := scanSkillDetail(s.db.QueryRowContext(ctx, query, packageName))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -975,15 +984,20 @@ func (s *SQLStateStore) skillExists(ctx context.Context, packageName string) (bo
 func (s *SQLStateStore) listSkillsSelectSQL(query SkillQuery) string {
 	parts := []string{`
 SELECT
-	package_name,
-	display_name,
-	description,
-	source_type,
-	status,
-	latest_version,
-	latest_version_status,
-	updated_at
+	skills.package_name,
+	skills.display_name,
+	skills.description,
+	skills.source_type,
+	skills.status,
+	skills.latest_version,
+	skills.latest_version_status,
+	COALESCE(sa.visibility, 'public') AS visibility,
+	COALESCE(sa.owner_type, 'platform') AS owner_type,
+	COALESCE(sa.owner_id, '') AS owner_id,
+	COALESCE(sa.organization_id, '') AS organization_id,
+	skills.updated_at
 FROM skills
+LEFT JOIN skill_access sa ON sa.package_name = skills.package_name
 WHERE 1 = 1`}
 	if !query.IncludeRetired {
 		parts = append(parts, `AND status <> 'retired'`)
@@ -997,10 +1011,91 @@ WHERE 1 = 1`}
 	if len(query.AllowedPackages) > 0 {
 		parts = append(parts, allowedPackageFilterSQL(query.AllowedPackages))
 	}
+	if filterSQL, _ := skillVisibilityFilterSQL(query); filterSQL != "" {
+		parts = append(parts, filterSQL)
+	}
+	if filterSQL, _ := skillTagFilterSQL(query); filterSQL != "" {
+		parts = append(parts, filterSQL)
+	}
 	if strings.TrimSpace(query.Query) != "" {
-		parts = append(parts, `AND (LOWER(package_name) LIKE ? OR LOWER(display_name) LIKE ? OR LOWER(description) LIKE ?)`)
+		parts = append(parts, `AND (LOWER(skills.package_name) LIKE ? OR LOWER(skills.display_name) LIKE ? OR LOWER(skills.description) LIKE ?)`)
 	}
 	return strings.Join(parts, "\n")
+}
+
+func skillTagFilterSQL(query SkillQuery) (string, []any) {
+	tags := make([]string, 0, len(query.TagSlugs))
+	seen := map[string]struct{}{}
+	for _, tag := range query.TagSlugs {
+		tag = strings.ToLower(strings.TrimSpace(tag))
+		if tag == "" {
+			continue
+		}
+		if _, ok := seen[tag]; ok {
+			continue
+		}
+		seen[tag] = struct{}{}
+		tags = append(tags, tag)
+	}
+	if len(tags) == 0 {
+		return "", nil
+	}
+	clauses := make([]string, 0, len(tags))
+	args := make([]any, 0, len(tags)*2)
+	for _, tag := range tags {
+		clauses = append(clauses, `EXISTS (
+			SELECT 1 FROM skill_tags st
+			JOIN tags t ON t.id = st.tag_id
+			WHERE st.package_name = skills.package_name
+			  AND t.slug = ?
+			  AND (t.visibility = 'public' OR t.organization_id = ?)
+		)`)
+		args = append(args, tag, strings.TrimSpace(query.TenantID))
+	}
+	mode := strings.ToLower(strings.TrimSpace(query.TagMode))
+	separator := ` AND `
+	if mode == "any" {
+		separator = ` OR `
+	}
+	return `AND (` + strings.Join(clauses, separator) + `)`, args
+}
+
+func skillVisibilityFilterSQL(query SkillQuery) (string, []any) {
+	if query.IncludeAll {
+		return "", nil
+	}
+	if query.PublicOnly || strings.TrimSpace(query.TenantID) == "" {
+		return `AND COALESCE(sa.visibility, 'public') = 'public'`, nil
+	}
+	tenantID := strings.TrimSpace(query.TenantID)
+	userID := strings.TrimSpace(query.UserID)
+	if query.IncludeTenantPrivate {
+		return `AND (
+			COALESCE(sa.visibility, 'public') = 'public'
+			OR (sa.organization_id = ? AND sa.visibility = 'organization')
+			OR (sa.organization_id = ? AND sa.visibility = 'private')
+		)`, []any{tenantID, tenantID}
+	}
+	return `AND (
+		COALESCE(sa.visibility, 'public') = 'public'
+		OR (sa.organization_id = ? AND sa.visibility = 'organization')
+		OR (sa.organization_id = ? AND sa.visibility = 'private' AND (
+			EXISTS (
+				SELECT 1 FROM skill_grants g
+				WHERE g.organization_id = sa.organization_id
+				  AND g.package_name = skills.package_name
+				  AND g.subject_type = 'user'
+				  AND g.subject_id = ?
+				  AND (g.expires_at IS NULL OR g.expires_at = '' OR g.expires_at > ?)
+				  AND g.permission IN ('view','install','publish','manage')
+			)
+			OR EXISTS (
+				SELECT 1 FROM skill_maintainers m
+				WHERE m.package_name = skills.package_name
+				  AND m.user_id = ?
+			)
+		))
+	)`, []any{tenantID, tenantID, userID, time.Now().UTC().Format(time.RFC3339), userID}
 }
 
 func (s *SQLStateStore) listSkillsSQL(query SkillQuery, sortKey string) string {
@@ -1017,6 +1112,12 @@ func (s *SQLStateStore) listSkillsFilterArgs(query SkillQuery) []any {
 		args = append(args, query.SourceType)
 	}
 	args = append(args, allowedPackageFilterArgs(query.AllowedPackages)...)
+	if _, visibilityArgs := skillVisibilityFilterSQL(query); len(visibilityArgs) > 0 {
+		args = append(args, visibilityArgs...)
+	}
+	if _, tagArgs := skillTagFilterSQL(query); len(tagArgs) > 0 {
+		args = append(args, tagArgs...)
+	}
 	if strings.TrimSpace(query.Query) != "" {
 		needle := "%" + strings.ToLower(strings.TrimSpace(query.Query)) + "%"
 		args = append(args, needle, needle, needle)
@@ -1037,29 +1138,79 @@ func (s *SQLStateStore) listSkillsArgs(query SkillQuery, sortKey string) []any {
 func (s *SQLStateStore) listCuratedSkillsSelectSQL(query CuratedSkillQuery) string {
 	parts := []string{`
 SELECT
-	package_name,
-	display_name,
-	description,
-	source_type,
-	status,
-	latest_version,
-	latest_version_status,
-	updated_at,
-	curation_reason
+	skills.package_name,
+	skills.display_name,
+	skills.description,
+	skills.source_type,
+	skills.status,
+	skills.latest_version,
+	skills.latest_version_status,
+	COALESCE(sa.visibility, 'public') AS visibility,
+	COALESCE(sa.owner_type, 'platform') AS owner_type,
+	COALESCE(sa.owner_id, '') AS owner_id,
+	COALESCE(sa.organization_id, '') AS organization_id,
+	skills.updated_at,
+	skills.curation_reason
 FROM skills
-WHERE curation_reason <> '' AND status <> 'retired'`}
+LEFT JOIN skill_access sa ON sa.package_name = skills.package_name
+WHERE skills.curation_reason <> '' AND skills.status <> 'retired'`}
 	if len(query.AllowedPackages) > 0 {
 		parts = append(parts, allowedPackageFilterSQL(query.AllowedPackages))
+	}
+	if filterSQL, _ := curatedVisibilityFilterSQL(query); filterSQL != "" {
+		parts = append(parts, filterSQL)
 	}
 	return strings.Join(parts, "\n")
 }
 
+func curatedVisibilityFilterSQL(query CuratedSkillQuery) (string, []any) {
+	if query.IncludeAll {
+		return "", nil
+	}
+	if query.PublicOnly || strings.TrimSpace(query.TenantID) == "" {
+		return `AND COALESCE(sa.visibility, 'public') = 'public'`, nil
+	}
+	tenantID := strings.TrimSpace(query.TenantID)
+	userID := strings.TrimSpace(query.UserID)
+	if query.IncludeTenantPrivate {
+		return `AND (
+			COALESCE(sa.visibility, 'public') = 'public'
+			OR (sa.organization_id = ? AND sa.visibility = 'organization')
+			OR (sa.organization_id = ? AND sa.visibility = 'private')
+		)`, []any{tenantID, tenantID}
+	}
+	return `AND (
+		COALESCE(sa.visibility, 'public') = 'public'
+		OR (sa.organization_id = ? AND sa.visibility = 'organization')
+		OR (sa.organization_id = ? AND sa.visibility = 'private' AND (
+			EXISTS (
+				SELECT 1 FROM skill_grants g
+				WHERE g.organization_id = sa.organization_id
+				  AND g.package_name = skills.package_name
+				  AND g.subject_type = 'user'
+				  AND g.subject_id = ?
+				  AND (g.expires_at IS NULL OR g.expires_at = '' OR g.expires_at > ?)
+				  AND g.permission IN ('view','install','publish','manage')
+			)
+			OR EXISTS (
+				SELECT 1 FROM skill_maintainers m
+				WHERE m.package_name = skills.package_name
+				  AND m.user_id = ?
+			)
+		))
+	)`, []any{tenantID, tenantID, userID, time.Now().UTC().Format(time.RFC3339), userID}
+}
+
 func (s *SQLStateStore) listCuratedSkillsSQL(query CuratedSkillQuery) string {
-	return strings.Join([]string{s.listCuratedSkillsSelectSQL(query), `ORDER BY updated_at DESC`, `LIMIT ?`, `OFFSET ?`}, "\n")
+	return strings.Join([]string{s.listCuratedSkillsSelectSQL(query), `ORDER BY skills.updated_at DESC`, `LIMIT ?`, `OFFSET ?`}, "\n")
 }
 
 func (s *SQLStateStore) listCuratedSkillsFilterArgs(query CuratedSkillQuery) []any {
-	return allowedPackageFilterArgs(query.AllowedPackages)
+	args := allowedPackageFilterArgs(query.AllowedPackages)
+	if _, visibilityArgs := curatedVisibilityFilterSQL(query); len(visibilityArgs) > 0 {
+		args = append(args, visibilityArgs...)
+	}
+	return args
 }
 
 func (s *SQLStateStore) listCuratedSkillsArgs(query CuratedSkillQuery) []any {
@@ -1185,18 +1336,18 @@ func normalizedSkillsSort(sortKey string, query string) (string, error) {
 func skillsOrderBySQL(sortKey string, query string) string {
 	switch sortKey {
 	case "package_name_asc":
-		return `ORDER BY package_name ASC`
+		return `ORDER BY skills.package_name ASC`
 	case "updated_at_desc":
-		return `ORDER BY updated_at DESC, package_name ASC`
+		return `ORDER BY skills.updated_at DESC, skills.package_name ASC`
 	default:
 		if strings.TrimSpace(query) == "" {
-			return `ORDER BY updated_at DESC, package_name ASC`
+			return `ORDER BY skills.updated_at DESC, skills.package_name ASC`
 		}
 		return `ORDER BY (
-	(CASE WHEN LOWER(package_name) LIKE ? THEN 3 ELSE 0 END) +
-	(CASE WHEN LOWER(display_name) LIKE ? THEN 2 ELSE 0 END) +
-	(CASE WHEN LOWER(description) LIKE ? THEN 1 ELSE 0 END)
-) DESC, updated_at DESC, package_name ASC`
+	(CASE WHEN LOWER(skills.package_name) LIKE ? THEN 3 ELSE 0 END) +
+	(CASE WHEN LOWER(skills.display_name) LIKE ? THEN 2 ELSE 0 END) +
+	(CASE WHEN LOWER(skills.description) LIKE ? THEN 1 ELSE 0 END)
+) DESC, skills.updated_at DESC, skills.package_name ASC`
 	}
 }
 
@@ -1317,6 +1468,10 @@ func scanSkillSummary(scanner interface {
 		&item.Status,
 		&latestVersion,
 		&latestVersionStatus,
+		&item.Visibility,
+		&item.OwnerType,
+		&item.OwnerID,
+		&item.OrganizationID,
 		&updatedAtRaw,
 	); err != nil {
 		return SkillSummary{}, err
@@ -1350,6 +1505,10 @@ func scanSkillDetail(scanner interface {
 		&item.Status,
 		&latestVersion,
 		&latestVersionStatus,
+		&item.Visibility,
+		&item.OwnerType,
+		&item.OwnerID,
+		&item.OrganizationID,
 		&createdAtRaw,
 		&updatedAtRaw,
 	); err != nil {

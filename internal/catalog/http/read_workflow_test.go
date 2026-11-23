@@ -51,6 +51,7 @@ func TestReadModuleListsSkillsFromParsedQuery(t *testing.T) {
 		Sort:           "package_name_asc",
 		PageSize:       7,
 		Cursor:         12,
+		IncludeAll:     true,
 	}
 	if !reflect.DeepEqual(service.query, wantQuery) {
 		t.Fatalf("unexpected parsed query (-want +got):\nwant: %#v\ngot:  %#v", wantQuery, service.query)

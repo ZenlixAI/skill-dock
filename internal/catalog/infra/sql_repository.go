@@ -7,6 +7,8 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	_ "modernc.org/sqlite"
+
+	"skill_registry/internal/identity"
 )
 
 func OpenSQLStateStore(ctx context.Context, databaseURL string) (*sql.DB, string, *SQLStateStore, error) {
@@ -26,6 +28,10 @@ func OpenSQLStateStore(ctx context.Context, databaseURL string) (*sql.DB, string
 func PrepareSQLStateStore(ctx context.Context, db *sql.DB, driverName string) (*SQLStateStore, error) {
 	store := NewSQLStateStore(db, driverName)
 	if err := store.Migrate(ctx); err != nil {
+		return nil, err
+	}
+	identityStore := identity.NewSQLStore(db, driverName)
+	if err := identityStore.Migrate(ctx); err != nil {
 		return nil, err
 	}
 	return store, nil

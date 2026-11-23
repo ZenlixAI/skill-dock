@@ -17,7 +17,8 @@
 - `publish` packages and publishes a local skill through the server;
 - `import-local` packages and publishes a local source tree;
 - `import-git` clones, discovers, and publishes one git-sourced skill;
-- `import-npm` downloads an npm package and publishes its extracted source through the server.
+- `import-npm` downloads an npm package and publishes its extracted source through the server;
+- `login`, `logout`, `whoami`, and `org` use Logto device flow for optional user identity and tenant selection.
 
 ## Core rules
 

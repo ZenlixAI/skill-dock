@@ -60,5 +60,8 @@ func principalPresent(current platformauth.Principal) bool {
 	return strings.TrimSpace(current.Role) != "" ||
 		strings.TrimSpace(current.Actor) != "" ||
 		strings.TrimSpace(current.AuthMechanism) != "" ||
-		len(current.AllowedPackages) > 0
+		len(current.AllowedPackages) > 0 ||
+		strings.TrimSpace(current.Kind) != "" ||
+		strings.TrimSpace(current.UserID) != "" ||
+		strings.TrimSpace(current.Subject) != ""
 }

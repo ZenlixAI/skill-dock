@@ -31,6 +31,16 @@ The catalog server also exposes unauthenticated public read routes under `/api/v
 | `SKILLS_SH_ENABLED` | Enable the skills.sh provider (`SKILL_REGISTRY_SKILLS_SH_ENABLED` is accepted as an alias) | `true` |
 | `SKILL_REGISTRY_SKILLS_SH_URL` | External search provider URL | `https://skills.sh` |
 | `SKILL_REGISTRY_AUTH_TOKENS_JSON` | Additional token-to-role mappings | unset |
+| `SKILL_REGISTRY_AUTH_MODE` | `legacy`, `hybrid`, or `logto` | `legacy` |
+| `SKILL_REGISTRY_LOGTO_ENDPOINT` | Logto base URL for OIDC discovery | unset |
+| `SKILL_REGISTRY_LOGTO_ISSUER` | Expected Logto issuer | discovered |
+| `SKILL_REGISTRY_LOGTO_API_RESOURCE` | Logto API resource / JWT audience | unset |
+| `SKILL_REGISTRY_LOGTO_JWKS_URL` | Optional explicit JWKS URL | discovered |
+| `SKILL_REGISTRY_CORS_ORIGINS` | Comma-separated exact browser origins for authenticated routes | unset |
+| `SKILL_REGISTRY_SCIM_TOKEN` | Bearer token for `/scim/v2` provisioning | unset |
+| `SKILL_REGISTRY_PRIVATE_ARTIFACT_UPSTREAM_URL` | Server-side private npm upstream | unset |
+| `SKILL_REGISTRY_PRIVATE_ARTIFACT_READ_AUTHORIZATION` | Read credential for the private npm upstream | unset |
+| `SKILL_REGISTRY_PRIVATE_ARTIFACT_AUTH` | Private artifact mode | `catalog_proxy` |
 
 Database-pool, HTTP-timeout, read-cache, and request-limit settings use the `SKILL_REGISTRY_DB_*`, `SKILL_REGISTRY_HTTP_*`, `SKILL_REGISTRY_READ_*`, and `SKILL_REGISTRY_WRITE_MAX_IN_FLIGHT` environment variables. Their defaults are defined in `cmd/skill-registry/main.go`.
 

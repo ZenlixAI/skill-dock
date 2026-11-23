@@ -553,6 +553,27 @@ main {
   gap: 8px;
 }
 
+.site-tenant-switcher select {
+  max-width: 150px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-solid);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.78rem;
+}
+
+.mobile-menu__link select {
+  max-width: 48%;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-solid);
+  color: inherit;
+  font: inherit;
+}
+
 .mobile-toggle,
 .mobile-menu {
   display: none;
@@ -2586,6 +2607,12 @@ main {
   color: var(--text);
 }
 
+.registry-filter--saved {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .registry-group {
   margin-top: 44px;
 }
@@ -2678,6 +2705,37 @@ main {
   gap: 8px;
   min-height: 24px;
   margin-bottom: 12px;
+}
+
+.registry-card__top-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.registry-save {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.registry-save:hover {
+  border-color: var(--line-strong);
+  color: var(--text-secondary);
+}
+
+.registry-save--active {
+  border-color: rgba(232, 179, 75, 0.5);
+  background: rgba(232, 179, 75, 0.12);
+  color: #e8b34b;
 }
 
 .registry-source {
@@ -2898,6 +2956,13 @@ main {
   font-family: var(--mono);
   font-size: 0.74rem;
   overflow-wrap: anywhere;
+}
+
+.registry-drawer__title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .registry-drawer__title {

@@ -66,6 +66,17 @@ export const zh: SiteContent = {
       { label: '快速开始', path: '/#quick-start' },
       { label: '常见问题', path: '/#faq' },
     ],
+    auth: {
+      signIn: '登录',
+      signOut: '退出登录',
+      account: '账号',
+      organizations: '组织',
+      activeOrganization: '当前租户',
+      personal: '个人',
+      loading: '正在加载账号…',
+      signedInAs: (name: string) => `已登录：${name}`,
+      syncHint: '登录后可在不同设备间同步收藏。',
+    },
     footer: {
       tagline: '面向 Agent 技能的自托管 registry。',
       productHeading: '产品',
@@ -416,6 +427,15 @@ export const zh: SiteContent = {
     installs: (formatted) => `${formatted} 次安装`,
     official: '官方',
     viewDetails: '查看详情',
+    saved: '收藏',
+    savedCount: (count: number) => `收藏（${count}）`,
+    saveSkill: '收藏技能',
+    removeSavedSkill: '取消收藏',
+    savedTitle: '已收藏的技能',
+    savedEmptyTitle: '还没有收藏',
+    savedEmptyMessage: '在技能目录中收藏技能后，会显示在这里。',
+    savedLocalHint: '收藏保存在本机。登录后可跨设备同步。',
+    savedUnavailable: '当前组织不可用',
     emptyTitle: '没有找到结果',
     emptySearch: (query) => `没有找到与“${query}”匹配的 skills.sh 结果。`,
     emptyView: '当前视图暂无技能。',
@@ -451,7 +471,7 @@ export const zh: SiteContent = {
       sections: [
         {
           heading: '站点收集哪些数据',
-          body: '公开站点是静态构建，不包含账号系统、分析脚本或广告追踪器。托管服务商可能会保留标准请求日志，例如 IP 地址、User-Agent 和请求路径。',
+          body: '公开站点是静态构建，不包含分析脚本或广告追踪器。账号功能是可选的：启用后，登录由 Logto 处理，Catalog 会保存你的账号、组织成员关系、收藏和审计记录。未登录时，收藏保存在浏览器本地存储中。托管服务商可能会保留标准请求日志，例如 IP 地址、User-Agent 和请求路径。',
         },
         {
           heading: '剪贴板操作',

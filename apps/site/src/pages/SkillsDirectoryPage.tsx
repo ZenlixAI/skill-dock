@@ -1,7 +1,8 @@
-import { ArrowRight, ArrowUpRight, RefreshCw, Search, X } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, RefreshCw, Search, Star, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ExternalSkillDrawer } from '../components/ExternalSkillDrawer';
+import { externalRefKey, favoriteFromExternal, useFavorites } from '../lib/favorites';
 import { formatInstalls } from '../lib/format';
 import { useI18n } from '../lib/i18n';
 import type {
@@ -25,6 +26,8 @@ const isPrerender = typeof window !== 'undefined' && new URLSearchParams(window.
 export function SkillsDirectoryPage() {
   const { content, locale } = useI18n();
   const copy = content.registry;
+  const favorites = useFavorites();
+  const [savedOnly, setSavedOnly] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState(() => searchParams.get('q') || '');
   const [debouncedQuery, setDebouncedQuery] = useState(() => (searchParams.get('q') || '').trim());
@@ -133,6 +136,25 @@ export function SkillsDirectoryPage() {
 
   const items = page?.items ?? [];
   const showViewTabs = enabled && !debouncedQuery;
+  const savedItems: ExternalSkill[] = favorites.favorites
+    .filter((favorite) => favorite.refType === 'external' && favorite.snapshot.name && favorite.externalSource && favorite.externalSkillId)
+    .filter((favorite) => {
+      const needle = debouncedQuery.toLowerCase();
+      if (!needle) return true;
+      return (
+        (favorite.snapshot.name ?? '').toLowerCase().includes(needle) ||
+        (favorite.snapshot.source ?? favorite.externalSource ?? '').toLowerCase().includes(needle)
+      );
+    })
+    .map((favorite) => ({
+      id: `${favorite.externalSource}/${favorite.externalSkillId}`,
+      source: favorite.externalSource ?? '',
+      skillId: favorite.externalSkillId ?? '',
+      name: favorite.snapshot.name ?? '',
+      installs: favorite.snapshot.installs ?? 0,
+      isOfficial: favorite.snapshot.isOfficial,
+      installCommand: favorite.snapshot.installCommand,
+    }));
 
   return (
     <div className="registry-page">
@@ -183,11 +205,38 @@ export function SkillsDirectoryPage() {
                 {entry.label}
               </button>
             ))}
+            <button
+              aria-pressed={savedOnly}
+              className={clsx('registry-filter registry-filter--saved', savedOnly && 'registry-filter--active')}
+              onClick={() => setSavedOnly((current) => !current)}
+              type="button"
+            >
+              <Star aria-hidden="true" fill={savedOnly ? 'currentColor' : 'none'} size={14} />
+              {copy.savedCount(favorites.count)}
+            </button>
           </div>
         ) : null}
       </header>
 
-      {capabilitiesLoading ? (
+      {savedOnly ? (
+        <section aria-labelledby="saved-skills-title" className="registry-group">
+          <div className="registry-group__header">
+            <div>
+              <h2 id="saved-skills-title">{copy.savedTitle}</h2>
+              <p>{copy.savedLocalHint}</p>
+            </div>
+          </div>
+          {savedItems.length > 0 ? (
+            <div className="registry-grid">
+              {savedItems.map((skill) => (
+                <ExternalSkillCard key={skill.id} onOpen={() => setActiveExternal(skill)} skill={skill} />
+              ))}
+            </div>
+          ) : (
+            <State message={copy.savedEmptyMessage} title={copy.savedEmptyTitle} />
+          )}
+        </section>
+      ) : capabilitiesLoading ? (
         <CardSkeletonGrid />
       ) : capabilitiesError ? (
         <State
@@ -273,6 +322,9 @@ export function SkillsDirectoryPage() {
 function ExternalSkillCard({ skill, onOpen }: { skill: ExternalSkill; onOpen: () => void }) {
   const { content, locale } = useI18n();
   const copy = content.registry;
+  const favorites = useFavorites();
+  const refKey = externalRefKey(skill);
+  const saved = favorites.isFavorite(refKey);
 
   return (
     <article className="registry-card registry-card--external">
@@ -281,7 +333,21 @@ function ExternalSkillCard({ skill, onOpen }: { skill: ExternalSkill; onOpen: ()
           skills.sh
           <ArrowUpRight aria-hidden="true" size={12} />
         </span>
-        {skill.isOfficial ? <span className="registry-official">{copy.official}</span> : null}
+        <div className="registry-card__top-actions">
+          {skill.isOfficial ? <span className="registry-official">{copy.official}</span> : null}
+          <button
+            aria-label={saved ? copy.removeSavedSkill : copy.saveSkill}
+            aria-pressed={saved}
+            className={clsx('registry-save', saved && 'registry-save--active')}
+            onClick={(event) => {
+              event.stopPropagation();
+              void favorites.toggle(favoriteFromExternal(skill));
+            }}
+            type="button"
+          >
+            <Star aria-hidden="true" fill={saved ? 'currentColor' : 'none'} size={16} />
+          </button>
+        </div>
       </div>
       <h3>{skill.name}</h3>
       <p className="registry-card__package">{skill.source}</p>

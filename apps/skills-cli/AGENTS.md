@@ -18,6 +18,8 @@ This file provides guidance to AI coding agents working on the `skills` CLI code
 - `init` creates a skill scaffold.
 - `inspect` validates a local skill directory.
 - `publish`, `import-local`, and `import-git` publish through the server.
+- `login`, `logout`, `whoami`, and `org` manage the optional Logto device-flow session and active tenant.
+- Private organization/private installs use the catalog artifact proxy with the Skill Dock bearer token.
 
 ## Design rules
 

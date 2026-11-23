@@ -24,6 +24,7 @@ type Metadata struct {
 type Options struct {
 	PublishRegistry string `json:"publishRegistry,omitempty"`
 	Strict          bool   `json:"strict,omitempty"`
+	Visibility      string `json:"visibility,omitempty"`
 }
 
 type WarningDetail struct {
@@ -105,19 +106,19 @@ func (r PrepareRequest) GetTarget() Target {
 }
 
 type PrepareResponse struct {
-	WorkspaceHandle string         `json:"workspaceHandle"`
-	PackageName    string          `json:"packageName"`
-	Version        string          `json:"version"`
-	Warnings       []string        `json:"warnings"`
-	WarningDetails []WarningDetail `json:"warningDetails,omitempty"`
-	ImportReport   *ImportReport   `json:"importReport,omitempty"`
-	Errors         []string        `json:"errors"`
+	WorkspaceHandle string          `json:"workspaceHandle"`
+	PackageName     string          `json:"packageName"`
+	Version         string          `json:"version"`
+	Warnings        []string        `json:"warnings"`
+	WarningDetails  []WarningDetail `json:"warningDetails,omitempty"`
+	ImportReport    *ImportReport   `json:"importReport,omitempty"`
+	Errors          []string        `json:"errors"`
 }
 
 type ValidateRequest struct {
-	IdempotencyKey string `json:"idempotencyKey,omitempty"`
+	IdempotencyKey  string `json:"idempotencyKey,omitempty"`
 	WorkspaceHandle string `json:"workspaceHandle"`
-	Target         Target `json:"target"`
+	Target          Target `json:"target"`
 }
 
 func (r ValidateRequest) GetIdempotencyKey() string {
@@ -129,23 +130,23 @@ func (r ValidateRequest) GetTarget() Target {
 }
 
 type ValidateResponse struct {
-	OK             bool            `json:"ok"`
-	WorkspaceHandle string         `json:"workspaceHandle"`
-	PackageName    string          `json:"packageName"`
-	Version        string          `json:"version"`
-	ManifestDigest string          `json:"manifestDigest,omitempty"`
-	Components     []string        `json:"components,omitempty"`
-	Warnings       []string        `json:"warnings"`
-	WarningDetails []WarningDetail `json:"warningDetails,omitempty"`
-	ImportReport   *ImportReport   `json:"importReport,omitempty"`
-	Errors         []string        `json:"errors"`
+	OK              bool            `json:"ok"`
+	WorkspaceHandle string          `json:"workspaceHandle"`
+	PackageName     string          `json:"packageName"`
+	Version         string          `json:"version"`
+	ManifestDigest  string          `json:"manifestDigest,omitempty"`
+	Components      []string        `json:"components,omitempty"`
+	Warnings        []string        `json:"warnings"`
+	WarningDetails  []WarningDetail `json:"warningDetails,omitempty"`
+	ImportReport    *ImportReport   `json:"importReport,omitempty"`
+	Errors          []string        `json:"errors"`
 }
 
 type PackRequest struct {
-	IdempotencyKey string `json:"idempotencyKey,omitempty"`
+	IdempotencyKey  string `json:"idempotencyKey,omitempty"`
 	WorkspaceHandle string `json:"workspaceHandle"`
-	Target         Target `json:"target"`
-	IncludeBundle  bool   `json:"includeBundle,omitempty"`
+	Target          Target `json:"target"`
+	IncludeBundle   bool   `json:"includeBundle,omitempty"`
 }
 
 func (r PackRequest) GetIdempotencyKey() string {
@@ -157,26 +158,26 @@ func (r PackRequest) GetTarget() Target {
 }
 
 type PackResponse struct {
-	WorkspaceHandle string         `json:"workspaceHandle"`
-	BundleHandle    string         `json:"bundleHandle"`
-	BundleBase64   string          `json:"bundleBase64,omitempty"`
-	PackageName    string          `json:"packageName"`
-	Version        string          `json:"version"`
-	ManifestDigest string          `json:"manifestDigest"`
-	Components     []string        `json:"components"`
-	Warnings       []string        `json:"warnings"`
-	WarningDetails []WarningDetail `json:"warningDetails,omitempty"`
-	ImportReport   *ImportReport   `json:"importReport,omitempty"`
-	Errors         []string        `json:"errors"`
+	WorkspaceHandle string          `json:"workspaceHandle"`
+	BundleHandle    string          `json:"bundleHandle"`
+	BundleBase64    string          `json:"bundleBase64,omitempty"`
+	PackageName     string          `json:"packageName"`
+	Version         string          `json:"version"`
+	ManifestDigest  string          `json:"manifestDigest"`
+	Components      []string        `json:"components"`
+	Warnings        []string        `json:"warnings"`
+	WarningDetails  []WarningDetail `json:"warningDetails,omitempty"`
+	ImportReport    *ImportReport   `json:"importReport,omitempty"`
+	Errors          []string        `json:"errors"`
 }
 
 type PublishRequest struct {
-	IdempotencyKey  string        `json:"idempotencyKey,omitempty"`
-	Source          Source        `json:"source"`
-	Target          Target        `json:"target"`
-	Metadata        Metadata      `json:"metadata"`
-	Options         Options       `json:"options"`
-	Review          ReviewSummary `json:"review,omitempty"`
+	IdempotencyKey string        `json:"idempotencyKey,omitempty"`
+	Source         Source        `json:"source"`
+	Target         Target        `json:"target"`
+	Metadata       Metadata      `json:"metadata"`
+	Options        Options       `json:"options"`
+	Review         ReviewSummary `json:"review,omitempty"`
 }
 
 func (r PublishRequest) GetIdempotencyKey() string {

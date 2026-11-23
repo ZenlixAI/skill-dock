@@ -1,3 +1,5 @@
+import { getStoredAccessToken } from './auth-token.ts';
+
 export interface CatalogSkillSummary {
   packageName: string;
   displayName: string;
@@ -343,11 +345,14 @@ function deriveCatalogBaseUrlFromNpmRegistry(registry?: string): string | undefi
   return `${url.origin}${match[1]}`.replace(/\/+$/, '');
 }
 
-function getCatalogAuthHeaders(): Record<string, string> {
+async function getCatalogAuthHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = {};
-  const token = process.env.SKILLS_REGISTRY_TOKEN?.trim();
+  let token = process.env.SKILLS_REGISTRY_TOKEN?.trim();
   const role = process.env.SKILLS_REGISTRY_ROLE?.trim();
 
+  if (!token) {
+    token = await getStoredAccessToken();
+  }
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
@@ -432,7 +437,7 @@ export async function searchCatalogSkillsPage(
   const response = await fetch(url, {
     headers: {
       accept: 'application/json',
-      ...getCatalogAuthHeaders(),
+      ...(await getCatalogAuthHeaders()),
     },
   });
 
@@ -517,7 +522,7 @@ export async function putReleaseRecord(
     headers: {
       accept: 'application/json',
       'content-type': 'application/json',
-      ...getCatalogAuthHeaders(),
+      ...(await getCatalogAuthHeaders()),
     },
     body: JSON.stringify(body),
   });
@@ -540,7 +545,7 @@ export async function resolveInstallTarget(
   const response = await fetch(url, {
     headers: {
       accept: 'application/json',
-      ...getCatalogAuthHeaders(),
+      ...(await getCatalogAuthHeaders()),
     },
   });
 
@@ -566,7 +571,7 @@ export async function importReviewPackaging(input: {
     headers: {
       accept: 'application/json',
       'content-type': 'application/json',
-      ...getCatalogAuthHeaders(),
+      ...(await getCatalogAuthHeaders()),
     },
     body: JSON.stringify({
       idempotencyKey: input.idempotencyKey,
@@ -600,7 +605,7 @@ export async function publishSkillPackaging(input: {
     headers: {
       accept: 'application/json',
       'content-type': 'application/json',
-      ...getCatalogAuthHeaders(),
+      ...(await getCatalogAuthHeaders()),
     },
     body: JSON.stringify({
       idempotencyKey: input.idempotencyKey,

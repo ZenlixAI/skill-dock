@@ -1,5 +1,6 @@
-import { ArrowUpRight, Check, Copy, RefreshCw, X } from 'lucide-react';
+import { ArrowUpRight, Check, Copy, RefreshCw, Star, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { externalRefKey, favoriteFromExternal, useFavorites } from '../lib/favorites';
 import { formatInstalls } from '../lib/format';
 import { useI18n } from '../lib/i18n';
 import type { ExternalSkill, ExternalSkillDetail } from '../lib/skills-directory-api';
@@ -157,6 +158,9 @@ function ExternalDetail({
 }) {
   const { content, locale } = useI18n();
   const copy = content.registry;
+  const favorites = useFavorites();
+  const refKey = externalRefKey(detail);
+  const saved = favorites.isFavorite(refKey);
   const displayName = detail.displayName && detail.displayName !== detail.name ? detail.displayName : null;
   const command = detail.installCommand || '';
   const skillURL = detail.url || skillsShSkillURL(detail.source, detail.skillId);
@@ -173,9 +177,20 @@ function ExternalDetail({
           {detail.source}
           <span className="sr-only">{content.ui.opensInNewTab}</span>
         </a>
-        <h2 className="registry-drawer__title" id="external-skill-title">
-          {detail.name}
-        </h2>
+        <div className="registry-drawer__title-row">
+          <h2 className="registry-drawer__title" id="external-skill-title">
+            {detail.name}
+          </h2>
+          <button
+            aria-label={saved ? copy.removeSavedSkill : copy.saveSkill}
+            aria-pressed={saved}
+            className={saved ? 'registry-save registry-save--active' : 'registry-save'}
+            onClick={() => void favorites.toggle(favoriteFromExternal(detail))}
+            type="button"
+          >
+            <Star aria-hidden="true" fill={saved ? 'currentColor' : 'none'} size={17} />
+          </button>
+        </div>
         {displayName ? <p className="registry-drawer__display-name">{displayName}</p> : null}
         {detail.isOfficial ? <span className="registry-official">{copy.official}</span> : null}
         {detail.topics && detail.topics.length > 0 ? (

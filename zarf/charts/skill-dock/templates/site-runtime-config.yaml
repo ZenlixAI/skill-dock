@@ -1,0 +1,17 @@
+{{- if and .Values.site.enabled .Values.logto.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "skill-dock.siteName" . }}-runtime
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: site
+    {{- include "skill-dock.labels" . | nindent 4 }}
+data:
+  runtime-config.js: |
+    window.__SKILL_DOCK_CONFIG__ = {
+      logtoEndpoint: {{ .Values.logto.endpoint | quote }},
+      logtoAppId: {{ .Values.logto.webAppId | quote }},
+      logtoApiResource: {{ .Values.logto.apiResource | quote }}
+    };
+{{- end }}

@@ -35,3 +35,7 @@ The catalog service, not the CLI, uses artifact-repository credentials:
 - `SKILL_REGISTRY_NPM_PUBLISH_TOKEN`
 
 Do not expose these credentials in install targets or CLI output.
+
+## User identity and multi-tenancy
+
+The shared-token model above remains the default (`SKILL_REGISTRY_AUTH_MODE=legacy`). Set `SKILL_REGISTRY_AUTH_MODE=hybrid` or `logto` to add Logto user identity, tenant-scoped access, publisher ownership, private skills, grants, tags, favorites, and SCIM provisioning. See [Identity, ownership, authorization, tags, and favorites](14-identity-ownership-and-favorites.md) for the implemented baseline and configuration.

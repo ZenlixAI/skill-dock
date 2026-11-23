@@ -63,6 +63,25 @@ SKILL_REGISTRY_PUBLIC_INSTALL_URL=https://registry.example.com/repository/skills
 
 When a password contains reserved URL characters, percent-encode it in `SKILL_REGISTRY_DATABASE_URL`. The Docker network resolves the database host as `postgres`.
 
+To enable Logto user identity and tenant isolation, add:
+
+```dotenv
+SKILL_REGISTRY_AUTH_MODE=hybrid
+SKILL_REGISTRY_LOGTO_ENDPOINT=https://your-tenant.logto.app
+SKILL_REGISTRY_LOGTO_ISSUER=https://your-tenant.logto.app/oidc
+SKILL_REGISTRY_LOGTO_API_RESOURCE=https://registry.example.com/api
+
+# Optional SCIM 2.0 provisioning token.
+SKILL_REGISTRY_SCIM_TOKEN=<random-scim-token>
+
+# Optional default private artifact upstream. Never expose this URL to clients.
+SKILL_REGISTRY_PRIVATE_ARTIFACT_UPSTREAM_URL=https://artifacts.example.com/npm/private/
+SKILL_REGISTRY_PRIVATE_ARTIFACT_READ_AUTHORIZATION=Bearer <private-artifact-read-token>
+SKILL_REGISTRY_PRIVATE_ARTIFACT_AUTH=catalog_proxy
+```
+
+The site needs `VITE_LOGTO_ENDPOINT`, `VITE_LOGTO_APP_ID`, `VITE_LOGTO_API_RESOURCE`, and usually `VITE_CATALOG_API_URL` at build time. See [identity and multi-tenancy](14-identity-ownership-and-favorites.md#16-scim-provisioning) for the Logto application, API resource, organization roles, and SCIM setup.
+
 The Compose definition binds Catalog to `127.0.0.1:8081` by default (`CATALOG_PORT` can override this). Put a TLS reverse proxy or another public gateway in front of Catalog when it must be reachable by CLI clients.
 
 ## 2. Build and start

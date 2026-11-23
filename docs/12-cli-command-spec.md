@@ -7,8 +7,11 @@ This document describes the implemented `skills` command surface. The CLI's `--h
 | Input | Meaning |
 | --- | --- |
 | `SKILLS_REGISTRY_URL` | Catalog server base URL |
-| `SKILLS_REGISTRY_TOKEN` | Bearer token for catalog requests |
+| `SKILLS_REGISTRY_TOKEN` | Bearer token for catalog requests (service account) |
 | `SKILLS_REGISTRY_ROLE` | Development role header |
+| `SKILLS_LOGTO_ENDPOINT` | Logto base URL for `skills login` |
+| `SKILLS_LOGTO_CLIENT_ID` | Logto device-flow app ID |
+| `SKILLS_LOGTO_API_RESOURCE` | Logto API resource for catalog tokens |
 | `NPM_CONFIG_USERCONFIG` | npm credentials for direct npm traffic |
 | `skills.config.json` | Project configuration for automatic import after `add` |
 
@@ -32,6 +35,25 @@ The CLI merges the optional `${XDG_CONFIG_HOME:-~/.config}/skills/config.json` w
 | `import-local [path]` | Publish a local source tree |
 | `import-git <source>` | Discover and publish a skill from git |
 | `import-npm <package>` | Download an npm package and publish its extracted source |
+| `login` | Sign in with the Logto device flow |
+| `logout` | Remove the local Logto credential |
+| `whoami` | Show the current account and organizations |
+| `org list` | List organizations for the current account |
+| `org use <slug>` | Select the active tenant |
+
+## Account and tenant
+
+```bash
+skills login [--logto-endpoint <url>] [--client-id <id>] [--api-resource <uri>]
+skills logout
+skills whoami [--registry <url>]
+skills org list [--registry <url>]
+skills org use <slug> [--registry <url>]
+```
+
+`login` uses the OAuth 2.0 device authorization grant. The refresh token is stored under `${XDG_CONFIG_HOME:-~/.config}/skill-dock/credentials.json` with `0600` permissions. When an active organization is selected, token refresh requests an organization token; the catalog validates the `organization_id` claim. `SKILLS_REGISTRY_TOKEN` remains the service-account path and is not silently converted into a user session.
+
+Private organization/private installs use the catalog proxy: the CLI sends the Skill Dock bearer token to the proxy, and the proxy checks the active tenant and install permission before forwarding to npm.
 
 ## Discovery and installation
 

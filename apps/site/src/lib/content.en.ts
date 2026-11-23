@@ -127,6 +127,17 @@ export const en = {
       { label: 'Quick start', path: '/#quick-start' },
       { label: 'FAQ', path: '/#faq' },
     ] as NavItem[],
+    auth: {
+      signIn: 'Sign in',
+      signOut: 'Sign out',
+      account: 'Account',
+      organizations: 'Organizations',
+      activeOrganization: 'Active organization',
+      personal: 'Personal',
+      loading: 'Loading account…',
+      signedInAs: (name: string) => `Signed in as ${name}`,
+      syncHint: 'Sign in to sync saved skills across devices.',
+    },
     footer: {
       tagline: 'A self-hosted registry for agent skills.',
       productHeading: 'Product',
@@ -479,6 +490,15 @@ export const en = {
     installs: (formatted: string) => `${formatted} installs`,
     official: 'Official',
     viewDetails: 'View details',
+    saved: 'Saved',
+    savedCount: (count: number) => `Saved (${count})`,
+    saveSkill: 'Save skill',
+    removeSavedSkill: 'Remove from saved',
+    savedTitle: 'Saved skills',
+    savedEmptyTitle: 'Nothing saved yet',
+    savedEmptyMessage: 'Save skills from the directory to find them here.',
+    savedLocalHint: 'Saved on this device. Sign in to sync across devices.',
+    savedUnavailable: 'Unavailable in this organization',
     emptyTitle: 'Nothing found',
     emptySearch: (query: string) => `No skills.sh results for “${query}”.`,
     emptyView: 'No skills in this view right now.',
@@ -514,7 +534,7 @@ export const en = {
       sections: [
         {
           heading: 'What the site collects',
-          body: 'The public site is a static build. It does not include an account system, analytics script, or advertising tracker. The hosting provider may keep standard request logs such as IP address, user agent, and requested path.',
+          body: 'The public site is a static build with no analytics or advertising trackers. Account features are optional: when enabled, sign-in is handled by Logto and the catalog stores your account, organization membership, favorites, and audit records. Without sign-in, saved skills stay in your browser local storage. The hosting provider may keep standard request logs such as IP address, user agent, and requested path.',
         },
         {
           heading: 'Clipboard actions',

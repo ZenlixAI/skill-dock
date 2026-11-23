@@ -24,6 +24,46 @@ Catalog API routes are served under `/api/v1`. Catalog and audit reads require a
 | `GET /api/v1/audit-events` | List audit events |
 | `GET /api/v1/governance-changes` | List governance changes |
 
+## Identity and user routes
+
+These routes require a Logto user access token or a configured service token, depending on the deployment mode.
+
+| Route | Purpose |
+| --- | --- |
+| `GET /api/v1/me` | Current user, organizations, active tenant, roles, scopes, and feature flags. |
+| `GET /api/v1/me/orgs` | Organizations known for the current user. |
+| `GET /api/v1/me/favorites` | List the caller's favorites. |
+| `POST /api/v1/me/favorites` | Upsert a favorite. |
+| `DELETE /api/v1/me/favorites?refKey=...` | Remove a favorite. |
+| `GET /api/v1/me/favorites/status?refKey=...` | Batch favorite status. |
+| `POST /api/v1/me/favorites/merge` | Merge local favorites after sign-in. |
+| `GET/POST /api/v1/tags` | List visible tags or create a tenant tag. |
+| `PATCH/DELETE /api/v1/tags/:id` | Update or delete a tenant tag. |
+| `PUT /api/v1/skills/:package/tags` | Replace a skill's tags. |
+| `GET/POST /api/v1/orgs/:org/namespaces` | List or claim tenant namespaces. |
+| `POST /api/v1/orgs/:org/namespaces/:id/verify` | Verify a namespace (platform administrator). |
+| `GET /api/v1/orgs/:org/artifact-config` | Show the tenant's private artifact scope and proxy mount. |
+| `PUT /api/v1/orgs/:org/artifact-config` | Configure the tenant's private artifact target. |
+| `PATCH /api/v1/skills/:package/visibility` | Change visibility. |
+| `GET/POST /api/v1/skills/:package/grants` | List or create user grants. |
+| `DELETE /api/v1/skills/:package/grants/:id` | Revoke a grant. |
+| `GET/POST/DELETE /api/v1/skills/:package/maintainers` | Manage maintainers. |
+
+Organization-scoped routes compare the path organization with the verified token's `organization_id`. The catalog does not trust a client-supplied tenant header.
+
+## SCIM routes
+
+SCIM 2.0 provisioning is enabled when `SKILL_REGISTRY_SCIM_TOKEN` is set. It uses a separate bearer token, not a Logto JWT.
+
+| Route | Purpose |
+| --- | --- |
+| `GET /scim/v2/ServiceProviderConfig` | SCIM capability discovery. |
+| `GET /scim/v2/ResourceTypes` | User and Group resource types. |
+| `GET/POST /scim/v2/Users` | List or create users. |
+| `GET/PUT/PATCH/DELETE /scim/v2/Users/:id` | User lifecycle. |
+| `GET/POST /scim/v2/Groups` | List or create groups mapped to tenants. |
+| `GET/PUT/PATCH/DELETE /scim/v2/Groups/:id` | Group and membership lifecycle. |
+
 ## Public Registry routes
 
 These routes are unauthenticated, read-only, and CORS-enabled for the static Registry page.
@@ -51,6 +91,8 @@ When `SKILLS_SH_ENABLED=false`, the external routes return `404 external_search_
 List responses contain `items` and `pageInfo`. Catalog records may include identity, registry, lifecycle, and provenance fields such as `sourceKind`, `sourceLocator`, origin URLs, `importMode`, `hosted`, `mirrored`, and `installable`.
 
 `GET /api/v1/skills/:package/versions` accepts `include_deprecated`, `include_yanked`, `pageSize`, and `cursor`. `GET /api/v1/skills/:package/install-target` accepts an optional exact `version`.
+
+Public install targets may use `registryAccessMode=proxy` or `direct`. Organization/private targets always use the catalog proxy with `artifactAccess=catalog_proxy` and `authorizationRequired=true`. The CLI sends the catalog bearer token to the proxy; the proxy checks the active tenant and install permission on every request and never exposes the upstream npm URL or credential.
 
 ## Packaging routes
 
