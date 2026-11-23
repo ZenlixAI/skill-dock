@@ -1462,7 +1462,7 @@ Legacy compatibility:
 
 1. **Tag taxonomy:** free-form tenant tags or a curated set? Recommendation: system tags curated; tenant tags free-form with limits.
 2. **Tag-based policy:** do we need "only skills tagged `security` may be installed" in v1? Recommendation: no. Explicit grants first.
-3. **Webhooks vs polling:** are Logto webhooks available in the target deployment? Recommendation: webhooks plus periodic reconciliation; polling alone is a fallback.
+3. **Webhooks vs SCIM:** SCIM 2.0 is the primary directory-sync path in this implementation. Logto webhooks remain optional when Logto itself owns membership changes; polling alone is a fallback.
 4. **Service token migration:** when do legacy environment tokens become named service accounts? Recommendation: keep them for CI, add named service tokens with expiry and last-used tracking in phase 6.
 5. **Favorite limits:** per-user cap (for example 5,000) and rate limit. Recommendation: a cap prevents accidental abuse; surface a clear error.
 6. **Platform-admin break-glass:** should cross-tenant access require a second approver or a time-bound elevation? Recommendation: time-bound elevation with audit in phase 6.
