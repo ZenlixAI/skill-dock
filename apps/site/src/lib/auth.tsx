@@ -59,11 +59,28 @@ export function useAuth(): AuthState {
   return useContext(AuthContext);
 }
 
+declare global {
+  interface Window {
+    __SKILL_DOCK_CONFIG__?: {
+      logtoEndpoint?: string;
+      logtoAppId?: string;
+      logtoApiResource?: string;
+      catalogApiUrl?: string;
+    };
+  }
+}
+
+function runtimeConfig(): NonNullable<Window['__SKILL_DOCK_CONFIG__']> {
+  if (typeof window === 'undefined') return {};
+  return window.__SKILL_DOCK_CONFIG__ ?? {};
+}
+
 export function AuthProvider({ children }: PropsWithChildren) {
-  const endpoint = (import.meta.env.VITE_LOGTO_ENDPOINT || '').trim();
-  const appId = (import.meta.env.VITE_LOGTO_APP_ID || '').trim();
-  const apiResource = (import.meta.env.VITE_LOGTO_API_RESOURCE || '').trim();
-  const apiBase = (import.meta.env.VITE_CATALOG_API_URL || '/api/v1').replace(/\/+$/, '');
+  const runtime = runtimeConfig();
+  const endpoint = (runtime.logtoEndpoint || import.meta.env.VITE_LOGTO_ENDPOINT || '').trim();
+  const appId = (runtime.logtoAppId || import.meta.env.VITE_LOGTO_APP_ID || '').trim();
+  const apiResource = (runtime.logtoApiResource || import.meta.env.VITE_LOGTO_API_RESOURCE || '').trim();
+  const apiBase = (runtime.catalogApiUrl || import.meta.env.VITE_CATALOG_API_URL || '/api/v1').replace(/\/+$/, '');
 
   if (!endpoint || !appId || !apiResource) {
     return <AuthContext.Provider value={{ ...disabledAuth, apiBase }}>{children}</AuthContext.Provider>;

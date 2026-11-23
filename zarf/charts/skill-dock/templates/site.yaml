@@ -23,7 +23,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       annotations:
-        checksum/config: {{ dict "site" .Values.site | toJson | sha256sum }}
+        checksum/config: {{ dict "site" .Values.site "logto" .Values.logto | toJson | sha256sum }}
         {{- with .Values.site.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -70,6 +70,18 @@ spec:
             periodSeconds: 20
           resources:
             {{- toYaml .Values.site.resources | nindent 12 }}
+          {{- if .Values.logto.enabled }}
+          volumeMounts:
+            - name: runtime-config
+              mountPath: /usr/share/nginx/html/runtime-config.js
+              subPath: runtime-config.js
+          {{- end }}
+      {{- if .Values.logto.enabled }}
+      volumes:
+        - name: runtime-config
+          configMap:
+            name: {{ include "skill-dock.siteName" . }}-runtime
+      {{- end }}
       {{- with .Values.site.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

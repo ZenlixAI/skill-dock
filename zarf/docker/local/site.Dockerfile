@@ -13,6 +13,7 @@ COPY apps/site/tsconfig.json ./tsconfig.json
 COPY apps/site/vite.config.ts ./vite.config.ts
 COPY apps/site/src ./src
 COPY apps/site/worker ./worker
+COPY apps/site/public ./public
 RUN npm run build
 
 FROM nginx:1.29-alpine AS runtime

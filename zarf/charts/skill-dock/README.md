@@ -335,32 +335,41 @@ environment variables.
 
 ## Logto identity and SCIM
 
-The chart passes arbitrary Catalog environment variables through
-`catalog.extraEnv`. A hybrid deployment can use:
+The chart has a native `logto` section. It is disabled by default so existing
+installations keep the legacy shared-token model. The endpoint and issuer
+defaults use Logto Cloud's URL shape; replace them with the target tenant
+before enabling.
 
 ```yaml
-catalog:
-  extraEnv:
-    - name: SKILL_REGISTRY_AUTH_MODE
-      value: hybrid
-    - name: SKILL_REGISTRY_LOGTO_ENDPOINT
-      value: https://your-tenant.logto.app
-    - name: SKILL_REGISTRY_LOGTO_ISSUER
-      value: https://your-tenant.logto.app/oidc
-    - name: SKILL_REGISTRY_LOGTO_API_RESOURCE
-      value: https://registry.example.com/api
-    - name: SKILL_REGISTRY_SCIM_TOKEN
-      valueFrom:
-        secretKeyRef:
-          name: skill-dock-catalog
-          key: scim-token
+logto:
+  enabled: true
+  authMode: hybrid
+  endpoint: https://your-tenant.logto.app
+  issuer: https://your-tenant.logto.app/oidc
+  apiResource: https://registry.example.com/api
+  webAppId: <logto-spa-app-id>
+  # Leave empty when the site and Catalog share an ingress origin.
+  corsOrigins:
+    - https://skill-dock.example.com
+  scim:
+    enabled: true
+    # Generated and stored in the Catalog Secret when empty.
+    token: ""
 ```
 
-The default site image is built without `VITE_LOGTO_*` values, so account
-features stay disabled and favorites remain local. To enable sign-in and
-server-backed favorites, build a site image with `VITE_LOGTO_ENDPOINT`,
-`VITE_LOGTO_APP_ID`, `VITE_LOGTO_API_RESOURCE`, and `VITE_CATALOG_API_URL`.
-The Catalog and site must share a reachable API origin in that build.
+Catalog receives `SKILL_REGISTRY_AUTH_MODE`, `SKILL_REGISTRY_LOGTO_ENDPOINT`,
+`SKILL_REGISTRY_LOGTO_ISSUER`, `SKILL_REGISTRY_LOGTO_API_RESOURCE`,
+`SKILL_REGISTRY_CORS_ORIGINS`, and, when enabled,
+`SKILL_REGISTRY_SCIM_TOKEN`.
+
+The chart also writes `/runtime-config.js` for the site with the Logto
+endpoint, SPA application ID, and API resource. This means the static site
+image does not need to be rebuilt for each Logto tenant. The site and Catalog
+must be reachable from the browser; the chart's default same-origin `/api`
+proxy satisfies this when they share an ingress.
+
+For `catalog.existingSecret`, add a `scim-token` key when SCIM is enabled, or
+set `logto.scim.existingSecret` and `logto.scim.existingSecretKey`.
 
 ## Existing Secrets
 
@@ -382,6 +391,7 @@ That Secret must contain these keys:
 - `artifact-publish-authorization`
 - `public-install-url`
 - `auth-tokens-json`
+- `scim-token` (when `logto.scim.enabled` and no separate SCIM Secret)
 
 The site can use an existing Secret with `catalog-authorization-header`:
 
@@ -427,6 +437,17 @@ can generate new credentials.
 | `catalog.sharedWorkspaceRoot` | `/var/lib/skill-registry/packaging-workspaces` | Packaging workspace root |
 | `catalog.waitForDatabase.enabled` | `true` | Wait for embedded PostgreSQL before starting Catalog |
 | `catalog.persistence.enabled` | `false` | Mount a persistent workspace |
+| `logto.enabled` | `false` | Enable Logto JWT authentication and tenant features |
+| `logto.authMode` | `hybrid` | `hybrid` or `logto` Catalog auth mode |
+| `logto.endpoint` | `https://your-tenant.logto.app` | Logto Cloud URL shape placeholder |
+| `logto.issuer` | `https://your-tenant.logto.app/oidc` | Expected Logto issuer |
+| `logto.apiResource` | `https://registry.example.com/api` | Logto API resource / JWT audience placeholder |
+| `logto.webAppId` | `replace-with-logto-spa-app-id` | Logto SPA application ID for the site |
+| `logto.corsOrigins` | `[]` | Exact browser origins for authenticated Catalog routes |
+| `logto.scim.enabled` | `false` | Enable SCIM 2.0 provisioning |
+| `logto.scim.token` | `""` | SCIM bearer token; generated when empty |
+| `logto.scim.existingSecret` | `""` | Existing Secret containing the SCIM token |
+| `logto.scim.existingSecretKey` | `scim-token` | SCIM token key in the existing Secret |
 | `site.enabled` | `true` | Deploy the web site |
 | `site.replicaCount` | `1` | Site replicas |
 | `site.image.repository` | `ghcr.io/zenlixai/skill-dock-site` | Site image |

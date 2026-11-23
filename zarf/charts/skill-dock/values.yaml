@@ -124,6 +124,36 @@ catalog:
   extraEnvFrom: []
 
 # ---------------------------------------------------------------------------
+# Logto identity
+#
+# `enabled: false` keeps the legacy shared-token model. When enabled, Catalog
+# accepts Logto JWTs (hybrid mode by default) and the site receives a runtime
+# `/runtime-config.js` with the Logto endpoint, SPA app ID, and API resource.
+#
+# The endpoint/issuer/API resource defaults use Logto Cloud's URL shape and
+# placeholders. Replace them for the target tenant before enabling.
+# ---------------------------------------------------------------------------
+logto:
+  enabled: false
+  # hybrid accepts both Logto JWTs and legacy tokens. Use logto after migration.
+  authMode: hybrid
+  endpoint: https://your-tenant.logto.app
+  issuer: https://your-tenant.logto.app/oidc
+  apiResource: https://registry.example.com/api
+  # SPA Application ID from Logto Console. Required for site sign-in.
+  webAppId: replace-with-logto-spa-app-id
+  # Exact browser origins allowed to call authenticated Catalog routes. Leave
+  # empty when the site and Catalog share an origin through the chart ingress.
+  corsOrigins: []
+  scim:
+    enabled: false
+    # Generated and stored in the Catalog Secret when empty.
+    token: ""
+    # Optional existing Secret containing the SCIM bearer token.
+    existingSecret: ""
+    existingSecretKey: scim-token
+
+# ---------------------------------------------------------------------------
 # Web site
 # ---------------------------------------------------------------------------
 site:
